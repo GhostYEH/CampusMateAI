@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import uuid
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -51,10 +52,12 @@ async def lifespan(app: FastAPI):
     await container.agent_worker.start()
     logger.info("Agent Worker 已启动，mode={}, concurrency={}",
                 settings.agent_runtime_mode, settings.agent_worker_concurrency)
-    # 自适应闭环不依赖页面访问：每次安全启动先跑一个有界 tick，重复运行由评估/重规划幂等键收敛。
-    report = container.adaptive_replanning_worker.tick(batch_size=25)
-    logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, failed={}",
-                report.scanned, report.evaluated, report.reused, report.failed)
+    # 自适应闭环不依赖页面访问：先执行一个有界 tick，再持续调度；
+    # worker 自身具备决策持久化和两阶段恢复能力。
+    report = await asyncio.to_thread(container.adaptive_replanning_worker.tick, batch_size=25)
+    logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, decisions={}, applied={}, failed={}",
+                report.scanned, report.evaluated, report.reused, report.decisions, report.applied, report.failed)
+    await container.adaptive_replanning_worker.start()
     # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
     if settings.agent_allow_mock_providers and settings.app_env != "production":
         try:
@@ -83,6 +86,7 @@ async def lifespan(app: FastAPI):
     yield
     # 关闭
     await container.agent_worker.stop()
+    await container.adaptive_replanning_worker.stop()
     if container.llm is not None and hasattr(container.llm, "aclose"):
         try:
             await container.llm.aclose()  # type: ignore[attr-defined]

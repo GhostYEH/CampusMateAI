@@ -52,6 +52,31 @@ class LearnerEventService:
     ) -> LearnerEventAppendResult:
         return self._repository.append_idempotent(user_id=user_id, event=event)
 
+    def record_intervention_event(
+        self, *, user_id: str, event_type: str, intervention_id: str, goal_id: str,
+        occurred_at: datetime, evaluation_id: str | None = None, decision_id: str | None = None,
+        outcome: str = "updated", evidence_refs: list[str] | None = None,
+    ) -> LearnerEventAppendResult:
+        """Append a bounded, idempotent adaptive-loop event.
+
+        These events are audit signals only; state projection filters an event
+        carrying the current evaluation id from that evaluation's comparison.
+        """
+        payload = {"intervention_id": intervention_id, "goal_id": goal_id,
+                   "evaluation_id": evaluation_id, "decision_id": decision_id,
+                   "evidence_refs": sorted(set(evidence_refs or []))}
+        return self.record_event(user_id=user_id, event=LearnerEventCreate(
+            source="adaptive_intervention", event_type=event_type, occurred_at=occurred_at,
+            subject_type="adaptive_intervention", subject_id=intervention_id,
+            outcome=outcome, evidence_reference=EvidenceReference(
+                kind="adaptive_intervention", table="adaptive_interventions", row_id=intervention_id,
+            ), data_quality="partial" if event_type == "intervention_feedback_received" else "verified",
+            consent_scope="core_learning_record",
+            source_version="adaptive-loop-v1",
+            dedupe_key=f"adaptive:{event_type}:{intervention_id}:{evaluation_id or decision_id or 'none'}",
+            payload=payload,
+        ))
+
     @staticmethod
     def _parse_aware_datetime(value: Any) -> Optional[datetime]:
         if isinstance(value, datetime):

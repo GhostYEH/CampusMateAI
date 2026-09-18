@@ -1392,6 +1392,29 @@ CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_user_created
     ON adaptive_interventions(user_id, created_at DESC, intervention_id DESC);
 CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_plan
     ON adaptive_interventions(user_id, plan_id);
+
+CREATE TABLE IF NOT EXISTS adaptive_replan_decisions (
+    decision_id TEXT PRIMARY KEY,
+    decision_digest TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    goal_id TEXT NOT NULL,
+    intervention_id TEXT NOT NULL,
+    evaluation_id TEXT NOT NULL UNIQUE,
+    decision TEXT NOT NULL CHECK(decision IN ('CONTINUE','WAIT_FOR_EVIDENCE','REPLAN','SUSPEND')),
+    reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    suggested_adjustments_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0 CHECK(confidence >= 0 AND confidence <= 1),
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK(status IN ('PENDING','APPLYING','APPLIED','FAILED')),
+    created_at TEXT NOT NULL,
+    applied_at TEXT,
+    failure_code TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(intervention_id) REFERENCES adaptive_interventions(intervention_id) ON DELETE CASCADE,
+    FOREIGN KEY(evaluation_id) REFERENCES intervention_evaluations(evaluation_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_adaptive_replan_decisions_pending
+    ON adaptive_replan_decisions(status, created_at);
 """
 
 # 结果评估。UNIQUE(intervention_id, evaluator_version, input_digest) 让"同一份观测

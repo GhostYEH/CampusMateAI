@@ -20,6 +20,7 @@ from ..models.adaptive_intervention import (
     WRITABLE_INTERVENTION_STATUSES,
     AdaptiveInterventionRow,
     InterventionEvaluationRow,
+    AdaptiveReplanDecisionRow,
 )
 from ..schemas.adaptive_intervention import (
     InterventionEvaluation,
@@ -126,24 +127,42 @@ class AdaptiveInterventionRepository:
             )
         return self.get(user_id=user_id, intervention_id=intervention_id)
 
+    def update_strategy(self, *, user_id: str, intervention_id: str, strategy: StrategyDecision) -> AdaptiveInterventionRow | None:
+        strategy = StrategyDecision.model_validate(strategy.model_dump(mode="json"))
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE adaptive_interventions SET strategy_code=?, strategy_version=?, strategy_json=?, rationale_codes_json=?, expected_outcomes_json=?, confidence=?, updated_at=? WHERE intervention_id=? AND user_id=?",
+                (strategy.strategy_code, strategy.strategy_version,
+                 json.dumps(strategy.model_dump(mode="json"), ensure_ascii=False, sort_keys=True),
+                 json.dumps(list(strategy.rationale_codes)), json.dumps(list(strategy.expected_outcomes)),
+                 strategy.confidence, _now(), intervention_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+        return self.get(user_id=user_id, intervention_id=intervention_id)
+
     def link_replanned(
         self, *, user_id: str, old_intervention_id: str, new_intervention_id: str,
         evaluation_id: str, decision_id: str, reason_codes: list[str],
     ) -> None:
         """Only call after successor plan binding succeeds; the old record stays usable on failure."""
         with self._db.transaction() as conn:
-            conn.execute(
+            old_cursor = conn.execute(
                 "UPDATE adaptive_interventions SET status='SUPERSEDED', superseded_by_intervention_id=?, "
-                "updated_at=? WHERE intervention_id=? AND user_id=? AND status!='CANCELLED'",
+                "updated_at=? WHERE intervention_id=? AND user_id=? AND status IN ('EVALUATED','OBSERVING','PLAN_GENERATED','ACCEPTED','EXECUTING')",
                 (new_intervention_id, _now(), old_intervention_id, user_id),
             )
-            conn.execute(
-                "UPDATE adaptive_interventions SET supersedes_intervention_id=?, source_evaluation_id=?, "
+            if old_cursor.rowcount != 1:
+                raise sqlite3.IntegrityError("old intervention state changed before successor link")
+            new_cursor = conn.execute(
+                "UPDATE adaptive_interventions SET status='PLAN_GENERATED', supersedes_intervention_id=?, source_evaluation_id=?, "
                 "replan_decision_id=?, replan_reason_codes_json=?, chain_depth=(SELECT chain_depth+1 FROM adaptive_interventions "
                 "WHERE intervention_id=? AND user_id=?), updated_at=? WHERE intervention_id=? AND user_id=?",
                 (old_intervention_id, evaluation_id, decision_id, json.dumps(sorted(set(reason_codes))),
                  old_intervention_id, user_id, _now(), new_intervention_id, user_id),
             )
+            if new_cursor.rowcount != 1:
+                raise sqlite3.IntegrityError("successor intervention missing during link")
 
     def has_replan_guard_violation(self, *, user_id: str, goal_id: str, old_intervention_id: str,
                                    since: str, day_start: str, daily_limit: int) -> bool:
@@ -271,6 +290,14 @@ class AdaptiveInterventionRepository:
             ).fetchone()
         return AdaptiveInterventionRow.from_row(row) if row is not None else None
 
+    def find_by_plan(self, *, user_id: str, plan_id: str) -> AdaptiveInterventionRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM adaptive_interventions WHERE user_id=? AND plan_id=? ORDER BY created_at DESC LIMIT 1",
+                (user_id, plan_id),
+            ).fetchone()
+        return AdaptiveInterventionRow.from_row(row) if row else None
+
     def get_evaluation(
         self, *, user_id: str, intervention_id: str
     ) -> InterventionEvaluationRow | None:
@@ -326,12 +353,74 @@ class AdaptiveInterventionRepository:
         """Bounded background-work query; never used by HTTP reads."""
         with self._db.query() as conn:
             rows = conn.execute(
-                "SELECT * FROM adaptive_interventions WHERE status IN ('PLAN_GENERATED','OBSERVING','EXECUTING') "
+                "SELECT * FROM adaptive_interventions WHERE status IN ('PLAN_GENERATED','ACCEPTED','OBSERVING','EXECUTING') "
                 "AND observation_due_at IS NOT NULL AND observation_due_at<=? "
                 "ORDER BY observation_due_at, intervention_id LIMIT ?",
                 (as_of, max(1, min(limit, 100))),
             ).fetchall()
         return [AdaptiveInterventionRow.from_row(row) for row in rows]
+
+    def save_decision(self, *, user_id: str, goal_id: str, intervention_id: str,
+                      evaluation_id: str, decision: str, decision_digest: str,
+                      reason_codes: list[str], suggested_adjustments: list[str],
+                      confidence: float, evidence_refs: list[str], status: str = "PENDING") -> AdaptiveReplanDecisionRow:
+        now = _now()
+        decision_id = f"rdec_{decision_digest[:16]}"
+        with self._db.transaction() as conn:
+            conn.execute(
+                """INSERT INTO adaptive_replan_decisions
+                   (decision_id,decision_digest,user_id,goal_id,intervention_id,evaluation_id,decision,
+                    reason_codes_json,suggested_adjustments_json,confidence,evidence_refs_json,status,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(evaluation_id) DO NOTHING""",
+                (decision_id, decision_digest, user_id, goal_id, intervention_id, evaluation_id, decision,
+                 json.dumps(sorted(set(reason_codes))), json.dumps(sorted(set(suggested_adjustments))), confidence,
+                 json.dumps(sorted(set(evidence_refs))), status, now),
+            )
+        row = self.get_decision(user_id=user_id, evaluation_id=evaluation_id)
+        if row is None:
+            raise RuntimeError("decision disappeared after commit")
+        return row
+
+    def get_decision(self, *, user_id: str, evaluation_id: str) -> AdaptiveReplanDecisionRow | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM adaptive_replan_decisions WHERE user_id=? AND evaluation_id=?",
+                (user_id, evaluation_id),
+            ).fetchone()
+        return AdaptiveReplanDecisionRow.from_row(row) if row else None
+
+    def list_pending_decisions(self, *, as_of: str, limit: int = 50) -> list[tuple[AdaptiveInterventionRow, AdaptiveReplanDecisionRow | None]]:
+        with self._db.query() as conn:
+            rows = conn.execute(
+                """SELECT i.*, d.decision_id AS d_decision_id FROM adaptive_interventions i
+                   JOIN intervention_evaluations e ON e.evaluation_id=i.evaluation_id
+                   LEFT JOIN adaptive_replan_decisions d ON d.evaluation_id=e.evaluation_id
+                   WHERE e.observation_status='COMPLETE'
+                     AND (d.decision_id IS NULL OR d.status IN ('PENDING','APPLYING'))
+                   ORDER BY e.as_of, i.intervention_id LIMIT ?""",
+                (max(1, min(limit, 100)),),
+            ).fetchall()
+        out = []
+        for row in rows:
+            intervention = AdaptiveInterventionRow.from_row(row)
+            out.append((intervention, self.get_decision(user_id=intervention.user_id, evaluation_id=intervention.evaluation_id)))
+        return out
+
+    def update_decision_status(self, *, user_id: str, decision_id: str, status: str,
+                               failure_code: str | None = None) -> AdaptiveReplanDecisionRow | None:
+        if status not in {"PENDING", "APPLYING", "APPLIED", "FAILED"}:
+            raise ValueError("invalid decision status")
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE adaptive_replan_decisions SET status=?, applied_at=CASE WHEN ?='APPLIED' THEN ? ELSE applied_at END, failure_code=? WHERE decision_id=? AND user_id=?",
+                (status, status, _now(), failure_code, decision_id, user_id),
+            )
+            if cursor.rowcount != 1:
+                return None
+        with self._db.query() as conn:
+            row = conn.execute("SELECT * FROM adaptive_replan_decisions WHERE decision_id=? AND user_id=?", (decision_id, user_id)).fetchone()
+        return AdaptiveReplanDecisionRow.from_row(row) if row else None
 
     def count_for_user(self, *, user_id: str) -> int:
         with self._db.query() as conn:

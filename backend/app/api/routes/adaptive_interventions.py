@@ -125,9 +125,15 @@ def get_adaptive_intervention_outcome(
             plan_fidelity="UNVERIFIABLE", verdict="NOT_OBSERVED",
             observed_outcome="INSUFFICIENT_EVIDENCE", causal_claim="NOT_ESTIMATED",
             confidence=0.0, data_quality=None, evaluator_version="adaptive-intervention-outcome-v2",
+            observation_due_at=intervention.observation_due_at,
+            lineage={"supersedes_intervention_id": intervention.supersedes_intervention_id,
+                      "superseded_by_intervention_id": intervention.superseded_by_intervention_id},
             created_at="",
         )
     evaluation = container.adaptive_intervention_service._restore_evaluation(stored)
+    decision = container.adaptive_intervention_repository.get_decision(
+        user_id=user.id, evaluation_id=evaluation.evaluation_id
+    )
     summary = evaluation.safe_summary()
     return AdaptiveInterventionOutcomeOut(
         evaluation_id=evaluation.evaluation_id,
@@ -144,6 +150,15 @@ def get_adaptive_intervention_outcome(
         verdict=summary["verdict"],
         observed_outcome=summary["observed_outcome"],
         causal_claim=summary["causal_claim"],
+        state_comparison=evaluation.state_comparison,
+        decision=decision.decision if decision else None,
+        decision_reason_codes=_loads(decision.reason_codes_json, []) if decision else [],
+        suggested_adjustments=_loads(decision.suggested_adjustments_json, []) if decision else [],
+        decision_confidence=decision.confidence if decision else None,
+        decision_status=decision.status if decision else None,
+        lineage={"supersedes_intervention_id": intervention.supersedes_intervention_id,
+                 "superseded_by_intervention_id": intervention.superseded_by_intervention_id},
+        observation_due_at=intervention.observation_due_at,
         outcome_checks=summary["outcome_checks"],
         execution_signals=summary["execution_signals"],
         confidence=summary["confidence"],

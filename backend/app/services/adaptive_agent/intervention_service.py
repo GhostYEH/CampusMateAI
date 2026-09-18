@@ -41,6 +41,7 @@ from .outcome_evaluator import InterventionOutcomeEvaluator, PlanObservation
 from .observation_window import ObservationWindowPolicy
 from .state_analyzer import StudentStateAnalyzer
 from .strategy_policy import StrategyPolicy
+from .state_normalizer import AdaptiveStateNormalizer
 
 FORECAST_TYPES = (
     "DEADLINE_COMPLETION_RISK",
@@ -105,6 +106,7 @@ class AdaptiveInterventionService:
         student_goal_repository: Any = None,
         outcome_evaluator: InterventionOutcomeEvaluator | None = None,
         observation_window_policy: ObservationWindowPolicy | None = None,
+        learner_event_service: Any = None,
     ) -> None:
         self._repository = repository
         self._analyzer = analyzer
@@ -116,6 +118,8 @@ class AdaptiveInterventionService:
         # 评估器是无状态纯函数对象，缺省自带一个实例，避免调用方必须知道它存在。
         self._outcome_evaluator = outcome_evaluator or InterventionOutcomeEvaluator()
         self._observation_window_policy = observation_window_policy or ObservationWindowPolicy()
+        self._state_normalizer = AdaptiveStateNormalizer(state_service=state_service)
+        self._learner_event_service = learner_event_service
 
     # ------------------------------------------------------------------ 公开
 
@@ -134,6 +138,7 @@ class AdaptiveInterventionService:
         as_of: datetime | None = None,
         supersedes_plan_id: str | None = None,
         force_new: bool = True,
+        deferred_activation: bool = False,
         on_stage: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> InterventionPlanResult:
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
@@ -158,6 +163,7 @@ class AdaptiveInterventionService:
                 agent_run_id=agent_run_id, as_of=now, supersedes_plan_id=supersedes_plan_id,
                 force_new=force_new, on_stage=on_stage, intervention=existing,
                 assessment=assessment, strategy=strategy, reused_intervention=True,
+                deferred_activation=deferred_activation,
             )
 
         goal = self._load_goal(user_id=user_id, goal_id=goal_id)
@@ -209,7 +215,7 @@ class AdaptiveInterventionService:
             idempotency_key=idempotency_key, agent_job_id=agent_job_id, agent_run_id=agent_run_id,
             as_of=now, supersedes_plan_id=supersedes_plan_id, force_new=force_new,
             on_stage=on_stage, intervention=intervention, assessment=assessment,
-            strategy=strategy, reused_intervention=False,
+            strategy=strategy, reused_intervention=False, deferred_activation=deferred_activation,
         )
 
     def load_intervention(self, *, user_id: str, intervention_id: str) -> AdaptiveInterventionRow | None:
@@ -250,7 +256,36 @@ class AdaptiveInterventionService:
         plan = self._load_plan(user_id=user_id, plan_id=row.plan_id) if row.plan_id else None
         metrics = plan_metrics if plan_metrics is not None else self._plan_metrics(user_id=user_id, row=row)
         observation = self._build_observation(row=row, plan=plan, metrics=metrics)
-        result = self._outcome_evaluator.evaluate(intervention=row, observation=observation, as_of=now)
+        # Re-reading an unchanged in-progress observation must be idempotent.
+        # In particular, the audit event written after the first save must not
+        # create a new projection run and a second evaluation for the same input.
+        if row.evaluation_id and row.status == OBSERVING_STATUS:
+            stored_row = self._repository.get_evaluation(user_id=user_id, intervention_id=intervention_id)
+            if stored_row is not None:
+                stored_eval = self._restore_evaluation(stored_row)
+                old_signals = stored_eval.execution_signals or {}
+                new_signals = self._outcome_evaluator._execution_signal(observation)[1] if observation else {}
+                comparable = all(old_signals.get(key) == new_signals.get(key) for key in (
+                    "planned_item_count", "completed_plan_task_count", "executed_item_count", "failed_item_count", "skipped_item_count"
+                ))
+                due = None
+                try:
+                    due = datetime.fromisoformat(str(row.observation_due_at).replace("Z", "+00:00")) if row.observation_due_at else None
+                except ValueError:
+                    due = None
+                if comparable and (due is None or now < due):
+                    current = self._repository.get(user_id=user_id, intervention_id=intervention_id) or row
+                    return InterventionOutcomeResult(current, stored_eval, False, True)
+        try:
+            comparison = self._state_normalizer.compare(
+                intervention=row, as_of=now, evaluation_id=row.evaluation_id,
+                strategy_code=row.strategy_code,
+            )
+        except Exception:
+            comparison = None
+        result = self._outcome_evaluator.evaluate(
+            intervention=row, observation=observation, as_of=now, state_comparison=comparison
+        )
 
         incomplete_without_adoption = (
             result.evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
@@ -283,6 +318,17 @@ class AdaptiveInterventionService:
             user_id=user_id, intervention_id=intervention_id,
             evaluation=result.evaluation, input_digest=result.input_digest, status=target,
         )
+        if self._learner_event_service is not None:
+            try:
+                self._learner_event_service.record_intervention_event(
+                    user_id=row.user_id, event_type="intervention_observed",
+                    intervention_id=row.intervention_id, goal_id=row.goal_id,
+                    evaluation_id=result.evaluation.evaluation_id,
+                    occurred_at=now, outcome="observed_completed",
+                    evidence_refs=[result.evaluation.evaluation_id],
+                )
+            except Exception:
+                pass
         current = self._repository.get(user_id=user_id, intervention_id=intervention_id) or row
         return InterventionOutcomeResult(
             intervention=current, evaluation=result.evaluation,
@@ -292,10 +338,18 @@ class AdaptiveInterventionService:
     def replan_from_evaluation(
         self, *, user_id: str, intervention_id: str, evaluation_id: str,
         decision_id: str, reason_codes: list[str], as_of: datetime,
+        suggested_adjustments: list[str] | None = None,
     ) -> InterventionPlanResult | None:
         """Create and bind the successor before superseding the current intervention."""
         old = self._repository.get(user_id=user_id, intervention_id=intervention_id)
-        if old is None or not old.plan_id or old.status in {"CANCELLED", "SUPERSEDED"}:
+        if old is None or not old.plan_id:
+            return None
+        if old.superseded_by_intervention_id:
+            successor_row = self._repository.get(user_id=user_id, intervention_id=old.superseded_by_intervention_id)
+            if successor_row and successor_row.plan_id:
+                assessment, strategy = self._restore(successor_row)
+                return InterventionPlanResult(successor_row, self._load_plan(user_id=user_id, plan_id=successor_row.plan_id), assessment, strategy, True)
+        if old.status in {"CANCELLED", "SUPERSEDED"}:
             return None
         if old.chain_depth >= MAX_REPLAN_CHAIN_DEPTH:
             return None
@@ -310,14 +364,22 @@ class AdaptiveInterventionService:
         available = int(getattr(getattr(plan, "run", None), "available_minutes", 60) or 60)
         successor = self.plan_for_goal(
             user_id=user_id, goal_id=old.goal_id, available_minutes=available,
-            idempotency_key=f"replan-evaluation:{evaluation_id}", as_of=as_of,
+            idempotency_key=f"replan-decision:{decision_id}", as_of=as_of,
             supersedes_plan_id=old.plan_id, force_new=True,
+            strategy_adjustments=suggested_adjustments or [],
+            deferred_activation=True,
         )
-        self._repository.link_replanned(
-            user_id=user_id, old_intervention_id=old.intervention_id,
-            new_intervention_id=successor.intervention.intervention_id, evaluation_id=evaluation_id,
-            decision_id=decision_id, reason_codes=reason_codes,
-        )
+        try:
+            self._repository.link_replanned(
+                user_id=user_id, old_intervention_id=old.intervention_id,
+                new_intervention_id=successor.intervention.intervention_id, evaluation_id=evaluation_id,
+                decision_id=decision_id, reason_codes=reason_codes,
+            )
+        except Exception:
+            self._repository.update_status(
+                user_id=user_id, intervention_id=successor.intervention.intervention_id, status="CANCELLED"
+            )
+            raise
         return successor
 
     # ------------------------------------------------------------------ 内部
@@ -336,13 +398,19 @@ class AdaptiveInterventionService:
         agent_run_id: str | None,
         as_of: datetime,
         supersedes_plan_id: str | None,
+        strategy_adjustments: list[str] | None = None,
         force_new: bool,
         on_stage: Callable[[str, dict[str, Any]], None] | None,
         intervention: AdaptiveInterventionRow,
         assessment: StudentStateAssessment,
         strategy: StrategyDecision,
         reused_intervention: bool,
+        deferred_activation: bool = False,
     ) -> InterventionPlanResult:
+        strategy = self._apply_adjustments(strategy, strategy_adjustments or [])
+        self._repository.update_strategy(
+            user_id=user_id, intervention_id=intervention.intervention_id, strategy=strategy
+        )
         strategy_context = PlanningStrategyContext(
             strategy_code=strategy.strategy_code,
             strategy_version=strategy.strategy_version,
@@ -379,12 +447,17 @@ class AdaptiveInterventionService:
                 user_id=user_id, intervention_id=intervention.intervention_id, status="CANCELLED"
             )
             raise ValueError("学习计划服务未返回 plan_id")
+        if strategy_adjustments and not self._adjustments_reflected(plan, strategy, strategy_adjustments):
+            self._repository.update_status(
+                user_id=user_id, intervention_id=intervention.intervention_id, status="CANCELLED"
+            )
+            raise ValueError("suggested_adjustments_not_reflected")
         due_at = self._observation_window_policy.due_at(
             planned_end=getattr(getattr(plan, "run", None), "window_end", None), generated_at=as_of,
         )
         bound = self._repository.bind_plan(
             user_id=user_id, intervention_id=intervention.intervention_id, plan_id=str(plan_id),
-            observation_due_at=due_at.isoformat(),
+            observation_due_at=due_at.isoformat(), status="PROPOSED" if deferred_activation else "PLAN_GENERATED",
         ) or intervention
         self._emit(on_stage, "PLAN_GENERATED", {
             "plan_id": str(plan_id),
@@ -397,6 +470,40 @@ class AdaptiveInterventionService:
             intervention=bound, plan=plan, assessment=assessment, strategy=strategy,
             reused_intervention=reused_intervention,
         )
+
+    @staticmethod
+    def _apply_adjustments(strategy: StrategyDecision, adjustments: list[str]) -> StrategyDecision:
+        """Map the finite policy vocabulary to deterministic plan parameters."""
+        params = strategy.planning_parameters.model_copy(deep=True)
+        codes = set(adjustments)
+        if "reduce_workload" in codes:
+            params.workload_scale = max(0.2, round(params.workload_scale * 0.75, 3))
+            params.max_plan_items = max(1, params.max_plan_items - 1)
+        if "split_tasks" in codes:
+            params.target_item_minutes = max(5, params.target_item_minutes - 10)
+        if "reinforce_foundation" in codes:
+            params.foundation_emphasis = min(1.0, round(params.foundation_emphasis + 0.25, 3))
+            strategy.strategy_code = "FOUNDATION_REINFORCEMENT"
+        if "lower_challenge" in codes:
+            params.challenge_level = "REDUCED"
+            params.pacing_mode = "STEADY"
+        return strategy.model_copy(update={"planning_parameters": params})
+
+    @staticmethod
+    def _adjustments_reflected(plan: Any, strategy: StrategyDecision, adjustments: list[str]) -> bool:
+        params = strategy.planning_parameters
+        items = list(getattr(plan, "items", []) or [])
+        run = getattr(plan, "run", None)
+        if "reduce_workload" in adjustments and run is not None:
+            if int(getattr(run, "allocated_minutes", 0) or 0) >= int(getattr(run, "available_minutes", 0) or 0):
+                return False
+        if "split_tasks" in adjustments and items:
+            if max(int(getattr(item, "estimated_minutes", 0) or 0) for item in items) > params.target_item_minutes:
+                return False
+        if "reinforce_foundation" in adjustments and items:
+            if not any(getattr(item, "item_type", None) == "REVIEW_AND_REFLECT" for item in items):
+                return False
+        return True
 
     def _restore(self, row: AdaptiveInterventionRow) -> tuple[StudentStateAssessment, StrategyDecision]:
         """从既有记录恢复已固化的评估与策略（重放时不重新做决策）。"""

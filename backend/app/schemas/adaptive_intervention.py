@@ -462,7 +462,21 @@ class InterventionEvaluation(BaseModel):
         decidable = [c for c in self.outcome_checks if c.verdict != "UNVERIFIABLE"]
 
         # 结论必须能被对账结果与执行信号解释，不能出现"没有依据的有效"。
+        # Legacy rows did not have observed_outcome.  A fully completed,
+        # structure-matched legacy EFFECTIVE row has enough local evidence to
+        # map to the new observed IMPROVED label; all other legacy verdicts
+        # fall back conservatively below.
+        if "observed_outcome" not in self.model_fields_set and self.verdict == "EFFECTIVE":
+            if not (self.execution_signal == "COMPLETED" and self.plan_fidelity == "MATCHED" and self.outcome_checks and all(check.verdict == "REALIZED" for check in self.outcome_checks)):
+                raise ValueError("EFFECTIVE legacy verdict lacks a complete structural evidence mapping")
+            self.observed_outcome = "IMPROVED"
+        if self.observed_outcome == "INSUFFICIENT_EVIDENCE" and self.verdict != "INCONCLUSIVE":
+            self.verdict = "INCONCLUSIVE"
+        if self.observed_outcome in {"DECLINED", "STABLE"} and self.verdict == "EFFECTIVE":
+            self.verdict = "INCONCLUSIVE"
         if self.verdict == "EFFECTIVE":
+            if self.observed_outcome != "IMPROVED":
+                raise ValueError("EFFECTIVE 只能在观测到 IMPROVED 时出现")
             if self.plan_fidelity != "MATCHED":
                 raise ValueError("EFFECTIVE 要求计划结构对账全部通过")
             if self.execution_signal != "COMPLETED":
@@ -472,8 +486,10 @@ class InterventionEvaluation(BaseModel):
         if self.verdict == "NOT_OBSERVED" and self.execution_signal != "NOT_STARTED":
             raise ValueError("NOT_OBSERVED 只适用于尚未观测到执行的情况")
         if self.verdict == "INCONCLUSIVE":
-            if self.observed_outcome != "INSUFFICIENT_EVIDENCE" and self.execution_signal != "UNAVAILABLE" and decidable:
+            if self.observed_outcome == "IMPROVED" and self.execution_signal != "UNAVAILABLE" and decidable:
                 raise ValueError("INCONCLUSIVE 要求缺少状态结果证据或拿不到计划")
+        if self.observed_outcome == "IMPROVED" and self.causal_claim != "NOT_ESTIMATED":
+            raise ValueError("IMPROVED 仍不能估计因果")
         if self.verdict == "PARTIALLY_EFFECTIVE" and not realized:
             raise ValueError("PARTIALLY_EFFECTIVE 要求至少一条期望结果通过")
 
@@ -541,6 +557,13 @@ class AdaptiveInterventionOutcomeOut(BaseModel):
     observed_outcome: str = "INSUFFICIENT_EVIDENCE"
     causal_claim: str = "NOT_ESTIMATED"
     state_comparison: dict[str, Any] = Field(default_factory=dict)
+    decision: str | None = None
+    decision_reason_codes: list[str] = Field(default_factory=list)
+    suggested_adjustments: list[str] = Field(default_factory=list)
+    decision_confidence: float | None = Field(None, ge=0.0, le=1.0)
+    decision_status: str | None = None
+    lineage: dict[str, str | None] = Field(default_factory=dict)
+    observation_due_at: str | None = None
     outcome_checks: list[dict[str, str]] = Field(default_factory=list)
     execution_signals: dict[str, float | int | str | bool | None] = Field(default_factory=dict)
     confidence: float = Field(..., ge=0.0, le=1.0)
