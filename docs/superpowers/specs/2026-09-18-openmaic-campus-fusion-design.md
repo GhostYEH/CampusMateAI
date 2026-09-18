@@ -60,4 +60,3 @@ Tests must cover 401/403/404, cross-user/course isolation, redaction, stale-cour
 1. **Canonical source and licensing:** provide the official Git remote plus immutable commit/tag (or a signed source archive) and approve third-party distribution review for the managed service. The local reference is not a Git repository, so its untracked provenance cannot legally be used as the formal migration source.
 2. **Production/runtime change:** approve adding and operating the repository-owned Node 22.19+ managed service, its persistent store, health endpoint and deployment/start configuration. This is a production-deployment change explicitly called out as a pause condition.
 3. **Credentials and real verification:** provide a non-production OpenMAIC/provider configuration and CampusMate test account/course. Without it, real generation, streaming, import/export and browser end-to-end acceptance cannot be truthfully verified.
-
