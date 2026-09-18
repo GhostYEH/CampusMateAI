@@ -1,101 +1,87 @@
-# OpenMAIC–CampusMateAI Fusion Implementation Plan
+# OpenMAIC Campus Fusion Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `executing-plans` task-by-task. Steps use checkbox syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` (recommended) or `executing-plans` to implement one child plan at a time. Steps use checkbox (`- [ ]`) syntax for tracking. Do not start the next child plan until the current checkpoint is reviewed.
 
-**Goal:** Replace `/courses` with a native CampusMate-integrated OpenMAIC experience while retaining CampusMate as the sole identity and data authority.
+**Goal:** 将 OpenMAIC v1.0.3 的完整可用能力融合进 CampusMate 的课程页和作业场景，同时保持单一登录、单一课程权限体系和单一浏览器 React 运行时。
 
-**Architecture:** A verified, repository-owned Node 22.19+ service hosts OpenMAIC runtime capabilities; FastAPI is the authenticated course-context and session gateway; React 18 implements native routes without a whole-app iframe.
+**Architecture:** `webreact/` 承担全部浏览器 UI；FastAPI 承担公开 API 与课程权限；仓库内受管 `openmaic-service/` 承担 OpenMAIC 服务端运行时和独立持久化。设计真源为 `docs/superpowers/specs/2026-09-18-openmaic-campus-fusion-design.md`。
 
-**Tech Stack:** React 18/Vite, FastAPI, managed Node/Next runtime, existing CampusMate repositories and tests.
+**Tech Stack:** React 18、Vite、React Router、FastAPI、Pydantic、Node.js 22.19+、TypeScript、PostgreSQL、SSE、Vitest、Node test runner、pytest、Playwright。
 
-**Spec:** `docs/superpowers/specs/2026-09-18-openmaic-campus-fusion-design.md`
+## Global Constraints
 
-## Global constraints
+- 只从固定 commit `e693e11a81644f84c258df73dbda378643520a62` 迁移正式源码。
+- 本地参考副本只做视觉和交互比对，不复制未知来源文件。
+- 每个子计划单独建立工作分支或 worktree，按任务逐次提交。
+- 每个任务必须先看到指定测试失败，再写最小实现，再运行计划中的验证命令。
+- 不修改 CampusMate 数据库结构，不引入第二登录，不使用整站 iframe，不加载第二份 React。
+- 子计划中列出的路径是提交白名单；发现必须越界时先修订设计和计划。
+- 每个子计划结束时运行 `git diff --check`、目标模块完整测试和构建，并请求代码审查。
 
-- Do not copy from the unversioned reference until the canonical source decision is approved.
-- Do not change CampusMate schema or deployment before explicit approval.
-- No React-major upgrade, second login, static course data, whole-app iframe, client-held provider key, or reference-path runtime dependency.
-- Every implementation behavior starts with a failing test, passes relevant tests/build, and is committed separately.
+## 子计划与依赖
 
-## Review-revision execution contract
+| 顺序 | 子计划 | 交付物 | 前置依赖 |
+| ---: | --- | --- | --- |
+| 1 | [01 来源、服务骨架与内部认证](2026-09-18-openmaic-fusion-01-source-service.md) | 来源审计、受管 Node 服务、状态 API、内部断言 | 无 |
+| 2 | [02 课程首页与桥接](2026-09-18-openmaic-fusion-02-courses-home-bridge.md) | 重构 `/courses`、右侧课程栏、课程 Stage 绑定 | 01 |
+| 3 | [03 工作台、会话与流式运行](2026-09-18-openmaic-fusion-03-workbench-sessions.md) | 工作台、会话、消息、SSE、取消、重试、恢复 | 01、02 |
+| 4 | [04 编辑器、播放器与白板](2026-09-18-openmaic-fusion-04-editor-player.md) | Stage 契约、编辑命令、场景元素、播放、白板 | 03 |
+| 5 | [05 材料、媒体与生成工具](2026-09-18-openmaic-fusion-05-materials-media.md) | 材料、全格式导入导出、MP4、互动/PBL、媒体语音、多智能体、Job/i18n | 03、04 |
+| 6 | [06 课程详情与作业讲解](2026-09-18-openmaic-fusion-06-course-task-explain.md) | 课程入口、讲解计划、讲解执行、追问与播放 | 03、04、05 |
+| 7 | [07 持久化、安全与最终验收](2026-09-18-openmaic-fusion-07-persistence-acceptance.md) | PostgreSQL、健康检查、启动配置、安全回归、E2E | 01—06 |
 
-Every task below starts with the named failing test, then implements the named interface, runs the exact command with exit code 0, and commits only its listed paths. `openmaic-service/` is not created until the official v1.0.3 baseline is locally available and the diff gate in the spec records each copied file. Provider calls use a contract fake; real-provider E2E is a final, explicitly external acceptance step.
+```text
+01 source/service/auth
+        |
+02 courses/home/binding
+        |
+03 workbench/session/SSE
+        |
+04 editor/player/whiteboard
+        |
+05 materials/import/export/media
+        |
+06 course/assignment explanation
+        |
+07 persistence/security/E2E
+```
 
-| Task | Files / interface | Failing test → implementation → command / expected result |
-| --- | --- | --- |
-| 1 Source diff | create `docs/openmaic-v1.0.3-local-diff.md`, `scripts/openmaic-diff.ps1` | test script rejects missing official SHA → compare official/local and reject `local-different` copy → `pwsh scripts/openmaic-diff.ps1`; exit 0, manifest complete |
-| 2 Service health | `openmaic-service/app/api/health/route.ts`; `backend/app/services/openmaic/openmaic_service_client.py` `health() -> Health` | fake contract test expects `status/capabilities/version` → health implementation → `cd backend; pytest tests/test_openmaic_service_contract.py -q`; pass |
-| 3 Course bridge | `stage_bridge.py` `resolve(user, course)->StageBinding` | foreign course and raw courseId-as-stageId fail → opaque mapping implementation → `pytest backend/tests/test_openmaic_stage_bridge.py -q`; pass |
-| 4 Home | `OpenMaicHomePage.jsx`, `openmaic_fusion.py` `GET /courses/openmaic-home` | legacy grid absence and real rail states fail → native home/search/folders/recent → `cd webreact; npm test -- openmaic-home`; pass |
-| 5 Workbench | `webreact/src/pages/OpenMaicWorkbenchPage.jsx`, `backend/app/services/openmaic/openmaic_sessions.py` `create_session()` | session lacks bound course fails → native panes/session create → `cd backend; pytest tests/test_openmaic_workbench.py -q`; then `cd webreact; npm test -- openmaic-workbench`; both pass |
-| 6 Session flow | `webreact/src/hooks/useOpenMaicSession.js`, `backend/app/services/openmaic/openmaic_stream.py` `stream(session_id)` | switch-course stale chunk and refresh restore fail → SSE/retry/cancel/recovery → `cd backend; pytest tests/test_openmaic_session_flow.py -q`; then `cd webreact; npm test -- openmaic-session`; pass |
-| 7 Editor | `OpenMaicEditorPage.jsx`, service `/api/stages/:id` facade | non-owner update fails → editor document bridge → editor contract/Web tests; pass |
-| 8 Player | `OpenMaicPlayerPage.jsx`, `openmaic_player.py` | untrusted media origin fails → scenes/player/URL policy → player tests; pass |
-| 9 Materials | `MaterialPanel.jsx`, `openmaic_materials.py` | foreign/oversize material fails → upload/extract facade → material tests; pass |
-| 10 Import | service importer facade, `ImportDialog.jsx` | invalid MIME/zip fails → PPTX/MD/DOCX import → import fixtures; pass |
-| 11 Export | service exporter facade, `ExportMenu.jsx` | cross-owner export fails → zip/PPTX/MD/DOCX export → export fixtures; pass |
-| 12 Modes | `GenerationModePanel.jsx`, `generation_facade.py` | each requested mode unreported fails → slide/quiz/interactive/PBL/simulation/diagram/code/game/3D/procedural registry → `pytest backend/tests/test_openmaic_generation_modes.py -q`; pass |
-| 13 Whiteboard | `WhiteboardPanel.jsx`, document facade | cross-session board leak fails → persisted board bridge → whiteboard tests; pass |
-| 14 TTS | `TtsControls.jsx`, `tts_proxy.py` | redirect/private-IP provider URL fails → proxied TTS → TTS policy tests; pass |
-| 15 Multi-agent | `AgentToolPanel.jsx`, tool facade | unapproved tool/course leak fails → allowlisted tools/search/PBL stream → tool ACL tests; pass |
-| 16 Settings | admin page, `openmaic_settings.py` | student provider edit/secret response fails → admin health/capability settings → settings tests; pass |
-| 17 Persistence | service store, mapping facade | user/course isolation and restore fail → durable mapping/session lifecycle → persistence tests; pass |
-| 18 Course/task entry | `CourseDetailPage.jsx`, `TaskDetailPage.jsx`, explain route | submission/answer data enters prompt or no confirmation fails → preview/explain/deep-link → assignment tests; pass |
-| 19 Acceptance | all changed paths | outage/keyboard/320–1440 tests fail → no production changes → backend pytest, `npm test`, `npm run build`; pass; real Provider E2E marked pending credentials |
+## 阶段检查点
 
-### Task 1: Establish the approved managed-service source
+### Checkpoint A：基础可用
 
-**Files:** create `openmaic-service/`, `docs/openmaic-attribution.md`, service tests.
+完成 01—02 后必须证明：
 
-- [ ] Record the approved upstream commit, MIT notice, dependency license inventory, Node 22.19+ requirement, reproducible install/build commands and excluded assets.
-- [ ] Write a failing health-contract test requiring `{status, capabilities, version}` without secrets.
-- [ ] Implement only the authenticated health endpoint and run its test.
-- [ ] Commit the isolated service foundation after approval.
+- 固定来源和许可证可追溯。
+- Node 服务不公开独立 UI，FastAPI 可安全探活。
+- `/courses` 展示真实课程栏，并能幂等获得课程 Stage。
+- 功能开关关闭时旧课程行为不变。
 
-### Task 2: Build the FastAPI service contract and opaque mapping
+### Checkpoint B：核心创作闭环
 
-**Files:** modify `backend/app/services/openmaic/*`, schemas/routes/config; add focused pytest files.
+完成 03—04 后必须证明：
 
-- [ ] Write failing tests proving a foreign user/course gets 403/404 and a CampusMate course ID is never forwarded as `stageId`.
-- [ ] Implement server-side opaque mapping, signed service assertion, health timeout/error mapping and cancellation.
-- [ ] Run focused pytest and commit.
+- 用户可从课程提问进入工作台，刷新和断线后恢复。
+- 编辑命令具备 revision 冲突和 commandId 幂等保护。
+- 编辑器与播放器使用同一 Stage 契约。
 
-### Task 3: Replace the `/courses` page natively
+### Checkpoint C：完整能力与课程融合
 
-**Files:** modify the actual `/courses` route/page and styles; add Web tests.
+完成 05—06 后必须证明：
 
-- [ ] Write failing tests that reject the legacy grid and require real-course loading/error/empty/retry states in a responsive course rail.
-- [ ] Implement the OpenMAIC home layout (generation, recent, folders, search, import) plus native course rail, preserving original functional arrangement.
-- [ ] Run Web tests/build and commit.
+- 能力矩阵中的材料、导入导出、生成、语音和多智能体逐项可用。
+- 作业内容只在授权和脱敏后进入讲解流程。
+- 讲解结果可以继续追问、编辑和播放。
 
-### Task 4: Add workbench chat and course session recovery
+### Checkpoint D：发布候选
 
-**Files:** native React workbench routes/components, FastAPI session/message endpoints, tests.
+完成 07 后必须证明：
 
-- [ ] Write failing tests for bound course context, stale-response discard on switch, refresh restore, and retained draft on error.
-- [ ] Implement streaming/resume/retry with current-course labelling and safe exit/switch controls.
-- [ ] Verify backend/Web tests, browser interaction and commit.
+- 服务重启后数据恢复，依赖故障时课程页可降级。
+- 后端、Web、Node 服务测试和构建全部通过。
+- Playwright 覆盖课程提问、编辑播放、材料导入导出和作业讲解。
+- 设计文档能力矩阵的每一行都有 `verified` 证据。
 
-### Task 5: Add assignment explanation safely
+## 完成定义
 
-**Files:** `TaskDetailPage`, related API client, FastAPI assignment-context endpoint, tests.
-
-- [ ] Write failing tests covering assignment/course IDs, context preview/confirmation, excluded submission/answer data and service-outage preservation of task page behavior.
-- [ ] Implement explain/steps/classroom dispatch with a deep link to the native session/player and no submission side effects.
-- [ ] Verify focused tests/build/browser flow and commit.
-
-### Task 6: Migrate every audited OpenMAIC capability
-
-**Files:** approved service modules, native editor/player/import/export routes, FastAPI contract tests and Web tests.
-
-- [ ] For each matrix row, write its failing reachability/authorization test before implementation.
-- [ ] Migrate native workbench/editor/player, imports/exports, materials, all generation modes, media and settings in independently tested commits.
-- [ ] Update the matrix only with test and browser evidence; no enabled control may lack a live implementation.
-
-### Task 7: Final safety and acceptance
-
-**Files:** deployment/env examples, capability matrix, test artifacts excluded from Git.
-
-- [ ] Run backend pytest, service tests, `npm test`, `npm run build`, and authenticated browser checks at 320/768/1024/1440px against the approved real service.
-- [ ] Scan staged changes for credentials, absolute paths, reference artifacts and unintended platform changes.
-- [ ] Review `git diff`, `git diff --cached`, and `git status --short`; commit only this task's files.
+全部子计划完成、四个检查点通过且代码审查无阻塞问题，才允许声明“完整融合”。仅有页面外观、代理接口或演示数据不得算作完成。
