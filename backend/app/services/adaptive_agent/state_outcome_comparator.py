@@ -11,7 +11,7 @@ _DIMENSIONS = {
     "FOUNDATION_REINFORCEMENT": (("mastery", 1), ("error_rate", -1)),
     "WORKLOAD_REDUCTION": (("completion_rate", 1), ("backlog", -1), ("stress_risk", -1)),
     "PACE_RECOVERY": (("consistency", 1), ("completion_rate", 1)),
-    "CHALLENGE_ADVANCEMENT": (("mastery", 1), ("goal_gap", -1)),
+    "CHALLENGE_UPSHIFT": (("mastery", 1), ("goal_gap", -1)),
 }
 _QUALITY_FACTOR = {"verified": 1.0, "partial": 0.65, "stale": 0.3, "unavailable": 0.0}
 
@@ -22,7 +22,14 @@ class StateOutcomeComparator:
 
     def compare(self, *, before: dict[str, Any], after: dict[str, Any], strategy_code: str,
                 comparison_as_of: str, evidence_refs: list[str] | None = None) -> dict[str, Any]:
-        dimensions = _DIMENSIONS.get(strategy_code, _DIMENSIONS["PACE_RECOVERY"])
+        dimensions = _DIMENSIONS.get(strategy_code)
+        if dimensions is None:
+            return {
+                "relevant_dimensions": [], "before_values": {}, "after_values": {}, "delta": {},
+                "outcome": "INSUFFICIENT_EVIDENCE", "confidence": 0.0,
+                "evidence_refs": evidence_refs or [], "warnings": ["unknown_strategy_code"],
+                "comparison_as_of": comparison_as_of, "dimensions": {},
+            }
         values = [(name, direction) for name, direction in dimensions
                   if isinstance(before.get(name), (int, float)) and isinstance(after.get(name), (int, float))]
         # The normalizer may provide provenance-rich dimension records.  Keep the
@@ -46,22 +53,26 @@ class StateOutcomeComparator:
         outcome = "IMPROVED" if mean >= self.threshold else "DECLINED" if mean <= -self.threshold else "STABLE"
         quality_factors = []
         warnings = []
+        insufficient = False
         for name, _ in values:
             record = dimension_records.get(name) or {}
-            quality = record.get("data_quality") or record.get("before_data_quality") or record.get("after_data_quality")
-            quality_factor = _QUALITY_FACTOR.get(str(quality), 0.5)
-            confidence = min(float(record.get("confidence", record.get("before_confidence", record.get("after_confidence", 0.5))) or 0.0), 1.0)
-            freshness = self._freshness_factor(record, comparison_as_of)
+            before_factor, before_warnings, before_bad = self._side_factor(record, "before", comparison_as_of)
+            after_factor, after_warnings, after_bad = self._side_factor(record, "after", comparison_as_of)
+            warnings.extend(before_warnings)
+            warnings.extend(after_warnings)
+            insufficient = insufficient or before_bad or after_bad
             refs = record.get("evidence_refs") or evidence_refs or []
             evidence_factor = 1.0 if len(refs) >= 2 else 0.5
-            if (
-                not record
-                or not record.get("snapshot_id", record.get("before_snapshot_id"))
-                or not record.get("observed_at", record.get("before_observed_at"))
-                or not record.get("valid_until", record.get("before_valid_until"))
-            ):
-                warnings.append("incomplete_state_provenance")
-            quality_factors.append(quality_factor * confidence * freshness * evidence_factor)
+            quality_factors.append(min(before_factor, after_factor) * evidence_factor)
+        if insufficient:
+            return {
+                "relevant_dimensions": [name for name, _ in values],
+                "before_values": {name: before[name] for name, _ in values},
+                "after_values": {name: after[name] for name, _ in values},
+                "delta": deltas, "outcome": "INSUFFICIENT_EVIDENCE", "confidence": 0.0,
+                "evidence_refs": evidence_refs or [], "warnings": sorted(set(warnings)),
+                "comparison_as_of": comparison_as_of, "dimensions": dimension_records,
+            }
         confidence = round(min(1.0, 0.4 + 0.15 * len(values)) * (sum(quality_factors) / len(quality_factors)), 4)
         return {
             "relevant_dimensions": [name for name, _ in values],
@@ -71,6 +82,25 @@ class StateOutcomeComparator:
             "evidence_refs": evidence_refs or [], "warnings": sorted(set(warnings)), "comparison_as_of": comparison_as_of,
             "dimensions": dimension_records,
         }
+
+    @classmethod
+    def _side_factor(cls, record: dict[str, Any], side: str, comparison_as_of: str) -> tuple[float, list[str], bool]:
+        quality = record.get(f"{side}_data_quality") or record.get("data_quality")
+        snapshot_confidence = record.get(f"{side}_confidence", record.get("confidence"))
+        snapshot_id = record.get(f"{side}_snapshot_id") or record.get("snapshot_id")
+        run_id = record.get(f"{side}_run_id") or record.get("run_id")
+        observed_at = record.get(f"{side}_observed_at") or record.get("observed_at")
+        valid_until = record.get(f"{side}_valid_until") or record.get("valid_until")
+        factor = _QUALITY_FACTOR.get(str(quality), 0.5)
+        factor *= max(0.0, min(1.0, float(snapshot_confidence if snapshot_confidence is not None else 0.5)))
+        freshness = cls._freshness_factor({"freshness": record.get(f"{side}_freshness"), "valid_until": valid_until}, comparison_as_of)
+        factor *= freshness
+        complete = all((snapshot_id, run_id, observed_at, valid_until, quality is not None, snapshot_confidence is not None))
+        if not complete:
+            factor *= 0.5
+        warnings = [] if complete else ["incomplete_state_provenance"]
+        bad = str(quality) in {"stale", "unavailable"} or freshness <= 0.0
+        return factor, warnings, bad
 
     @staticmethod
     def _freshness_factor(record: dict[str, Any], comparison_as_of: str) -> float:

@@ -46,14 +46,15 @@ class AdaptiveStateNormalizer:
         records = {}
         for name in self.DIMENSIONS:
             b, a = before_meta.get(name), after_meta.get(name)
-            if b and a and b["data_quality"] in {"verified", "partial"} and a["data_quality"] in {"verified", "partial"} and self._fresh(b, as_of) and self._fresh(a, as_of):
+            if b and a:
                 records[name] = {"before": b["value"], "after": a["value"],
                                  "before_run_id": b["run_id"], "after_run_id": a["run_id"],
                                  "before_snapshot_id": b["snapshot_id"], "after_snapshot_id": a["snapshot_id"],
                                  "before_observed_at": b["observed_at"], "after_observed_at": a["observed_at"],
+                                 "before_valid_until": b["valid_until"], "after_valid_until": a["valid_until"],
                                  "before_data_quality": b["data_quality"], "after_data_quality": a["data_quality"],
                                  "before_confidence": b["confidence"], "after_confidence": a["confidence"],
-                                 "evidence_refs": [b["snapshot_id"], a["snapshot_id"]]}
+                                 "evidence_refs": [ref for ref in (b["snapshot_id"], a["snapshot_id"]) if ref]}
         before_values["_dimensions"] = records
         after_values["_dimensions"] = records
         from .state_outcome_comparator import StateOutcomeComparator
