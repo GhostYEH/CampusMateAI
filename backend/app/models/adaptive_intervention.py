@@ -180,6 +180,9 @@ class AdaptiveReplanDecisionRow:
     created_at: str
     applied_at: str | None
     failure_code: str | None
+    failure_class: str = "NONE"
+    retry_count: int = 0
+    next_retry_at: str | None = None
 
     @classmethod
     def from_row(cls, row: Any) -> "AdaptiveReplanDecisionRow":
@@ -191,6 +194,9 @@ class AdaptiveReplanDecisionRow:
             confidence=float(row["confidence"]), evidence_refs_json=row["evidence_refs_json"],
             status=row["status"], created_at=row["created_at"], applied_at=row["applied_at"],
             failure_code=row["failure_code"],
+            failure_class=row["failure_class"] if "failure_class" in row.keys() else "NONE",
+            retry_count=int(row["retry_count"] or 0) if "retry_count" in row.keys() else 0,
+            next_retry_at=row["next_retry_at"] if "next_retry_at" in row.keys() else None,
         )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import inspect
+import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
@@ -63,12 +64,13 @@ class AdaptiveReplanningWorker:
         if pending_query is None:
             return AdaptiveReplanTickReport(scanned=len(rows), evaluated=evaluated, reused=reused, failed=failed)
         for row, existing in pending_query(as_of=now.isoformat(), limit=batch_size):
+            decision = existing
             try:
                 evaluation_row = self._repository.get_evaluation(user_id=row.user_id, intervention_id=row.intervention_id)
                 if evaluation_row is None:
                     continue
                 evaluation = self._service._restore_evaluation(evaluation_row)
-                decision = existing
+                self._emit_observed_event(row, evaluation, now)
                 if decision is None:
                     goal = self._service._load_goal(user_id=row.user_id, goal_id=row.goal_id)
                     payload = evaluation.model_dump(mode="json")
@@ -90,7 +92,9 @@ class AdaptiveReplanningWorker:
                         confidence=proposed.confidence, evidence_refs=proposed.evidence_refs,
                     )
                     decisions += 1
-                    self._emit_event(row, "intervention_decided", evaluation.evaluation_id, decision.decision_id, now)
+                # Re-emit through the idempotent key on recovery; a failed
+                # prior append must be retried before applying the decision.
+                self._emit_event(row, "intervention_decided", evaluation.evaluation_id, decision.decision_id, now)
                 if decision.status == "APPLIED":
                     continue
                 self._repository.update_decision_status(user_id=row.user_id, decision_id=decision.decision_id, status="APPLYING")
@@ -108,8 +112,19 @@ class AdaptiveReplanningWorker:
                 applied += 1
             except Exception as exc:
                 failed += 1
-                if existing is not None:
-                    self._repository.update_decision_status(user_id=row.user_id, decision_id=existing.decision_id, status="FAILED", failure_code=type(exc).__name__)
+                if decision is not None:
+                    marker = getattr(self._repository, "mark_decision_failure", None)
+                    if marker is not None:
+                        try:
+                            marker(user_id=row.user_id, decision_id=decision.decision_id,
+                                   failure_code=type(exc).__name__, retryable=self._is_retryable(exc), now=now)
+                        except TypeError:
+                            # Preserve compatibility with small test/double repositories
+                            # that predate the injectable failure timestamp.
+                            marker(user_id=row.user_id, decision_id=decision.decision_id,
+                                   failure_code=type(exc).__name__, retryable=self._is_retryable(exc))
+                    else:
+                        self._repository.update_decision_status(user_id=row.user_id, decision_id=decision.decision_id, status="FAILED", failure_code=type(exc).__name__)
                 self._log_failure(row, "decision", exc)
         return AdaptiveReplanTickReport(scanned=len(rows), evaluated=evaluated, reused=reused,
                                         decisions=decisions, applied=applied, failed=failed)
@@ -147,21 +162,39 @@ class AdaptiveReplanningWorker:
 
     def _emit_event(self, row, event_type: str, evaluation_id: str, decision_id: str, now: datetime) -> None:
         service = getattr(self._service, "_learner_event_service", None)
-        if service is not None:
-            try:
-                service.record_intervention_event(
+        if service is None:
+            raise RuntimeError("learner_event_service_unavailable")
+        service.record_intervention_event(
                     user_id=row.user_id, event_type=event_type, intervention_id=row.intervention_id,
                     goal_id=row.goal_id, evaluation_id=evaluation_id, decision_id=decision_id,
                     occurred_at=now, evidence_refs=[evaluation_id, decision_id],
                 )
-            except Exception:
-                pass
+
+    def _emit_observed_event(self, row, evaluation, now: datetime) -> None:
+        service = getattr(self._service, "_learner_event_service", None)
+        if service is None:
+            raise RuntimeError("learner_event_service_unavailable")
+        service.record_intervention_event(
+            user_id=row.user_id, event_type="intervention_observed",
+            intervention_id=row.intervention_id, goal_id=row.goal_id,
+            evaluation_id=evaluation.evaluation_id, occurred_at=now,
+            outcome="observed_completed", adoption=evaluation.adoption,
+            observed_outcome=evaluation.observed_outcome,
+            evidence_refs=[evaluation.evaluation_id],
+        )
 
     @staticmethod
     def _log_failure(row, stage: str, exc: Exception) -> None:
         from ...core.logging import logger
         logger.warning("adaptive_replanning_failed intervention_id={} stage={} error_code={}",
                        row.intervention_id, stage, type(exc).__name__)
+
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        if isinstance(exc, (sqlite3.OperationalError, TimeoutError, ConnectionError)):
+            return True
+        text = str(exc).lower()
+        return any(token in text for token in ("temporary", "unavailable", "timed out", "locked", "network"))
 
 
 __all__ = ["AdaptiveReplanningWorker", "AdaptiveReplanTickReport"]

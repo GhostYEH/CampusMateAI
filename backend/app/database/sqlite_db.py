@@ -1409,6 +1409,9 @@ CREATE TABLE IF NOT EXISTS adaptive_replan_decisions (
     created_at TEXT NOT NULL,
     applied_at TEXT,
     failure_code TEXT,
+    failure_class TEXT NOT NULL DEFAULT 'NONE' CHECK(failure_class IN ('NONE','RETRYABLE','PERMANENT')),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(intervention_id) REFERENCES adaptive_interventions(intervention_id) ON DELETE CASCADE,
     FOREIGN KEY(evaluation_id) REFERENCES intervention_evaluations(evaluation_id) ON DELETE CASCADE
@@ -2081,6 +2084,11 @@ class Database:
                 "replan_decision_id": "TEXT",
                 "replan_reason_codes_json": "TEXT NOT NULL DEFAULT '[]'",
                 "chain_depth": "INTEGER NOT NULL DEFAULT 0",
+            },
+            "adaptive_replan_decisions": {
+                "failure_class": "TEXT NOT NULL DEFAULT 'NONE'",
+                "retry_count": "INTEGER NOT NULL DEFAULT 0",
+                "next_retry_at": "TEXT",
             },
             # 用量记账:老库补列,避免只有延迟没有 token 成本。
             "agent_model_calls": {
