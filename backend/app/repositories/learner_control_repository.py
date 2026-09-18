@@ -362,77 +362,29 @@ class LearnerControlRepository:
             ).fetchone()["c"]
             return counts
 
-    def delete_state_only(self, *, user_id: str) -> None:
+    # 以下删除入口统一走 `_delete_by_scope_conn`：此前这里与 scope 分发器各有一份
+    # 逐表 DELETE 列表，新增表时只改一处就会导致"请求删除"与"直接调用"结果不一致。
+    def _delete_scope(self, *, user_id: str, scope: str) -> None:
         with self._db.transaction() as conn:
-            snapshot_ids = [
-                r["snapshot_id"]
-                for r in conn.execute(
-                    "SELECT snapshot_id FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
-                    (user_id,),
-                ).fetchall()
-            ]
-            if snapshot_ids:
-                placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute(
-                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
-                (user_id,),
-            )
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+            self._delete_by_scope_conn(conn, user_id=user_id, scope=scope)
+
+    def delete_state_only(self, *, user_id: str) -> None:
+        self._delete_scope(user_id=user_id, scope="STATE_ONLY")
 
     def delete_events_and_state(self, *, user_id: str) -> None:
-        self.delete_state_only(user_id=user_id)
-        with self._db.transaction() as conn:
-            conn.execute("DELETE FROM learner_events WHERE user_id=?", (user_id,))
+        self._delete_scope(user_id=user_id, scope="EVENTS_AND_STATE")
 
     def delete_knowledge_only(self, *, user_id: str) -> None:
-        with self._db.transaction() as conn:
-            snapshot_ids = [
-                r["snapshot_id"]
-                for r in conn.execute(
-                    "SELECT snapshot_id FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
-                    (user_id,),
-                ).fetchall()
-            ]
-            if snapshot_ids:
-                placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute(
-                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
-                (user_id,),
-            )
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+        self._delete_scope(user_id=user_id, scope="KNOWLEDGE_ONLY")
 
     def delete_plans_only(self, *, user_id: str) -> None:
-        with self._db.transaction() as conn:
-            plan_ids = [
-                r["plan_id"]
-                for r in conn.execute("SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)).fetchall()
-            ]
-            if plan_ids:
-                placeholders = ",".join("?" * len(plan_ids))
-                conn.execute(f"DELETE FROM learning_plan_evidence WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_decisions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_execution_actions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_feedback WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_evaluation_runs WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
-            conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
+        self._delete_scope(user_id=user_id, scope="PLANS_ONLY")
 
     def delete_model_shadow_only(self, *, user_id: str) -> None:
-        with self._db.transaction() as conn:
-            conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM model_shadow_runs WHERE user_id=?", (user_id,))
+        self._delete_scope(user_id=user_id, scope="MODEL_SHADOW_ONLY")
 
     def delete_all_learner_model_data(self, *, user_id: str) -> None:
-        self.delete_events_and_state(user_id=user_id)
-        self.delete_knowledge_only(user_id=user_id)
-        self.delete_plans_only(user_id=user_id)
-        self.delete_model_shadow_only(user_id=user_id)
-        with self._db.transaction() as conn:
-            conn.execute("DELETE FROM learner_state_corrections WHERE user_id=?", (user_id,))
-
+        self._delete_scope(user_id=user_id, scope="ALL_LEARNER_MODEL_DATA")
 
     def record_delete_request(
         self,
@@ -605,6 +557,9 @@ class LearnerControlRepository:
                 conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
             conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
+            # 干预记录是"计划 + 生成决策时的状态引用"的派生记录：计划被删除后
+            # 继续保留会留下指向已删计划的 plan_id 与已删状态 run 的悬空引用。
+            conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
         elif scope == "MODEL_SHADOW_ONLY":
             conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
@@ -638,6 +593,7 @@ class LearnerControlRepository:
                 conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
             conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
+            conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
             conn.execute("DELETE FROM model_shadow_runs WHERE user_id=?", (user_id,))

@@ -36,6 +36,11 @@ class RunPhase(str, Enum):
     PERSISTING_RESULT = "PERSISTING_RESULT"
     RECOVERY_CHECKING = "RECOVERY_CHECKING"
     IDLE = "IDLE"
+    # 状态驱动干预的阶段进度。只能追加在末尾：客户端对未知 phase 安全降级。
+    STATE_ANALYSIS = "STATE_ANALYSIS"
+    STRATEGY_SELECTION = "STRATEGY_SELECTION"
+    INTERVENTION_RECORD = "INTERVENTION_RECORD"
+    PLAN_GENERATION = "PLAN_GENERATION"
 
 
 class RiskLevel(str, Enum):
@@ -87,6 +92,12 @@ class AgentEventType(str, Enum):
     # ValidationError，学生看不到"审批已通过、继续执行"的事件。
     # 新增类型一律追加在末尾（客户端对未知类型安全降级）。
     APPROVAL_GRANTED = "APPROVAL_GRANTED"
+    # 状态驱动干预的阶段进度：状态分析 → 策略选择 → 干预记录 → 计划生成。
+    # 同样只能追加在末尾。事件 summary 只带枚举码与不透明 id，不带原始内容。
+    STATE_ANALYZED = "STATE_ANALYZED"
+    STRATEGY_SELECTED = "STRATEGY_SELECTED"
+    INTERVENTION_RECORDED = "INTERVENTION_RECORDED"
+    PLAN_GENERATED = "PLAN_GENERATED"
 
 
 class ArtifactType(str, Enum):

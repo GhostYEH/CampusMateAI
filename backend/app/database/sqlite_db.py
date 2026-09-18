@@ -1345,6 +1345,43 @@ CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
 CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
 """
 
+# 状态驱动干预记录。状态枚举只包含本轮真实会写入的生命周期;
+# OBSERVING / EVALUATED / SUPERSEDED 属于第二阶段(结果反馈与评估),
+# 这里刻意不放进 CHECK,避免出现"写进去但没人推进"的伪状态。
+ADAPTIVE_INTERVENTION_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS adaptive_interventions (
+    intervention_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    goal_id TEXT NOT NULL,
+    plan_id TEXT,
+    agent_job_id TEXT,
+    agent_run_id TEXT,
+    status TEXT NOT NULL CHECK(status IN ('PROPOSED','PLAN_GENERATED','ACCEPTED','EXECUTING','CANCELLED')),
+    strategy_code TEXT NOT NULL,
+    strategy_version TEXT NOT NULL,
+    assessment_id TEXT NOT NULL,
+    assessment_json TEXT NOT NULL DEFAULT '{}',
+    strategy_json TEXT NOT NULL DEFAULT '{}',
+    rationale_codes_json TEXT NOT NULL DEFAULT '[]',
+    expected_outcomes_json TEXT NOT NULL DEFAULT '[]',
+    baseline_core_run_id TEXT,
+    baseline_academic_run_id TEXT,
+    baseline_world_run_id TEXT,
+    baseline_state_digest TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 0 CHECK(confidence >= 0 AND confidence <= 1),
+    warning_codes_json TEXT NOT NULL DEFAULT '[]',
+    idempotency_key TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_user_created
+    ON adaptive_interventions(user_id, created_at DESC, intervention_id DESC);
+CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_plan
+    ON adaptive_interventions(user_id, plan_id);
+"""
+
 MODEL_SHADOW_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS model_shadow_runs (
     shadow_run_id TEXT PRIMARY KEY,
@@ -1860,6 +1897,7 @@ class Database:
                 conn.executescript(LEARNER_STATE_SCHEMA_SQL)
                 self._prepare_legacy_learning_plan_runs(conn)
                 conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
+                conn.executescript(ADAPTIVE_INTERVENTION_SCHEMA_SQL)
                 conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
                 conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
                 conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)

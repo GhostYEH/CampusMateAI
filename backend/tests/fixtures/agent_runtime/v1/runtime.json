@@ -266,6 +266,71 @@
         "created_at": "2026-09-14T09:00:41+08:00"
       }
     ],
+    "state_driven_events": {
+      "comment": "状态驱动干预的阶段进度：state snapshot → assessment → strategy → intervention → plan。summary 只带枚举码与不透明 id，不带原始内容。",
+      "events": [
+        {
+          "id": "evt_30001",
+          "type": "STATE_ANALYZED",
+          "run_id": "run_01H8XKQDB",
+          "sequence": 1,
+          "status": "RUNNING",
+          "phase": "STATE_ANALYSIS",
+          "role": "planner",
+          "summary": "已完成学习状态分析",
+          "progress": null,
+          "artifact_id": null,
+          "approval_id": null,
+          "created_at": "2026-09-18T10:00:01+08:00"
+        },
+        {
+          "id": "evt_30002",
+          "type": "STRATEGY_SELECTED",
+          "run_id": "run_01H8XKQDB",
+          "sequence": 2,
+          "status": "RUNNING",
+          "phase": "STRATEGY_SELECTION",
+          "role": "planner",
+          "summary": "已选定干预策略（WORKLOAD_REDUCTION）",
+          "progress": null,
+          "artifact_id": null,
+          "approval_id": null,
+          "created_at": "2026-09-18T10:00:02+08:00"
+        },
+        {
+          "id": "evt_30003",
+          "type": "INTERVENTION_RECORDED",
+          "run_id": "run_01H8XKQDB",
+          "sequence": 3,
+          "status": "RUNNING",
+          "phase": "INTERVENTION_RECORD",
+          "role": "planner",
+          "summary": "已记录本次干预决策",
+          "progress": null,
+          "artifact_id": null,
+          "approval_id": null,
+          "created_at": "2026-09-18T10:00:03+08:00"
+        },
+        {
+          "id": "evt_30004",
+          "type": "PLAN_GENERATED",
+          "run_id": "run_01H8XKQDB",
+          "sequence": 4,
+          "status": "RUNNING",
+          "phase": "PLAN_GENERATION",
+          "role": "planner",
+          "summary": "计划草案已生成，等待学生确认",
+          "progress": null,
+          "artifact_id": null,
+          "approval_id": null,
+          "created_at": "2026-09-18T10:00:04+08:00"
+        }
+      ],
+      "job_input_ref_patch": {
+        "plan_id": "plan_01H8XKQDC",
+        "intervention_id": "intv_01H8XKQDD"
+      }
+    },
     "unknown_future_event": {
       "comment": "未来版本新增的事件类型。客户端必须记录游标、不提升权限、不崩溃,不得因此报错或中断流。",
       "frame": {

@@ -13,6 +13,14 @@ from ..core.exceptions import (
 )
 from ..models.learning_plan import LearningPlanRow, PLAN_ITEM_TYPES, TASK_CREATING_ITEM_TYPES
 from ..repositories.learning_plan_repository import LearningPlanRepository
+from ..schemas.adaptive_intervention import (
+    STRATEGY_VERSION,
+    PlanningStrategyContext,
+)
+from .adaptive_agent.strategy_policy import (
+    BASELINE_ITEM_MINUTES,
+    FOUNDATION_EMPHASIS_ITEM_THRESHOLD,
+)
 from ..services.llm.base import LLMError
 
 PLANNER_VERSION = "campus-companion-plan-v1"
@@ -79,8 +87,17 @@ class LearningPlannerService:
                  window_start: str | None = None, window_end: str | None = None,
                  idempotency_key: str | None = None, as_of: datetime | None = None,
                  force_new: bool = False, supersedes_plan_id: str | None = None,
-                 replan_key: str | None = None, ignore_rejection: bool = False) -> LearningPlanRow:
+                 replan_key: str | None = None, ignore_rejection: bool = False,
+                 strategy_context: PlanningStrategyContext | dict[str, Any] | None = None) -> LearningPlanRow:
+        """生成计划草案。
+
+        `strategy_context` 是**可选**的状态驱动干预策略上下文（见
+        `app.services.adaptive_agent`）。不传时行为与历史版本一致：
+        digest 不变、条目时长不变、不追加 strategy_* 解释码。
+        传入时策略版本与规划参数会进入 input digest，因此策略规则变化会让旧计划失效。
+        """
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        strategy = self._coerce_strategy_context(strategy_context)
 
         if window_start and _parse(window_start) is None:
             raise ValueError("window_start must be timezone-aware ISO 8601")
@@ -198,14 +215,20 @@ class LearningPlannerService:
                          "course_id": n.course_id, "published_at": n.published_at,
                          "last_synced_at": n.last_synced_at}
                         for n in notices]
-        input_digest = _digest({"planner_version": PLANNER_VERSION, "core": core_inputs, "tasks": safe_tasks,
-                                "content": safe_content,
-                                "academic": safe_academic,
-                                "world": safe_world, "forecasts": safe_forecasts,
-                                "goals": safe_goals, "notices": safe_notices,
-                                "available_minutes": available_minutes,
-                                "course_id": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
-                                "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS})
+        digest_payload: dict[str, Any] = {
+            "planner_version": PLANNER_VERSION, "core": core_inputs, "tasks": safe_tasks,
+            "content": safe_content,
+            "academic": safe_academic,
+            "world": safe_world, "forecasts": safe_forecasts,
+            "goals": safe_goals, "notices": safe_notices,
+            "available_minutes": available_minutes,
+            "course_id": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
+            "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS,
+        }
+        if strategy is not None:
+            # 策略版本进入 digest：策略规则或参数一变，旧计划即失效并可重新规划。
+            digest_payload["strategy"] = strategy.digest_payload()
+        input_digest = _digest(digest_payload)
         if idempotency_key:
             existing = self.repository.find_by_idempotency_key(user_id=user_id, idempotency_key=idempotency_key)
             if existing:
@@ -225,6 +248,8 @@ class LearningPlannerService:
             tasks, course_data, academic.snapshots, goals, notices, available_minutes, now,
             forecast_context=forecasts,
         )
+        if strategy is not None:
+            items = self._apply_strategy(items, strategy, course_data, academic.snapshots)
         items = items[:MAX_PLAN_ITEMS]
         if len(items) >= MAX_PLAN_ITEMS:
             warnings.append("plan_items_truncated")
@@ -233,10 +258,25 @@ class LearningPlannerService:
             boundary = _parse(snapshot.valid_until)
             if boundary:
                 valid_until = min(valid_until, boundary)
+        # 策略只收紧预算与条目上限，永不突破 available_minutes。
+        budget = available_minutes
+        max_items = MAX_PLAN_ITEMS
+        if strategy is not None:
+            params = strategy.planning_parameters
+            budget = min(
+                available_minutes,
+                max(params.target_item_minutes, int(round(available_minutes * params.workload_scale))),
+            )
+            max_items = min(MAX_PLAN_ITEMS, params.max_plan_items)
+        ordered = sorted(items, key=self._selection_key(strategy))
+        if len(ordered) > max_items:
+            ordered = ordered[:max_items]
+            if strategy is not None:
+                warnings.append("strategy_item_cap_applied")
         allocated = 0
         selected = []
-        for item in sorted(items, key=lambda x: (-x["priority_score"], x.get("course_id") or "", x.get("task_id") or "")):
-            if allocated + item["estimated_minutes"] > available_minutes:
+        for item in ordered:
+            if allocated + item["estimated_minutes"] > budget:
                 continue
             allocated += item["estimated_minutes"]
             selected.append(item)
@@ -253,6 +293,14 @@ class LearningPlannerService:
         truncated = any(code in {"tasks_truncated", "course_content_truncated", "plan_items_truncated", "input_truncated", "evidence_truncated"} for code in warnings)
         # Reusable plans are selected by the digest; run IDs must remain fresh
         # when an identical input becomes eligible again after expiry.
+        knowledge_bindings: dict[str, Any] = {
+            "world_run_id": world.run_id,
+            "forecast_input_digest": _digest(safe_forecasts),
+            "forecast_types": [forecast["forecast_type"] for forecast in safe_forecasts],
+        }
+        if strategy is not None:
+            # 只保存安全绑定：干预 id、策略码/版本与生成决策时的基线状态 run 引用。
+            knowledge_bindings.update(strategy.binding_payload())
         run_id = f"lprun_{uuid.uuid4().hex[:16]}"
         run = {"run_id": run_id,
                "planner_version": PLANNER_VERSION, "input_digest": input_digest, "as_of": _iso(now),
@@ -260,11 +308,7 @@ class LearningPlannerService:
                "course_scope": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
                "warning_codes": sorted(set(warnings)), "idempotency_key": idempotency_key,
                "core_run_id": core.run_id, "core_input_digest": core.input_digest,
-               "knowledge_bindings": {
-                   "world_run_id": world.run_id,
-                   "forecast_input_digest": _digest(safe_forecasts),
-                   "forecast_types": [forecast["forecast_type"] for forecast in safe_forecasts],
-               },
+               "knowledge_bindings": knowledge_bindings,
 
                "task_binding_digest": _digest(selected_task_bindings),
                "task_bindings": selected_task_bindings, "input_truncated": truncated,
@@ -290,6 +334,106 @@ class LearningPlannerService:
     @classmethod
     def _task_summary_digest(cls, task) -> str:
         return _digest(cls._task_summary(task))
+
+    # ------------------------------------------------------------------ 策略
+
+    @staticmethod
+    def _coerce_strategy_context(
+        strategy_context: PlanningStrategyContext | dict[str, Any] | None,
+    ) -> PlanningStrategyContext | None:
+        """策略上下文在进入规划前必须先过 schema 校验（含数值上下界）。"""
+        if strategy_context is None:
+            return None
+        if isinstance(strategy_context, PlanningStrategyContext):
+            return strategy_context
+        return PlanningStrategyContext.model_validate(strategy_context)
+
+    @staticmethod
+    def _score(components: dict[str, float]) -> float:
+        total = sum(
+            components[name] * weight for name, weight in WEIGHTS.items() if name != "data_freshness"
+        ) - components.get("data_freshness", 0.0) * WEIGHTS["data_freshness"]
+        return round(total, 6)
+
+    @staticmethod
+    def _selection_key(strategy: PlanningStrategyContext | None):
+        """条目选择排序键。无策略时与历史行为完全一致。"""
+        if strategy is None:
+            return lambda x: (-x["priority_score"], x.get("course_id") or "", x.get("task_id") or "")
+        pacing = strategy.planning_parameters.pacing_mode
+        if pacing == "COMPRESSED":
+            # 恢复节奏：同优先级下优先能完成的小步骤。
+            return lambda x: (-x["priority_score"], x["estimated_minutes"],
+                              x.get("course_id") or "", x.get("task_id") or "")
+        if pacing == "AMBITIOUS":
+            return lambda x: (-x["priority_score"], -x["estimated_minutes"],
+                              x.get("course_id") or "", x.get("task_id") or "")
+        return lambda x: (-x["priority_score"], x.get("course_id") or "", x.get("task_id") or "")
+
+    def _apply_strategy(
+        self, items: list[dict[str, Any]], strategy: PlanningStrategyContext,
+        course_data: dict[str, list[Any]], academic_snapshots: list[Any],
+    ) -> list[dict[str, Any]]:
+        """把策略参数落到计划项上：单项时长、解释码、推进强度，以及必要的基础复习项。
+
+        不改动 item_type 集合（基础复习项除外），也不引入当前结构无法表达的"难度"字段。
+        """
+        params = strategy.planning_parameters
+        scale = params.target_item_minutes / BASELINE_ITEM_MINUTES
+        tag = f"strategy_{strategy.strategy_code.lower()}"
+        for item in items:
+            item["estimated_minutes"] = max(5, min(120, int(round(item["estimated_minutes"] * scale))))
+            item["explanation_codes"] = sorted(set([*item["explanation_codes"], tag]))
+            if params.challenge_level == "ELEVATED" and item["item_type"] in {"GOAL_PROGRESS", "EXAM_PREPARATION"}:
+                # 挑战升级体现在推进优先级上，而不是突破 available_minutes。
+                components = dict(item["priority_components"])
+                components["goal_alignment"] = round(min(1.0, components["goal_alignment"] + 0.15), 6)
+                item["priority_components"] = components
+                item["priority_score"] = self._score(components)
+        if params.foundation_emphasis >= FOUNDATION_EMPHASIS_ITEM_THRESHOLD:
+            items.extend(self._foundation_items(strategy, course_data, academic_snapshots, scale))
+        return items
+
+    def _foundation_items(
+        self, strategy: PlanningStrategyContext, course_data: dict[str, list[Any]],
+        academic_snapshots: list[Any], scale: float,
+    ) -> list[dict[str, Any]]:
+        """仅在存在知识掌握观测 + 课程内容证据时追加基础复习项。
+
+        课程来自实际同步过内容的课程；证据指向既有的 knowledge_mastery_observation 快照，
+        不凭空生成知识点，也不对未观测到的课程做假设。
+        """
+        knowledge = next(
+            (s for s in academic_snapshots if s.state_type == "knowledge_mastery_observation"), None
+        )
+        if knowledge is None or knowledge.data_quality == "unavailable":
+            return []
+        course_ids = sorted(course_data.keys())[:2]
+        if not course_ids:
+            return []
+        items: list[dict[str, Any]] = []
+        estimated = max(5, min(120, int(round(10 * scale))))
+        for course_id in course_ids:
+            item = self._item_base(
+                estimated=estimated, goal_alignment=0.45, deadline_urgency=0.20,
+                workload_relief=0.35, schedule_fit=0.50,
+                evidence_confidence=knowledge.confidence, expected_progress=0.35,
+                data_freshness=0.10,
+            )
+            item.update(
+                item_type="REVIEW_AND_REFLECT", course_id=course_id,
+                explanation_codes=[
+                    "strategy_foundation_reinforcement",
+                    "knowledge_mastery_observation_supports_review",
+                ],
+                evidence=[{
+                    "evidence_type": "ACADEMIC_SNAPSHOT",
+                    "reference_id": knowledge.snapshot_id,
+                    "metadata": {"relation": "SUPPORTS", "data_quality": knowledge.data_quality},
+                }],
+            )
+            items.append(item)
+        return items
 
     @staticmethod
 
@@ -389,9 +533,8 @@ class LearningPlannerService:
                       "workload_relief": round(workload_relief, 6), "schedule_fit": round(schedule_fit, 6),
                       "evidence_confidence": round(evidence_confidence, 6), "expected_progress": round(expected_progress, 6),
                       "data_freshness": round(data_freshness, 6)}
-        score = sum(components[name] * weight for name, weight in WEIGHTS.items() if name != "data_freshness") - data_freshness * WEIGHTS["data_freshness"]
-        return {"estimated_minutes": estimated, "priority_score": round(score, 6), "priority_components": components,
-                "explanation_codes": [], "evidence": []}
+        return {"estimated_minutes": estimated, "priority_score": LearningPlannerService._score(components),
+                "priority_components": components, "explanation_codes": [], "evidence": []}
 
     @staticmethod
     def _deadline_urgency(value: str | None, now: datetime) -> float:
@@ -475,6 +618,12 @@ class LearningPlannerService:
         now = datetime.now(timezone.utc)
         if plan.run.planner_version != PLANNER_VERSION:
             self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="planner_version")
+            raise LearningPlanStale()
+        # 策略规则版本变化时旧计划失效：计划里的条目结构由策略参数决定，
+        # 沿用旧结构会让学生看到与新策略不符的安排。
+        bound_strategy_version = (plan.run.knowledge_bindings or {}).get("strategy_version")
+        if bound_strategy_version and bound_strategy_version != STRATEGY_VERSION:
+            self.repository.mark_stale(plan_id=plan.plan_id, user_id=user_id, reason="strategy_version")
             raise LearningPlanStale()
         current_core = self.state_service.project_user(user_id, as_of=now, trigger="learning_plan_revalidate")
         if plan.run.core_input_digest and current_core.input_digest != plan.run.core_input_digest:

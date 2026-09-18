@@ -106,6 +106,10 @@ from ..services.openmaic.result_store import OpenMAICResultStore
 from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
+from ..services.adaptive_agent.intervention_service import AdaptiveInterventionService
+from ..services.adaptive_agent.state_analyzer import StudentStateAnalyzer
+from ..services.adaptive_agent.strategy_policy import StrategyPolicy
+from ..repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
 from ..services.model_shadow_runner import ModelShadowRunner
@@ -170,6 +174,10 @@ class ServiceContainer:
 
     learning_plan_repository: LearningPlanRepository
     learning_planner_service: LearningPlannerService
+    adaptive_intervention_repository: AdaptiveInterventionRepository
+    student_state_analyzer: StudentStateAnalyzer
+    strategy_policy: StrategyPolicy
+    adaptive_intervention_service: AdaptiveInterventionService
     learning_agent_tools: LearningAgentToolRegistry
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
@@ -369,8 +377,24 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_handler_registry = JobHandlerRegistry(
         known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
     )
+    # 状态驱动干预：状态分析 -> 策略选择 -> 干预记录 -> 差异化计划。
+    # forecast_service 在下面才构造，先用延迟绑定挂上（与 learner_state_service 的既有做法一致）。
+    adaptive_intervention_repository = AdaptiveInterventionRepository(db)
+    student_state_analyzer = StudentStateAnalyzer()
+    strategy_policy = StrategyPolicy()
+    adaptive_intervention_service = AdaptiveInterventionService(
+        repository=adaptive_intervention_repository,
+        analyzer=student_state_analyzer,
+        policy=strategy_policy,
+        planner=learning_planner_service,
+        state_service=learner_state_service,
+        student_goal_repository=student_goal_repo,
+    )
     agent_handler_registry.register(
-        LearningGoalHandler(learning_planner_service, agent_event_store)
+        LearningGoalHandler(
+            learning_planner_service, agent_event_store,
+            intervention_service=adaptive_intervention_service,
+        )
     )
     agent_approval_gate = ApprovalGate(agent_runtime_repository)
     agent_tool_gateway = ToolInvocationGateway(
@@ -437,6 +461,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_repository=learner_state_repository,
         learning_plan_repository=learning_plan_repository,
     )
+    # 预测是状态分析的增强信号：在这里补上，避免把构造顺序问题带进 Handler。
+    adaptive_intervention_service._forecast_service = forecast_service
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
@@ -511,6 +537,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
 
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
+        adaptive_intervention_repository=adaptive_intervention_repository,
+        student_state_analyzer=student_state_analyzer,
+        strategy_policy=strategy_policy,
+        adaptive_intervention_service=adaptive_intervention_service,
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,

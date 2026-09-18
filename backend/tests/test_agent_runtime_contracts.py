@@ -82,6 +82,11 @@ def test_contract_version_is_v1() -> None:
                 "PERSISTING_RESULT",
                 "RECOVERY_CHECKING",
                 "IDLE",
+                # v2 追加:状态驱动干预的四个阶段
+                "STATE_ANALYSIS",
+                "STRATEGY_SELECTION",
+                "INTERVENTION_RECORD",
+                "PLAN_GENERATION",
             },
         ),
         (RiskLevel, {"AUTO_SAFE", "CONFIRM_REQUIRED", "MANUAL_ONLY"}),
@@ -109,9 +114,14 @@ def test_contract_version_is_v1() -> None:
                     "RUN_RESUMED",
                     "RUN_RETRIED",
                     "RUN_RETRY_SCHEDULED",
-                    "RUN_RECOVERY_STARTED",
-                    "RUN_RECOVERED",
-                    "APPROVAL_GRANTED",
+                "RUN_RECOVERY_STARTED",
+                "RUN_RECOVERED",
+                "APPROVAL_GRANTED",
+                # v2 追加:状态驱动干预的四个阶段事件
+                "STATE_ANALYZED",
+                "STRATEGY_SELECTED",
+                "INTERVENTION_RECORDED",
+                "PLAN_GENERATED",
             },
         ),
         (
@@ -307,6 +317,28 @@ def test_every_emitted_event_type_is_in_the_contract_enum() -> None:
     assert not offenders, (
         "以下事件类型没有出现在 AgentEventType 里，SSE 序列化会失败: " + ", ".join(sorted(set(offenders)))
     )
+
+
+def test_runtime_fixture_state_driven_events_round_trip() -> None:
+    """状态驱动干预的阶段事件与 job 回写字段必须在契约 fixture 里。
+
+    与 `APPROVAL_GRANTED` 同类问题：事件类型与 `RunPhase` 在代码里新增了，
+    如果 fixture 不跟着更新，四端会各自猜字段名，最终表现为进度条跳步或字段缺失。
+    """
+    data = json.loads((FIXTURE_DIR / "runtime.json").read_text(encoding="utf-8"))
+    section = data["v2"]["state_driven_events"]
+    assert {event["type"] for event in section["events"]} == {
+        "STATE_ANALYZED", "STRATEGY_SELECTED", "INTERVENTION_RECORDED", "PLAN_GENERATED",
+    }
+    for event in section["events"]:
+        AgentEventOut(**event)
+    # 计划生成完成后 Job 的 input_ref 同时携带 plan_id 与 intervention_id。
+    assert set(section["job_input_ref_patch"]) == {"plan_id", "intervention_id"}
+    assert section["job_input_ref_patch"]["intervention_id"].startswith("intv_")
+    # 事件只带枚举码与不透明 id,不带任何原始内容。
+    serialized = json.dumps(section, ensure_ascii=False)
+    for forbidden in ("assessment_json", "strategy_json", "prompt", "raw_content"):
+        assert forbidden not in serialized
 
 
 def test_runtime_fixture_v2_increments_round_trip() -> None:

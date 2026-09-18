@@ -39,6 +39,7 @@ from .routes import (
     simulations,
 
     learning_plans,
+    adaptive_interventions,
     learner_control,
     agent_runtime,
     agent_observability,
@@ -93,6 +94,8 @@ api_router.include_router(forecasts.router)
 api_router.include_router(simulations.router)
 
 api_router.include_router(learning_plans.router)
+# 状态驱动干预记录(只读)
+api_router.include_router(adaptive_interventions.router)
 api_router.include_router(learner_control.router)
 # CampusAgentRuntime — Agent 运行时 API(§9.1)
 api_router.include_router(agent_runtime.router)
