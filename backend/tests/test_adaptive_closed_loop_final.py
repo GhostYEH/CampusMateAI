@@ -104,6 +104,51 @@ def test_comparator_confidence_is_bounded_by_quality_and_provenance():
     assert result["confidence"] < 0.7
 
 
+def test_challenge_upshift_uses_mastery_and_goal_gap():
+    result = StateOutcomeComparator().compare(
+        before={"mastery": 0.4, "goal_gap": 0.8},
+        after={"mastery": 0.6, "goal_gap": 0.5},
+        strategy_code="CHALLENGE_UPSHIFT", comparison_as_of="2026-09-18T00:00:00+00:00",
+    )
+    assert result["outcome"] == "IMPROVED"
+    assert result["relevant_dimensions"] == ["mastery", "goal_gap"]
+
+
+def test_unknown_strategy_does_not_fall_back_to_pace_dimensions():
+    result = StateOutcomeComparator().compare(
+        before={"consistency": 0.2, "completion_rate": 0.2},
+        after={"consistency": 0.9, "completion_rate": 0.9},
+        strategy_code="UNKNOWN_STRATEGY", comparison_as_of="2026-09-18T00:00:00+00:00",
+    )
+    assert result["outcome"] == "INSUFFICIENT_EVIDENCE"
+    assert result["warnings"] == ["unknown_strategy_code"]
+
+
+def test_after_provenance_is_the_conservative_confidence_bound():
+    complete = {
+        "before_data_quality": "verified", "after_data_quality": "verified",
+        "before_confidence": 1.0, "after_confidence": 1.0,
+        "before_snapshot_id": "b-snap", "after_snapshot_id": "a-snap",
+        "before_run_id": "b-run", "after_run_id": "a-run",
+        "before_observed_at": "2026-09-18T00:00:00+00:00", "after_observed_at": "2026-09-18T00:00:00+00:00",
+        "before_valid_until": "2026-09-19T00:00:00+00:00", "after_valid_until": "2026-09-19T00:00:00+00:00",
+        "evidence_refs": ["b-snap", "a-snap"],
+    }
+    degraded = {**complete, "after_data_quality": "partial", "after_confidence": 0.2,
+                "after_valid_until": "2026-09-17T00:00:00+00:00"}
+    good = StateOutcomeComparator().compare(
+        before={"mastery": 0.4, "_dimensions": {"mastery": complete}},
+        after={"mastery": 0.6, "_dimensions": {"mastery": complete}},
+        strategy_code="FOUNDATION_REINFORCEMENT", comparison_as_of="2026-09-18T00:00:00+00:00",
+    )
+    limited = StateOutcomeComparator().compare(
+        before={"mastery": 0.4, "_dimensions": {"mastery": degraded}},
+        after={"mastery": 0.6, "_dimensions": {"mastery": degraded}},
+        strategy_code="FOUNDATION_REINFORCEMENT", comparison_as_of="2026-09-18T00:00:00+00:00",
+    )
+    assert limited["confidence"] < good["confidence"]
+
+
 def test_event_failure_keeps_decision_recoverable_then_applies():
     decision = _decision()
     repo = _Repo(decision)

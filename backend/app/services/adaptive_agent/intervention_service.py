@@ -137,6 +137,7 @@ class AdaptiveInterventionService:
         agent_run_id: str | None = None,
         as_of: datetime | None = None,
         supersedes_plan_id: str | None = None,
+        strategy_adjustments: list[str] | None = None,
         force_new: bool = True,
         deferred_activation: bool = False,
         on_stage: Callable[[str, dict[str, Any]], None] | None = None,
@@ -163,7 +164,7 @@ class AdaptiveInterventionService:
                 agent_run_id=agent_run_id, as_of=now, supersedes_plan_id=supersedes_plan_id,
                 force_new=force_new, on_stage=on_stage, intervention=existing,
                 assessment=assessment, strategy=strategy, reused_intervention=True,
-                deferred_activation=deferred_activation,
+                deferred_activation=deferred_activation, strategy_adjustments=strategy_adjustments,
             )
 
         goal = self._load_goal(user_id=user_id, goal_id=goal_id)
@@ -216,6 +217,7 @@ class AdaptiveInterventionService:
             as_of=now, supersedes_plan_id=supersedes_plan_id, force_new=force_new,
             on_stage=on_stage, intervention=intervention, assessment=assessment,
             strategy=strategy, reused_intervention=False, deferred_activation=deferred_activation,
+            strategy_adjustments=strategy_adjustments,
         )
 
     def load_intervention(self, *, user_id: str, intervention_id: str) -> AdaptiveInterventionRow | None:
