@@ -17,6 +17,32 @@
 - No React-major upgrade, second login, static course data, whole-app iframe, client-held provider key, or reference-path runtime dependency.
 - Every implementation behavior starts with a failing test, passes relevant tests/build, and is committed separately.
 
+## Review-revision execution contract
+
+Every task below starts with the named failing test, then implements the named interface, runs the exact command with exit code 0, and commits only its listed paths. `openmaic-service/` is not created until the official v1.0.3 baseline is locally available and the diff gate in the spec records each copied file. Provider calls use a contract fake; real-provider E2E is a final, explicitly external acceptance step.
+
+| Task | Files / interface | Failing test → implementation → command / expected result |
+| --- | --- | --- |
+| 1 Source diff | create `docs/openmaic-v1.0.3-local-diff.md`, `scripts/openmaic-diff.ps1` | test script rejects missing official SHA → compare official/local and reject `local-different` copy → `pwsh scripts/openmaic-diff.ps1`; exit 0, manifest complete |
+| 2 Service health | `openmaic-service/app/api/health/route.ts`; `backend/app/services/openmaic/openmaic_service_client.py` `health() -> Health` | fake contract test expects `status/capabilities/version` → health implementation → `cd backend; pytest tests/test_openmaic_service_contract.py -q`; pass |
+| 3 Course bridge | `stage_bridge.py` `resolve(user, course)->StageBinding` | foreign course and raw courseId-as-stageId fail → opaque mapping implementation → `pytest backend/tests/test_openmaic_stage_bridge.py -q`; pass |
+| 4 Home | `OpenMaicHomePage.jsx`, `openmaic_fusion.py` `GET /courses/openmaic-home` | legacy grid absence and real rail states fail → native home/search/folders/recent → `cd webreact; npm test -- openmaic-home`; pass |
+| 5 Workbench | `webreact/src/pages/OpenMaicWorkbenchPage.jsx`, `backend/app/services/openmaic/openmaic_sessions.py` `create_session()` | session lacks bound course fails → native panes/session create → `cd backend; pytest tests/test_openmaic_workbench.py -q`; then `cd webreact; npm test -- openmaic-workbench`; both pass |
+| 6 Session flow | `webreact/src/hooks/useOpenMaicSession.js`, `backend/app/services/openmaic/openmaic_stream.py` `stream(session_id)` | switch-course stale chunk and refresh restore fail → SSE/retry/cancel/recovery → `cd backend; pytest tests/test_openmaic_session_flow.py -q`; then `cd webreact; npm test -- openmaic-session`; pass |
+| 7 Editor | `OpenMaicEditorPage.jsx`, service `/api/stages/:id` facade | non-owner update fails → editor document bridge → editor contract/Web tests; pass |
+| 8 Player | `OpenMaicPlayerPage.jsx`, `openmaic_player.py` | untrusted media origin fails → scenes/player/URL policy → player tests; pass |
+| 9 Materials | `MaterialPanel.jsx`, `openmaic_materials.py` | foreign/oversize material fails → upload/extract facade → material tests; pass |
+| 10 Import | service importer facade, `ImportDialog.jsx` | invalid MIME/zip fails → PPTX/MD/DOCX import → import fixtures; pass |
+| 11 Export | service exporter facade, `ExportMenu.jsx` | cross-owner export fails → zip/PPTX/MD/DOCX export → export fixtures; pass |
+| 12 Modes | `GenerationModePanel.jsx`, `generation_facade.py` | each requested mode unreported fails → slide/quiz/interactive/PBL/simulation/diagram/code/game/3D/procedural registry → `pytest backend/tests/test_openmaic_generation_modes.py -q`; pass |
+| 13 Whiteboard | `WhiteboardPanel.jsx`, document facade | cross-session board leak fails → persisted board bridge → whiteboard tests; pass |
+| 14 TTS | `TtsControls.jsx`, `tts_proxy.py` | redirect/private-IP provider URL fails → proxied TTS → TTS policy tests; pass |
+| 15 Multi-agent | `AgentToolPanel.jsx`, tool facade | unapproved tool/course leak fails → allowlisted tools/search/PBL stream → tool ACL tests; pass |
+| 16 Settings | admin page, `openmaic_settings.py` | student provider edit/secret response fails → admin health/capability settings → settings tests; pass |
+| 17 Persistence | service store, mapping facade | user/course isolation and restore fail → durable mapping/session lifecycle → persistence tests; pass |
+| 18 Course/task entry | `CourseDetailPage.jsx`, `TaskDetailPage.jsx`, explain route | submission/answer data enters prompt or no confirmation fails → preview/explain/deep-link → assignment tests; pass |
+| 19 Acceptance | all changed paths | outage/keyboard/320–1440 tests fail → no production changes → backend pytest, `npm test`, `npm run build`; pass; real Provider E2E marked pending credentials |
+
 ### Task 1: Establish the approved managed-service source
 
 **Files:** create `openmaic-service/`, `docs/openmaic-attribution.md`, service tests.
