@@ -61,6 +61,7 @@ def _service(container: ServiceContainer = Depends(_container)) -> OpenMAICClass
 @router.get("/status", response_model=FusionStatus)
 async def fusion_status(
     user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
     client: OpenMAICFusionClient = Depends(_client),
 ) -> FusionStatus:
     if not container.settings.openmaic_fusion_enabled:

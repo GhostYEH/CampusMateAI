@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.api.routes import openmaic_workspaces
+from app.api.routes import openmaic_fusion, openmaic_workspaces
 from app.core.config import Settings
 from app.main import create_app
 from app.services.container import reset_container_for_tests
@@ -99,6 +99,42 @@ def _workspace_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def test_fusion_status_route_exposes_workspace_only_when_container_enables_it():
+    container, transport, http, headers, _ = _setup([
+        (200, {"status": "ready", "capabilities": ["workspace"]}),
+    ])
+    client = OpenMAICFusionClient(
+        base_url=container.settings.openmaic_service_url,
+        secret=container.settings.openmaic_internal_secret,
+        transport=transport,
+    )
+    http.app.dependency_overrides[openmaic_fusion._client] = lambda: client
+
+    response = http.get("/api/v1/openmaic/fusion/status", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "ready"
+    assert response.json()["capabilities"] == ["workspace"]
+    assert len(transport.calls) == 1
+
+
+def test_fusion_status_route_stays_disabled_without_contacting_service():
+    container, transport, http, headers, _ = _setup(openmaic_fusion_enabled=False)
+    client = OpenMAICFusionClient(
+        base_url=container.settings.openmaic_service_url,
+        secret=container.settings.openmaic_internal_secret,
+        transport=transport,
+    )
+    http.app.dependency_overrides[openmaic_fusion._client] = lambda: client
+
+    response = http.get("/api/v1/openmaic/fusion/status", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["state"] == "disabled"
+    assert response.json()["capabilities"] == []
+    assert transport.calls == []
 
 
 # ===== 正常路径 =====
