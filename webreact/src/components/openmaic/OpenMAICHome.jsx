@@ -8,6 +8,7 @@ import DiscoveryPanel from "./DiscoveryPanel.jsx";
 import MaterialsPanel from "./MaterialsPanel.jsx";
 import {
   buildCourseRailItems,
+  defaultOpenMAICCourseId,
   describeFusionState,
   filterOpenMAICHomeItems,
 } from "../../features/openmaic/homeModel.js";
@@ -120,6 +121,81 @@ function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
 }
 
 /**
+ * 课程列表可能有数十门课。原生 select 的弹层由浏览器接管，无法限制高度或保证
+ * 在窄屏里不覆盖输入区；这里使用受控 listbox，并在选择后立即收起。
+ */
+function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
+  const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef(null);
+  const triggerRef = React.useRef(null);
+  const listboxId = React.useId();
+  const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
+  const selectedName = selectedCourse?.name || selectedCourse?.title || "选择课程";
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function closeOnOutsidePointer(event) {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    }
+    function closeOnEscape(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function choose(courseId) {
+    onSelectCourse(String(courseId));
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  return <div ref={rootRef} className="openmaic-course-picker">
+    <button
+      ref={triggerRef}
+      type="button"
+      className="openmaic-course-picker__trigger"
+      disabled={!courses.length}
+      aria-label="选择课程上下文"
+      aria-haspopup="listbox"
+      aria-controls={listboxId}
+      aria-expanded={open}
+      onClick={() => setOpen((value) => !value)}
+    >
+      <Icon name="PhBookOpenText" size={16} aria-hidden="true" />
+      <span>{selectedName}</span>
+      <Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" />
+    </button>
+    {open ? <div id={listboxId} className="openmaic-course-picker__menu" role="listbox" aria-label="选择课程上下文">
+      {courses.map((course) => {
+        const courseId = String(course.id);
+        const name = course.name || course.title || "未命名课程";
+        const selected = courseId === String(selectedCourseId);
+        return <button
+          type="button"
+          key={courseId}
+          role="option"
+          aria-selected={selected}
+          data-course-id={courseId}
+          className={selected ? "is-selected" : ""}
+          onClick={() => choose(courseId)}
+        >
+          <span>{name}</span>
+          {selected ? <Icon name="PhCheck" size={15} aria-hidden="true" /> : null}
+        </button>;
+      })}
+    </div> : null}
+  </div>;
+}
+
+/**
  * 页面视觉焦点：居中的课程学习输入工作区。
  *
  * 这里是唯一的提交入口，因此三件事必须同时成立：可提交性由 `quickAskRejection`
@@ -149,9 +225,6 @@ function AskWorkspace({
 }) {
   const attachmentInput = React.useRef(null);
   const rejection = quickAskRejection({ query, courseId: selectedCourseId, busy });
-  const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
-  const selectedCourseName = selectedCourse?.name || selectedCourse?.title || "";
-
   return <Panel className="openmaic-command-panel">
     <div className="openmaic-brand-lockup" aria-label="OpenMAIC 生成式多智能体互动课堂">
       <span className="openmaic-brand-lockup__mark" aria-hidden="true"><Icon name="PhCube" size={26} weight="duotone" /></span>
@@ -219,23 +292,7 @@ function AskWorkspace({
           selectedRoleIds={selectedRoleIds}
           onToggle={onToggleRole}
         />
-        <label className="openmaic-ask__course-pill">
-          <Icon name="PhBookOpenText" size={16} />
-          <span className="sr-only">课程</span>
-          <select
-            className="openmaic-ask__select"
-            value={selectedCourseId}
-            disabled={!courses.length}
-            aria-label="选择课程上下文"
-            onChange={(event) => onSelectCourse(event.target.value)}
-          >
-            <option value="">选择课程</option>
-            {courses.map((course) => <option key={course.id} value={course.id}>{course.name || course.title || "未命名课程"}</option>)}
-          </select>
-        </label>
-        <p className="openmaic-ask__context">
-          {selectedCourseName ? `将带着「${selectedCourseName}」的课程上下文提问。` : "选择课程后即可生成课堂。"}
-        </p>
+        <CourseContextPicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={onSelectCourse} />
       </aside>
     </form>
 
@@ -355,7 +412,7 @@ export default function OpenMAICHome({
   const [query, setQuery] = React.useState("");
   const [webSearch, setWebSearch] = React.useState(false);
   const [attachment, setAttachment] = React.useState(null);
-  const [selectedCourseId, setSelectedCourseId] = React.useState(courses[0]?.id || "");
+  const [selectedCourseId, setSelectedCourseId] = React.useState(() => defaultOpenMAICCourseId(courses));
   const initialAgentSettings = React.useMemo(() => loadOpenMAICAgentSettings(), []);
   const [agentMode, setAgentMode] = React.useState(initialAgentSettings.mode);
   const [selectedRoleIds, setSelectedRoleIds] = React.useState(initialAgentSettings.selectedRoleIds || DEFAULT_SELECTED_ROLE_IDS);
@@ -364,7 +421,7 @@ export default function OpenMAICHome({
   const status = describeFusionState(fusion);
 
   React.useEffect(() => {
-    if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(courses[0]?.id || "");
+    if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultOpenMAICCourseId(courses));
   }, [courses, selectedCourseId]);
 
   React.useEffect(() => {

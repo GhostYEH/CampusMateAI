@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   FUSION_STATES,
   buildCourseRailItems,
+  defaultOpenMAICCourseId,
   describeFusionState,
   filterOpenMAICHomeItems,
   normalizeRecentItems,
@@ -129,6 +130,12 @@ test("quick ask opens a native generation preview before binding a workspace", (
   assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
 });
 
+test("course context defaults to the first real course after asynchronous loading", () => {
+  assert.equal(defaultOpenMAICCourseId([]), "");
+  assert.equal(defaultOpenMAICCourseId([{ id: "c1", name: "数据结构" }]), "c1");
+  assert.equal(defaultOpenMAICCourseId([{ id: 42, title: "大学英语" }]), "42");
+});
+
 test("quick ask failures stay local and never replace the course content area", () => {
   const start = pageSource.indexOf("function openQuickAsk(");
   assert.notEqual(start, -1);
@@ -150,6 +157,9 @@ test("home surface exposes no placeholder entries and no iframe", () => {
   assert.match(homeSource, /预设模式/);
   assert.match(homeSource, /自动生成/);
   assert.match(homeSource, /describeFusionState/);
+  assert.match(homeSource, /role="listbox"/);
+  assert.match(homeSource, /选择课程上下文/);
+  assert.doesNotMatch(homeSource, /<select/);
   assert.doesNotMatch(homeSource, /正在接入/);
   assert.doesNotMatch(homeSource, /iframe/);
 });

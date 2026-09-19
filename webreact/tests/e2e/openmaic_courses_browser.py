@@ -157,8 +157,8 @@ def diagnose(page, recorder: Recorder, label: str) -> None:
         print(f"提交按钮：count={submit.count()} disabled={submit.first.is_disabled() if submit.count() else 'n/a'}", file=sys.stderr)
         textarea = page.locator("textarea.openmaic-ask__input")
         print(f"输入框：value={textarea.first.input_value()[:80]!r}", file=sys.stderr)
-        select = page.locator("select.openmaic-ask__select")
-        print(f"课程下拉：value={select.first.input_value()!r}", file=sys.stderr)
+        course_picker = page.locator(".openmaic-course-picker__trigger")
+        print(f"课程选择：value={course_picker.first.inner_text()!r}", file=sys.stderr)
     except Exception as exc:
         print(f"表单状态读取失败（{exc}）", file=sys.stderr)
     print(f"最近 25 条响应：", file=sys.stderr)
@@ -190,17 +190,22 @@ def login(page, report: list[str]) -> None:
 
 def open_courses(page, report: list[str]) -> str:
     page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
-    page.wait_for_selector("select.openmaic-ask__select", timeout=20000)
-    # 真实课程列表：直接从下拉框读，而不是写死 id。
-    options = page.locator("select.openmaic-ask__select option").all()
-    labels = [option.inner_text() for option in options if option.get_attribute("value")]
-    if not labels:
-        raise AssertionError("课程下拉框没有任何真实课程")
-    course_id = page.locator("select.openmaic-ask__select").input_value()
+    trigger = page.locator(".openmaic-course-picker__trigger")
+    expect(trigger).to_be_visible(timeout=20000)
+    # 真实课程列表：菜单中的 option 由服务端课程数据渲染，不能写死 id。
+    trigger.click()
+    options = page.locator('[role="listbox"] [role="option"]')
+    if not options.count():
+        raise AssertionError("课程选择器没有任何真实课程")
+    labels = [options.nth(index).inner_text() for index in range(options.count())]
+    course_id = page.locator('[role="listbox"] [role="option"][aria-selected="true"]').first.get_attribute("data-course-id")
     if not course_id:
-        # 默认选中项为空时显式选第一门。
-        course_id = options[1].get_attribute("value")
-        page.locator("select.openmaic-ask__select").select_option(course_id)
+        first = options.first
+        course_id = first.get_attribute("data-course-id")
+        first.click()
+    else:
+        # 默认课程已选中；收起菜单，继续走真实界面。
+        trigger.click()
     _step(report, f"/courses 加载了 {len(labels)} 门真实课程，当前选择 {course_id}")
     page.locator(".openmaic-role-picker__trigger").click()
     expect(page.locator('[role="dialog"][aria-label="课堂角色配置"]')).to_be_visible(timeout=5000)
@@ -406,7 +411,7 @@ def run_checks(service_control) -> dict:
 
             print("步骤 4：运行中掉线 —— 局部降级，课程页不被替换")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
-            page.wait_for_selector("select.openmaic-ask__select", timeout=20000)
+            page.wait_for_selector(".openmaic-course-picker__trigger", timeout=20000)
             ready_note = page.locator(".openmaic-ask__hint").inner_text()
             assert "就绪" in ready_note, f"服务在线时状态提示不诚实：{ready_note}"
             _step(report, f"服务在线时提示：{ready_note.strip()}")
@@ -462,7 +467,7 @@ def run_checks(service_control) -> dict:
 
             print("步骤 7：四尺寸截图与溢出检查")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
-            page.wait_for_selector("select.openmaic-ask__select", timeout=20000)
+            page.wait_for_selector(".openmaic-course-picker__trigger", timeout=20000)
             shots = check_viewports(page, recorder, report)
 
             print("步骤 8：console / pageerror / 失败请求")

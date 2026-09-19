@@ -1,5 +1,16 @@
 const completedSubmissionStatuses = new Set(["submitted", "graded", "late", "resubmitted"]);
 
+/**
+ * 课程数据异步抵达时的确定性默认值。
+ *
+ * 表单控件返回字符串，默认值也保持字符串，避免数字课程 id 在受控组件中出现
+ * “看似没有选中”的中间状态。
+ */
+export function defaultOpenMAICCourseId(courses = []) {
+  const first = (courses || []).find((course) => course && course.id !== undefined && course.id !== null && String(course.id));
+  return first ? String(first.id) : "";
+}
+
 function assignmentIsPending(item = {}) {
   if (item.is_remote) return !["completed", "closed"].includes(item.status);
   return !completedSubmissionStatuses.has(item.submission_status);

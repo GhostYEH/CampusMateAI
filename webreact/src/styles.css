@@ -2134,7 +2134,7 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-command-panel h2 { font-size: clamp(22px, 3vw, 28px); }
 .openmaic-command-panel__head p { max-width: 540px; font-size: 13px; line-height: 1.7; }
 .openmaic-ask { position: relative; display: block; margin-top: 26px; }
-.openmaic-ask__main { display: grid; gap: 0; min-width: 0; padding-top: 58px; }
+.openmaic-ask__main { display: grid; gap: 0; min-width: 0; padding-top: 52px; }
 .openmaic-ask__side { display: contents; }
 .openmaic-ask__field { min-width: 0; }
 .openmaic-ask__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
@@ -2156,9 +2156,16 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-role-row { min-height: 42px; padding: 8px 7px; }
 .openmaic-role-row:first-child { margin-bottom: 5px; padding-bottom: 11px; border-bottom: 1px solid #edf0f5; }
 .openmaic-role-row__avatar, .openmaic-role-picker__avatars span { box-shadow: 0 2px 7px rgba(65,77,116,.14); }
-.openmaic-ask__course-pill { position: absolute; top: 0; left: 0; display: inline-flex; align-items: center; gap: 7px; width: min(260px, 48%); min-height: 42px; padding: 0 12px; border: 1px solid #e2e6f0; border-radius: 999px; color: #6d78a0; background: rgba(255,255,255,.78); box-shadow: 0 5px 16px rgba(76,88,132,.05); }
-.openmaic-ask__course-pill .openmaic-ask__select { min-height: 38px; padding: 0; border: 0; outline: 0; background: transparent; font-size: 12px; }
-.openmaic-ask__context { position: absolute; top: 47px; left: 3px; max-width: 48%; overflow: hidden; color: #a3a8b9; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-course-picker { position: absolute; z-index: 4; top: 0; left: 0; width: min(300px, 48%); }
+.openmaic-course-picker__trigger { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; width: 100%; min-height: 42px; padding: 0 12px; overflow: hidden; border: 1px solid #e2e6f0; border-radius: 999px; color: #596787; background: rgba(255,255,255,.9); box-shadow: 0 5px 16px rgba(76,88,132,.05); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.openmaic-course-picker__trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-course-picker__trigger:hover:not(:disabled), .openmaic-course-picker__trigger:focus-visible { border-color: #9bb6ed; outline: 0; box-shadow: 0 0 0 2px rgba(125,159,232,.12); }
+.openmaic-course-picker__trigger:disabled { cursor: not-allowed; opacity: .58; }
+.openmaic-course-picker__menu { position: absolute; top: calc(100% + 8px); left: 0; display: grid; width: min(390px, calc(100vw - 40px)); max-height: min(360px, 48vh); padding: 6px; overflow-y: auto; border: 1px solid #dfe4ef; border-radius: 15px; background: rgba(255,255,255,.98); box-shadow: 0 18px 42px rgba(54,70,118,.2); }
+.openmaic-course-picker__menu button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 38px; padding: 8px 10px; border: 0; border-radius: 9px; color: #40506c; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.openmaic-course-picker__menu button:hover, .openmaic-course-picker__menu button:focus-visible { color: #405eae; background: #eef3ff; outline: 0; }
+.openmaic-course-picker__menu button.is-selected { color: #365cc0; background: #e8efff; font-weight: 650; }
+.openmaic-course-picker__menu button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .openmaic-preview { display: grid; gap: 16px; max-width: 920px; margin: 0 auto; }
 .openmaic-preview__hero { position: relative; padding: clamp(24px, 4vw, 42px); overflow: hidden; background: radial-gradient(circle at 80% 18%, rgba(224,228,255,.7), transparent 36%), linear-gradient(145deg, #fff, #f7f8ff); }
 .openmaic-preview__brand { display: inline-flex; align-items: center; gap: 10px; color: #5d54bf; }
@@ -2186,10 +2193,10 @@ html[data-theme="auto"] .courses-page .course-card {
 @media (max-width: 767px) {
   .openmaic-command-panel { padding: 26px 16px 18px; border-radius: 20px; }
   .openmaic-ask__main { padding-top: 106px; }
-  .openmaic-role-picker, .openmaic-ask__course-pill { width: 100%; }
+  .openmaic-role-picker, .openmaic-course-picker { width: 100%; }
   .openmaic-role-picker { top: 53px; }
-  .openmaic-ask__course-pill { top: 0; }
-  .openmaic-ask__context { top: 100px; max-width: 100%; }
+  .openmaic-course-picker { top: 0; }
+  .openmaic-course-picker__menu { width: 100%; max-height: min(330px, 42vh); }
   .openmaic-ask__tools { align-items: stretch; }
   .openmaic-ask__actions { width: 100%; margin-left: 0; }
   .openmaic-ask__actions .button { flex: 1 1 auto; }
