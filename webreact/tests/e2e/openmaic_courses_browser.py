@@ -379,6 +379,46 @@ def check_viewports(page, recorder: Recorder, report: list[str]) -> list[Path]:
     return shots
 
 
+def exercise_scene_runtime(page, report: list[str], mode: str, prompt: str) -> None:
+    """从工作台真实 UI 生成一个场景并完成它的核心互动闭环。"""
+    page.locator('input[aria-label="学习内容主题"]').fill(prompt)
+    page.locator('select[aria-label="学习内容类型"]').select_option(mode)
+    page.locator('.openmaic-generation-panel button[type="submit"]').click()
+    stage_button = page.get_by_role("button", name=prompt, exact=False).first
+    expect(stage_button).to_be_visible(timeout=15000)
+    stage_button.click()
+    page.locator('.openmaic-stage-heading-actions button:has-text("播放")').click()
+    page.wait_for_timeout(500)
+
+    if mode == "quiz":
+        expect(page.locator('[aria-label="测验开始"]')).to_be_visible(timeout=10000)
+        page.get_by_role("button", name="开始答题", exact=True).click()
+        page.locator('.openmaic-quiz-runtime input[type="radio"]').first.check()
+        page.get_by_role("button", name="提交答案", exact=True).click()
+        expect(page.get_by_test_id("quiz-score")).to_contain_text("得分", timeout=10000)
+        assert "答案解析" in page.locator('[aria-label="测验结果"]').inner_text()
+        _step(report, "真实测验：开始答题 → 选择答案 → 提交 → 得分与答案解析")
+    elif mode == "simulation":
+        runtime = page.locator(".openmaic-simulation-runtime")
+        expect(runtime).to_be_visible(timeout=10000)
+        sliders = runtime.locator('input[type="range"]')
+        assert sliders.count() >= 2, "模拟实验没有生成力/质量参数控件"
+        sliders.nth(0).fill("30")
+        runtime.get_by_role("button", name="运行实验", exact=True).click()
+        result = runtime.locator('[aria-label="实验结果"]')
+        expect(result).to_contain_text("6", timeout=5000)
+        _step(report, "真实模拟实验：调整力参数 → 运行实验 → 得到加速度结果 6")
+    elif mode == "pbl":
+        runtime = page.locator('[aria-label="项目式学习任务"]')
+        expect(runtime).to_be_visible(timeout=10000)
+        checkbox = runtime.locator('input[type="checkbox"]').first
+        checkbox.check()
+        expect(runtime).to_contain_text("1 / 1 项任务已完成", timeout=5000)
+        _step(report, "真实 PBL：打开项目阶段 → 勾选任务 → 进度达到 1/1")
+
+    page.locator('.openmaic-stage-heading-actions button:has-text("关闭播放")').click()
+
+
 def run_checks(service_control) -> dict:
     """执行全部浏览器检查。`service_control` 提供 stop()/start() 控制受管服务。"""
     report: list[str] = []
@@ -480,12 +520,17 @@ def run_checks(service_control) -> dict:
             assert "/counselor" not in page.url
             _step(report, f"预览确认重试成功：GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {retry_status}，进入 OpenMAIC 工作台且未刷新整站")
 
-            print("步骤 7：四尺寸截图与溢出检查")
+            print("步骤 7：测验、模拟实验与 PBL 真实运行时")
+            exercise_scene_runtime(page, report, "quiz", "浏览器验收测验：牛顿第二定律")
+            exercise_scene_runtime(page, report, "simulation", "浏览器验收实验：牛顿第二定律")
+            exercise_scene_runtime(page, report, "pbl", "浏览器验收项目：校园节能方案")
+
+            print("步骤 8：四尺寸截图与溢出检查")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
             page.wait_for_selector(".openmaic-course-picker__trigger", timeout=20000)
             shots = check_viewports(page, recorder, report)
 
-            print("步骤 8：console / pageerror / 失败请求")
+            print("步骤 9：console / pageerror / 失败请求")
             script_errors = recorder.script_console_errors()
             third_party_errors = recorder.third_party_console_errors()
             assert not recorder.page_errors, f"出现未捕获的页面异常：{recorder.page_errors}"

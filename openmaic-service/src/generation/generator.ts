@@ -29,6 +29,23 @@ function escapeHtml(value: string): string {
 
 function widgetContent(mode: GenerationMode, title: string): { type: 'interactive'; html: string; widgetType?: WidgetType; widgetConfig?: Record<string, unknown> } {
   const widgetType = mode === 'interactive' ? undefined : mode as WidgetType;
+  if (mode === 'simulation') {
+    return {
+      type: 'interactive',
+      widgetType,
+      widgetConfig: {
+        type: 'simulation',
+        title,
+        resultLabel: '加速度',
+        formula: 'force / mass',
+        parameters: [
+          { id: 'force', label: '力', min: 0, max: 100, step: 1, value: 20, unit: 'N' },
+          { id: 'mass', label: '质量', min: 1, max: 20, step: 1, value: 5, unit: 'kg' },
+        ],
+      },
+      html: `<main><h1>${escapeHtml(title)}</h1><p>调整力和质量，观察加速度的变化。</p></main>`,
+    };
+  }
   return {
     type: 'interactive',
     ...(widgetType ? { widgetType, widgetConfig: { type: widgetType, prompt: title } } : {}),

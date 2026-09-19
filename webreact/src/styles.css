@@ -2213,6 +2213,38 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-stage-heading-actions, .openmaic-stage-export { display: inline-flex; align-items: center; gap: 8px; }
 .openmaic-stage-export .muted-copy { margin: 0; font-size: 11px; }
 .openmaic-stage-export .openmaic-hint { margin: 0; max-width: 240px; }
+.openmaic-quiz-runtime, .openmaic-simulation-runtime, .openmaic-pbl-runtime { display: grid; gap: 16px; padding: 18px; border: 1px solid #e7eaf2; border-radius: 16px; background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(247,249,255,.92)); }
+.openmaic-runtime-cover, .openmaic-runtime-result { display: grid; gap: 8px; padding: 22px; border-radius: 14px; background: linear-gradient(135deg, #f0edff, #edf5ff); }
+.openmaic-runtime-cover strong, .openmaic-runtime-result strong { font-size: 22px; letter-spacing: -.03em; }
+.openmaic-runtime-cover p, .openmaic-runtime-result p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.openmaic-runtime-kicker { color: #6759c9; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.openmaic-runtime-progress { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; }
+.openmaic-runtime-progress strong { color: var(--ink); }
+.openmaic-quiz-runtime__questions { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }
+.openmaic-quiz-runtime__questions > li { padding: 15px; border: 1px solid #e7eaf2; border-radius: 13px; background: rgba(255,255,255,.78); }
+.openmaic-quiz-runtime__questions fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.openmaic-quiz-runtime__questions legend { width: 100%; margin-bottom: 12px; color: var(--ink); font-size: 14px; font-weight: 700; line-height: 1.55; }
+.openmaic-quiz-runtime__options { display: grid; gap: 8px; }
+.openmaic-quiz-runtime__options label { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid #e3e7f1; border-radius: 10px; color: #53617a; background: #fbfcff; cursor: pointer; font-size: 13px; }
+.openmaic-quiz-runtime__options label:hover, .openmaic-quiz-runtime__options label.is-selected { border-color: #9bb6ed; color: #365eae; background: #eef3ff; }
+.openmaic-quiz-runtime__options input { accent-color: #5f72d7; }
+.openmaic-quiz-runtime__short, .openmaic-simulation-runtime input[type="number"] { width: 100%; min-height: 40px; padding: 9px 11px; border: 1px solid #dfe4ef; border-radius: 10px; background: #fff; color: var(--ink); font: inherit; }
+.openmaic-quiz-runtime__question-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.openmaic-quiz-runtime__question-head span { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; color: #526078; background: #eef1f7; font-size: 11px; }
+.openmaic-quiz-runtime__questions li.is-correct { border-color: #b4dfca; }
+.openmaic-quiz-runtime__questions li.is-incorrect { border-color: #efc4c8; }
+.openmaic-quiz-runtime__analysis { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.openmaic-simulation-runtime__controls { display: grid; gap: 13px; }
+.openmaic-simulation-runtime__control { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(140px, 2fr) auto; align-items: center; gap: 10px; color: #53617a; font-size: 12px; }
+.openmaic-simulation-runtime__control input[type="range"] { width: 100%; accent-color: #5f72d7; }
+.openmaic-simulation-runtime__value { min-width: 72px; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.openmaic-simulation-runtime__result { display: grid; gap: 5px; padding: 15px; border-radius: 13px; background: #eef8f2; color: #1e6b43; }
+.openmaic-simulation-runtime__result strong { font-size: 18px; }
+.openmaic-pbl-runtime__phase { display: grid; gap: 10px; padding: 15px; border: 1px solid #e7eaf2; border-radius: 13px; background: rgba(255,255,255,.78); }
+.openmaic-pbl-runtime__phase h3 { margin: 0; font-size: 15px; }
+.openmaic-pbl-runtime__task { display: flex; align-items: flex-start; gap: 9px; color: #53617a; font-size: 13px; line-height: 1.5; }
+.openmaic-pbl-runtime__task input { margin-top: 3px; accent-color: #5f72d7; }
+@media (max-width: 560px) { .openmaic-simulation-runtime__control { grid-template-columns: 1fr auto; } .openmaic-simulation-runtime__control input[type="range"] { grid-column: 1 / -1; grid-row: 2; } }
 @media (max-width: 560px) {
   .openmaic-stage-heading-actions { align-items: flex-end; flex-direction: column; }
   .openmaic-stage-export { align-items: flex-end; flex-direction: column; }

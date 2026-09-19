@@ -1,6 +1,9 @@
 import React from "react";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
+import QuizRuntimePanel from "./QuizRuntimePanel.jsx";
+import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
+import PblRuntimePanel from "./PblRuntimePanel.jsx";
 import * as api from "../../data/api.js";
 import {
   SCENE_TYPE_LABELS,
@@ -113,7 +116,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
           {currentScene.whiteboards ? <small>{currentScene.whiteboards} 块白板</small> : null}
         </header>
 
-        {policy.allowIframe ? <iframe
+        {policy.allowIframe && currentScene.render.widget_type !== "simulation" ? <iframe
           className="openmaic-player__frame"
           title={currentScene.title}
           sandbox={policy.sandbox}
@@ -123,7 +126,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
             : { src: sandboxUrl })}
         /> : null}
 
-        {currentScene.render.kind === "native" ? <NativeScene scene={scene} fallbackTitle={currentScene.title} /> : null}
+        {(currentScene.render.kind === "native" || currentScene.render.widget_type === "simulation") ? <NativeScene scene={scene} fallbackTitle={currentScene.title} /> : null}
 
         {currentScene.render.kind === "unsupported" ? <div className="openmaic-player__degraded" role="status">
           <Icon name="PhWarningCircle" size={22} />
@@ -159,17 +162,9 @@ function NativeScene({ scene, fallbackTitle }) {
   if (!content) {
     return <p className="openmaic-hint">「{fallbackTitle}」的正文暂时读不到，仅显示标题。</p>;
   }
-  if (content.type === "quiz") {
-    const questions = Array.isArray(content.questions) ? content.questions : [];
-    return questions.length ? <ol className="openmaic-player__quiz">
-      {questions.map((question) => <li key={question.id}>
-        <strong>{question.question || "（题干为空）"}</strong>
-        {Array.isArray(question.options) && question.options.length
-          ? <ul>{question.options.map((option) => <li key={option.value || option.label}>{option.label || option.value}</li>)}</ul>
-          : null}
-      </li>)}
-    </ol> : <p className="openmaic-hint">这份测验还没有题目。</p>;
-  }
+  if (content.type === "quiz") return <QuizRuntimePanel questions={content.questions} sceneId={scene?.id || ""} />;
+  if (content.type === "pbl") return <PblRuntimePanel content={content} sceneId={scene?.id || ""} />;
+  if (content.type === "interactive" && content.widgetType === "simulation") return <SimulationRuntimePanel content={content} sceneId={scene?.id || ""} />;
   if (content.type === "slide") {
     const canvas = content.canvas || {};
     const elements = Array.isArray(canvas.elements) ? canvas.elements : [];
