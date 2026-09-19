@@ -344,8 +344,26 @@ test("模式选择器有 radiogroup 可访问语义", () => {
 test("课程详情页出现智能辅导入口", () => {
   const page = read("src/pages/CourseDetailPage.jsx");
   assert.match(page, /\["mentoring",\s*"智能辅导"\]/, "缺少智能辅导 tab");
-  assert.match(page, /<InteractiveClassroomPanel courseId=\{courseId\} \/>/, "未渲染互动课堂面板");
+  assert.match(
+    page,
+    /<InteractiveClassroomPanel courseId=\{courseId\} initialSessionId=\{deepLinkSession\} \/>/,
+    "未渲染互动课堂面板",
+  );
   assert.match(page, /import InteractiveClassroomPanel/, "未导入面板");
+});
+
+test("历史课堂可以在页面内打开，且深链会复用同一条路径", () => {
+  const panel = read("src/components/interactive/InteractiveClassroomPanel.jsx");
+  // 只回读已有 session，绝不创建新任务
+  assert.match(panel, /const openExistingSession = useCallback\(/);
+  assert.match(panel, /api\.getInteractiveClassroomJob\(courseId, sessionId\)/);
+  assert.doesNotMatch(panel, /generateInteractiveClassroom\(courseId[\s\S]{0,200}openExistingSession/);
+  // 深链只在能力就绪后自动打开一次，且按 course+session 去重
+  assert.match(panel, /initialSessionId/);
+  assert.match(panel, /autoOpened\.current === key/);
+  // 历史列表提供真实入口，不是空按钮
+  assert.match(panel, /onOpenHistoryItem\(item\.session_id \|\| item\.id\)/);
+  assert.match(panel, /在页面内查看/);
 });
 
 // ===== 服务不可用隔离（api 层） =====

@@ -343,6 +343,23 @@ export async function listInteractiveClassrooms(courseId) {
   return dataOf(await client.get(`/courses/${courseId}/interactive-classroom`));
 }
 
+/**
+ * 受管 OpenMAIC 服务的公开状态。
+ * `state` 是唯一判据：disabled / unavailable / degraded / ready。
+ * 只有 ready 时 `capabilities` 才非空。
+ */
+export async function getOpenMAICFusionStatus() {
+  return dataOf(await client.get("/openmaic/fusion/status"));
+}
+
+/**
+ * 跨课程"最近内容"聚合（服务端已按权限过滤并按 updated_at 倒序）。
+ * 取代浏览器对前 N 门课程分别发历史请求。
+ */
+export async function getOpenMAICRecent(limit = 20) {
+  return dataOf(await client.get("/openmaic/fusion/recent", { params: { limit } }));
+}
+
 /** 失败时重试生成。 */
 export async function retryInteractiveClassroom(courseId, sessionId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));

@@ -3,7 +3,11 @@ import { Link } from "react-router-dom";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import { formatDateTime } from "../../utils/date.js";
-import { buildCourseRailItems, filterOpenMAICHomeItems } from "../../features/openmaic/homeModel.js";
+import {
+  buildCourseRailItems,
+  describeFusionState,
+  filterOpenMAICHomeItems,
+} from "../../features/openmaic/homeModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
@@ -20,10 +24,38 @@ function CourseRail({ courses, assignments }) {
   </aside>;
 }
 
-export default function OpenMAICHome({ courses = [], assignments = [], recentClassrooms = [], onQuickAsk, onCreateContent }) {
+/**
+ * 能力入口。每一项都由**服务端真实上报的 capability** 决定是否可点，
+ * 未上报的能力显示为不可用并说明原因，绝不出现"点了没反应"的空入口。
+ */
+function CapabilityList({ fusion }) {
+  const entries = [
+    { key: "folder", icon: "PhFolderSimple", label: "文件夹", enabled: fusion.canBrowseFolders },
+    { key: "import", icon: "PhUploadSimple", label: "导入", enabled: fusion.canImport },
+    { key: "search", icon: "PhMagnifyingGlass", label: "全局搜索", enabled: fusion.canSearch },
+    { key: "workspace", icon: "PhSquaresFour", label: "学习工作台", enabled: fusion.canCreateWorkspace },
+  ];
+  return <div className="openmaic-capability-list" aria-label="内容能力状态">
+    {entries.map((entry) => <span key={entry.key} className={entry.enabled ? "is-ready" : "is-closed"}>
+      <Icon name={entry.icon} size={16} />{entry.label}
+      <small>{entry.enabled ? "可用" : fusion.label}</small>
+    </span>)}
+  </div>;
+}
+
+export default function OpenMAICHome({
+  courses = [],
+  assignments = [],
+  recentItems = [],
+  fusion = null,
+  recentError = "",
+  onQuickAsk,
+  onCreateContent,
+}) {
   const [query, setQuery] = React.useState("");
-  const filteredRecent = filterOpenMAICHomeItems(recentClassrooms, query);
+  const filteredRecent = filterOpenMAICHomeItems(recentItems, query);
   const [selectedCourseId, setSelectedCourseId] = React.useState(courses[0]?.id || "");
+  const status = describeFusionState(fusion);
 
   React.useEffect(() => {
     if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(courses[0]?.id || "");
@@ -50,15 +82,16 @@ export default function OpenMAICHome({ courses = [], assignments = [], recentCla
 
       <Panel className="openmaic-recent-panel">
         <SectionHeading title="最近内容" detail={query ? `${filteredRecent.length} 个匹配结果` : "来自已生成的真实课堂"} />
-        {filteredRecent.length ? <div className="openmaic-recent-grid">{filteredRecent.slice(0, 8).map((item) => <Link className="openmaic-recent-card" key={`${item.courseId}:${item.session_id || item.id}`} to={`/courses/${item.courseId}`}>
-          <span className="openmaic-recent-card__type">{item.mode || item.type || "课堂"}</span><strong>{item.title || item.name || "未命名课堂"}</strong><small>{item.course_name || item.courseName || "课程上下文"}</small><span className="openmaic-recent-card__date">{dateText(item.updated_at || item.updatedAt || item.created_at)}</span>
-        </Link>)}</div> : <div className="openmaic-home__empty openmaic-home__empty--wide"><Icon name="PhClockCounterClockwise" size={28} /><div><strong>{query ? "没有匹配的最近内容" : "还没有最近课堂"}</strong><p>{query ? "尝试换一个关键词，或从课程栏进入课程。" : "生成的课堂会在这里按最近更新时间出现。"}</p></div></div>}
+        {recentError ? <div className="openmaic-home__empty openmaic-home__empty--wide" role="status"><Icon name="PhWarningCircle" size={28} /><div><strong>最近内容暂时取不到</strong><p>{recentError}</p></div></div>
+          : filteredRecent.length ? <div className="openmaic-recent-grid">{filteredRecent.slice(0, 8).map((item) => <Link className="openmaic-recent-card" key={`${item.kind}:${item.id}`} to={item.href}>
+            <span className="openmaic-recent-card__type">{item.title}</span><strong>{item.courseName}</strong><small>{item.scenesCount ? `${item.scenesCount} 个场景` : "互动课堂"}</small><span className="openmaic-recent-card__date">{dateText(item.updatedAt)}</span>
+          </Link>)}</div> : <div className="openmaic-home__empty openmaic-home__empty--wide"><Icon name="PhClockCounterClockwise" size={28} /><div><strong>{query ? "没有匹配的最近内容" : "还没有最近课堂"}</strong><p>{query ? "尝试换一个关键词，或从课程栏进入课程。" : "生成的课堂会在这里按最近更新时间出现。"}</p></div></div>}
       </Panel>
 
       <Panel className="openmaic-capability-panel">
-        <SectionHeading title="内容入口" detail="能力按服务端状态逐项开放" />
-        <div className="openmaic-capability-list" aria-label="内容能力状态"><span><Icon name="PhFolderSimple" size={16} />文件夹 <small>正在接入</small></span><span><Icon name="PhUploadSimple" size={16} />导入 <small>正在接入</small></span><span><Icon name="PhMagnifyingGlass" size={16} />全局搜索 <small>正在接入</small></span></div>
-        <p className="muted-copy">导入能力正在接入。尚未验证的能力不会显示为可点击入口。</p>
+        <SectionHeading title="内容入口" detail={`服务状态：${status.label}`} />
+        <CapabilityList fusion={status} />
+        <p className="muted-copy">{status.detail}</p>
       </Panel>
     </div>
     <CourseRail courses={courses} assignments={assignments} />

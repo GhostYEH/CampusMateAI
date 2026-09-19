@@ -212,6 +212,7 @@ export function InteractiveClassroomView({
   onRefresh = () => {},
   onAskCpm = () => {},
   onLoadComposition = () => {},
+  onOpenHistoryItem = () => {},
   onStopViewing = () => {},
 }) {
   // 可信 Origin：显式注入优先（测试/受限部署，传入即权威，空数组=完全禁止内嵌），
@@ -470,6 +471,12 @@ export function InteractiveClassroomView({
                         待打开
                       </Button>
                     )}
+                    <Button
+                      variant="quiet"
+                      onClick={() => onOpenHistoryItem(item.session_id || item.id)}
+                    >
+                      在页面内查看
+                    </Button>
                   </article>
                 ))}
               </div>
@@ -595,7 +602,7 @@ const EMPTY_BRIEF = {
  * A 的迟到响应就会被误认为有效并覆盖 B 的界面。这里改用 **courseId 绑定的 epoch**：
  * 每个异步结果在写回之前都要确认"我出发时的 epoch 仍然是当前 epoch"。
  */
-export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigins = null }) {
+export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigins = null, initialSessionId = "" }) {
   const navigate = useNavigate();
   const [status, setStatus] = useState({ enabled: false, loading: true, unavailable: false });
   const [items, setItems] = useState([]);
@@ -762,6 +769,45 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
     [courseId, loadComposition, loadOverview, pollScope],
   );
 
+  /**
+   * 在页面内打开一节**已存在**的课堂（历史列表 / 站内深链 `?session=`）。
+   *
+   * 与 startGenerate 的区别：这里绝不创建新任务，只回读服务端已有的 session，
+   * 因此学生点"在页面内查看"或从"最近内容"深链进来都不会产生费用。
+   */
+  const openExistingSession = useCallback(
+    async (sessionId, myEpoch) => {
+      if (!sessionId) return;
+      stopPoll();
+      setError("");
+      setNotice("");
+      try {
+        const job = await api.getInteractiveClassroomJob(courseId, sessionId);
+        if (!isCurrent(myEpoch)) return;
+        const next = job?.session || job;
+        if (!next) {
+          setError("这节课堂不存在，可能已被清理。");
+          return;
+        }
+        setSession(next);
+        if (next.status === "succeeded") {
+          setPolling(false);
+          loadComposition(next, myEpoch);
+        } else if (next.status === "failed") {
+          setPolling(false);
+          setError(interactiveErrorText(next.error || next.message, "课堂生成失败，可重试。"));
+        } else {
+          // 仍在生成：继续订阅同一个任务
+          setPolling(true);
+          schedulePoll(next, myEpoch);
+        }
+      } catch (err) {
+        if (isCurrent(myEpoch)) setError(interactiveErrorText(err, "课堂读取失败"));
+      }
+    },
+    [courseId, loadComposition, pollScope, schedulePoll, stopPoll],
+  );
+
   const startGenerate = async (targetMode = mode, retire = null) => {
     const myEpoch = guard.current;
     stopPoll();
@@ -817,6 +863,18 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
     setPolling(false);
   };
 
+  // 站内深链 `?tab=mentoring&session=<id>`：等能力状态就绪后自动打开一次。
+  // 用 ref 记住已处理过的 key，避免状态变化把它重复打开（也就不会重复请求）。
+  const autoOpened = useRef("");
+  useEffect(() => {
+    if (!initialSessionId) return;
+    if (status.loading || !status.enabled) return;
+    const key = `${courseId}:${initialSessionId}`;
+    if (autoOpened.current === key) return;
+    autoOpened.current = key;
+    void openExistingSession(initialSessionId, guard.current);
+  }, [initialSessionId, courseId, status.loading, status.enabled, openExistingSession, guard]);
+
   const askCpm = () => {
     const label = INTERACTIVE_MODES.find((m) => m.mode === normalizeMode(mode))?.label || mode;
     const params = new URLSearchParams();
@@ -862,6 +920,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
       onRefresh={() => loadOverview(guard.current)}
       onAskCpm={askCpm}
       onLoadComposition={() => loadComposition(session, guard.current)}
+      onOpenHistoryItem={(sessionId) => void openExistingSession(sessionId, guard.current)}
       onStopViewing={() => {
         stopPoll();
         setPolling(false);
