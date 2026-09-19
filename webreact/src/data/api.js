@@ -360,6 +360,10 @@ export async function getOpenMAICRecent(limit = 20) {
   return dataOf(await client.get("/openmaic/fusion/recent", { params: { limit } }));
 }
 
+export async function getOpenMAICProviderStatus() {
+  return dataOf(await client.get("/openmaic/fusion/providers"));
+}
+
 // ===== 学习工作台（workspace / stage） =====
 //
 // 两个头是**协议的一部分**，不是可选优化：
@@ -459,6 +463,34 @@ export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revi
       headers: { "If-Match": String(revision) },
     }),
   );
+}
+
+export async function generateOpenMAICStage(courseId, workspaceId, { mode, prompt, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/generate`,
+    { mode, prompt },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function getOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.get(`/courses/${courseId}/jobs/${jobId}`));
+}
+
+export async function cancelOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/cancel`));
+}
+
+export async function retryOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/retry`));
+}
+
+export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,
+    { board },
+    { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+  ));
 }
 
 // ===== 文件夹与站内搜索 =====

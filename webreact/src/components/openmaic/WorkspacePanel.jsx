@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Panel, SectionHeading } from "../Primitives.jsx";
+import { Button, LinkButton, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
 import { formatDateTime } from "../../utils/date.js";
@@ -355,6 +355,7 @@ export default function WorkspacePanel({
             <option value="">未归档</option>
             {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
           </select> : null}
+          <LinkButton variant="quiet" to={`/courses/${courseId}/workspaces/${item.id}`}>进入工作台</LinkButton>
           <Button variant="quiet" disabled={busy} onClick={() => toggleStages(item)}>
             {openWorkspaceId === item.id ? "收起内容" : "内容"}
           </Button>

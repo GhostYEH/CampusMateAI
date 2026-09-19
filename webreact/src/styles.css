@@ -1992,6 +1992,15 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-home__empty--wide strong, .openmaic-home__empty--wide p { display: block; margin: 0; }
 .openmaic-home__empty--wide p { margin-top: 5px; color: var(--muted); font-size: 12px; }
 .openmaic-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.openmaic-workspace-page { display: grid; gap: 18px; }
+.openmaic-generation-panel { padding: 18px; }
+.openmaic-job-status { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.openmaic-job-status strong { color: var(--ink); }
+.openmaic-workspace-page__grid { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.openmaic-workspace-page__content { min-width: 0; }
+.openmaic-stage-select { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.openmaic-stage-browser__list li.is-selected .openmaic-stage-select, .openmaic-stage-select:hover, .openmaic-stage-select:focus-visible { background: #eef3ff; outline: 0; }
+@media (max-width: 767px) { .openmaic-workspace-page__grid { grid-template-columns: 1fr; } }
 .openmaic-hint--error { color: #b4232b; }
 .openmaic-workspace-list { display: grid; gap: 8px; margin-top: 10px; }
 .openmaic-workspace-item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(184,195,216,.55); border-radius: 12px; background: rgba(252,253,255,.75); }

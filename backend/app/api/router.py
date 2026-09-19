@@ -52,6 +52,8 @@ from .routes import (
     openmaic_fusion,
     openmaic_materials,
     openmaic_workspaces,
+    openmaic_generation,
+    openmaic_provider,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -134,5 +136,7 @@ api_router.include_router(openmaic_editor.router)
 api_router.include_router(openmaic_materials.router)
 # OpenMAIC 档案(单份 stage 的 .maic.zip 导出 / 导入)
 api_router.include_router(openmaic_archive.router)
+api_router.include_router(openmaic_generation.router)
+api_router.include_router(openmaic_provider.router)
 
 __all__ = ["api_router"]

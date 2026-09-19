@@ -68,6 +68,11 @@ MATERIAL_WRITE_SCOPES = ("material:read", "material:write")
 # stage; import writes a new one, so the two get separate grants.
 ARCHIVE_READ_SCOPES = ("archive:read",)
 ARCHIVE_WRITE_SCOPES = ("archive:write",)
+GENERATION_WRITE_SCOPES = ("generation:write", "workspace:write", "job:write")
+JOB_READ_SCOPES = ("job:read",)
+JOB_CANCEL_SCOPES = ("job:cancel",)
+PROVIDER_STATUS_SCOPES = ("service:status",)
+WHITEBOARD_WRITE_SCOPES = ("stage:write",)
 
 
 def _status(
@@ -757,6 +762,70 @@ class OpenMAICFusionClient:
             idempotency_key=idempotency_key,
         )
 
+    # ===== generation / jobs / provider-safe settings =====
+
+    async def generate_stage(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        mode: str,
+        prompt: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/generate",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=GENERATION_WRITE_SCOPES,
+            json_body={"mode": mode, "prompt": prompt},
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_job(self, *, user_id: str, course_id: str, job_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/internal/courses/{course_id}/jobs/{job_id}",
+            user_id=user_id, course_id=course_id, scopes=JOB_READ_SCOPES,
+        )
+
+    async def cancel_job(self, *, user_id: str, course_id: str, job_id: str) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/internal/courses/{course_id}/jobs/{job_id}/cancel",
+            user_id=user_id, course_id=course_id, scopes=JOB_CANCEL_SCOPES,
+        )
+
+    async def retry_job(self, *, user_id: str, course_id: str, job_id: str) -> dict[str, Any]:
+        return await self._request(
+            "POST", f"/internal/courses/{course_id}/jobs/{job_id}/retry",
+            user_id=user_id, course_id=course_id, scopes=("job:write",),
+        )
+
+    async def provider_status(self, *, user_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", "/internal/settings/providers", user_id=user_id,
+            course_id=SERVICE_SCOPE_SENTINEL, scopes=PROVIDER_STATUS_SCOPES,
+        )
+
+    async def add_whiteboard(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        board: dict[str, Any],
+        revision: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/whiteboard",
+            user_id=user_id, course_id=course_id, scopes=WHITEBOARD_WRITE_SCOPES,
+            json_body={"board": board}, idempotency_key=idempotency_key, if_match=revision,
+        )
+
 
 def _safe_json(response: Any) -> Any:
     """Never let a malformed body become an exception the caller cannot classify."""
@@ -783,5 +852,10 @@ __all__ = [
     "MATERIAL_WRITE_SCOPES",
     "ARCHIVE_READ_SCOPES",
     "ARCHIVE_WRITE_SCOPES",
+    "GENERATION_WRITE_SCOPES",
+    "JOB_READ_SCOPES",
+    "JOB_CANCEL_SCOPES",
+    "PROVIDER_STATUS_SCOPES",
+    "WHITEBOARD_WRITE_SCOPES",
     "UNSET",
 ]

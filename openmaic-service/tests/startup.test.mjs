@@ -18,6 +18,8 @@ import { createJobRoutes } from '../src/jobs/routes.ts';
 import { createGenerationRoutes } from '../src/generation/routes.ts';
 import { createWhiteboardRoutes } from '../src/whiteboard/routes.ts';
 import { createProviderRoutes } from '../src/provider/routes.ts';
+import { createTtsRoutes } from '../src/tts/routes.ts';
+import { createDiscussionRoutes } from '../src/discussion/routes.ts';
 import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
 
 const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
@@ -120,6 +122,8 @@ test('comes up on a complete configuration and serves authenticated readiness', 
       ...createGenerationRoutes({ database: mounted }),
       ...createWhiteboardRoutes({ database: mounted }),
       ...createProviderRoutes({ database: mounted }),
+      ...createTtsRoutes({ database: mounted, available: false }),
+      ...createDiscussionRoutes({ database: mounted, available: false }),
     ].flatMap((route) => route.capabilities));
     mounted.close();
     assert.deepEqual(payload.capabilities, declared);

@@ -13,6 +13,8 @@ import { createWhiteboardRoutes } from './whiteboard/routes.ts';
 import { createProviderRoutes } from './provider/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
+import { createTtsRoutes } from './tts/routes.ts';
+import { createDiscussionRoutes } from './discussion/routes.ts';
 
 // Startup is fail-closed. A missing internal secret or database location stops
 // the process instead of degrading into an unauthenticated or amnesiac service.
@@ -48,6 +50,8 @@ const server = createServer({
     ...createGenerationRoutes({ database }),
     ...createWhiteboardRoutes({ database }),
     ...createProviderRoutes({ database }),
+    ...createTtsRoutes({ database, available: false }),
+    ...createDiscussionRoutes({ database, available: false }),
   ],
 });
 
