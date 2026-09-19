@@ -198,6 +198,12 @@ def provision_databases(root: Path) -> tuple[Path, Path]:
 
 
 def main() -> int:
+    # Windows CI/desktop shells may use GBK; the subprocess logs contain Unicode
+    # service diagnostics, so never let report printing hide the real E2E failure.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(errors="replace")
     node = resolve_node()
     python = resolve_python()
     tmp_root = Path(tempfile.mkdtemp(prefix="campusmate-openmaic-e2e-"))

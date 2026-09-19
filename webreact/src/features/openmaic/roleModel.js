@@ -6,7 +6,7 @@
  * preset mode. Auto mode leaves the roster to the OpenMAIC generator.
  */
 export const OPENMAIC_AGENT_ROLES = [
-  { id: "default-1", name: "AI教师", role: "教师", short: "教", color: "#3b82f6", required: true },
+  { id: "default-1", name: "AI教师", role: "教师", short: "教", color: "#3b82f6", voice: "茉莉", required: true },
   { id: "default-2", name: "AI助教", role: "助教", short: "助", color: "#10b981", required: false },
   { id: "default-3", name: "显眼包", role: "学生", short: "显", color: "#f59e0b", required: false },
   { id: "default-4", name: "好奇宝宝", role: "学生", short: "奇", color: "#ec4899", required: false },

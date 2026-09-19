@@ -121,26 +121,23 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask reuses or creates a native workspace before opening OpenMAIC", () => {
-  assert.match(pageSource, /api\.listOpenMAICWorkspaces\(courseId/);
-  assert.match(pageSource, /api\.createOpenMAICWorkspace\(courseId/);
-  assert.match(pageSource, /pickReusableWorkspace/);
-  // 只有服务端**真实上报** workspace 能力时才进入 OpenMAIC 工作台。
+test("quick ask opens a native generation preview before binding a workspace", () => {
+  assert.match(pageSource, /generationPreviewHref\(/);
+  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
   assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
-  assert.match(pageSource, /gotoOpenMAICWorkspace\(courseId, query, workspace\.id, extras\)/);
+  assert.doesNotMatch(pageSource, /resolveQuickAskWorkspace\(courseId/);
   assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
 });
 
 test("quick ask failures stay local and never replace the course content area", () => {
-  const start = pageSource.indexOf("async function openQuickAsk(");
+  const start = pageSource.indexOf("function openQuickAsk(");
   assert.notEqual(start, -1);
   const body = pageSource.slice(start, pageSource.indexOf("\n  }", start));
 
-  assert.match(body, /setQuickAskError\(describeQuickAskFailure\(err\)\)/);
+  assert.match(body, /setQuickAskError\(/);
   // 页级 error 由 AsyncState 消费：写进去就等于用错误卡片替换整个课程内容区。
   assert.doesNotMatch(body, /setError\(/);
-  // 课程切换 / 卸载必须作废在途请求。
-  assert.match(body, /quickAskSeq\.current !== seq/);
+  // 课程切换仍会清掉上一次的局部错误。
   assert.match(pageSource, /onCourseChange=\{handleCourseChange\}/);
   assert.match(pageSource, /quickAskSeq\.current \+= 1/);
 });

@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  generationPreviewHref,
   workspaceHref,
   describeQuickAskFailure,
   pickReusableWorkspace,
@@ -39,6 +40,15 @@ test("the OpenMAIC deep link carries the course, prompt, mode and roles", () => 
   assert.match(href, /prompt=%E4%BB%80%E4%B9%88%E6%98%AF%E8%BF%9B%E7%A8%8B%EF%BC%9F/);
   assert.match(href, /mode=preset/);
   assert.match(href, /roles=default-1%2Cdefault-3%2Cdefault-4/);
+});
+
+test("the first click opens a generation preview with the complete launch context", () => {
+  const href = generationPreviewHref("crs_1", "讲解进程和线程", {
+    mode: "preset",
+    selectedRoleIds: DEFAULT_SELECTED_ROLE_IDS,
+    webSearch: true,
+  });
+  assert.equal(href, "/courses/crs_1/openmaic-preview?prompt=%E8%AE%B2%E8%A7%A3%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B&mode=preset&roles=default-1%2Cdefault-3%2Cdefault-4&web=1");
 });
 
 test("the deep link refuses to invent a workspace", () => {
@@ -169,26 +179,15 @@ test("switching courses invalidates an in-flight quick ask", () => {
   assert.match(body, /setQuickAskError\(null\)/);
 });
 
-test("unmounting invalidates in-flight quick asks", () => {
-  assert.match(pageSource, /aliveRef\.current = false; quickAskSeq\.current \+= 1/);
-  assert.match(pageSource, /!aliveRef\.current\) return;/);
+test("the preview navigation is synchronous and cannot wedge the button", () => {
+  assert.match(pageSource, /navigate\(generationPreviewHref\(/);
+  assert.match(pageSource, /setQuickAskBusy\(false\)/);
 });
 
-test("the alive flag is restored on mount so StrictMode cannot wedge the button", () => {
-  // React 18 StrictMode 在开发环境会跑"挂载 → 卸载 → 再挂载"。若只在 cleanup 里把
-  // alive 置 false、effect 体里不置回 true，第二次挂载后 alive 永远是 false：每次
-  // 快速询问都在守卫处静默 return，请求成功却不跳转、不报错，按钮永久停在禁用态。
-  // 这个缺陷真实浏览器复现过（200 + 201 但 URL 不变、按钮 disabled），单测看不出来。
-  assert.match(pageSource, /aliveRef\.current = true/);
-  // busy 的复位只能按代次判断，不能再挂 alive：否则守卫提前 return 时 busy 会卡住。
-  assert.doesNotMatch(pageSource, /quickAskSeq\.current === seq && aliveRef\.current\) setQuickAskBusy/);
-  assert.match(pageSource, /if \(quickAskSeq\.current === seq\) setQuickAskBusy\(false\);/);
-});
-
-test("the home surface carries no OpenMAIC branding, logo or english tagline", () => {
-  assert.doesNotMatch(homeSource, /OPENMAIC \/ CAMPUSMATE/);
-  assert.doesNotMatch(homeSource, /OpenMAIC<\/|OpenMAIC logo|Open Source Project/i);
-  assert.doesNotMatch(homeSource, /Generative Learning/i);
+test("the home surface carries the OpenMAIC branding and classroom tagline", () => {
+  assert.match(homeSource, /openmaic-brand-lockup/);
+  assert.match(homeSource, /<strong>OpenMAIC<\/strong>/);
+  assert.match(homeSource, /Generative Learning in Multi-Agent Interactive Classroom/);
   assert.doesNotMatch(pageSource, /OpenMAIC \/ Courses/);
 });
 
@@ -196,7 +195,7 @@ test("the focal input workspace is labelled, keyboard reachable and honest about
   // 输入有可读标签，提交是 form 的 submit（Enter 可用）。
   assert.match(homeSource, /<span className="openmaic-ask__label">问题或学习需求<\/span>/);
   assert.match(homeSource, /<form className="openmaic-ask" onSubmit=/);
-  assert.match(homeSource, /<span className="openmaic-ask__label">课程<\/span>/);
+  assert.match(homeSource, /aria-label="选择课程上下文"/);
   // 工具入口是真实开关，不是装饰。
   assert.match(homeSource, /aria-pressed=\{webSearch\}/);
   assert.match(homeSource, /onClick=\{\(\) => attachmentInput\.current\?\.click\(\)\}/);

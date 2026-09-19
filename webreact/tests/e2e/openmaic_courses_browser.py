@@ -6,8 +6,8 @@
 
 覆盖四件事：
 1. 健康链路 —— `GET /api/v1/courses/{id}/workspaces?limit=1` 必须是 200；
-2. 运行中掉线 —— 受管服务停掉后点"快速询问"，只出现**局部中文错误**，课程列表与
-   已输入的问题原样保留（这是原始故障的反事实：旧代码会把整页替换成错误卡片）；
+2. 运行中掉线 —— 受管服务停掉后在生成预览确认，预览只出现**局部中文错误**，不会
+   跳进小助手或伪造工作台；
 3. 恢复后重试 —— 服务回来后点"重试"必须成功，且不需要刷新整站；
 4. 320/768/1024/1440 四尺寸无横向溢出并留截图。
 
@@ -202,6 +202,12 @@ def open_courses(page, report: list[str]) -> str:
         course_id = options[1].get_attribute("value")
         page.locator("select.openmaic-ask__select").select_option(course_id)
     _step(report, f"/courses 加载了 {len(labels)} 门真实课程，当前选择 {course_id}")
+    page.locator(".openmaic-role-picker__trigger").click()
+    expect(page.locator('[role="dialog"][aria-label="课堂角色配置"]')).to_be_visible(timeout=5000)
+    assert page.locator('.openmaic-role-row:has-text("AI教师")').is_disabled(), "AI教师应保持固定角色"
+    page.locator('.openmaic-role-row:has-text("笔记员")').click()
+    page.locator('button[aria-label="关闭课堂角色配置"]').click()
+    _step(report, "角色栏可打开；AI教师固定，学生角色可选，选择结果已写入本地设置")
     return course_id
 
 
@@ -375,6 +381,10 @@ def run_checks(service_control) -> dict:
             page.locator("textarea.openmaic-ask__input").fill(question)
             recorder.responses.clear()
             page.locator('form.openmaic-ask button[type="submit"]').click()
+            page.wait_for_url(f"**/courses/{course_id}/openmaic-preview?**", timeout=10000)
+            expect(page.locator(".openmaic-preview__hero")).to_be_visible(timeout=10000)
+            _step(report, "首次点击进入 OpenMAIC 生成预览，没有直接跳到小助手或工作台")
+            page.locator('button:has-text("生成课堂")').click()
             page.wait_for_url(f"**/courses/{course_id}/workspaces/**", timeout=20000)
             list_status = recorder.await_status(page, f"/courses/{course_id}/workspaces?limit=1")
             assert list_status == 200, f"workspaces?limit=1 返回 {list_status}，期望 200"
@@ -383,6 +393,7 @@ def run_checks(service_control) -> dict:
             current = page.url
             assert "/counselor" not in current, f"课程 OpenMAIC 入口错误跳进小助手：{current}"
             assert "prompt=" in current and "mode=" in current and "roles=" in current, f"深链缺少问题、模式或角色：{current}"
+            assert "default-5" in current, f"角色选择没有进入生成链路：{current}"
             _step(report, f"进入 OpenMAIC 课程工作台，URL 携带 prompt / mode / roles：{current.split('?')[-1][:160]}")
             expect(page.locator(".openmaic-generation-panel")).to_be_visible(timeout=15000)
             _step(report, "工作台显示真实生成面板，没有跳转到小助手")
@@ -400,37 +411,39 @@ def run_checks(service_control) -> dict:
             assert "就绪" in ready_note, f"服务在线时状态提示不诚实：{ready_note}"
             _step(report, f"服务在线时提示：{ready_note.strip()}")
 
-            service_control.stop()
-            _step(report, "已停掉 openmaic-service（4010），页面保持已加载状态")
+            _step(report, "已确认服务在线，先进入生成预览再模拟确认时掉线")
             page.locator("textarea.openmaic-ask__input").fill(question)
-            rail_before = page.locator(".openmaic-course-rail__item").count()
-            recorder.responses.clear()
             page.locator('form.openmaic-ask button[type="submit"]').click()
-            expect(page.locator(".openmaic-ask__error")).to_be_visible(timeout=20000)
+            page.wait_for_url(f"**/courses/{course_id}/openmaic-preview?**", timeout=10000)
+            expect(page.locator("button:has-text('确认并生成课堂')")).to_be_visible(timeout=10000)
+            recorder.responses.clear()
+            service_control.stop()
+            page.locator('button:has-text("确认并生成课堂")').click()
+            expect(page.locator(".openmaic-preview__error")).to_be_visible(timeout=20000)
 
             failed_status = recorder.await_status(page, f"/courses/{course_id}/workspaces?limit=1")
             assert failed_status == 503, f"掉线时应为 503，实际 {failed_status}"
             _step(report, f"GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {failed_status}")
 
-            error_text = page.locator(".openmaic-ask__error").inner_text()
+            error_text = page.locator(".openmaic-preview__error").inner_text()
             assert "Request failed with status code" not in error_text, f"把 Axios 英文原文给了用户：{error_text}"
             assert any(ch in error_text for ch in "请稍后未启用不可用"), f"错误文案不是中文可操作信息：{error_text}"
             _step(report, f"局部中文错误：{error_text.splitlines()[0].strip()}")
 
-            assert page.url.startswith(f"{BASE}/courses"), f"失败后不应离开课程页：{page.url}"
+            assert f"/courses/{course_id}/openmaic-preview" in page.url, f"失败后不应跳到小助手：{page.url}"
             assert page.locator(".state-card.error-state").count() == 0, "整页错误卡片出现了"
-            rail_after = page.locator(".openmaic-course-rail__item").count()
-            assert rail_after == rail_before and rail_after > 0, "课程列表被替换掉了"
-            _step(report, f"课程列表仍在（{rail_after} 门课程），未出现整页错误卡片")
-            assert page.locator("textarea.openmaic-ask__input").input_value() == question, "已输入的问题丢失"
-            _step(report, "已输入的问题与所选课程原样保留")
+            assert page.locator(".openmaic-preview__hero").is_visible(), "预览内容被错误卡片替换了"
+            _step(report, "生成预览仍在，未出现整页错误卡片或小助手跳转")
 
             print("步骤 5：服务故障时其他课程功能仍可用")
             recorder.responses.clear()
-            page.goto(f"{BASE}/courses/{course_id}", wait_until="domcontentloaded")
-            page.wait_for_selector("main", timeout=20000)
+            detail_page = context.new_page()
+            recorder.attach(detail_page)
+            detail_page.goto(f"{BASE}/courses/{course_id}", wait_until="domcontentloaded")
+            detail_page.wait_for_selector("main", timeout=20000)
             detail_status = recorder.await_status(page, f"/api/v1/courses/{course_id}", timeout=4.0)
-            assert page.locator("main").count() > 0, "课程详情页没有渲染"
+            assert detail_page.locator("main").count() > 0, "课程详情页没有渲染"
+            detail_page.close()
             _step(report, f"课程详情 /courses/{course_id} 仍可打开（GET /api/v1/courses/{course_id} → {detail_status}）")
 
             print("步骤 6：恢复服务后重试，无需刷新整站")
@@ -438,23 +451,14 @@ def run_checks(service_control) -> dict:
             # 工作台；随后才停服务，让这一次点击撞上 503。课程 OpenMAIC 入口不能
             # 以小助手作为伪降级路径。
             service_control.start()
-            page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
-            page.wait_for_selector("select.openmaic-ask__select", timeout=20000)
-            page.locator("textarea.openmaic-ask__input").fill(question)
-            service_control.stop()
-            page.locator('form.openmaic-ask button[type="submit"]').click()
-            expect(page.locator(".openmaic-ask__error")).to_be_visible(timeout=20000)
-            _step(report, "服务在线时加载、点击瞬间掉线 → 只出现局部错误，未跳转")
-
-            service_control.start()
-            _step(report, "已恢复 openmaic-service，点击局部错误里的「重试」")
+            _step(report, "已恢复 openmaic-service，点击预览里的「确认并生成课堂」重试")
             recorder.responses.clear()
-            page.locator('.openmaic-ask__error-actions button:has-text("重试")').click()
+            page.locator('button:has-text("生成课堂")').click()
             page.wait_for_url(f"**/courses/{course_id}/workspaces/**", timeout=25000)
             retry_status = recorder.await_status(page, f"/courses/{course_id}/workspaces?limit=1")
             assert retry_status == 200, f"重试后 workspaces 仍为 {retry_status}"
             assert "/counselor" not in page.url
-            _step(report, f"重试成功：GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {retry_status}，进入 OpenMAIC 工作台且未刷新整站")
+            _step(report, f"预览确认重试成功：GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {retry_status}，进入 OpenMAIC 工作台且未刷新整站")
 
             print("步骤 7：四尺寸截图与溢出检查")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")

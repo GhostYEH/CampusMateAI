@@ -1,18 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf, logApiError } from "../data/contracts.js";
+import { itemsOf } from "../data/contracts.js";
 import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
 import { describeFusionState, normalizeRecentItems } from "../features/openmaic/homeModel.js";
 import {
-  describeQuickAskFailure,
-  pickReusableWorkspace,
+  generationPreviewHref,
   quickAskRejection,
   shouldBindWorkspace,
-  workspaceHref,
 } from "../features/openmaic/quickAskModel.js";
 import { formatDateTime } from "../utils/date.js";
 
@@ -89,41 +87,13 @@ export function CoursesParityPage() {
     setQuickAskError(null);
   }
 
-  function gotoOpenMAICWorkspace(courseId, query, workspaceId, extras) {
-    navigate(workspaceHref(courseId, workspaceId, query, {
-      mode: extras?.mode,
-      selectedRoleIds: extras?.selectedRoleIds,
-    }), {
-      // 附件是浏览器里的 File 对象，只能走 SPA 导航状态；不落 URL、不落存储。
-      state: {
-        openmaicWebSearch: Boolean(extras?.webSearch),
-        openmaicAttachment: extras?.attachment || null,
-      },
-    });
-  }
-
-  /** 先复用该课程已有的工作台，没有再创建一个。两步都必须带代次校验。 */
-  async function resolveQuickAskWorkspace(courseId, seq) {
-    const payload = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
-    if (quickAskSeq.current !== seq) return null;
-    const reusable = pickReusableWorkspace(payload);
-    if (reusable) return reusable;
-    const created = await api.createOpenMAICWorkspace(courseId, {
-      name: "快速询问工作台",
-      description: "由课程快速询问自动创建，用于继续追问与恢复学习上下文。",
-      idempotencyKey: api.newIdempotencyKey(),
-    });
-    if (!created?.id) throw new Error("工作台创建结果缺少标识");
-    return { id: created.id, name: created.name || "" };
-  }
-
-  async function openQuickAsk(query, courseId, extras = {}) {
+  function openQuickAsk(query, courseId, extras = {}) {
     const rejection = quickAskRejection({ query, courseId, busy: quickAskBusy });
     if (rejection) {
       setQuickAskError({ message: rejection, retryable: false, fallbackLabel: "" });
       return;
     }
-    const seq = ++quickAskSeq.current;
+    ++quickAskSeq.current;
     setQuickAskError(null);
 
     // OpenMAIC 课程入口必须落到可持久化的工作台；不能用课程辅导页冒充成功。
@@ -138,22 +108,19 @@ export function CoursesParityPage() {
       return;
     }
 
-    setQuickAskBusy(true);
-    try {
-      const workspace = await resolveQuickAskWorkspace(courseId, seq);
-      if (quickAskSeq.current !== seq || !aliveRef.current) return;
-      gotoOpenMAICWorkspace(courseId, query, workspace.id, extras);
-    } catch (err) {
-      if (quickAskSeq.current !== seq || !aliveRef.current) return;
-      logApiError("openmaic-quick-ask", err);
-      // 局部错误：课程列表、课程选择、已输入的问题全部保留，用户可以直接重试，
-      // 也可以选择不绑定工作台继续提问。
-      setQuickAskError(describeQuickAskFailure(err));
-    } finally {
-      // 只按代次判断：卸载后再 setState 在 React 18 是无害的 no-op，但把 alive
-      // 也写进条件会让"守卫提前 return"把 busy 永久卡住（按钮从此不可点）。
-      if (quickAskSeq.current === seq) setQuickAskBusy(false);
-    }
+    // 先进入和参考项目一致的生成预览；只有用户确认后才复用/创建工作台。
+    setQuickAskBusy(false);
+    navigate(generationPreviewHref(courseId, query, {
+      mode: extras.mode,
+      selectedRoleIds: extras.selectedRoleIds,
+      webSearch: extras.webSearch,
+    }), {
+      // File 对象不能写入 URL，保留在本次 SPA 导航状态里，确认生成时继续传给工作台。
+      state: {
+        openmaicWebSearch: Boolean(extras.webSearch),
+        openmaicAttachment: extras.attachment || null,
+      },
+    });
   }
 
   return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接提问，或创建一份可以继续编辑的学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>

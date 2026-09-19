@@ -18,6 +18,10 @@ import {
   normalizeSelectedRoleIds,
   selectedRoles,
 } from "../../features/openmaic/roleModel.js";
+import {
+  loadOpenMAICAgentSettings,
+  saveOpenMAICAgentSettings,
+} from "../../features/openmaic/agentSettingsModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
@@ -65,11 +69,24 @@ function ProviderList({ providerStatus }) {
 
 function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef(null);
   const selected = selectedRoles(selectedRoleIds);
   const selectedNames = selected.filter((role) => !role.required).map((role) => role.name);
+  React.useEffect(() => {
+    if (!open) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
   return <div className="openmaic-role-picker">
     <button
       type="button"
+      ref={triggerRef}
       className="openmaic-role-picker__trigger"
       aria-expanded={open}
       aria-controls="openmaic-role-picker-panel"
@@ -81,8 +98,8 @@ function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
       <span className="openmaic-role-picker__summary">课堂角色配置<small>{mode === "auto" ? "自动生成" : `${selectedNames.length + 1} 位角色`}</small></span>
       <Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={15} />
     </button>
-    {open ? <div id="openmaic-role-picker-panel" className="openmaic-role-picker__panel" role="dialog" aria-label="课堂角色配置">
-      <div className="openmaic-role-picker__head"><strong>课堂角色配置</strong><span>选择参与这次学习内容的角色</span></div>
+    {open ? <div id="openmaic-role-picker-panel" className="openmaic-role-picker__panel" role="dialog" aria-modal="false" aria-label="课堂角色配置">
+      <div className="openmaic-role-picker__head"><div><strong>课堂角色配置</strong><span>选择参与这次学习内容的角色</span></div><button type="button" className="openmaic-role-picker__close" aria-label="关闭课堂角色配置" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}><Icon name="PhX" size={14} /></button></div>
       <div className="openmaic-role-picker__modes" role="tablist" aria-label="角色模式">
         <button type="button" role="tab" aria-selected={mode === "preset"} className={mode === "preset" ? "is-active" : ""} onClick={() => onModeChange("preset")}>预设模式</button>
         <button type="button" role="tab" aria-selected={mode === "auto"} className={mode === "auto" ? "is-active" : ""} onClick={() => onModeChange("auto")}><Icon name="PhSparkle" size={13} />自动生成</button>
@@ -90,11 +107,11 @@ function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
       {mode === "preset"
         ? <div className="openmaic-role-picker__list">{OPENMAIC_AGENT_ROLES.map((role) => {
           const checked = selectedRoleIds.includes(role.id) || role.required;
-          return <button type="button" key={role.id} className={`openmaic-role-row${checked ? " is-selected" : ""}`} onClick={() => onToggle(role.id)} disabled={role.required}>
+          return <button type="button" key={role.id} className={`openmaic-role-row${checked ? " is-selected" : ""}`} onClick={() => onToggle(role.id)} aria-pressed={checked} disabled={role.required}>
             <span className={`openmaic-role-row__check${checked ? " is-checked" : ""}`}>{checked ? "✓" : ""}</span>
             <span className="openmaic-role-row__avatar" style={{ background: role.color }}>{role.short}</span>
             <span className="openmaic-role-row__name">{role.name}<small>{role.role}</small></span>
-            {role.required ? <small className="openmaic-role-row__required">固定</small> : null}
+            {role.required ? <small className="openmaic-role-row__required">固定{role.voice ? ` · ${role.voice}音色` : ""}</small> : null}
           </button>;
         })}</div>
         : <div className="openmaic-role-picker__auto"><span className="openmaic-role-picker__auto-icon"><Icon name="PhShuffle" size={18} /></span><p>由 OpenMAIC 根据课程主题自动安排课堂角色。</p></div>}
@@ -136,9 +153,13 @@ function AskWorkspace({
   const selectedCourseName = selectedCourse?.name || selectedCourse?.title || "";
 
   return <Panel className="openmaic-command-panel">
+    <div className="openmaic-brand-lockup" aria-label="OpenMAIC 生成式多智能体互动课堂">
+      <span className="openmaic-brand-lockup__mark" aria-hidden="true"><Icon name="PhCube" size={26} weight="duotone" /></span>
+      <span><strong>OpenMAIC</strong><small>Generative Learning in Multi-Agent Interactive Classroom</small></span>
+    </div>
     <div className="openmaic-command-panel__head">
-      <h2>从课程开始提问</h2>
-      <p>选择一门课程，写下你的问题；需要可继续编辑的内容时，再创建工作台。</p>
+      <h2>你好，同学</h2>
+      <p>输入你想学习的内容，OpenMAIC 会和你一起生成一堂可讲解、可继续编辑的互动课堂。</p>
     </div>
 
     <form className="openmaic-ask" onSubmit={(event) => { event.preventDefault(); if (!rejection) onSubmit(); }}>
@@ -149,7 +170,7 @@ function AskWorkspace({
             className="openmaic-ask__input"
             value={query}
             rows={3}
-            placeholder="例如：用 10 分钟讲清进程和线程的区别"
+            placeholder="例如：用 10 分钟讲清进程和线程的区别…"
             onChange={(event) => onQuery(event.target.value)}
           />
         </label>
@@ -160,6 +181,7 @@ function AskWorkspace({
             className="reference-file-input"
             type="file"
             accept={ATTACHMENT_ACCEPT}
+            aria-label="选择学习资料附件"
             onChange={(event) => onAttachment(event.target.files?.[0] || null)}
           />
           {attachment
@@ -171,7 +193,7 @@ function AskWorkspace({
                 onClick={() => { onAttachment(null); if (attachmentInput.current) attachmentInput.current.value = ""; }}
               ><Icon name="PhX" size={13} /></button>
             </span>
-            : <button type="button" className="openmaic-ask__tool" onClick={() => attachmentInput.current?.click()}>
+            : <button type="button" className="openmaic-ask__tool" aria-label="添加学习资料附件" onClick={() => attachmentInput.current?.click()}>
               <Icon name="PhPaperclip" size={18} />附件
             </button>}
           <button
@@ -191,12 +213,20 @@ function AskWorkspace({
       </div>
 
       <aside className="openmaic-ask__side">
-        <label className="openmaic-ask__field">
-          <span className="openmaic-ask__label">课程</span>
+        <AgentRolePicker
+          mode={agentMode}
+          onModeChange={onModeChange}
+          selectedRoleIds={selectedRoleIds}
+          onToggle={onToggleRole}
+        />
+        <label className="openmaic-ask__course-pill">
+          <Icon name="PhBookOpenText" size={16} />
+          <span className="sr-only">课程</span>
           <select
             className="openmaic-ask__select"
             value={selectedCourseId}
             disabled={!courses.length}
+            aria-label="选择课程上下文"
             onChange={(event) => onSelectCourse(event.target.value)}
           >
             <option value="">选择课程</option>
@@ -204,14 +234,8 @@ function AskWorkspace({
           </select>
         </label>
         <p className="openmaic-ask__context">
-          {selectedCourseName ? `将带着「${selectedCourseName}」的课程上下文提问。` : "选择一门课程后即可提问。"}
+          {selectedCourseName ? `将带着「${selectedCourseName}」的课程上下文提问。` : "选择课程后即可生成课堂。"}
         </p>
-        <AgentRolePicker
-          mode={agentMode}
-          onModeChange={onModeChange}
-          selectedRoleIds={selectedRoleIds}
-          onToggle={onToggleRole}
-        />
       </aside>
     </form>
 
@@ -332,8 +356,9 @@ export default function OpenMAICHome({
   const [webSearch, setWebSearch] = React.useState(false);
   const [attachment, setAttachment] = React.useState(null);
   const [selectedCourseId, setSelectedCourseId] = React.useState(courses[0]?.id || "");
-  const [agentMode, setAgentMode] = React.useState("preset");
-  const [selectedRoleIds, setSelectedRoleIds] = React.useState(DEFAULT_SELECTED_ROLE_IDS);
+  const initialAgentSettings = React.useMemo(() => loadOpenMAICAgentSettings(), []);
+  const [agentMode, setAgentMode] = React.useState(initialAgentSettings.mode);
+  const [selectedRoleIds, setSelectedRoleIds] = React.useState(initialAgentSettings.selectedRoleIds || DEFAULT_SELECTED_ROLE_IDS);
   const [secondaryTab, setSecondaryTab] = React.useState("");
   const filteredRecent = filterOpenMAICHomeItems(recentItems, query);
   const status = describeFusionState(fusion);
@@ -341,6 +366,10 @@ export default function OpenMAICHome({
   React.useEffect(() => {
     if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(courses[0]?.id || "");
   }, [courses, selectedCourseId]);
+
+  React.useEffect(() => {
+    saveOpenMAICAgentSettings({ mode: agentMode, selectedRoleIds });
+  }, [agentMode, selectedRoleIds]);
 
   /** 课程切换必须通知外层：在途的快速询问要据此作废。 */
   function selectCourse(courseId) {

@@ -21,6 +21,22 @@ export function workspaceHref(courseId, workspaceId, prompt, { mode = "preset", 
 }
 
 /**
+ * The reference OpenMAIC flow always shows a generation preview before any
+ * durable workspace is touched. Keep the complete launch context in the URL
+ * so refresh/back navigation cannot silently lose the user's choices.
+ */
+export function generationPreviewHref(courseId, prompt, { mode = "preset", selectedRoleIds = [], webSearch = false } = {}) {
+  if (!courseId) throw new Error("打开 OpenMAIC 预览需要真实的课程");
+  const parts = [
+    `prompt=${encodeURIComponent(prompt || "")}`,
+    `mode=${encodeURIComponent(mode)}`,
+    `roles=${encodeURIComponent(selectedRoleIds.join(","))}`,
+  ];
+  if (webSearch) parts.push("web=1");
+  return `/courses/${encodeURIComponent(courseId)}/openmaic-preview?${parts.join("&")}`;
+}
+
+/**
  * 快速询问要不要先绑定工作台。
  *
  * 只有服务端**真实上报**了 `workspace` 能力（即 `state === "ready"`）时才尝试。

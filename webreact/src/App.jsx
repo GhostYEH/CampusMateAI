@@ -31,6 +31,7 @@ const CourseResearchPage = lazy(() => import("./pages/CourseResearchPage.jsx"));
 const NoticeWorkflowPage = lazy(() => import("./pages/NoticeWorkflowPage.jsx"));
 const AgentRuntimeOpsPage = lazy(() => import("./pages/AgentRuntimeOpsPage.jsx"));
 const OpenMAICWorkspacePage = lazy(() => import("./pages/OpenMAICWorkspacePage.jsx"));
+const OpenMAICGenerationPreviewPage = lazy(() => import("./pages/OpenMAICGenerationPreviewPage.jsx"));
 const pages = {
   HomePage, CoursesPage, CourseDetailPage,
   TasksPage, TaskDetailPage, StudyPage, IslandPage,
@@ -41,7 +42,7 @@ const pages = {
   ExamEditPage: lazyToolPage("ExamEditPage"),
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
-  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, OpenMAICWorkspacePage,
+  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, OpenMAICWorkspacePage, OpenMAICGenerationPreviewPage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
 
@@ -69,6 +70,7 @@ export default function App() {
       <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/home" element={<Page name="HomePage" />} />
       <Route path="/courses" element={<Page name="CoursesPage" />} />
+      <Route path="/courses/:courseId/openmaic-preview" element={<Page name="OpenMAICGenerationPreviewPage" />} />
       <Route path="/courses/:courseId/workspaces/:workspaceId" element={<Page name="OpenMAICWorkspacePage" />} />
       <Route path="/courses/:courseId" element={<Page name="CourseDetailPage" />} />
       <Route path="/tasks" element={<Page name="TasksPage" />} />
