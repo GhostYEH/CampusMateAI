@@ -6,7 +6,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from ...core.config import Settings, get_settings
 from ...models.multi_role import UserRow
 from ...schemas.openmaic_fusion import (
     FusionRecentItem,
@@ -37,16 +36,22 @@ def disabled_fusion_status() -> FusionStatus:
     )
 
 
-def _client(settings: Settings = Depends(get_settings)) -> OpenMAICFusionClient:
+def _container() -> ServiceContainer:
+    return get_container()
+
+
+def _client(container: ServiceContainer = Depends(_container)) -> OpenMAICFusionClient:
+    """构造内部客户端。
+
+    配置取自容器而不是应用级单例：路由的其它依赖都走容器，混用两套配置源会让
+    测试里的覆盖静默失效（真实症状是"开关明明是开的却报未启用"）。
+    """
+    settings = container.settings
     return OpenMAICFusionClient(
         base_url=settings.openmaic_service_url,
         secret=settings.openmaic_internal_secret,
         timeout_seconds=settings.openmaic_service_timeout_seconds,
     )
-
-
-def _container() -> ServiceContainer:
-    return get_container()
 
 
 def _service(container: ServiceContainer = Depends(_container)) -> OpenMAICClassroomService:
@@ -56,10 +61,9 @@ def _service(container: ServiceContainer = Depends(_container)) -> OpenMAICClass
 @router.get("/status", response_model=FusionStatus)
 async def fusion_status(
     user: UserRow = Depends(current_user),
-    settings: Settings = Depends(get_settings),
     client: OpenMAICFusionClient = Depends(_client),
 ) -> FusionStatus:
-    if not settings.openmaic_fusion_enabled:
+    if not container.settings.openmaic_fusion_enabled:
         return disabled_fusion_status()
     return await client.status(user_id=str(user.id))
 

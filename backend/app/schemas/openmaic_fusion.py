@@ -67,9 +67,88 @@ class FusionRecentOut(BaseModel):
     has_more: bool = False
 
 
+# ===== workspace / stage =====
+
+
+class WorkspaceOut(BaseModel):
+    """一个学习工作台。
+
+    `revision` 是并发控制的唯一凭据：客户端读到的值必须原样回传，否则写入被拒。
+    `course_id` 由服务端回填，客户端**不能**在请求体里指定归属。
+    """
+
+    id: str
+    course_id: str
+    name: str
+    description: str = ""
+    revision: int
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class WorkspaceListOut(BaseModel):
+    items: List[WorkspaceOut] = Field(default_factory=list)
+    # 不透明游标；只在归属过滤内收窄，客户端不需要理解其内容。
+    next_cursor: Optional[str] = None
+
+
+class StageSummaryOut(BaseModel):
+    """列表里的 stage。**不含 document**：列表是导航面，打开时才取全文。"""
+
+    id: str
+    workspace_id: str
+    course_id: str
+    title: str
+    revision: int
+    dsl_version: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class StageOut(StageSummaryOut):
+    """单个 stage，带完整 DSL 文档。"""
+
+    document: dict = Field(default_factory=dict)
+
+
+class StageListOut(BaseModel):
+    items: List[StageSummaryOut] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
+
+
+class WorkspaceCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    description: str = Field("", max_length=4000)
+
+
+class WorkspaceUpdateIn(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    description: Optional[str] = Field(None, max_length=4000)
+
+
+class StageCreateIn(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    # 省略表示"一个只有标题的空 stage"；提供时必须能通过 DSL 写入路径。
+    document: Optional[dict] = None
+
+
+class StageReplaceIn(BaseModel):
+    document: dict
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+
+
 __all__ = [
     "FusionState",
     "FusionStatus",
     "FusionRecentItem",
     "FusionRecentOut",
+    "WorkspaceOut",
+    "WorkspaceListOut",
+    "StageSummaryOut",
+    "StageOut",
+    "StageListOut",
+    "WorkspaceCreateIn",
+    "WorkspaceUpdateIn",
+    "StageCreateIn",
+    "StageReplaceIn",
 ]
