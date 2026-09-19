@@ -1,7 +1,9 @@
 import type { Capability } from '../capabilities.ts';
+import type { ProviderConfig } from '../config.ts';
 import type { ServiceDatabase } from '../db/database.ts';
 import { IdempotencyStore } from '../db/idempotencyStore.ts';
 import { prepareStage } from '../dsl/validate.ts';
+import type { JobRow } from '../jobs/repository.ts';
 import type { RouteDefinition, RouteRequest, RouteResponse } from '../server.ts';
 import { JobRepository } from '../jobs/repository.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
@@ -27,7 +29,11 @@ function respond(work: () => RouteResponse): RouteResponse {
   }
 }
 
-export function createGenerationRoutes(options: { database: ServiceDatabase; now?: () => string }): RouteDefinition[] {
+function jobBody(job: JobRow): Record<string, unknown> {
+  return { id: job.id, status: job.status, progress: job.progress, artifact_id: job.artifact_id, mode: job.mode, error_code: job.error_code };
+}
+
+export function createGenerationRoutes(options: { database: ServiceDatabase; provider?: ProviderConfig; now?: () => string }): RouteDefinition[] {
   const workspaceRepository = new WorkspaceRepository(options.database);
   const jobs = new JobRepository(options.database);
   const idempotency = new IdempotencyStore(options.database);
@@ -53,9 +59,30 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; now
       const workspaceId = request.params.workspaceId ?? '';
       const requestHash = hashRequest(body);
       const replay = idempotency.lookup(userId, key, requestHash);
-      if (replay) return replay;
+      if (replay) {
+        // A provider job keeps moving after the first response was recorded;
+        // the replay must reflect the live state, not the moment of enqueue.
+        const jobId = typeof replay.body.job_id === 'string' ? replay.body.job_id : null;
+        if (jobId) {
+          try {
+            replay.body = { ...replay.body, job: jobBody(jobs.get({ userId, courseId, jobId })) };
+          } catch { /* the job is gone; hand back the recorded response as-is */ }
+        }
+        return replay;
+      }
 
       workspaceRepository.getWorkspace({ userId, courseId, workspaceId });
+      if (options.provider) {
+        // Real generation is asynchronous: enqueue and let the worker run the
+        // upstream call, then clients poll the job.
+        const job = jobs.create({ userId, courseId, kind: 'generation', mode, request: { ...body, workspace_id: workspaceId }, now: now() });
+        const response: RouteResponse = {
+          status: 201,
+          body: { job_id: job.id, job: jobBody(job), source: 'provider', mode },
+        };
+        idempotency.record(userId, key, { courseId, method: request.method, path: request.url.pathname }, requestHash, response);
+        return response;
+      }
       const job = jobs.create({ userId, courseId, kind: 'generation', mode, request: body, now: now() });
       jobs.markRunning({ userId, courseId, jobId: job.id, now: now() });
       const prepared = prepareStage(buildGeneratedStage(mode, prompt));
@@ -73,7 +100,7 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; now
         body: {
           stage_id: stage.id,
           stage: stageResponse(stage, { includeDocument: true }),
-          job: { id: completed.id, status: completed.status, progress: completed.progress, artifact_id: completed.artifact_id, mode: completed.mode },
+          job: jobBody(completed),
           source: 'local-template',
         },
       };

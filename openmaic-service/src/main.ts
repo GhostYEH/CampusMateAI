@@ -1,20 +1,27 @@
 import { ServiceAuthenticator } from './auth/authenticator.ts';
 import { createArchiveRoutes } from './archive/routes.ts';
-import { loadConfig } from './config.ts';
+import { loadConfig, loadDotEnv } from './config.ts';
 import { ServiceDatabase } from './db/database.ts';
 import { SqliteReplayStore } from './db/replayStore.ts';
 import { createDiscoveryRoutes } from './discovery/routes.ts';
+import { createDiscussionRoutes } from './discussion/routes.ts';
 import { createEditorRoutes } from './editor/routes.ts';
 import { createMaterialRoutes } from './material/routes.ts';
 import { createPlayerRoutes } from './player/routes.ts';
 import { createJobRoutes } from './jobs/routes.ts';
+import { JobRepository } from './jobs/repository.ts';
 import { createGenerationRoutes } from './generation/routes.ts';
+import { createProviderJobWorker } from './provider/worker.ts';
 import { createWhiteboardRoutes } from './whiteboard/routes.ts';
 import { createProviderRoutes } from './provider/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
+import { WorkspaceRepository } from './workspace/repository.ts';
 import { createTtsRoutes } from './tts/routes.ts';
-import { createDiscussionRoutes } from './discussion/routes.ts';
+
+// Provider credentials may live in a local .env file next to the service;
+// real environment variables still win.
+loadDotEnv();
 
 // Startup is fail-closed. A missing internal secret or database location stops
 // the process instead of degrading into an unauthenticated or amnesiac service.
@@ -23,6 +30,15 @@ const config = loadConfig();
 const database = new ServiceDatabase(config.databasePath);
 const replayStore = new SqliteReplayStore(database);
 const authenticator = new ServiceAuthenticator({ secret: config.internalSecret, replayStore });
+const jobs = new JobRepository(database);
+const workspaces = new WorkspaceRepository(database);
+const worker = createProviderJobWorker({
+  database,
+  jobs,
+  workspaces,
+  provider: config.provider,
+  tts: config.tts,
+});
 
 function databaseIsReady(): boolean {
   try {
@@ -47,11 +63,19 @@ const server = createServer({
     ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),
     ...createJobRoutes({ database }),
-    ...createGenerationRoutes({ database }),
+    ...createGenerationRoutes({ database, provider: config.provider }),
     ...createWhiteboardRoutes({ database }),
-    ...createProviderRoutes({ database }),
-    ...createTtsRoutes({ database, available: false }),
-    ...createDiscussionRoutes({ database, available: false }),
+    ...createProviderRoutes({ database, providers: {
+      llm: Boolean(config.provider),
+      webSearch: false,
+      image: false,
+      video: false,
+      tts: Boolean(config.tts),
+      render: false,
+      external3d: Boolean(config.externalCdnUrl),
+    } }),
+    ...createTtsRoutes({ database, tts: config.tts }),
+    ...createDiscussionRoutes({ database, provider: config.provider }),
   ],
 });
 
@@ -60,16 +84,21 @@ server.on('error', (error) => {
   process.exitCode = 1;
 });
 
-function shutdown() {
+let stopping = false;
+async function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  await worker.stop();
   server.close(() => {
     database.close();
     process.exit(0);
   });
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => { void shutdown(); });
+process.on('SIGTERM', () => { void shutdown(); });
 
 server.listen(config.port, config.host, () => {
+  worker.start();
   process.stdout.write(`OpenMAIC internal service listening on ${config.host}:${config.port}\n`);
 });

@@ -100,7 +100,7 @@ export function createJobRoutes(options: { database: ServiceDatabase; now?: () =
       handler: (request) => respond(() => {
         const identity = actor(request);
         const artifact = repository.getArtifact({ ...identity, artifactId: request.params.artifactId ?? '' });
-        return { status: 200, body: { id: artifact.id, job_id: artifact.job_id, filename: artifact.filename, media_type: artifact.media_type, byte_size: artifact.byte_size, sha256: artifact.sha256, content_base64: artifact.payload.toString('base64') } };
+        return { status: 200, body: { id: artifact.id, job_id: artifact.job_id, filename: artifact.filename, media_type: artifact.media_type, byte_size: artifact.byte_size, sha256: artifact.sha256, content_base64: Buffer.from(artifact.payload).toString('base64') } };
       }),
     },
   ];

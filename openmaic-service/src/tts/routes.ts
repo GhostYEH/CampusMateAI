@@ -1,6 +1,11 @@
 import type { Capability } from '../capabilities.ts';
+import type { TtsConfig } from '../config.ts';
 import type { ServiceDatabase } from '../db/database.ts';
+import { IdempotencyStore } from '../db/idempotencyStore.ts';
 import type { RouteDefinition, RouteRequest, RouteResponse } from '../server.ts';
+import { JobRepository } from '../jobs/repository.ts';
+import { hashRequest } from '../workspace/repository.ts';
+import { IDEMPOTENCY_HEADER } from '../workspace/routes.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
 
 export const TTS_SCOPE = 'tts:write';
@@ -20,15 +25,62 @@ function requiredText(value: unknown): string {
   return value.trim();
 }
 
-export function createTtsRoutes(options: { database: ServiceDatabase; available?: boolean }): RouteDefinition[] {
-  const available = options.available ?? false;
+function optionalText(value: unknown, name: string, max: number): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new WorkspaceError('invalid_request', `${name} must be a string`);
+  const text = value.trim();
+  if (!text) return undefined;
+  if (text.length > max) throw new WorkspaceError('invalid_request', `${name} is too long`);
+  return text;
+}
+
+function optionalVoice(value: unknown): string | undefined {
+  const voice = optionalText(value, 'voice', 80);
+  // eslint-disable-next-line no-control-regex
+  if (voice && /[\u0000-\u001f]/.test(voice)) throw new WorkspaceError('invalid_request', 'voice must not contain control characters');
+  return voice;
+}
+
+export function createTtsRoutes(options: { database: ServiceDatabase; tts?: TtsConfig; available?: boolean; now?: () => string }): RouteDefinition[] {
+  // Explicit `available: false` keeps the truthful 503 for deployments that
+  // want the route mounted without a provider; otherwise configuration wins.
+  const available = options.available ?? Boolean(options.tts);
+  const jobs = new JobRepository(options.database);
+  const idempotency = new IdempotencyStore(options.database);
+  const now = options.now ?? (() => new Date().toISOString());
+
   return [{
-    method: 'POST', pattern: '/internal/courses/:courseId/tts', scopes: [TTS_SCOPE], courseScoped: true, capabilities: [TTS_CAPABILITY],
+    method: 'POST', pattern: '/internal/courses/:courseId/tts', scopes: [TTS_SCOPE], courseScoped: true, capabilities: available ? [TTS_CAPABILITY] : [],
     handler: (request): RouteResponse => {
       try {
-        requiredText(parseBody(request).text);
-        if (!available) return { status: 503, body: { error: 'provider_unavailable', message: 'tts provider is unavailable' } };
-        return { status: 503, body: { error: 'provider_unavailable', message: 'tts provider is unavailable' } };
+        const body = parseBody(request);
+        const text = requiredText(body.text);
+        const instruction = optionalText(body.instruction, 'instruction', 2000);
+        const voice = optionalVoice(body.voice);
+        if (!available || !options.tts) {
+          return { status: 503, body: { error: 'provider_unavailable', message: 'tts provider is unavailable' } };
+        }
+        const key = request.headers[IDEMPOTENCY_HEADER]?.trim();
+        if (!key) throw new WorkspaceError('invalid_request', 'Idempotency-Key is required for this request');
+        const userId = request.claims.sub;
+        const courseId = request.params.courseId ?? '';
+        const requestHash = hashRequest(body);
+        const replay = idempotency.lookup(userId, key, requestHash);
+        if (replay) return replay;
+        const job = jobs.create({
+          userId, courseId, kind: 'tts', mode: options.tts.model,
+          request: { text, instruction, voice: voice ?? options.tts.voice }, now: now(),
+        });
+        const response: RouteResponse = {
+          status: 202,
+          body: {
+            job_id: job.id,
+            job: { id: job.id, status: job.status, progress: job.progress, artifact_id: job.artifact_id, mode: job.mode, error_code: job.error_code },
+            voice: voice ?? options.tts.voice,
+          },
+        };
+        idempotency.record(userId, key, { courseId, method: request.method, path: request.url.pathname }, requestHash, response);
+        return response;
       } catch (error) {
         if (error instanceof WorkspaceError) return { status: error.status, body: { error: error.code, message: error.message } };
         throw error;
