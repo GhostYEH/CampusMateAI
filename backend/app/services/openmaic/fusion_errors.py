@@ -110,4 +110,10 @@ def raise_for_service_error(status_code: int, body: Optional[Any]) -> None:
         raise FusionDocumentRejected(details=details or None)
     if status_code == 400:
         raise FusionInvalidRequest(message or None)
-    raise FusionUnavailable()
+    if status_code == 503:
+        # 服务在线，但它自己依赖的东西没就绪。这与"连不上"不是一回事：重试可能
+        # 有用，而且不需要管理员改配置。`details.reason` 把两者分开，浏览器才能
+        # 说出正确的那句话。
+        reason = "provider_unavailable" if error_code == "provider_unavailable" else "dependency_unavailable"
+        raise FusionUnavailable(details={"reason": reason})
+    raise FusionUnavailable(details={"reason": "unexpected_response"})

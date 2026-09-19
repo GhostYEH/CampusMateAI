@@ -71,7 +71,13 @@ def _require_fusion_enabled(settings: Settings) -> None:
     if not settings.openmaic_fusion_enabled:
         # An empty list would read as "you have no workspaces" — a different and
         # wrong answer when the runtime is simply switched off.
-        raise FusionUnavailable("受管 OpenMAIC 服务未启用")
+        #
+        # `details.reason` is the stable half of the answer: the status route
+        # already distinguishes "never enabled" from "cannot reach it", and a
+        # 503 body that carries only a sentence forces the client to guess which
+        # of the two it got. The reason code travels so the browser can say
+        # "this deployment did not enable it" instead of "try again later".
+        raise FusionUnavailable("受管 OpenMAIC 服务未启用", details={"reason": "fusion_disabled"})
 
 
 def _require_idempotency_key(value: Optional[str]) -> str:

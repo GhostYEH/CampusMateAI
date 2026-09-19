@@ -1,12 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, logApiError } from "../data/contracts.js";
 import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
-import { normalizeRecentItems } from "../features/openmaic/homeModel.js";
+import { describeFusionState, normalizeRecentItems } from "../features/openmaic/homeModel.js";
+import {
+  counselorHref,
+  describeQuickAskFailure,
+  pickReusableWorkspace,
+  quickAskRejection,
+  shouldBindWorkspace,
+} from "../features/openmaic/quickAskModel.js";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
@@ -25,6 +32,24 @@ export function CoursesParityPage() {
   const [providerStatus, setProviderStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // 快速询问的失败**只**影响输入区。它绝不能写进上面这个页级 error：那个 error
+  // 由 AsyncState 消费，一旦被写上，整块课程内容都会被一张错误卡片替换掉——
+  // 这正是"快速询问 503 之后连课程列表都没了"的成因。
+  const [quickAskError, setQuickAskError] = useState(null);
+  const [quickAskBusy, setQuickAskBusy] = useState(false);
+  // 代次：课程切换与组件卸载都会 +1。迟到的响应据此作废，绝不把旧课程的
+  // 工作台写到新课程页面上。
+  const quickAskSeq = useRef(0);
+  const aliveRef = useRef(true);
+
+  // 注意 effect 体里必须把 alive 重新置回 true。React 18 的 StrictMode 在开发环境
+  // 会跑一遍"挂载 → 卸载 → 再挂载"：只在 cleanup 里置 false，第二次挂载就再也回不到
+  // true，结果是每次快速询问都在守卫处静默 return —— 请求成功（200/201），但既不跳转
+  // 也不报错，按钮永远停在"正在准备…"。这个缺陷单测看不到，只有真实浏览器能暴露。
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; quickAskSeq.current += 1; };
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -57,28 +82,97 @@ export function CoursesParityPage() {
 
   useEffect(() => { void load(); }, []);
 
-  async function openQuickAsk(query, courseId) {
-    setError("");
+  /** 课程切换：作废在途的快速询问，并清掉上一次的局部错误。 */
+  function handleCourseChange() {
+    quickAskSeq.current += 1;
+    setQuickAskBusy(false);
+    setQuickAskError(null);
+  }
+
+  function gotoCounselor(courseId, query, workspaceId, extras) {
+    navigate(counselorHref(courseId, query, workspaceId), {
+      // 附件是浏览器里的 File 对象，只能走 SPA 导航状态；不落 URL、不落存储。
+      state: {
+        openmaicWebSearch: Boolean(extras?.webSearch),
+        openmaicAttachment: extras?.attachment || null,
+      },
+    });
+  }
+
+  /** 先复用该课程已有的工作台，没有再创建一个。两步都必须带代次校验。 */
+  async function resolveQuickAskWorkspace(courseId, seq) {
+    const payload = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
+    if (quickAskSeq.current !== seq) return null;
+    const reusable = pickReusableWorkspace(payload);
+    if (reusable) return reusable;
+    const created = await api.createOpenMAICWorkspace(courseId, {
+      name: "快速询问工作台",
+      description: "由课程快速询问自动创建，用于继续追问与恢复学习上下文。",
+      idempotencyKey: api.newIdempotencyKey(),
+    });
+    if (!created?.id) throw new Error("工作台创建结果缺少标识");
+    return { id: created.id, name: created.name || "" };
+  }
+
+  async function openQuickAsk(query, courseId, extras = {}) {
+    const rejection = quickAskRejection({ query, courseId, busy: quickAskBusy });
+    if (rejection) {
+      setQuickAskError({ message: rejection, retryable: false, fallbackLabel: "" });
+      return;
+    }
+    const seq = ++quickAskSeq.current;
+    setQuickAskError(null);
+
+    // 服务端没上报 workspace 能力（disabled / unavailable / degraded）时直接进入
+    // 课程辅导：课程辅导本来就能独立运行，先发一次必然失败的 GET /workspaces
+    // 只会把它挡住，并且把"没启用"伪装成用户的错误。
+    if (!shouldBindWorkspace(describeFusionState(fusion))) {
+      gotoCounselor(courseId, query, null, extras);
+      return;
+    }
+
+    setQuickAskBusy(true);
     try {
-      const payload = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
-      let workspace = list(payload)[0];
-      if (!workspace) {
-        workspace = await api.createOpenMAICWorkspace(courseId, {
-          name: "快速询问工作台",
-          description: "由课程快速询问自动创建，用于继续追问与恢复学习上下文。",
-          idempotencyKey: api.newIdempotencyKey(),
-        });
-      }
-      if (!workspace?.id) throw new Error("工作台创建结果缺少标识");
-      navigate(`/counselor?course=${encodeURIComponent(courseId)}&workspace=${encodeURIComponent(workspace.id)}&prompt=${encodeURIComponent(query)}`);
+      const workspace = await resolveQuickAskWorkspace(courseId, seq);
+      if (quickAskSeq.current !== seq || !aliveRef.current) return;
+      gotoCounselor(courseId, query, workspace ? workspace.id : null, extras);
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "无法创建课程工作台，请稍后重试。");
+      if (quickAskSeq.current !== seq || !aliveRef.current) return;
+      logApiError("openmaic-quick-ask", err);
+      // 局部错误：课程列表、课程选择、已输入的问题全部保留，用户可以直接重试，
+      // 也可以选择不绑定工作台继续提问。
+      setQuickAskError(describeQuickAskFailure(err));
+    } finally {
+      // 只按代次判断：卸载后再 setState 在 React 18 是无害的 no-op，但把 alive
+      // 也写进条件会让"守卫提前 return"把 busy 永久卡住（按钮从此不可点）。
+      if (quickAskSeq.current === seq) setQuickAskBusy(false);
     }
   }
 
-  return <PageFrame className="courses-page" eyebrow="OpenMAIC / Courses" title="学习内容" description="在 CampusMate 课程上下文中创建、询问和继续学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
+  /** 绑定失败时的退路：不带工作台直接进入课程辅导（不伪造关联）。 */
+  function skipWorkspaceBinding(query, courseId, extras) {
+    quickAskSeq.current += 1;
+    setQuickAskBusy(false);
+    setQuickAskError(null);
+    gotoCounselor(courseId, query, null, extras);
+  }
+
+  return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接提问，或创建一份可以继续编辑的学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
-      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} providerStatus={providerStatus} onQuickAsk={openQuickAsk} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
+      <OpenMAICHome
+        courses={courses}
+        assignments={assignments}
+        recentItems={recentItems}
+        recentError={recentError}
+        fusion={fusion}
+        providerStatus={providerStatus}
+        quickAskError={quickAskError}
+        quickAskBusy={quickAskBusy}
+        onQuickAsk={openQuickAsk}
+        onQuickAskFallback={skipWorkspaceBinding}
+        onCourseChange={handleCourseChange}
+        onCreateContent={(courseId) => navigate(`/courses/${courseId}`)}
+      />
     </AsyncState>
   </PageFrame>;
 }

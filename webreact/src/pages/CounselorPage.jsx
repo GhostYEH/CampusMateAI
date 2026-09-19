@@ -121,6 +121,19 @@ export default function CounselorPage() {
   const [workspaceId] = useState(() => new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("workspace") || null);
   const [courseName, setCourseName] = useState("");
 
+  // 课程页的输入工作区把"联网搜索"和"附件"通过 SPA 导航状态带过来，让那两个
+  // 入口真的是同一件事，而不是点完就丢的空按钮。附件是 File 对象，只在内存里
+  // 交接一次，随即清掉导航状态（刷新后不会复活）。
+  useEffect(() => {
+    const carried = typeof window !== "undefined" ? window.history?.state?.usr : null;
+    if (!carried) return;
+    if (carried.openmaicWebSearch) setWebSearchEnabled(true);
+    if (carried.openmaicAttachment) setAttachment(carried.openmaicAttachment);
+    if (typeof window !== "undefined" && window.history?.replaceState) {
+      window.history.replaceState({ ...window.history.state, usr: null }, "");
+    }
+  }, []);
+
   useEffect(() => {
     if (!courseId) { setCourseName(""); return; }
     let alive = true;

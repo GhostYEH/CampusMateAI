@@ -142,7 +142,7 @@ class OpenMAICFusionClient:
         if_match: Optional[int] = None,
     ) -> Any:
         if not self.base_url or not self.secret:
-            raise FusionUnavailable()
+            raise FusionUnavailable(details={"reason": "service_unconfigured"})
         headers = {ASSERTION_HEADER: self._assertion(user_id, course_id, scopes)}
         if idempotency_key:
             headers[IDEMPOTENCY_HEADER] = idempotency_key
@@ -156,7 +156,7 @@ class OpenMAICFusionClient:
             )
         except Exception as exc:
             # The internal address and the assertion are deliberately absent.
-            raise FusionUnavailable() from exc
+            raise FusionUnavailable(details={"reason": "service_unreachable"}) from exc
 
         if response.status_code >= 400:
             raise_for_service_error(response.status_code, _safe_json(response))

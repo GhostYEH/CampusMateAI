@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import openmaic_fusion, openmaic_workspaces
@@ -15,6 +16,7 @@ from app.main import create_app
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.openmaic.fusion_client import OpenMAICFusionClient
+from app.services.openmaic.fusion_errors import FusionUnavailable
 from app.services.openmaic.service_assertion import decode_service_assertion
 
 SECRET = "gateway-secret"
@@ -521,3 +523,129 @@ def test_each_request_gets_a_fresh_single_use_assertion():
     assert jti_of(transport.calls[0]) != jti_of(transport.calls[1]), (
         "断言单次使用，两次请求不能复用同一个 jti"
     )
+
+
+# ===== 失败原因映射（浏览器据此说哪句话）=====
+#
+# 这些 503 的 HTTP 状态码相同，但"下一步"完全不同：没启用要改部署、连不上可以
+# 重试、服务自身依赖没就绪要等。所以网关必须把稳定 reason 带出去，否则界面只能
+# 对三种处境说同一句话。
+
+
+def _reason(response) -> str:
+    return (response.json().get("details") or {}).get("reason")
+
+
+def test_the_fusion_switch_off_reports_a_permanent_reason():
+    _, transport, http, headers, course_id = _setup([], openmaic_fusion_enabled=False)
+
+    response = http.get(f"/api/v1/courses/{course_id}/workspaces", headers=headers)
+
+    assert response.status_code == 503
+    assert _reason(response) == "fusion_disabled"
+    assert transport.calls == [], "开关关着就不该去连服务"
+
+
+def test_a_missing_internal_secret_is_refused_at_startup_not_at_request_time():
+    """密钥缺失是**启动期**错误，不是运行期 503。
+
+    网关在 fusion 打开时校验配置，缺密钥/地址直接拒绝启动。因此"请求时才发现没配
+    好"这条路径在应用里不可达——把它做成 503 只会让部署错误伪装成临时故障。
+    """
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises((ValidationError, ValueError)):
+        _test_settings(openmaic_internal_secret="")
+
+
+def test_a_service_url_with_a_path_is_refused_at_startup():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises((ValidationError, ValueError)):
+        _test_settings(openmaic_service_url=f"{SERVICE_URL}/internal")
+
+
+async def test_a_client_constructed_without_configuration_reports_unconfigured():
+    """纵深防御：绕过 Settings 直接构造的客户端也必须 fail-closed。"""
+    transport = _RecordingTransport()
+    client = OpenMAICFusionClient(base_url="", secret="", transport=transport)
+
+    with pytest.raises(FusionUnavailable) as excinfo:
+        await client.list_workspaces(user_id="u1", course_id="c1")
+
+    assert excinfo.value.details == {"reason": "service_unconfigured"}
+    assert transport.calls == [], "没配好就不该发出任何出站请求"
+
+
+async def test_the_status_route_reports_unconfigured_without_contacting_anyone():
+    transport = _RecordingTransport()
+    client = OpenMAICFusionClient(base_url="", secret="", transport=transport)
+
+    status = await client.status(user_id="u1")
+
+    assert status.state.value == "unavailable"
+    assert status.reason == "service_unconfigured"
+    assert status.capabilities == []
+    assert transport.calls == []
+
+
+def test_an_unreachable_node_service_is_reported_as_retryable():
+    class _Broken(_RecordingTransport):
+        async def get(self, url, *, headers=None, timeout=None, params=None):
+            raise RuntimeError(f"cannot reach {url}")
+
+    container = reset_container_for_tests(_test_settings())
+    seed_demo_data(container, force=True)
+    client = OpenMAICFusionClient(
+        base_url=container.settings.openmaic_service_url,
+        secret=container.settings.openmaic_internal_secret,
+        transport=_Broken(),
+    )
+    app = create_app()
+    app.dependency_overrides[openmaic_workspaces._client] = lambda: client
+    http = TestClient(app)
+    login = http.post(
+        "/api/v1/auth/login", json={"username": "student_demo", "password": "Demo123456"}
+    )
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    course_id = http.get("/api/v1/courses", headers=headers).json()["items"][0]["id"]
+
+    response = http.get(f"/api/v1/courses/{course_id}/workspaces", headers=headers)
+
+    assert response.status_code == 503
+    assert _reason(response) == "service_unreachable"
+    assert SERVICE_URL not in response.text and SECRET not in response.text
+
+
+def test_a_node_503_is_reported_as_a_dependency_problem_not_a_dead_end():
+    _, _, http, headers, course_id = _setup(
+        [(503, {"error": "dependency_unavailable", "message": "database not ready"})]
+    )
+
+    response = http.get(f"/api/v1/courses/{course_id}/workspaces", headers=headers)
+
+    assert response.status_code == 503
+    assert _reason(response) == "dependency_unavailable"
+    assert "database not ready" not in response.text, "上游正文不原样转发"
+
+
+def test_a_node_503_from_a_missing_provider_keeps_its_own_reason():
+    _, _, http, headers, course_id = _setup(
+        [(503, {"error": "provider_unavailable", "message": "tts provider is unavailable"})]
+    )
+
+    response = http.get(f"/api/v1/courses/{course_id}/workspaces", headers=headers)
+
+    assert response.status_code == 503
+    assert _reason(response) == "provider_unavailable"
+
+
+def test_an_unexpected_upstream_status_is_not_dressed_up_as_retryable():
+    _, _, http, headers, course_id = _setup([(418, {"error": "teapot"})])
+
+    response = http.get(f"/api/v1/courses/{course_id}/workspaces", headers=headers)
+
+    assert response.status_code == 503
+    assert _reason(response) == "unexpected_response"

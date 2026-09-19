@@ -425,20 +425,26 @@ export default function WorkspacePanel({
             <strong>{item.name}</strong>
             <small>{item.description || "暂无说明"} · 更新于 {dateText(item.updatedAt)}</small>
           </span>
-          {canFile ? <select
-            value={item.folderId || ""}
-            onChange={(event) => moveToFolder(item, event.target.value)}
-            aria-label={`把「${item.name}」移动到文件夹`}
-            disabled={busy}
-          >
-            <option value="">未归档</option>
-            {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-          </select> : null}
-          <LinkButton variant="quiet" to={`/courses/${courseId}/workspaces/${item.id}`}>进入工作台</LinkButton>
-          <Button variant="quiet" disabled={busy} onClick={() => toggleStages(item)}>
-            {openWorkspaceId === item.id ? "收起内容" : "内容"}
-          </Button>
-          <Button variant="quiet" disabled={busy} onClick={() => remove(item)}>删除</Button>
+          {/* 操作必须收进一个容器。`.openmaic-workspace-item` 是三列栅格
+              （图标 / 文案 / 操作），若把 select 和三个按钮平铺成兄弟节点，它们会
+              自动落到隐式第二行：32px 的第一列放"进入工作台"会被压成每行一个字，
+              中间的"内容"则被 minmax(0,1fr) 拉成一整条。 */}
+          <span className="openmaic-workspace-item__actions">
+            {canFile ? <select
+              value={item.folderId || ""}
+              onChange={(event) => moveToFolder(item, event.target.value)}
+              aria-label={`把「${item.name}」移动到文件夹`}
+              disabled={busy}
+            >
+              <option value="">未归档</option>
+              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+            </select> : null}
+            <LinkButton variant="quiet" to={`/courses/${courseId}/workspaces/${item.id}`}>进入工作台</LinkButton>
+            <Button variant="quiet" disabled={busy} onClick={() => toggleStages(item)}>
+              {openWorkspaceId === item.id ? "收起内容" : "内容"}
+            </Button>
+            <Button variant="quiet" disabled={busy} onClick={() => remove(item)}>删除</Button>
+          </span>
         </article>)}</div>
         {cursor && <Button variant="quiet" disabled={busy} onClick={loadMore}>加载更多</Button>}
       </>

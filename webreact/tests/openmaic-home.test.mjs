@@ -120,10 +120,29 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask creates or reuses a native workspace before opening counselor", () => {
+test("quick ask reuses or creates a native workspace before opening counselor", () => {
   assert.match(pageSource, /api\.listOpenMAICWorkspaces\(courseId/);
   assert.match(pageSource, /api\.createOpenMAICWorkspace\(courseId/);
-  assert.match(pageSource, /workspace=\$\{encodeURIComponent\(workspace\.id\)\}/);
+  assert.match(pageSource, /pickReusableWorkspace/);
+  // 只有服务端**真实上报** workspace 能力时才先绑定工作台；其余状态直接进入
+  // 课程辅导，不发那次必然失败的 GET /workspaces。
+  assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
+  // 工作台 id 只在真的拿到时才进 URL —— 不伪造关联。
+  assert.match(pageSource, /gotoCounselor\(courseId, query, workspace \? workspace\.id : null, extras\)/);
+});
+
+test("quick ask failures stay local and never replace the course content area", () => {
+  const start = pageSource.indexOf("async function openQuickAsk(");
+  assert.notEqual(start, -1);
+  const body = pageSource.slice(start, pageSource.indexOf("\n  }", start));
+
+  assert.match(body, /setQuickAskError\(describeQuickAskFailure\(err\)\)/);
+  // 页级 error 由 AsyncState 消费：写进去就等于用错误卡片替换整个课程内容区。
+  assert.doesNotMatch(body, /setError\(/);
+  // 课程切换 / 卸载必须作废在途请求。
+  assert.match(body, /quickAskSeq\.current !== seq/);
+  assert.match(pageSource, /onCourseChange=\{handleCourseChange\}/);
+  assert.match(pageSource, /quickAskSeq\.current \+= 1/);
 });
 
 test("home surface exposes no placeholder entries and no iframe", () => {
