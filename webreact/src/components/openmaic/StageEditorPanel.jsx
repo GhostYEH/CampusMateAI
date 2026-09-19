@@ -2,6 +2,7 @@ import React from "react";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
+import StagePlayerPanel from "./StagePlayerPanel.jsx";
 import {
   MAX_COMMANDS_PER_REQUEST,
   SCENE_TYPE_LABELS,
@@ -37,6 +38,8 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [addType, setAddType] = React.useState("slide");
+  // 正在播放的场景：播放器自己按 scene_id 恢复位置，编辑器只负责记下这一个 id。
+  const [playingSceneId, setPlayingSceneId] = React.useState("");
 
   const scopeKey = `${courseId}:${workspaceId}:${stageId}`;
 
@@ -66,6 +69,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   React.useEffect(() => {
     buffer.current = createCommandBuffer();
     idempotencyKey.current = null;
+    setPlayingSceneId("");
     setNotice("");
     void load();
     // scopeKey 变化即"换了一份被编辑的内容"：必须重建缓冲，否则会把上一个
@@ -176,6 +180,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
           </span>
           <Button type="button" variant="quiet" disabled={index === 0} onClick={() => run(sceneMoveCommand(scene.id, index - 1))}>上移</Button>
           <Button type="button" variant="quiet" disabled={index === scenes.length - 1} onClick={() => run(sceneMoveCommand(scene.id, index + 1))}>下移</Button>
+          <Button type="button" variant="quiet" onClick={() => setPlayingSceneId(scene.id)}>播放</Button>
           <Button type="button" variant="quiet" onClick={() => run(sceneDuplicateCommand(scene.id))}>复制</Button>
           <Button type="button" variant="quiet" onClick={() => run(sceneDeleteCommand(scene.id))}>删除</Button>
         </li>)}
@@ -184,5 +189,14 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
         <Icon name="PhLayout" size={26} />
         <div><strong>这份内容还没有场景</strong><p>添加一个场景后即可继续编辑。</p></div>
       </div>}
+
+    {/* 播放器只在服务端给出播放计划时才有内容；unsupported 场景会显示缺什么。 */}
+    {playingSceneId ? <StagePlayerPanel
+      courseId={courseId}
+      workspaceId={workspaceId}
+      stageId={stageId}
+      startSceneId={playingSceneId}
+      onClose={() => setPlayingSceneId("")}
+    /> : null}
   </Panel>;
 }

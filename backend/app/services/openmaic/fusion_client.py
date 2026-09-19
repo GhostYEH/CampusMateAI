@@ -576,6 +576,26 @@ class OpenMAICFusionClient:
             scopes=STAGE_READ_SCOPES,
         )
 
+    async def get_stage_playback(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        scene_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """The playable plan (renderer decisions + resume position) for one stage."""
+        params = {"scene_id": scene_id} if scene_id else None
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/playback",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=STAGE_READ_SCOPES,
+            params=params,
+        )
+
     async def get_stage_scene(
         self,
         *,

@@ -11,6 +11,7 @@ import { normalizeCapabilities } from '../src/capabilities.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 import { createDiscoveryRoutes } from '../src/discovery/routes.ts';
 import { createEditorRoutes } from '../src/editor/routes.ts';
+import { createPlayerRoutes } from '../src/player/routes.ts';
 import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
 
 const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
@@ -106,6 +107,7 @@ test('comes up on a complete configuration and serves authenticated readiness', 
       ...createWorkspaceRoutes({ database: mounted }),
       ...createDiscoveryRoutes({ database: mounted }),
       ...createEditorRoutes({ database: mounted }),
+      ...createPlayerRoutes({ database: mounted }),
     ].flatMap((route) => route.capabilities));
     mounted.close();
     assert.deepEqual(payload.capabilities, declared);
@@ -113,6 +115,7 @@ test('comes up on a complete configuration and serves authenticated readiness', 
     assert.ok(payload.capabilities.includes('folder'));
     assert.ok(payload.capabilities.includes('search'));
     assert.ok(payload.capabilities.includes('editor'));
+    assert.ok(payload.capabilities.includes('player'));
 
     // The database survives a restart, so the replay guard must too.
     const replayToken = mintAssertion(['service:status']);

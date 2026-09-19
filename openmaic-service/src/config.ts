@@ -6,6 +6,12 @@ export interface ServiceConfig {
   port: number;
   databasePath: string;
   internalSecret: string;
+  /**
+   * Origin of the external 3D/CDN capability, if the deployment has one.
+   * `undefined` is a real answer: without it `visualization3d` scenes degrade
+   * explicitly instead of rendering blank.
+   */
+  externalCdnUrl?: string;
 }
 
 /** Raised when the process cannot start with the supplied environment. */
@@ -53,10 +59,12 @@ export function loadConfig(env = process.env): ServiceConfig {
     // Fail closed: an unauthenticated internal service is worse than no service.
     throw new ConfigError('OPENMAIC_INTERNAL_SECRET is required');
   }
+  const externalCdnUrl = (env.OPENMAIC_EXTERNAL_CDN_URL ?? '').trim();
   return {
     host: (env.OPENMAIC_HOST ?? '').trim() || '127.0.0.1',
     port: positiveInteger(env.OPENMAIC_PORT, 4010),
     databasePath: resolveDatabasePath(env.OPENMAIC_DATABASE_URL),
     internalSecret,
+    ...(externalCdnUrl ? { externalCdnUrl } : {}),
   };
 }

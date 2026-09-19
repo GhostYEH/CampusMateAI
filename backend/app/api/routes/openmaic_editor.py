@@ -27,6 +27,7 @@ from ...core.config import Settings
 from ...models.multi_role import UserRow
 from ...schemas.openmaic_fusion import (
     SceneOutlineOut,
+    StagePlaybackOut,
     StageCommandResultOut,
     StageCommandsIn,
     StageOutlineOut,
@@ -147,6 +148,32 @@ async def get_stage_outline(
         dsl_version=payload.get("dsl_version", ""),
         scenes=[SceneOutlineOut(**scene) for scene in payload.get("scenes", [])],
     )
+
+
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/playback",
+    response_model=StagePlaybackOut,
+)
+async def get_stage_playback(
+    course_id: str,
+    workspace_id: str,
+    stage_id: str,
+    scene_id: Optional[str] = None,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    client: OpenMAICFusionClient = Depends(_client),
+) -> StagePlaybackOut:
+    """Playback plan. `scene_id` carries the resume position from the URL."""
+    _require_fusion_enabled(container.settings)
+    assert_course_access(container, user, course_id)
+    payload = await client.get_stage_playback(
+        user_id=str(user.id),
+        course_id=course_id,
+        workspace_id=workspace_id,
+        stage_id=stage_id,
+        scene_id=scene_id,
+    )
+    return StagePlaybackOut(**payload)
 
 
 @router.get(

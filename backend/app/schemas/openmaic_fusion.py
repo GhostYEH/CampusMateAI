@@ -235,6 +235,36 @@ class StageOutlineOut(BaseModel):
     scenes: List[SceneOutlineOut] = Field(default_factory=list)
 
 
+class ScenePlaybackOut(BaseModel):
+    """一个场景的播放决定。
+
+    `render.kind` 是**唯一**判据：`native` 由 CampusMate 自己渲染，
+    `sandbox-*` 才允许放进受限 iframe，`unsupported` 表示这一次真的渲染不了，
+    必须带上 `reason` 说明缺什么，而不是显示成空白。
+    """
+
+    id: str
+    type: str
+    title: str
+    order: int
+    render: dict
+    steps: List[dict] = Field(default_factory=list)
+    dropped_actions: List[dict] = Field(default_factory=list)
+    whiteboards: int = 0
+    multi_agent: bool = False
+
+
+class StagePlaybackOut(BaseModel):
+    stage_id: str
+    workspace_id: str
+    title: str
+    revision: int
+    dsl_version: str = ""
+    start_index: int = 0
+    scenes: List[ScenePlaybackOut] = Field(default_factory=list)
+    degraded: List[dict] = Field(default_factory=list)
+
+
 class StageCommandResultOut(StageOut):
     """命令应用后的 stage，附带本次实际应用了多少条命令。"""
 
@@ -266,4 +296,6 @@ __all__ = [
     "SceneOutlineOut",
     "StageOutlineOut",
     "StageCommandResultOut",
+    "ScenePlaybackOut",
+    "StagePlaybackOut",
 ]

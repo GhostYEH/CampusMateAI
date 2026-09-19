@@ -263,3 +263,59 @@ def test_an_unknown_course_is_refused_before_the_editor_calls_the_service():
     )
     assert response.status_code == 404
     assert transport.calls == []
+
+
+def test_the_playback_plan_passes_the_resume_scene_and_keeps_the_sandbox_decision():
+    _, transport, http, headers, course_id = _setup([])
+    transport.script.append((
+        200,
+        {
+            "stage_id": "stg_1",
+            "workspace_id": "ws_1",
+            "title": "第一课",
+            "revision": 4,
+            "dsl_version": "0.3.0",
+            "start_index": 1,
+            "scenes": [
+                {
+                    "id": "scn_1",
+                    "type": "slide",
+                    "title": "开场",
+                    "order": 0,
+                    "render": {"kind": "native"},
+                    "steps": [{"action_id": "a1", "type": "speech", "mode": "sync"}],
+                    "dropped_actions": [],
+                    "whiteboards": 0,
+                    "multi_agent": False,
+                },
+                {
+                    "id": "scn_2",
+                    "type": "interactive",
+                    "title": "三维",
+                    "order": 1,
+                    "render": {"kind": "unsupported", "widget_type": "visualization3d", "reason": "widget_requires_external_cdn"},
+                    "steps": [],
+                    "dropped_actions": [],
+                    "whiteboards": 0,
+                    "multi_agent": False,
+                },
+            ],
+            "degraded": [{"scene_id": "scn_2", "reason": "widget_requires_external_cdn"}],
+        },
+    ))
+    response = http.get(
+        f"/api/v1/courses/{course_id}/workspaces/ws_1/stages/stg_1/playback",
+        params={"scene_id": "scn_2"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    call = transport.calls[0]
+    assert call["params"] == {"scene_id": "scn_2"}
+    assert _claims(call)["scope"] == ["stage:read"]
+
+    body = response.json()
+    assert body["start_index"] == 1
+    assert body["scenes"][1]["render"]["kind"] == "unsupported"
+    assert body["degraded"][0]["reason"] == "widget_requires_external_cdn"
+    # 沙箱决定只由服务端给出：网关不做二次加工，也不放大权限。
+    assert "allow-same-origin" not in response.text

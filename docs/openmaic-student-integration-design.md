@@ -74,7 +74,10 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    （`src/editor/routes.ts`）、FastAPI 网关（`openmaic_editor.py`）与 Web
    （`StageEditorPanel.jsx` + `editorModel.js`）：提交的是命令列表而非整份文档、
    有界 undo/redo、`If-Match` 并发冲突后重新读取、本地不接受的命令不发出去。
-   场景**内容**编辑、播放器与白板未接入。
+   播放器接通播放计划（`src/player/playback.ts` + `src/player/routes.ts`）与
+   `StagePlayerPanel.jsx`：逐场景给出渲染决定（native / sandbox-html /
+   sandbox-url / unsupported）、`allow-scripts` 沙箱、动作时间线与恢复位置，
+   渲染不了时明示缺什么。场景**内容**编辑、白板/TTS/多智能体的实际播放未接入。
 5. E：材料、导入导出、高级能力和 Provider 设置。未开始。
 6. F：作业讲解确认门和最小上下文。未开始。
 7. G：安全回归、离线降级和浏览器验收。离线降级四态已验证；其余未开始。

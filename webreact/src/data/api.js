@@ -528,6 +528,15 @@ export async function getOpenMAICStageOutline(courseId, workspaceId, stageId) {
   );
 }
 
+/** 播放计划（渲染决定 + 恢复位置）。`sceneId` 是刷新后要回到的场景。 */
+export async function getOpenMAICStagePlayback(courseId, workspaceId, stageId, { sceneId = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/playback`, {
+      params: sceneId ? { scene_id: sceneId } : {},
+    }),
+  );
+}
+
 export async function getOpenMAICStageScene(courseId, workspaceId, stageId, sceneId) {
   return dataOf(
     await client.get(
