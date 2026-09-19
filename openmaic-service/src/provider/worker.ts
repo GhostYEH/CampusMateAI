@@ -130,7 +130,7 @@ export function createProviderJobWorker(options: {
     });
   }
 
-  async function runDiscussion(identity: { userId: string; courseId: string; jobId: string }, input: Record<string, unknown>): Promise<void> {
+  async function runDiscussionJob(identity: { userId: string; courseId: string; jobId: string }, input: Record<string, unknown>): Promise<void> {
     if (!options.provider) throw new ProviderError('provider_rejected', 'discussion provider is not configured');
     const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
     if (!prompt) throw new ProviderError('internal_error', 'discussion job input is incomplete');
@@ -158,7 +158,7 @@ export function createProviderJobWorker(options: {
       }
       if (ref.kind === 'generation') await runGeneration(identity, input);
       else if (ref.kind === 'tts') await runTts(identity, input);
-      else if (ref.kind === 'discussion') await runDiscussion(identity, input);
+      else if (ref.kind === 'discussion') await runDiscussionJob(identity, input);
       else jobs.fail({ ...identity, errorCode: 'internal_error', now: now() });
     } catch (error) {
       try {

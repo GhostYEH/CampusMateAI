@@ -8,16 +8,15 @@ import { createDiscussionRoutes } from '../src/discussion/routes.ts';
 import { createGenerationRoutes } from '../src/generation/routes.ts';
 import { buildGeneratedStage } from '../src/generation/generator.ts';
 import { createJobRoutes } from '../src/jobs/routes.ts';
+import { JobRepository } from '../src/jobs/repository.ts';
 import { createProviderJobWorker } from '../src/provider/worker.ts';
 import { createTtsRoutes } from '../src/tts/routes.ts';
-import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
-import { JobRepository } from '../src/jobs/repository.ts';
 import { WorkspaceRepository } from '../src/workspace/repository.ts';
 import { createHarness, mintAssertion, withServer } from './helpers.mjs';
 
 const BASE_ENV = { OPENMAIC_INTERNAL_SECRET: 'secret', OPENMAIC_DATABASE_URL: ':memory:' };
 
-function providerStubConfig(baseUrl, extra = {}) {
+function stubConfig(baseUrl, extra = {}) {
   return { baseUrl, apiKey: 'stub-key', model: 'stub-model', timeoutMs: 5000, ...extra };
 }
 
@@ -28,16 +27,31 @@ function tinyWav() {
   return buffer;
 }
 
-function chatPayload(content) {
-  return JSON.stringify({ choices: [{ message: { content } }] });
+const JSON_HEADERS = { 'content-type': 'application/json' };
+
+function assertion(scopes, courseId = 'course-1') {
+  return { 'x-campusmate-service-assertion': mintAssertion({ scopes, courseId }) };
 }
 
-function audioPayload(wav) {
-  return JSON.stringify({ choices: [{ message: { audio: { data: wav.toString('base64') } } }] });
+async function post(base, path, { body, scopes, key }) {
+  const headers = { ...assertion(scopes), ...JSON_HEADERS };
+  if (key) headers['idempotency-key'] = key;
+  const response = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  return { status: response.status, body: await response.json() };
 }
 
+async function get(base, path, scopes) {
+  const response = await fetch(`${base}${path}`, { headers: assertion(scopes) });
+  return { status: response.status, body: await response.json() };
+}
+
+/** A stand-in upstream whose responses each test controls. */
 async function startStub(handler) {
-  const server = createHttpServer(handler);
+  const server = createHttpServer((request, response) => {
+    let raw = '';
+    request.on('data', (chunk) => { raw += chunk; });
+    request.on('end', () => handler(request, response, raw));
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
   return { server, baseUrl: `http://127.0.0.1:${port}/v1` };
@@ -70,75 +84,177 @@ test('provider and tts endpoints are optional and validated together', () => {
   assert.equal(full.tts.timeoutMs, 180000);
 });
 
-// ===== tts lifecycle =====
+// ===== tts =====
 
-test('tts enqueues a job, the worker synthesizes audio, and replay reflects idempotency', async () => {
+test('tts: enqueue, worker synthesis, artifact download, replay, and honest failure', async () => {
   const database = new ServiceDatabase(':memory:');
-  let responseMode = 'audio';
+  let mode = 'audio';
   const stub = await startStub((request, response) => {
-    let raw = '';
-    request.on('data', (chunk) => { raw += chunk; });
-    request.on('end', () => {
-      response.setHeader('content-type', 'application/json');
-      if (responseMode === 'audio') {
-        response.end(audioPayload(tinyWav()));
-      } else if (responseMode === 'broken') {
-        response.end('not-json');
-      } else {
-        response.statusCode = 401;
-        response.end(JSON.stringify({ error: { message: 'Invalid token' } }));
-      }
-    });
+    response.setHeader('content-type', 'application/json');
+    if (mode === 'audio') response.end(JSON.stringify({ choices: [{ message: { audio: { data: tinyWav().toString('base64') } } }] }));
+    else if (mode === 'broken') response.end('definitely not json');
+    else { response.statusCode = 503; response.end(JSON.stringify({ error: { message: 'upstream down' } })); }
   });
   try {
-    const { server } = createHarness({
-      database,
-      routes: [...createTtsRoutes({ database, tts: providerStubConfig(stub.baseUrl, { voice: '苏打' }) }), ...createJobRoutes({ database })],
-    });
+    const jobs = new JobRepository(database);
+    const worker = createProviderJobWorker({ database, jobs, workspaces: new WorkspaceRepository(database), tts: stubConfig(stub.baseUrl, { voice: '苏打' }) });
+    const { server } = createHarness({ database, routes: [...createTtsRoutes({ database, tts: stubConfig(stub.baseUrl, { voice: '苏打' }) }), ...createJobRoutes({ database })] });
     await withServer(server, async (base) => {
-      const realWorker = createProviderJobWorker({
-        database,
-        jobs: new JobRepository(database),
-        workspaces: new WorkspaceRepository(database),
-        tts: providerStubConfig(stub.baseUrl, { voice: '苏打' }),
-      });
-      const first = await fetch(`${base}/internal/courses/course-1/tts`, {
-        method: 'POST',
-        headers: { 'x-campusmate-service-assertion': mintAssertion({ scopes: ['tts:write'] }), 'content-type': 'application/json', 'idempotency-key': 'tts-1' },
-        body: JSON.stringify({ text: '同学们好' }),
-      });
+      const first = await post(base, '/internal/courses/course-1/tts', { body: { text: '同学们好，我们开始上课。' }, scopes: ['tts:write'], key: 'tts-1' });
       assert.equal(first.status, 202);
-      const firstBody = await first.json();
-      assert.equal(firstBody.job.status, 'queued');
-      assert.equal(firstBody.voice, '苏打');
+      assert.equal(first.body.job.status, 'queued');
+      assert.equal(first.body.voice, '苏打');
+      const jobId = first.body.job_id;
 
-      assert.equal(await realWorker.tick(), true);
-      const completedJob = new JobRepository(database).get({ userId: 'user-1', courseId: 'course-1', jobId: firstBody.job_id });
-      assert.ok(completedJob.artifact_id);
-      const completed = await fetch(`${base}/internal/courses/course-1/artifacts/${completedJob.artifact_id}`, {
-        headers: { 'x-campusmate-service-assertion': mintAssertion({ scopes: ['job:read'] }) },
-      });
-      assert.equal(completed.status, 200);
-      const artifact = await completed.json();
-      assert.equal(artifact.media_type, 'audio/wav');
-      assert.equal(Buffer.from(artifact.content_base64, 'base64').subarray(0, 4).toString('ascii'), 'RIFF');
-
-      const replay = await fetch(`${base}/internal/courses/course-1/tts`, {
-        method: 'POST',
-        headers: { 'x-campusmate-service-assertion': mintAssertion({ scopes: ['tts:write'] }), 'content-type': 'application/json', 'idempotency-key': 'tts-1' },
-        body: JSON.stringify({ text: '同学们好' }),
-      });
+      const replay = await post(base, '/internal/courses/course-1/tts', { body: { text: '同学们好，我们开始上课。' }, scopes: ['tts:write'], key: 'tts-1' });
       assert.equal(replay.status, 202);
-      assert.equal((await replay.json()).job_id, firstBody.job_id);
+      assert.equal(replay.body.job_id, jobId);
 
-      const missing = await fetch(`${base}/internal/courses/course-1/tts`, {
-        method: 'POST',
-        headers: { 'x-campusmate-service-assertion': mintAssertion({ scopes: ['tts:write'] }), 'content-type': 'application/json' },
-        body: JSON.stringify({ text: '同学们好' }),
-      });
+      const missing = await post(base, '/internal/courses/course-1/tts', { body: { text: '同学们好' }, scopes: ['tts:write'] });
       assert.equal(missing.status, 400);
+
+      assert.equal(await worker.tick(), true);
+      let job = await get(base, `/internal/courses/course-1/jobs/${jobId}`, ['job:read']);
+      assert.equal(job.body.status, 'completed');
+      assert.ok(job.body.artifact_id);
+
+      const artifact = await get(base, `/internal/courses/course-1/artifacts/${job.body.artifact_id}`, ['job:read']);
+      const wav = Buffer.from(artifact.body.content_base64, 'base64');
+      assert.equal(wav.subarray(0, 4).toString('ascii'), 'RIFF');
+      assert.equal(artifact.body.media_type, 'audio/wav');
+
+      mode = 'broken';
+      const second = await post(base, '/internal/courses/course-1/tts', { body: { text: '再来一段' }, scopes: ['tts:write'], key: 'tts-2' });
+      assert.equal(await worker.tick(), true);
+      job = await get(base, `/internal/courses/course-1/jobs/${second.body.job_id}`, ['job:read']);
+      assert.equal(job.body.status, 'failed');
+      assert.equal(job.body.error_code, 'provider_invalid_response');
+
+      const retried = await post(base, `/internal/courses/course-1/jobs/${second.body.job_id}/retry`, { body: {}, scopes: ['job:write'] });
+      assert.equal(retried.body.status, 'queued');
+      mode = 'audio';
+      assert.equal(await worker.tick(), true);
+      job = await get(base, `/internal/courses/course-1/jobs/${second.body.job_id}`, ['job:read']);
+      assert.equal(job.body.status, 'completed');
     });
   } finally {
     stub.server.close();
   }
+});
+
+test('tts without a configured provider still answers 503 and never fabricates audio', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const { server } = createHarness({ database, routes: createTtsRoutes({ database }) });
+  await withServer(server, async (base) => {
+    const result = await post(base, '/internal/courses/course-1/tts', { body: { text: '你好' }, scopes: ['tts:write'], key: 'tts-1' });
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, 'provider_unavailable');
+    assert.equal(result.body.audio_base64, undefined);
+  });
+});
+
+// ===== generation =====
+
+test('generation with a provider: enqueue, worker produces a DSL-valid stage, honest failure then retry', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const workspaces = new WorkspaceRepository(database);
+  const workspace = workspaces.createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '测试工作台' });
+  let mode = 'doc';
+  const stub = await startStub((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    if (mode === 'doc') response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(buildGeneratedStage('quiz', '函数的极限')) } }] }));
+    else if (mode === 'fenced') response.end(JSON.stringify({ choices: [{ message: { content: '```json\n' + JSON.stringify(buildGeneratedStage('slide', '导数')) + '\n```' } }] }));
+    else response.end(JSON.stringify({ choices: [{ message: { content: 'no json here at all' } }] }));
+  });
+  try {
+    const jobs = new JobRepository(database);
+    const worker = createProviderJobWorker({ database, jobs, workspaces, provider: stubConfig(stub.baseUrl) });
+    const { server } = createHarness({ database, routes: [...createGenerationRoutes({ database, provider: stubConfig(stub.baseUrl) }), ...createJobRoutes({ database })] });
+    await withServer(server, async (base) => {
+      const first = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/generate`, { body: { mode: 'quiz', prompt: '函数的极限' }, scopes: ['generation:write', 'workspace:write', 'job:write'], key: 'gen-1' });
+      assert.equal(first.status, 201);
+      assert.equal(first.body.source, 'provider');
+      assert.equal(first.body.job.status, 'queued');
+      assert.equal(first.body.stage_id, undefined);
+      const jobId = first.body.job_id;
+
+      assert.equal(await worker.tick(), true);
+      const job = await get(base, `/internal/courses/course-1/jobs/${jobId}`, ['job:read']);
+      assert.equal(job.body.status, 'completed');
+      const stageCount = database.raw.prepare('SELECT count(*) AS n FROM stages WHERE workspace_id = ?').get(workspace.id);
+      assert.equal(stageCount.n, 1);
+      const artifact = await get(base, `/internal/courses/course-1/artifacts/${job.body.artifact_id}`, ['job:read']);
+      const document = JSON.parse(Buffer.from(artifact.body.content_base64, 'base64').toString('utf8'));
+      assert.equal(document.scenes[0].type, 'quiz');
+
+      mode = 'garbage';
+      const second = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/generate`, { body: { mode: 'slide', prompt: '导数' }, scopes: ['generation:write', 'workspace:write', 'job:write'], key: 'gen-2' });
+      assert.equal(await worker.tick(), true);
+      const failed = await get(base, `/internal/courses/course-1/jobs/${second.body.job_id}`, ['job:read']);
+      assert.equal(failed.body.status, 'failed');
+      assert.equal(failed.body.error_code, 'provider_invalid_response');
+
+      mode = 'doc';
+      await post(base, `/internal/courses/course-1/jobs/${second.body.job_id}/retry`, { body: {}, scopes: ['job:write'] });
+      assert.equal(await worker.tick(), true);
+      const recovered = await get(base, `/internal/courses/course-1/jobs/${second.body.job_id}`, ['job:read']);
+      assert.equal(recovered.body.status, 'completed');
+    });
+  } finally {
+    stub.server.close();
+  }
+});
+
+test('generation without a provider keeps the synchronous local-template contract', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const workspaces = new WorkspaceRepository(database);
+  const workspace = workspaces.createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '测试工作台' });
+  const { server } = createHarness({ database, routes: createGenerationRoutes({ database }) });
+  await withServer(server, async (base) => {
+    const result = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/generate`, { body: { mode: 'slide', prompt: '函数的极限' }, scopes: ['generation:write', 'workspace:write', 'job:write'], key: 'gen-1' });
+    assert.equal(result.status, 201);
+    assert.equal(result.body.source, 'local-template');
+    assert.ok(result.body.stage_id);
+  });
+});
+
+// ===== discussion =====
+
+test('discussion: enqueue, worker roundtable artifact, and degraded contract without a provider', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const roundtable = JSON.stringify({ messages: [
+    { agent: '主讲人', content: '极限描述的是函数的趋势。' },
+    { agent: '追问者', content: '那左右极限不相等时呢？' },
+    { agent: '总结者', content: '左右极限一致才有极限。' },
+  ] });
+  const stub = await startStub((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ choices: [{ message: { content: roundtable } }] }));
+  });
+  try {
+    const jobs = new JobRepository(database);
+    const worker = createProviderJobWorker({ database, jobs, workspaces: new WorkspaceRepository(database), provider: stubConfig(stub.baseUrl) });
+    const { server } = createHarness({ database, routes: [...createDiscussionRoutes({ database, provider: stubConfig(stub.baseUrl) }), ...createJobRoutes({ database })] });
+    await withServer(server, async (base) => {
+      const result = await post(base, '/internal/courses/course-1/discussion', { body: { prompt: '讨论函数极限的定义' }, scopes: ['multi-agent:write'], key: 'd-1' });
+      assert.equal(result.status, 202);
+      assert.equal(await worker.tick(), true);
+      const job = await get(base, `/internal/courses/course-1/jobs/${result.body.job_id}`, ['job:read']);
+      assert.equal(job.body.status, 'completed');
+      const artifact = await get(base, `/internal/courses/course-1/artifacts/${job.body.artifact_id}`, ['job:read']);
+      const discussion = JSON.parse(Buffer.from(artifact.body.content_base64, 'base64').toString('utf8'));
+      assert.equal(discussion.messages.length, 3);
+      assert.equal(discussion.messages[0].agent, '主讲人');
+    });
+  } finally {
+    stub.server.close();
+  }
+
+  const degraded = new ServiceDatabase(':memory:');
+  const { server } = createHarness({ database: degraded, routes: createDiscussionRoutes({ database: degraded }) });
+  await withServer(server, async (base) => {
+    const result = await post(base, '/internal/courses/course-1/discussion', { body: { prompt: '讨论函数极限的定义' }, scopes: ['multi-agent:write'], key: 'd-2' });
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, 'provider_unavailable');
+  });
 });
