@@ -26,7 +26,7 @@ function requiredString(value: unknown, field: string, max = 80): string {
   return text;
 }
 
-function jobResponse(row: JobRow): Record<string, unknown> {
+export function jobResponse(row: JobRow): Record<string, unknown> {
   return {
     id: row.id,
     course_id: row.course_id,

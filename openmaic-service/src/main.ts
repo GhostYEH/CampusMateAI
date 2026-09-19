@@ -38,6 +38,7 @@ const worker = createProviderJobWorker({
   workspaces,
   provider: config.provider,
   tts: config.tts,
+  render: config.render,
 });
 
 function databaseIsReady(): boolean {
@@ -58,7 +59,7 @@ const server = createServer({
   routes: [
     ...createWorkspaceRoutes({ database }),
     ...createDiscoveryRoutes({ database }),
-    ...createArchiveRoutes({ database }),
+    ...createArchiveRoutes({ database, jobs, render: config.render }),
     ...createEditorRoutes({ database }),
     ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),
@@ -71,7 +72,7 @@ const server = createServer({
       image: false,
       video: false,
       tts: Boolean(config.tts),
-      render: false,
+      render: Boolean(config.render),
       external3d: Boolean(config.externalCdnUrl),
     } }),
     ...createTtsRoutes({ database, tts: config.tts }),

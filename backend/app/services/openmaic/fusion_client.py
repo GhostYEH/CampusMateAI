@@ -68,6 +68,7 @@ MATERIAL_WRITE_SCOPES = ("material:read", "material:write")
 # stage; import writes a new one, so the two get separate grants.
 ARCHIVE_READ_SCOPES = ("archive:read",)
 ARCHIVE_WRITE_SCOPES = ("archive:write",)
+VIDEO_EXPORT_SCOPES = ("archive:read", "job:write")
 GENERATION_WRITE_SCOPES = ("generation:write", "workspace:write", "job:write")
 TTS_WRITE_SCOPES = ("tts:write",)
 DISCUSSION_WRITE_SCOPES = ("multi-agent:write",)
@@ -806,6 +807,25 @@ class OpenMAICFusionClient:
             idempotency_key=idempotency_key,
         )
 
+    async def export_stage_video(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/video",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=VIDEO_EXPORT_SCOPES,
+            json_body={},
+            idempotency_key=idempotency_key,
+        )
+
     # ===== generation / jobs / provider-safe settings =====
 
     async def generate_stage(
@@ -936,6 +956,7 @@ __all__ = [
     "MATERIAL_WRITE_SCOPES",
     "ARCHIVE_READ_SCOPES",
     "ARCHIVE_WRITE_SCOPES",
+    "VIDEO_EXPORT_SCOPES",
     "GENERATION_WRITE_SCOPES",
     "TTS_WRITE_SCOPES",
     "DISCUSSION_WRITE_SCOPES",

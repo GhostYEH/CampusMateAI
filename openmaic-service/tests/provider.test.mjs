@@ -3,12 +3,15 @@ import test from 'node:test';
 import { createServer as createHttpServer } from 'node:http';
 
 import { ConfigError, loadConfig } from '../src/config.ts';
+import { createArchiveRoutes } from '../src/archive/routes.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 import { createDiscussionRoutes } from '../src/discussion/routes.ts';
 import { createGenerationRoutes } from '../src/generation/routes.ts';
+import { buildGeneratedStage } from '../src/generation/generator.ts';
 import { createJobRoutes } from '../src/jobs/routes.ts';
 import { JobRepository } from '../src/jobs/repository.ts';
 import { createProviderJobWorker } from '../src/provider/worker.ts';
+import { renderStageToMp4 } from '../src/provider/client.ts';
 import { createTtsRoutes } from '../src/tts/routes.ts';
 import { WorkspaceRepository } from '../src/workspace/repository.ts';
 import { createHarness, mintAssertion, withServer } from './helpers.mjs';
@@ -92,12 +95,15 @@ test('provider and tts endpoints are optional and validated together', () => {
   const plain = loadConfig(BASE_ENV);
   assert.equal(plain.provider, undefined);
   assert.equal(plain.tts, undefined);
+  assert.equal(plain.render, undefined);
 
   assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_PROVIDER_BASE_URL: 'https://x.example/v1' }), ConfigError);
   assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_PROVIDER_API_KEY: 'k' }), ConfigError);
   assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_TTS_BASE_URL: 'ftp://x.example/v1', OPENMAIC_TTS_API_KEY: 'k' }), ConfigError);
   assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_TTS_BASE_URL: 'https://u:p@x.example/v1', OPENMAIC_TTS_API_KEY: 'k' }), ConfigError);
   assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_TTS_BASE_URL: 'https://x.example/v1', OPENMAIC_TTS_API_KEY: 'k', OPENMAIC_TTS_TIMEOUT_SECONDS: '0' }), ConfigError);
+  assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_RENDER_SERVICE_URL: 'http://render-service:9000' }), ConfigError);
+  assert.throws(() => loadConfig({ ...BASE_ENV, OPENMAIC_RENDER_SERVICE_TOKEN: 'render-key' }), ConfigError);
 
   const full = loadConfig({
     ...BASE_ENV,
@@ -106,11 +112,70 @@ test('provider and tts endpoints are optional and validated together', () => {
     OPENMAIC_PROVIDER_MODEL: 'm1',
     OPENMAIC_TTS_BASE_URL: 'https://tts.example/v1',
     OPENMAIC_TTS_API_KEY: 'k2',
+    OPENMAIC_RENDER_SERVICE_URL: 'http://render-service:9000',
+    OPENMAIC_RENDER_SERVICE_TOKEN: 'render-key',
   });
   assert.deepEqual(full.provider, { baseUrl: 'https://gen.example/v1', apiKey: 'k1', model: 'm1', timeoutMs: 120000 });
   assert.equal(full.tts.model, 'mimo-v2.5-tts');
   assert.equal(full.tts.voice, '苏打');
   assert.equal(full.tts.timeoutMs, 180000);
+  assert.deepEqual(full.render, { baseUrl: 'http://render-service:9000', token: 'render-key', timeoutMs: 120000 });
+});
+
+test('render client sends only the bounded stage document and accepts mp4 bytes', async () => {
+  let seen = null;
+  const stub = await startStub((request, response, raw) => {
+    seen = { path: request.url, token: request.headers['x-render-service-token'], body: JSON.parse(raw) };
+    response.statusCode = 200;
+    response.setHeader('content-type', 'video/mp4');
+    response.end(Buffer.from('fake-mp4'));
+  });
+  try {
+    const result = await renderStageToMp4(
+      { baseUrl: stub.baseUrl, token: 'render-key', timeoutMs: 5000 },
+      { stage: { name: '函数极限' }, scenes: [{ title: '定义' }] },
+    );
+    assert.deepEqual(result, Buffer.from('fake-mp4'));
+    assert.equal(seen.path, '/v1/internal/render');
+    assert.equal(seen.token, 'render-key');
+    assert.deepEqual(seen.body.document.scenes, [{ title: '定义' }]);
+  } finally {
+    stub.server.close();
+  }
+});
+
+test('video export is queued, render-service bytes become an owned artifact, and replay is idempotent', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const workspaces = new WorkspaceRepository(database);
+  const workspace = workspaces.createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '期末复习' });
+  const stage = workspaces.createStage({ userId: 'user-1', courseId: 'course-1', workspaceId: workspace.id, title: '极限', document: buildGeneratedStage('slide', '极限'), dslVersion: '0.3.0' });
+  const stub = await startStub((request, response) => {
+    assert.equal(request.url, '/v1/internal/render');
+    response.statusCode = 200;
+    response.setHeader('content-type', 'video/mp4');
+    response.end(Buffer.from('real-render-service-output'));
+  });
+  try {
+    const render = { baseUrl: stub.baseUrl, token: 'render-key', timeoutMs: 5000 };
+    const jobs = new JobRepository(database);
+    const worker = createProviderJobWorker({ database, jobs, workspaces, render });
+    const { server } = createHarness({ database, routes: [...createArchiveRoutes({ database, jobs, render }), ...createJobRoutes({ database })] });
+    await withServer(server, async (base) => {
+      const first = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/stages/${stage.id}/export/video`, { body: {}, scopes: ['archive:read', 'job:write'], key: 'video-1' });
+      assert.equal(first.status, 202);
+      assert.equal(first.body.format, 'mp4');
+      const replay = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/stages/${stage.id}/export/video`, { body: {}, scopes: ['archive:read', 'job:write'], key: 'video-1' });
+      assert.equal(replay.body.job_id, first.body.job_id);
+      assert.equal(await worker.tick(), true);
+      const job = await get(base, `/internal/courses/course-1/jobs/${first.body.job_id}`, ['job:read']);
+      assert.equal(job.body.status, 'completed');
+      const artifact = await get(base, `/internal/courses/course-1/artifacts/${job.body.artifact_id}`, ['job:read']);
+      assert.equal(artifact.body.media_type, 'video/mp4');
+      assert.equal(Buffer.from(artifact.body.content_base64, 'base64').toString(), 'real-render-service-output');
+    });
+  } finally {
+    stub.server.close();
+  }
 });
 
 // ===== tts =====

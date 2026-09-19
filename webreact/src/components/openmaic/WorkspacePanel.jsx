@@ -60,6 +60,7 @@ export default function WorkspacePanel({
   canExportMarkdown = false,
   canExportDocx = false,
   canExportPptx = false,
+  canExportVideo = false,
   canImportPptx = false,
 }) {
   const [items, setItems] = React.useState([]);
@@ -196,6 +197,27 @@ export default function WorkspacePanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function exportVideo(workspaceId, stage) {
+    if (busy) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const queued = await api.enqueueOpenMAICStageVideo(courseId, workspaceId, stage.id, { idempotencyKey: api.newIdempotencyKey() });
+      let job = queued.job || null;
+      const jobId = queued.job_id || job?.id;
+      if (!jobId) throw new Error("受管服务未返回视频导出任务");
+      while (job && ["queued", "running"].includes(job.status)) {
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        job = await api.getOpenMAICJob(courseId, jobId);
+      }
+      if (!job || job.status !== "completed" || !job.artifact_id) throw new Error(job?.error_code || "视频导出失败");
+      const artifact = await api.getOpenMAICArtifact(courseId, job.artifact_id);
+      saveBlob(artifact.blob, filenameFromContentDisposition(artifact.disposition) || `${stage.title}.mp4`);
+      setNotice(`已导出「${stage.title}」为 MP4`);
+    } catch (err) {
+      setError(describeArchiveError(err).message || err.message || "视频导出失败");
+    } finally { setBusy(false); }
   }
 
   /**
@@ -490,6 +512,7 @@ export default function WorkspacePanel({
           {canExportMarkdown ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "markdown")}>Markdown</Button> : null}
           {canExportDocx ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "docx")}>DOCX</Button> : null}
           {canExportPptx ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "pptx")}>PPTX</Button> : null}
+          {canExportVideo ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportVideo(openWorkspaceId, stage)}>MP4</Button> : null}
           {canEdit ? <Button
             type="button"
             variant="secondary"

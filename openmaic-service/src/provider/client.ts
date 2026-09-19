@@ -1,4 +1,4 @@
-import type { ProviderConfig, TtsConfig } from '../config.ts';
+import type { ProviderConfig, RenderConfig, TtsConfig } from '../config.ts';
 import { GENERATION_MODES } from '../generation/generator.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 
@@ -190,4 +190,28 @@ export async function runDiscussion(
     if (!content.trim()) throw new ProviderError('provider_invalid_response', 'provider discussion message is empty');
     return { agent: agent || '讨论者', content };
   });
+}
+
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+
+/** Call the private render-service; its response is opaque MP4 bytes. */
+export async function renderStageToMp4(render: RenderConfig, document: unknown): Promise<Buffer> {
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(`${render.baseUrl}/internal/render`, {
+      method: 'POST',
+      headers: { 'x-render-service-token': render.token, 'content-type': 'application/json' },
+      body: JSON.stringify({ document }),
+      signal: AbortSignal.timeout(render.timeoutMs),
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name : '';
+    throw new ProviderError(name === 'TimeoutError' || name === 'AbortError' ? 'provider_timeout' : 'provider_request_failed', 'render service could not be reached');
+  }
+  if (!response.ok) throw new ProviderError('provider_rejected', `render service rejected the request with HTTP ${response.status}`);
+  const mediaType = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+  if (mediaType !== 'video/mp4') throw new ProviderError('provider_invalid_response', 'render service returned an unsupported media type');
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > MAX_VIDEO_BYTES) throw new ProviderError('provider_invalid_response', 'render service returned an invalid video size');
+  return bytes;
 }

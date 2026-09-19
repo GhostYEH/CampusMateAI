@@ -1,0 +1,9 @@
+{
+  "name": "@campusmate/openmaic-render-service",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "build": "node --experimental-strip-types --check src/main.ts"
+  }
+}

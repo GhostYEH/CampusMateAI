@@ -1,4 +1,4 @@
-import type { ProviderConfig, TtsConfig } from '../config.ts';
+import type { ProviderConfig, RenderConfig, TtsConfig } from '../config.ts';
 import type { ServiceDatabase } from '../db/database.ts';
 import { DslLimitError } from '../dsl/limits.ts';
 import { DslValidationError, prepareStage } from '../dsl/validate.ts';
@@ -12,6 +12,7 @@ import {
   runDiscussion,
   synthesizeSpeech,
   type ProviderErrorCode,
+  renderStageToMp4,
 } from './client.ts';
 
 /**
@@ -34,7 +35,7 @@ export interface ProviderJobWorker {
   tick(): Promise<boolean>;
 }
 
-const POLLABLE_KINDS = "('generation', 'tts', 'discussion')";
+const POLLABLE_KINDS = "('generation', 'tts', 'discussion', 'video')";
 
 function classify(error: unknown): ProviderErrorCode {
   if (error instanceof ProviderError) return error.code;
@@ -56,6 +57,7 @@ export function createProviderJobWorker(options: {
   workspaces: WorkspaceRepository;
   provider?: ProviderConfig;
   tts?: TtsConfig;
+  render?: RenderConfig;
   pollIntervalMs?: number;
   now?: () => string;
 }): ProviderJobWorker {
@@ -146,6 +148,21 @@ export function createProviderJobWorker(options: {
     });
   }
 
+  async function runVideo(identity: { userId: string; courseId: string; jobId: string }, input: Record<string, unknown>): Promise<void> {
+    if (!options.render) throw new ProviderError('provider_rejected', 'render service is not configured');
+    const workspaceId = typeof input.workspace_id === 'string' ? input.workspace_id : '';
+    const stageId = typeof input.stage_id === 'string' ? input.stage_id : '';
+    if (!workspaceId || !stageId) throw new ProviderError('internal_error', 'video job input is incomplete');
+    const stage = workspaces.getStage({ userId: identity.userId, courseId: identity.courseId, workspaceId, stageId });
+    const video = await renderStageToMp4(options.render, stage.document);
+    const title = safeFilename(stage.title, '学习内容');
+    jobs.complete({
+      ...identity,
+      artifact: { filename: `${title}.mp4`, mediaType: 'video/mp4', payload: video },
+      now: now(),
+    });
+  }
+
   async function processJob(ref: QueuedJobRef): Promise<void> {
     const identity = { userId: ref.user_id, courseId: ref.course_id, jobId: ref.id };
     try {
@@ -159,6 +176,7 @@ export function createProviderJobWorker(options: {
       if (ref.kind === 'generation') await runGeneration(identity, input);
       else if (ref.kind === 'tts') await runTts(identity, input);
       else if (ref.kind === 'discussion') await runDiscussionJob(identity, input);
+      else if (ref.kind === 'video') await runVideo(identity, input);
       else jobs.fail({ ...identity, errorCode: 'internal_error', now: now() });
     } catch (error) {
       try {

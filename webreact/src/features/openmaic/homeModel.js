@@ -85,6 +85,7 @@ export function describeFusionState(status) {
     canExportMarkdown: has("export-markdown"),
     canExportDocx: has("export-docx"),
     canExportPptx: has("export-pptx"),
+    canExportVideo: has("export-video"),
     canImportPptx: has("import-pptx"),
   };
 }

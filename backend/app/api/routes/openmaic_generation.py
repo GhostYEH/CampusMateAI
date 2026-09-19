@@ -24,6 +24,7 @@ router = APIRouter(prefix="/courses", tags=["openmaic-generation"])
 ARTIFACT_MEDIA_TYPES = {
     "audio/wav": ("artifact.wav", "学习产物.wav"),
     "application/json": ("artifact.json", "学习产物.json"),
+    "video/mp4": ("artifact.mp4", "学习内容.mp4"),
 }
 
 

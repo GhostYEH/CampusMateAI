@@ -119,6 +119,7 @@ export default function OpenMAICHome({
           canExportMarkdown={status.canExportMarkdown}
           canExportDocx={status.canExportDocx}
           canExportPptx={status.canExportPptx}
+          canExportVideo={status.canExportVideo}
           canImportPptx={status.canImportPptx}
         />
         : null}

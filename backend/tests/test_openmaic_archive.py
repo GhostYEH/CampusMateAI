@@ -359,6 +359,22 @@ def test_format_export_returns_a_binary_download_and_uses_the_format_route():
     assert claims["scope"] == ["archive:read"]
 
 
+def test_video_export_enqueues_a_course_bound_render_job():
+    _, transport, http, headers, course_id = _setup(script=[(202, {"job_id": "job_video", "job": {"id": "job_video", "status": "queued"}, "format": "mp4"})])
+    response = http.post(
+        f"/api/v1/courses/{course_id}/workspaces/ws_1/stages/stg_1/export/video",
+        headers={**headers, "Idempotency-Key": "video-1"},
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["job_id"] == "job_video"
+    call = transport.calls[0]
+    assert call["method"] == "POST"
+    assert call["url"].endswith("/export/video")
+    assert call["headers"]["Idempotency-Key"] == "video-1"
+    claims = decode_service_assertion(call["headers"]["X-CampusMate-Service-Assertion"], secret=SECRET)
+    assert claims["scope"] == ["archive:read", "job:write"]
+
+
 def test_pptx_import_is_bounded_before_reaching_the_service():
     _, transport, http, headers, course_id = _setup(script=[(201, {"stage": _stage_payload()})])
     response = http.post(

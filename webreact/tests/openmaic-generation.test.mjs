@@ -42,6 +42,15 @@ test("speech and discussion requests stay course-bound and idempotent", async ()
   assert.equal(request.headers["Idempotency-Key"], "discussion-1");
 });
 
+test("video export enqueues a render job through the authenticated gateway", async () => {
+  const mock = createMockClient(api.default);
+  mock.onPost("/courses/c1/workspaces/ws1/stages/stg1/export/video", { job_id: "video-job", job: { status: "queued" }, format: "mp4" }, 202);
+  await api.enqueueOpenMAICStageVideo("c1", "ws1", "stg1", { idempotencyKey: "video-1" });
+  const request = mock.lastRequest();
+  assert.equal(request.url, "/courses/c1/workspaces/ws1/stages/stg1/export/video");
+  assert.equal(request.headers["Idempotency-Key"], "video-1");
+});
+
 test("workspace provider tools are capability-gated and recover their artifact", async () => {
   const source = await import("node:fs").then(({ readFileSync }) => readFileSync(new URL("../src/components/openmaic/ProviderToolsPanel.jsx", import.meta.url), "utf8"));
   assert.match(source, /canTts/);

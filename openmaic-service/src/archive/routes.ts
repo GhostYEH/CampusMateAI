@@ -21,6 +21,7 @@ import { DslLimitError } from '../dsl/limits.ts';
 import { DslVersionError } from '../dsl/version.ts';
 import { DslValidationError, prepareStage } from '../dsl/validate.ts';
 import type { ServiceDatabase } from '../db/database.ts';
+import type { RenderConfig } from '../config.ts';
 import { IdempotencyStore } from '../db/idempotencyStore.ts';
 import type { RouteDefinition, RouteRequest, RouteResponse } from '../server.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
@@ -33,6 +34,8 @@ import { exportDocx } from '../exporters/docx.ts';
 import { exportMarkdown } from '../exporters/markdown.ts';
 import { exportPptx } from '../exporters/pptx.ts';
 import { importPptx } from '../importers/pptx.ts';
+import { JobRepository } from '../jobs/repository.ts';
+import { jobResponse } from '../jobs/routes.ts';
 
 export const ARCHIVE_READ_SCOPE = 'archive:read';
 export const ARCHIVE_WRITE_SCOPE = 'archive:write';
@@ -42,6 +45,7 @@ export const EXPORT_PPTX_CAPABILITY: Capability = 'export-pptx';
 export const EXPORT_MARKDOWN_CAPABILITY: Capability = 'export-markdown';
 export const EXPORT_DOCX_CAPABILITY: Capability = 'export-docx';
 export const IMPORT_PPTX_CAPABILITY: Capability = 'import-pptx';
+export const EXPORT_VIDEO_CAPABILITY: Capability = 'export-video';
 
 export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 
@@ -103,6 +107,8 @@ function respond(work: () => RouteResponse): RouteResponse {
 export interface ArchiveRouteOptions {
   database: ServiceDatabase;
   now?: () => string;
+  jobs?: JobRepository;
+  render?: RenderConfig;
 }
 
 export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefinition[] {
@@ -118,7 +124,7 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
     };
   }
 
-  return [
+  const routes: RouteDefinition[] = [
     {
       method: 'GET',
       pattern: '/internal/courses/:courseId/workspaces/:workspaceId/stages/:stageId/export',
@@ -286,4 +292,31 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
       }),
     },
   ];
+
+  if (options.jobs && options.render) {
+    routes.push({
+      method: 'POST',
+      pattern: '/internal/courses/:courseId/workspaces/:workspaceId/stages/:stageId/export/video',
+      scopes: [ARCHIVE_READ_SCOPE, 'job:write'],
+      courseScoped: true,
+      capabilities: [EXPORT_VIDEO_CAPABILITY],
+      handler: (request) => respond(() => {
+        const identity = actor(request);
+        const stage = repository.getStage({ ...identity, stageId: request.params.stageId ?? '' });
+        const userId = request.claims.sub;
+        const body = { workspace_id: identity.workspaceId, stage_id: stage.id, format: 'mp4' };
+        const key = request.headers[IDEMPOTENCY_HEADER]?.trim();
+        if (!key) throw new WorkspaceError('invalid_request', 'Idempotency-Key is required for this request');
+        if (key.length > MAX_IDEMPOTENCY_KEY_LENGTH) throw new WorkspaceError('invalid_request', 'Idempotency-Key is too long');
+        const requestHash = hashRequest({ method: request.method, path: request.url.pathname, body });
+        const stored = idempotency.lookup(userId, key, requestHash);
+        if (stored) return stored;
+        const row = options.jobs!.create({ userId, courseId: identity.courseId, kind: 'video', mode: 'mp4', request: body, now: now() });
+        const response: RouteResponse = { status: 202, body: { job_id: row.id, job: jobResponse(row), format: 'mp4', source: 'render-service' } };
+        idempotency.record(userId, key, { courseId: identity.courseId, method: request.method, path: request.url.pathname }, requestHash, response);
+        return response;
+      }),
+    });
+  }
+  return routes;
 }

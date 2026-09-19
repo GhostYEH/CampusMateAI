@@ -168,6 +168,7 @@ async def export_stage_format(
         stage_id=stage_id,
         format=format,
     )
+
     encoded = payload.get("content")
     if not isinstance(encoded, str) or not encoded:
         raise FusionUnavailable("受管服务未返回可用导出文件")
@@ -188,6 +189,31 @@ async def export_stage_format(
             "X-Archive-Sha256": str(payload.get("sha256") or ""),
         },
     )
+
+
+@router.post("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/video", status_code=status.HTTP_202_ACCEPTED)
+async def export_stage_video(
+    course_id: str,
+    workspace_id: str,
+    stage_id: str,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    client: OpenMAICFusionClient = Depends(_client),
+) -> dict:
+    _require_fusion_enabled(container.settings)
+    assert_course_access(container, user, course_id)
+    key = _require_idempotency_key(idempotency_key)
+    payload = await client.export_stage_video(
+        user_id=str(user.id),
+        course_id=course_id,
+        workspace_id=workspace_id,
+        stage_id=stage_id,
+        idempotency_key=key,
+    )
+    if not isinstance(payload.get("job_id"), str) or not isinstance(payload.get("job"), dict):
+        raise FusionUnavailable("受管服务未返回视频导出任务")
+    return payload
 
 
 @router.post("/{course_id}/workspaces/{workspace_id}/import", response_model=StageOut, status_code=status.HTTP_201_CREATED)

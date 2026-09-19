@@ -22,6 +22,8 @@ export interface ServiceConfig {
   provider?: ProviderConfig;
   /** Speech synthesis endpoint (MiMo V2.5 TTS). Absent means tts is unavailable. */
   tts?: TtsConfig;
+  /** Private loopback render-service endpoint. Absent means MP4 export is unavailable. */
+  render?: RenderConfig;
 }
 
 export interface ProviderConfig {
@@ -35,6 +37,12 @@ export interface ProviderConfig {
 export interface TtsConfig extends ProviderConfig {
   /** Preset voice id, e.g. `苏打`. */
   voice: string;
+}
+
+export interface RenderConfig {
+  baseUrl: string;
+  token: string;
+  timeoutMs: number;
 }
 
 /** Raised when the process cannot start with the supplied environment. */
@@ -161,6 +169,17 @@ function readTtsVoice(value: string | undefined): string {
   return voice || '苏打';
 }
 
+function readRenderEndpoint(env: Record<string, string | undefined>): RenderConfig | undefined {
+  const baseUrl = optionalEndpointUrl(env.OPENMAIC_RENDER_SERVICE_URL, 'OPENMAIC_RENDER_SERVICE_URL');
+  const token = (env.OPENMAIC_RENDER_SERVICE_TOKEN ?? '').trim();
+  if (!baseUrl && !token) return undefined;
+  if (!baseUrl || !token) throw new ConfigError('OPENMAIC_RENDER_SERVICE_URL and OPENMAIC_RENDER_SERVICE_TOKEN must be configured together');
+  const rawTimeout = (env.OPENMAIC_RENDER_SERVICE_TIMEOUT_SECONDS ?? '').trim();
+  const seconds = rawTimeout ? Number(rawTimeout) : 120;
+  if (!Number.isFinite(seconds) || seconds <= 0 || seconds > 600) throw new ConfigError('OPENMAIC_RENDER_SERVICE_TIMEOUT_SECONDS must be between 1 and 600');
+  return { baseUrl, token, timeoutMs: seconds * 1000 };
+}
+
 export function loadConfig(env = process.env): ServiceConfig {
   const internalSecret = (env.OPENMAIC_INTERNAL_SECRET ?? '').trim();
   if (!internalSecret) {
@@ -175,6 +194,7 @@ export function loadConfig(env = process.env): ServiceConfig {
     maxTimeoutSeconds: 600,
   });
   const tts: TtsConfig | undefined = ttsEndpoint ? { ...ttsEndpoint, voice: readTtsVoice(env.OPENMAIC_TTS_VOICE) } : undefined;
+  const render = readRenderEndpoint(env);
   return {
     host: (env.OPENMAIC_HOST ?? '').trim() || '127.0.0.1',
     port: positiveInteger(env.OPENMAIC_PORT, 4010),
@@ -183,5 +203,6 @@ export function loadConfig(env = process.env): ServiceConfig {
     ...(externalCdnUrl ? { externalCdnUrl } : {}),
     ...(provider ? { provider } : {}),
     ...(tts ? { tts } : {}),
+    ...(render ? { render } : {}),
   };
 }

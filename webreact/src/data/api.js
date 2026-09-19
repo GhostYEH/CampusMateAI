@@ -510,6 +510,14 @@ export async function getOpenMAICArtifact(courseId, artifactId) {
   };
 }
 
+export async function enqueueOpenMAICStageVideo(courseId, workspaceId, stageId, { idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/video`,
+    {},
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
 export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,
