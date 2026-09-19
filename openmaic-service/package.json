@@ -1,0 +1,13 @@
+{
+  "name": "@campusmate/openmaic-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22.19.0" },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "typecheck": "node scripts/check-types.mjs",
+    "build": "node scripts/check-types.mjs",
+    "start": "node --experimental-strip-types src/main.ts"
+  }
+}
