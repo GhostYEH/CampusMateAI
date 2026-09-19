@@ -8,6 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { normalizeCapabilities } from '../src/capabilities.ts';
+import { createArchiveRoutes } from '../src/archive/routes.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 import { createDiscoveryRoutes } from '../src/discovery/routes.ts';
 import { createEditorRoutes } from '../src/editor/routes.ts';
@@ -107,6 +108,7 @@ test('comes up on a complete configuration and serves authenticated readiness', 
     const declared = normalizeCapabilities([
       ...createWorkspaceRoutes({ database: mounted }),
       ...createDiscoveryRoutes({ database: mounted }),
+      ...createArchiveRoutes({ database: mounted }),
       ...createEditorRoutes({ database: mounted }),
       ...createMaterialRoutes({ database: mounted }),
       ...createPlayerRoutes({ database: mounted }),
@@ -119,6 +121,8 @@ test('comes up on a complete configuration and serves authenticated readiness', 
     assert.ok(payload.capabilities.includes('editor'));
     assert.ok(payload.capabilities.includes('player'));
     assert.ok(payload.capabilities.includes('material'));
+    assert.ok(payload.capabilities.includes('export-maic'));
+    assert.ok(payload.capabilities.includes('import-maic'));
 
     // The database survives a restart, so the replay guard must too.
     const replayToken = mintAssertion(['service:status']);

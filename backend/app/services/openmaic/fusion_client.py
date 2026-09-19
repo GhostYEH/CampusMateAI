@@ -64,6 +64,10 @@ STAGE_WRITE_SCOPES = ("stage:read", "stage:write")
 # writing additionally allows uploading or deleting one.
 MATERIAL_READ_SCOPES = ("material:read",)
 MATERIAL_WRITE_SCOPES = ("material:read", "material:write")
+# `.maic.zip` moves one stage in or out of a workspace. Export is a read of that
+# stage; import writes a new one, so the two get separate grants.
+ARCHIVE_READ_SCOPES = ("archive:read",)
+ARCHIVE_WRITE_SCOPES = ("archive:write",)
 
 
 def _status(
@@ -710,6 +714,50 @@ class OpenMAICFusionClient:
         )
 
 
+    # ===== `.maic.zip` 导出 / 导入 =====
+
+    async def export_stage(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+    ) -> dict[str, Any]:
+        """把一份 stage 导出为 `.maic.zip`（服务端以 base64 放在 JSON 信封里）。"""
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=ARCHIVE_READ_SCOPES,
+        )
+
+    async def import_stage(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        archive_b64: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """把 `.maic.zip` 导入为当前工作台里的一份新 stage。
+
+        档案里的 workspace/course/user 只是说明文字，落点始终由本次请求的路径与
+        断言决定。
+        """
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/import",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=ARCHIVE_WRITE_SCOPES,
+            json_body={"archive": archive_b64},
+            idempotency_key=idempotency_key,
+        )
+
+
 def _safe_json(response: Any) -> Any:
     """Never let a malformed body become an exception the caller cannot classify."""
     try:
@@ -733,5 +781,7 @@ __all__ = [
     "STAGE_WRITE_SCOPES",
     "MATERIAL_READ_SCOPES",
     "MATERIAL_WRITE_SCOPES",
+    "ARCHIVE_READ_SCOPES",
+    "ARCHIVE_WRITE_SCOPES",
     "UNSET",
 ]

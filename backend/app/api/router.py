@@ -46,6 +46,7 @@ from .routes import (
     final_review,
     course_research,
     openmaic_classroom,
+    openmaic_archive,
     openmaic_discovery,
     openmaic_editor,
     openmaic_fusion,
@@ -131,5 +132,7 @@ api_router.include_router(openmaic_discovery.router)
 api_router.include_router(openmaic_editor.router)
 # OpenMAIC 课程资料(上传即解析,正文只在单份读取时返回)
 api_router.include_router(openmaic_materials.router)
+# OpenMAIC 档案(单份 stage 的 .maic.zip 导出 / 导入)
+api_router.include_router(openmaic_archive.router)
 
 __all__ = ["api_router"]

@@ -1,4 +1,5 @@
 import { ServiceAuthenticator } from './auth/authenticator.ts';
+import { createArchiveRoutes } from './archive/routes.ts';
 import { loadConfig } from './config.ts';
 import { ServiceDatabase } from './db/database.ts';
 import { SqliteReplayStore } from './db/replayStore.ts';
@@ -35,6 +36,7 @@ const server = createServer({
   routes: [
     ...createWorkspaceRoutes({ database }),
     ...createDiscoveryRoutes({ database }),
+    ...createArchiveRoutes({ database }),
     ...createEditorRoutes({ database }),
     ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),

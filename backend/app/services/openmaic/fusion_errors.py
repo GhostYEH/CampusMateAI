@@ -101,6 +101,12 @@ def raise_for_service_error(status_code: int, body: Optional[Any]) -> None:
             details["service_error"] = error_code
         if isinstance(payload.get("path"), str):
             details["path"] = payload["path"]
+        # An archive rejection carries no `issues`, so the service's own sentence
+        # is the only thing that tells the student what to change about their
+        # file. It travels as a detail rather than as the public message, which
+        # keeps the transport-level copy stable across surfaces.
+        if message:
+            details["service_message"] = message
         raise FusionDocumentRejected(details=details or None)
     if status_code == 400:
         raise FusionInvalidRequest(message or None)
