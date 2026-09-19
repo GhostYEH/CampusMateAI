@@ -12,8 +12,10 @@ import { readFile } from "node:fs/promises";
 import {
   DECISION_LABEL,
   DECISION_STATE,
+  DECISION_STATUS,
   DECISION_TONE,
   OBSERVED_OUTCOME_LABEL,
+  PLAN_SWITCHED_LABEL,
   describeAdoption,
   describeInterventionDecision,
   describeObservedOutcome,
@@ -29,6 +31,8 @@ describe("持久化决策的五态展示", () => {
       const view = describeInterventionDecision({
         outcome: {
           decision,
+          // 只有执行完成的决策才谈得上"已落地"，这里统一取终态。
+          decision_status: "APPLIED",
           decision_reason_codes: [`reason_${decision.toLowerCase()}`],
           suggested_adjustments: decision === "REPLAN" ? ["reinforce_foundation"] : [],
           observed_outcome: "DECLINED",
@@ -88,6 +92,97 @@ describe("持久化决策的五态展示", () => {
   });
 });
 
+describe("REPLAN 的计划切换状态必须按后端 decision_status 展示", () => {
+  /**
+   * `adaptive_replan_decisions.status` 描述"这次调整走到哪一步了"：
+   * PENDING 还没开始、APPLYING 正在做、APPLIED 真的切换完成、FAILED 切换失败。
+   * 计划只在 APPLIED 时才是新的，其余三种都必须说清楚"计划还没换"。
+   */
+  const CASES = {
+    PENDING: { pattern: /尚未开始|准备/, applied: false },
+    APPLYING: { pattern: /正在/, applied: false },
+    APPLIED: { pattern: /已调整/, applied: true },
+    FAILED: { pattern: /失败/, applied: false },
+  };
+
+  for (const [status, expectation] of Object.entries(CASES)) {
+    it(`REPLAN + ${status} 如实反映计划是否已经切换`, () => {
+      const view = describeInterventionDecision({
+        outcome: {
+          decision: "REPLAN",
+          decision_status: status,
+          suggested_adjustments: ["reduce_workload"],
+        },
+      });
+      assert.equal(view.decision, "REPLAN");
+      assert.equal(view.decisionStatus, status);
+      assert.equal(view.applied, expectation.applied, `applied 必须与 ${status} 一致`);
+      assert.match(view.label, expectation.pattern);
+      if (!expectation.applied) {
+        assert.notEqual(
+          view.label, PLAN_SWITCHED_LABEL,
+          `${status} 时计划尚未切换，不能显示"${PLAN_SWITCHED_LABEL}"`,
+        );
+      }
+    });
+  }
+
+  it("只有 REPLAN + APPLIED 才允许出现'已调整学习计划'", () => {
+    const decisions = ["CONTINUE", "WAIT_FOR_EVIDENCE", "REPLAN", "SUSPEND", "FUTURE_CODE"];
+    const statuses = ["PENDING", "APPLYING", "APPLIED", "FAILED", null, undefined, "FUTURE_STATUS"];
+    const claiming = [];
+    for (const decision of decisions) {
+      for (const decision_status of statuses) {
+        const view = describeInterventionDecision({
+          outcome: { decision, decision_status },
+        });
+        if (view.label === PLAN_SWITCHED_LABEL || view.applied === true) {
+          claiming.push(`${decision}/${decision_status}`);
+        }
+      }
+    }
+    assert.deepEqual(claiming, ["REPLAN/APPLIED"], "只有这一种组合能声称计划已切换");
+  });
+
+  it("decision_status 缺失或未知时保守处理：绝不声称计划已切换", () => {
+    for (const decision_status of [null, undefined, "", "FUTURE_STATUS"]) {
+      const view = describeInterventionDecision({
+        outcome: { decision: "REPLAN", decision_status },
+      });
+      assert.equal(view.applied, false, `未知状态 ${decision_status} 不能当作已切换`);
+      assert.notEqual(view.label, PLAN_SWITCHED_LABEL);
+      assert.match(view.label, /尚未开始|正在|待/);
+    }
+  });
+
+  it("切换失败时明确说明按原计划继续，而不是静默显示成已调整", () => {
+    const view = describeInterventionDecision({
+      outcome: { decision: "REPLAN", decision_status: "FAILED" },
+    });
+    assert.equal(view.applied, false);
+    assert.equal(view.tone, "warn");
+    assert.match(view.detail ?? "", /原计划|未切换|保留/);
+  });
+
+  it("非 REPLAN 决定不受 decision_status 影响，仍展示各自的决定", () => {
+    for (const decision of ["CONTINUE", "WAIT_FOR_EVIDENCE", "SUSPEND"]) {
+      for (const decision_status of ["PENDING", "APPLYING", "APPLIED", "FAILED"]) {
+        const view = describeInterventionDecision({ outcome: { decision, decision_status } });
+        assert.equal(view.label, DECISION_LABEL[decision]);
+        assert.equal(view.tone, DECISION_TONE[decision]);
+        assert.equal(view.applied, false, "只有重规划才谈得上切换计划");
+      }
+    }
+  });
+
+  it("导出状态常量与后端 CHECK 约束一致", () => {
+    assert.deepEqual(
+      [...Object.values(DECISION_STATUS)].sort(),
+      ["APPLIED", "APPLYING", "FAILED", "PENDING"],
+    );
+  });
+});
+
 describe("执行采纳与观测文案", () => {
   it("缺失采纳信号与'尚未开始'是两件事", () => {
     assert.equal(describeAdoption(null), "尚未开始");
@@ -121,5 +216,12 @@ describe("页面接线", () => {
   it("决定徽标带有可断言的展示状态", () => {
     assert.match(pageSource, /data-decision-state=\{decision\.state\}/);
     assert.match(pageSource, /ls-decision--\$\{decision\.tone\}/);
+  });
+
+  it("页面把'计划是否已切换'作为可断言的展示状态暴露出来", () => {
+    // 文案由投影模块决定，页面只渲染，不在页面里硬编码"已调整学习计划"。
+    assert.doesNotMatch(pageSource, /已调整学习计划/);
+    assert.match(pageSource, /data-plan-switched=\{String\(decision\.applied\)\}/);
+    assert.match(pageSource, /data-decision-status=\{decision\.decisionStatus \?\? ""\}/);
   });
 });

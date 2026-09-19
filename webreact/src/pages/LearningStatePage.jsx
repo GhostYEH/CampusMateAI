@@ -161,12 +161,20 @@ function InterventionLoopSummary({ intervention, outcome, loading, error, onRetr
       <p><strong>观测结果：</strong>{observed}</p>
       <p>
         <strong>系统决定：</strong>
-        <span className={`ls-decision ls-decision--${decision.tone}`} data-decision-state={decision.state}>
+        <span
+          className={`ls-decision ls-decision--${decision.tone}`}
+          data-decision-state={decision.state}
+          data-decision-status={decision.decisionStatus ?? ""}
+          data-plan-switched={String(decision.applied)}
+        >
           {decision.label}
         </span>
         {decision.state === DECISION_STATE.PENDING && decision.detail ? `（${decision.detail}）` : ""}
         {intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}
       </p>
+      {decision.state === DECISION_STATE.DECIDED && decision.detail && <p className="ls-hint">
+        {decision.detail}
+      </p>}
       {decision.state === DECISION_STATE.UNAVAILABLE && <p className="ls-error" role="alert">
         <span>{decision.detail || "系统决定暂时读不到，页面不会按状态差值推测决定。"}</span>
         {onRetry && <button onClick={onRetry} className="ls-retry-btn">重试</button>}

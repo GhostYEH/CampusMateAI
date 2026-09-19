@@ -37,6 +37,11 @@ def _id() -> str:
     return f"intv_{uuid.uuid4().hex[:16]}"
 
 
+# 决策处理权的默认租约长度。一次 tick 内的重规划是秒级动作，5 分钟足够宽裕；
+# 同时又短到"Worker 崩溃后最多 5 分钟就能被下一个 Worker 接手"。
+DEFAULT_DECISION_LEASE_SECONDS = 300.0
+
+
 class AdaptiveInterventionRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -183,19 +188,41 @@ class AdaptiveInterventionRepository:
         if new_cursor.rowcount != 1:
             raise sqlite3.IntegrityError("successor intervention missing or already linked")
 
-    def claim_decision(self, *, user_id: str, decision_id: str) -> bool:
-        """CAS 抢占：只有 PENDING 或"可恢复的 RETRYABLE"决策能进入 APPLYING。
+    def claim_decision(
+        self, *, user_id: str, decision_id: str, owner: str | None = None,
+        lease_seconds: float = DEFAULT_DECISION_LEASE_SECONDS,
+        now: datetime | None = None,
+    ) -> bool:
+        """带租约的 CAS 抢占：拿到处理权的唯一途径。
 
-        返回 True 表示本 Worker 拿到了处理权。`rowcount != 1` 表示另一个 Worker
-        已经先一步处理（或决策已进入终态）——此时**不得**继续生成后继，更不得取消
-        别人创建的后继。
+        `APPLYING` 不是终态，而是"某个 Worker 正在做"。因此这里允许三种进入
+        `APPLYING` 的入口，且**只有这三种**：
+
+        1. `PENDING`：首次处理；
+        2. `FAILED` + `failure_class='RETRYABLE'`：上一次是基础设施失败，可重试；
+        3. `APPLYING` 且**租约已过期**（或租约未知的历史残留行已经过了整整一个
+           租约窗口）：前一个持有者已经死了，可以接手。
+
+        返回 True 表示本 Worker 拿到处理权；`rowcount != 1` 表示别人正在做、或决策
+        已进入终态 —— 此时**不得**继续生成后继，更不得取消别人创建的后继。
+
+        刻意**不**允许无条件抢占 `APPLYING`：只要租约还没过期，其他 Worker 必须
+        原样退出。反过来，租约未知的历史行也不能被当成永久锁（那样它们会永远卡死），
+        所以给它们一个"从 created_at 起算满一个租约窗口"的可恢复条件。
         """
+        moment = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        expires_at = (moment + timedelta(seconds=max(1.0, float(lease_seconds)))).replace(microsecond=0)
+        legacy_cutoff = (moment - timedelta(seconds=max(1.0, float(lease_seconds)))).replace(microsecond=0)
         with self._db.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE adaptive_replan_decisions SET status='APPLYING' "
+                "UPDATE adaptive_replan_decisions SET status='APPLYING', lease_owner=?, "
+                "lease_expires_at=?, failure_code=NULL, failure_class='NONE' "
                 "WHERE decision_id=? AND user_id=? AND (status='PENDING' "
-                "OR (status='FAILED' AND failure_class='RETRYABLE'))",
-                (decision_id, user_id),
+                "OR (status='FAILED' AND failure_class='RETRYABLE') "
+                "OR (status='APPLYING' AND ((lease_expires_at IS NOT NULL AND lease_expires_at<=?) "
+                "OR (lease_expires_at IS NULL AND created_at<=?))))",
+                (owner, expires_at.isoformat(), decision_id, user_id,
+                 moment.isoformat(), legacy_cutoff.isoformat()),
             )
             return cursor.rowcount == 1
 
@@ -471,10 +498,17 @@ class AdaptiveInterventionRepository:
                                failure_code: str | None = None) -> AdaptiveReplanDecisionRow | None:
         if status not in {"PENDING", "APPLYING", "APPLIED", "FAILED"}:
             raise ValueError("invalid decision status")
+        # 终态必须释放租约：否则一条已经 APPLIED 的决策还挂着"处理权"，
+        # 让"谁正在处理"这个问题永远无法回答。
+        terminal = status in {"APPLIED", "FAILED"}
         with self._db.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE adaptive_replan_decisions SET status=?, applied_at=CASE WHEN ?='APPLIED' THEN ? ELSE applied_at END, failure_code=? WHERE decision_id=? AND user_id=?",
-                (status, status, _now(), failure_code, decision_id, user_id),
+                "UPDATE adaptive_replan_decisions SET status=?, "
+                "applied_at=CASE WHEN ?='APPLIED' THEN ? ELSE applied_at END, failure_code=?, "
+                "lease_owner=CASE WHEN ? THEN NULL ELSE lease_owner END, "
+                "lease_expires_at=CASE WHEN ? THEN NULL ELSE lease_expires_at END "
+                "WHERE decision_id=? AND user_id=?",
+                (status, status, _now(), failure_code, int(terminal), int(terminal), decision_id, user_id),
             )
             if cursor.rowcount != 1:
                 return None
@@ -498,7 +532,7 @@ class AdaptiveInterventionRepository:
             can_retry = retryable and count <= max_retries
             next_retry = (now + timedelta(seconds=min(3600, 60 * (2 ** (count - 1))))).isoformat() if can_retry else None
             conn.execute(
-                "UPDATE adaptive_replan_decisions SET status='FAILED', failure_code=?, failure_class=?, retry_count=?, next_retry_at=? WHERE decision_id=? AND user_id=?",
+                "UPDATE adaptive_replan_decisions SET status='FAILED', failure_code=?, failure_class=?, retry_count=?, next_retry_at=?, lease_owner=NULL, lease_expires_at=NULL WHERE decision_id=? AND user_id=?",
                 (failure_code, "RETRYABLE" if can_retry else "PERMANENT", count, next_retry, decision_id, user_id),
             )
         with self._db.query() as conn:

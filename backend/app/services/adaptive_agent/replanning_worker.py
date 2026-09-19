@@ -5,10 +5,12 @@ import asyncio
 import json
 import inspect
 import sqlite3
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 
+from ...repositories.adaptive_intervention_repository import DEFAULT_DECISION_LEASE_SECONDS
 from .replan_policy import ReplanDecisionPolicy
 
 
@@ -31,13 +33,19 @@ class AdaptiveReplanningWorker:
 
     def __init__(self, *, repository, intervention_service, policy: ReplanDecisionPolicy | None = None,
                  clock: Callable[[], datetime] = _utc_now, interval_seconds: float = 60.0,
-                 sleeper: Callable[[float], object] | None = None) -> None:
+                 sleeper: Callable[[float], object] | None = None,
+                 owner_id: str | None = None,
+                 lease_seconds: float = DEFAULT_DECISION_LEASE_SECONDS) -> None:
         self._repository = repository
         self._service = intervention_service
         self._policy = policy or ReplanDecisionPolicy()
         self._clock = clock
         self._interval_seconds = interval_seconds
         self._sleeper = sleeper or asyncio.sleep
+        # 每个 Worker 实例代表一个进程：处理权必须能追溯到具体持有者，
+        # 否则崩溃残留无法区分"别人正在做"与"别人已经死了"。
+        self._owner_id = owner_id or f"replan-worker-{uuid.uuid4().hex[:8]}"
+        self._lease_seconds = max(1.0, float(lease_seconds))
         self._task: asyncio.Task | None = None
         self._stopping = False
 
@@ -105,7 +113,7 @@ class AdaptiveReplanningWorker:
                 # APPLYING 的 Worker 才拥有处理权。`False` 表示另一个 Worker 已经
                 # 先一步接手，或决策已进入终态 —— 此时**不得**继续生成后继，
                 # 更不得取消别人创建的后继。
-                if not self._claim(row, decision):
+                if not self._claim(row, decision, now):
                     continue
                 if decision.decision == "REPLAN":
                     successor = self._service.replan_from_evaluation(
@@ -138,8 +146,13 @@ class AdaptiveReplanningWorker:
         return AdaptiveReplanTickReport(scanned=len(rows), evaluated=evaluated, reused=reused,
                                         decisions=decisions, applied=applied, failed=failed)
 
-    def _claim(self, row, decision) -> bool:
-        """抢占决策处理权；`False` 表示本 Worker 没拿到，必须原样退出。"""
+    def _claim(self, row, decision, now: datetime) -> bool:
+        """抢占决策处理权；`False` 表示本 Worker 没拿到，必须原样退出。
+
+        抢占条件由仓储保证（PENDING / 可重试 FAILED / **租约已过期** 的 APPLYING），
+        这里只负责带上自己的身份与租约长度。租约未过期时抢占必然失败，
+        因此"另一个 Worker 正在处理"绝不会被误当成"可以接手"。
+        """
         claim = getattr(self._repository, "claim_decision", None)
         if claim is None:
             # 兼容只实现状态推进的小型测试替身：没有 CAS 时退化为原语义。
@@ -147,7 +160,14 @@ class AdaptiveReplanningWorker:
                 user_id=row.user_id, decision_id=decision.decision_id, status="APPLYING",
             )
             return True
-        return bool(claim(user_id=row.user_id, decision_id=decision.decision_id))
+        try:
+            return bool(claim(
+                user_id=row.user_id, decision_id=decision.decision_id,
+                owner=self._owner_id, lease_seconds=self._lease_seconds, now=now,
+            ))
+        except TypeError:
+            # 旧签名（无租约参数）的替身：退回最小 CAS 语义。
+            return bool(claim(user_id=row.user_id, decision_id=decision.decision_id))
 
     def _guard_code(self, row, now: datetime) -> str | None:
         resolver = getattr(self._service, "replan_guard_code", None)

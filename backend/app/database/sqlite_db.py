@@ -1412,6 +1412,11 @@ CREATE TABLE IF NOT EXISTS adaptive_replan_decisions (
     failure_class TEXT NOT NULL DEFAULT 'NONE' CHECK(failure_class IN ('NONE','RETRYABLE','PERMANENT')),
     retry_count INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
+    -- 处理权租约。APPLYING 是"有人正在做"而不是终态：Worker 在拿到处理权之后、
+    -- 把决策写成 APPLIED 之前崩溃，会留下一条 APPLYING 残留。没有租约就无法区分
+    -- "别人正在做"与"别人已经死了"，要么永久卡死，要么只能无条件抢占。
+    lease_owner TEXT,
+    lease_expires_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY(intervention_id) REFERENCES adaptive_interventions(intervention_id) ON DELETE CASCADE,
     FOREIGN KEY(evaluation_id) REFERENCES intervention_evaluations(evaluation_id) ON DELETE CASCADE
@@ -2089,6 +2094,10 @@ class Database:
                 "failure_class": "TEXT NOT NULL DEFAULT 'NONE'",
                 "retry_count": "INTEGER NOT NULL DEFAULT 0",
                 "next_retry_at": "TEXT",
+                # 老库里已经存在、且永远停在 APPLYING 的残留行：补列后它们会走到
+                # "租约未知"分支，在租约窗口过去之后可以被安全接手。
+                "lease_owner": "TEXT",
+                "lease_expires_at": "TEXT",
             },
             # 用量记账:老库补列,避免只有延迟没有 token 成本。
             "agent_model_calls": {

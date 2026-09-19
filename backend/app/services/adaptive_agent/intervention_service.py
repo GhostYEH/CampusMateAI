@@ -145,6 +145,7 @@ class AdaptiveInterventionService:
         strategy_adjustments: list[str] | None = None,
         force_new: bool = True,
         deferred_activation: bool = False,
+        defer_lineage: bool = False,
         on_stage: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> InterventionPlanResult:
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
@@ -177,6 +178,7 @@ class AdaptiveInterventionService:
                 force_new=force_new, on_stage=on_stage, intervention=existing,
                 assessment=assessment, strategy=strategy, reused_intervention=True,
                 deferred_activation=deferred_activation, strategy_adjustments=strategy_adjustments,
+                defer_lineage=defer_lineage,
             )
 
         goal = self._load_goal(user_id=user_id, goal_id=goal_id)
@@ -229,7 +231,7 @@ class AdaptiveInterventionService:
             as_of=now, supersedes_plan_id=supersedes_plan_id, force_new=force_new,
             on_stage=on_stage, intervention=intervention, assessment=assessment,
             strategy=strategy, reused_intervention=False, deferred_activation=deferred_activation,
-            strategy_adjustments=strategy_adjustments,
+            strategy_adjustments=strategy_adjustments, defer_lineage=defer_lineage,
         )
 
     def load_intervention(self, *, user_id: str, intervention_id: str) -> AdaptiveInterventionRow | None:
@@ -392,6 +394,9 @@ class AdaptiveInterventionService:
             supersedes_plan_id=old.plan_id, force_new=True,
             strategy_adjustments=suggested_adjustments or [],
             deferred_activation=True,
+            # 关键：计划血缘**不能**在这里就落库。它必须和干预血缘在同一个事务里
+            # 成对写入，否则一次绑定失败就会留下"计划已切换、干预还是旧的"。
+            defer_lineage=True,
         )
         # 原子血缘：计划血缘（旧计划 -> 新计划）与干预血缘（旧干预 -> 新干预）
         # 必须在**同一个事务边界**内完成。任一步失败整体回滚，绝不会留下
@@ -458,6 +463,7 @@ class AdaptiveInterventionService:
         strategy: StrategyDecision,
         reused_intervention: bool,
         deferred_activation: bool = False,
+        defer_lineage: bool = False,
     ) -> InterventionPlanResult:
         strategy = self._apply_adjustments(strategy, strategy_adjustments or [])
         self._repository.update_strategy(
@@ -486,6 +492,7 @@ class AdaptiveInterventionService:
                 supersedes_plan_id=supersedes_plan_id,
                 replan_key=idempotency_key,
                 strategy_context=strategy_context,
+                defer_lineage=defer_lineage,
             )
         except Exception:
             # 计划生成失败：把干预记录收口到明确状态，不留"半生成"记录。

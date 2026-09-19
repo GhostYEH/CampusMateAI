@@ -183,6 +183,10 @@ class AdaptiveReplanDecisionRow:
     failure_class: str = "NONE"
     retry_count: int = 0
     next_retry_at: str | None = None
+    # 处理权租约：APPLYING 期间由 `lease_owner` 持有，`lease_expires_at` 之后才允许
+    # 别的 Worker 接手。终态（APPLIED / FAILED）必须把两者清空。
+    lease_owner: str | None = None
+    lease_expires_at: str | None = None
 
     @classmethod
     def from_row(cls, row: Any) -> "AdaptiveReplanDecisionRow":
@@ -197,6 +201,8 @@ class AdaptiveReplanDecisionRow:
             failure_class=row["failure_class"] if "failure_class" in row.keys() else "NONE",
             retry_count=int(row["retry_count"] or 0) if "retry_count" in row.keys() else 0,
             next_retry_at=row["next_retry_at"] if "next_retry_at" in row.keys() else None,
+            lease_owner=row["lease_owner"] if "lease_owner" in row.keys() else None,
+            lease_expires_at=row["lease_expires_at"] if "lease_expires_at" in row.keys() else None,
         )
 
 
