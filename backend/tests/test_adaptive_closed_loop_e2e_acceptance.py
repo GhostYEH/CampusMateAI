@@ -131,3 +131,111 @@ def test_closed_loop_result_is_isolated_between_users():
         headers=outsider_headers,
     )
     assert detail.status_code == 404 and outcome.status_code == 404
+
+
+# ================================================ 不该动计划的时候，就绝不能动
+
+def test_without_a_real_decline_the_plan_is_never_switched():
+    """没有真实下降就不许换计划 —— 闭环最危险的失效模式是"乱重规划"。"""
+    from test_adaptive_closed_loop_integrity import _container, _add_tasks, _plan_intervention
+
+    container, student = _container("e2e_no_decline_student")
+    _add_tasks(container, student.id, count=1, day_offset=2)
+    _goal, planned = _plan_intervention(container, student, key="e2e-no-decline")
+    client = TestClient(create_app())
+    headers = _login(client, student.username)
+
+    report = _tick(container, clock=_due_after(planned))
+    assert report.failed == 0
+
+    payload = client.get(
+        f"{API}/adaptive-interventions/{planned.intervention.intervention_id}/outcome", headers=headers
+    ).json()
+    assert payload["decision"] != "REPLAN", "没有下降却重规划了"
+    assert payload["decision_status"] == "APPLIED", "决定本身应当已落库"
+
+    # 计划必须原封不动：没有后继、没有血缘改动。
+    assert _successors(container, student.id, planned.intervention.intervention_id) == []
+    lineage = _rows(
+        container,
+        "SELECT plan_id, supersedes_plan_id, superseded_by_plan_id FROM learning_plans WHERE user_id=?",
+        (student.id,),
+    )
+    assert len(lineage) == 1, "不该出现第二份计划"
+    assert lineage[0]["superseded_by_plan_id"] is None and lineage[0]["supersedes_plan_id"] is None
+
+
+def test_paused_data_source_degrades_conservatively_and_keeps_the_plan():
+    """数据源被暂停时应当保守降级，而不是凭残缺证据改计划。"""
+    from test_adaptive_closed_loop_integrity import _container, _add_tasks, _plan_intervention
+
+    container, student = _container("e2e_paused_source_student")
+    _add_tasks(container, student.id, count=1, day_offset=2)
+    _goal, planned = _plan_intervention(container, student, key="e2e-paused")
+    client = TestClient(create_app())
+    headers = _login(client, student.username)
+
+    container.learner_control_repository.upsert_source_control(
+        user_id=student.id, source_key="CHAOXING", status="PAUSED",
+    )
+    assert container.learner_model_source_policy.get_paused_sources(user_id=student.id) >= {"CHAOXING"}
+
+    report = _tick(container, clock=_due_after(planned))
+    assert report.failed == 0, "数据源暂停是正常状态，不是基础设施失败"
+
+    payload = client.get(
+        f"{API}/adaptive-interventions/{planned.intervention.intervention_id}/outcome", headers=headers
+    ).json()
+    assert payload["decision"] in {"WAIT_FOR_EVIDENCE", "SUSPEND", "CONTINUE"}, payload
+    assert _successors(container, student.id, planned.intervention.intervention_id) == [], \
+        "证据受限时不得替换计划"
+
+
+# ==================================================== 前端刷新 / 并发读取的稳定性
+
+def test_repeated_page_reads_are_stable_and_do_not_create_work():
+    """刷新页面只能回读同一份落库结果，不得因为读取而产生新决策或新计划。"""
+    container, student, _outsider, _goal, planned, client, headers, _outsider_headers = _prepare()
+    _tick(container, clock=_due_after(planned))
+
+    url = f"{API}/adaptive-interventions/{planned.intervention.intervention_id}/outcome"
+    first = client.get(url, headers=headers)
+    second = client.get(url, headers=headers)
+    third = client.get(url, headers=headers)
+    assert first.status_code == second.status_code == third.status_code == 200
+    assert first.json() == second.json() == third.json(), "同一份持久化结果必须逐字段稳定"
+
+    decisions = _rows(
+        container,
+        "SELECT decision_id FROM adaptive_replan_decisions WHERE user_id=?",
+        (student.id,),
+    )
+    assert len(decisions) == 1, "读页面不得产生第二条决策"
+    assert len(_successors(container, student.id, planned.intervention.intervention_id)) == 1
+
+
+def test_two_workers_racing_produce_exactly_one_successor():
+    """两个 Worker 先后处理同一条决策：只能有一个后继、一份正式计划。"""
+    container, student, _outsider, _goal, planned, client, headers, _outsider_headers = _prepare()
+    due = _due_after(planned)
+
+    first = _tick(container, clock=due)
+    second = _tick(container, clock=due)  # 第二个 Worker 面对的是已经终态的决策
+    assert first.failed == second.failed == 0
+
+    successors = _successors(container, student.id, planned.intervention.intervention_id)
+    assert len(successors) == 1, "并发只能产生一个后继"
+
+    decisions = _rows(
+        container,
+        "SELECT status, lease_owner, lease_expires_at FROM adaptive_replan_decisions WHERE user_id=?",
+        (student.id,),
+    )
+    assert len(decisions) == 1, "不得出现第二条决策"
+    assert decisions[0]["status"] == "APPLIED"
+    assert decisions[0]["lease_owner"] is None and decisions[0]["lease_expires_at"] is None, \
+        "终态必须释放处理权"
+
+    # 页面看到的后继数量也必须是一个。
+    listed = client.get(f"{API}/adaptive-interventions?page=1&page_size=10", headers=headers).json()["items"]
+    assert len(listed) == 2, "原干预 + 唯一后继"
