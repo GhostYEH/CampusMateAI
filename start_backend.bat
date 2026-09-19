@@ -31,12 +31,19 @@ if exist ".venv\Scripts\activate.bat" (
 :: 3. install deps (with China mirror fallback)
 echo [3/4] Installing dependencies ...
 
-:: try default PyPI first, fallback to Tsinghua mirror on timeout
-pip install -r requirements.txt --default-timeout=60 2>&1
+:: Always call the venv interpreter via "python -m <tool>".
+:: The generated .venv\Scripts\*.exe shims embed the absolute path captured at
+:: install time, so they break whenever the repo is moved to another drive/folder
+:: ("Fatal error in launcher: Unable to create process using ..."). "python -m" does not.
+:: try the Aliyun mirror first (fast + reliable in CN), fall back to official PyPI.
+:: NOTE: pypi.tuna.tsinghua.edu.cn currently answers pip with HTTP 403 in this
+:: environment ("No matching distribution found ... from versions: none"),
+:: so it is no longer used as the fallback.
+python -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --default-timeout=60 --disable-pip-version-check 2>&1
 if errorlevel 1 (
     echo.
-    echo        Default PyPI timeout, retrying with Tsinghua mirror ...
-    pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --default-timeout=60
+    echo        Mirror install failed, retrying with official PyPI ...
+    python -m pip install -r requirements.txt --default-timeout=60 --disable-pip-version-check
     if errorlevel 1 (
         echo [WARNING] Dependency install failed, trying to continue anyway...
     )
@@ -61,6 +68,6 @@ echo    Press Ctrl+C to stop
 echo ============================================
 echo.
 
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 pause
