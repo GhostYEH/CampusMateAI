@@ -463,7 +463,14 @@ test('a database created before folders existed upgrades without losing workspac
       .prepare('SELECT version FROM schema_migrations ORDER BY version')
       .all()
       .map((row) => Number(row.version));
-    assert.deepEqual(applied, [1, 2, 3]);
+    // Every declared migration ran exactly once, in order — including the ones
+    // this fixture deliberately did not pre-apply. Comparing against the
+    // declared list rather than a literal keeps this about "nothing was skipped
+    // or re-run" instead of about how many migrations happen to exist today.
+    assert.deepEqual(
+      applied,
+      MIGRATIONS.map((migration) => migration.version),
+    );
 
     const repository = new WorkspaceRepository(upgraded);
     const row = repository.getWorkspace({ userId: 'user-1', courseId: 'course-1', workspaceId: 'ws_legacy' });

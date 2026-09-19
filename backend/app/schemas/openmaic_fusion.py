@@ -272,6 +272,75 @@ class StageCommandResultOut(StageOut):
     migrated: bool = False
 
 
+# ===== materials =====
+
+
+class MaterialOut(BaseModel):
+    """一份课程资料的元数据。
+
+    列表接口**不返回正文**：列表是导航面，把每份文档的正文都带上会让一次列表
+    的开销随语料规模增长。`text_chars` 是列表真正需要的那个数。
+    `extraction_status` 只有三种取值，且 `unsupported` 一定没有正文——解析
+    失败绝不能被伪装成"已提取"。
+    """
+
+    id: str
+    course_id: str
+    filename: str
+    media_type: str = "application/octet-stream"
+    byte_size: int = 0
+    sha256: str = ""
+    extraction_status: str = "unsupported"
+    text_chars: int = 0
+    revision: int = 1
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    deduplicated: bool = False
+
+
+class MaterialDetailOut(MaterialOut):
+    """单份资料，含正文。只有这一条路径会带正文。"""
+
+    text: str = ""
+
+
+class MaterialListOut(BaseModel):
+    items: List[MaterialOut] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
+
+
+class MaterialReferenceOut(BaseModel):
+    """可以被 stage 引用的资料：够渲染和跳转，不含正文。"""
+
+    id: str
+    filename: str
+    media_type: str = "application/octet-stream"
+    extraction_status: str = "unsupported"
+    text_chars: int = 0
+    updated_at: Optional[str] = None
+
+
+class MaterialResolveIn(BaseModel):
+    """批量解析引用。
+
+    上限与服务端的 `MAX_REFERENCE_COUNT` 一致：超限在网关就得到 400，
+    而不是变成一次昂贵的内部调用。
+    """
+
+    material_ids: List[str] = Field(default_factory=list, max_length=50)
+
+
+class MaterialResolveOut(BaseModel):
+    """`unresolved` 只说明"没解析到"，不说明为什么。
+
+    异用户、异课程、已删除、不存在在这里是同一个答案，否则这个批量接口
+    就成了"这个 id 是否存在"的探测器。
+    """
+
+    resolved: List[MaterialReferenceOut] = Field(default_factory=list)
+    unresolved: List[str] = Field(default_factory=list)
+
+
 __all__ = [
     "FusionState",
     "FusionStatus",
@@ -298,4 +367,10 @@ __all__ = [
     "StageCommandResultOut",
     "ScenePlaybackOut",
     "StagePlaybackOut",
+    "MaterialOut",
+    "MaterialDetailOut",
+    "MaterialListOut",
+    "MaterialReferenceOut",
+    "MaterialResolveIn",
+    "MaterialResolveOut",
 ]

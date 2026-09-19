@@ -60,6 +60,10 @@ SEARCH_READ_SCOPES = ("search:read",)
 # enough to render an outline, writing additionally allows commands.
 STAGE_READ_SCOPES = ("stage:read",)
 STAGE_WRITE_SCOPES = ("stage:read", "stage:write")
+# A material is course-scoped source content: reading is enough to cite it, and
+# writing additionally allows uploading or deleting one.
+MATERIAL_READ_SCOPES = ("material:read",)
+MATERIAL_WRITE_SCOPES = ("material:read", "material:write")
 
 
 def _status(
@@ -614,6 +618,98 @@ class OpenMAICFusionClient:
         )
 
 
+    # ===== materials =====
+
+    async def list_materials(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = int(limit)
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/materials",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=MATERIAL_READ_SCOPES,
+            params=params or None,
+        )
+
+    async def create_material(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        filename: str,
+        media_type: str,
+        byte_size: int,
+        sha256: str,
+        extraction_status: str,
+        text: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Record one intake decision. The bytes themselves never travel here."""
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/materials",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=MATERIAL_WRITE_SCOPES,
+            json_body={
+                "filename": filename,
+                "media_type": media_type,
+                "byte_size": int(byte_size),
+                "sha256": sha256,
+                "extraction_status": extraction_status,
+                "text": text,
+            },
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_material(
+        self, *, user_id: str, course_id: str, material_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/materials/{material_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=MATERIAL_READ_SCOPES,
+        )
+
+    async def delete_material(
+        self, *, user_id: str, course_id: str, material_id: str, revision: int
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE",
+            f"/internal/courses/{course_id}/materials/{material_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=MATERIAL_WRITE_SCOPES,
+            if_match=revision,
+        )
+
+    async def resolve_materials(
+        self, *, user_id: str, course_id: str, material_ids: list[str]
+    ) -> dict[str, Any]:
+        """Turn ids into authorized references, reporting the ones that did not resolve."""
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/materials/resolve",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=MATERIAL_READ_SCOPES,
+            json_body={"material_ids": list(material_ids)},
+        )
+
+
 def _safe_json(response: Any) -> Any:
     """Never let a malformed body become an exception the caller cannot classify."""
     try:
@@ -635,5 +731,7 @@ __all__ = [
     "SEARCH_READ_SCOPES",
     "STAGE_READ_SCOPES",
     "STAGE_WRITE_SCOPES",
+    "MATERIAL_READ_SCOPES",
+    "MATERIAL_WRITE_SCOPES",
     "UNSET",
 ]

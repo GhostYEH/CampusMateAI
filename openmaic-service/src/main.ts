@@ -4,6 +4,7 @@ import { ServiceDatabase } from './db/database.ts';
 import { SqliteReplayStore } from './db/replayStore.ts';
 import { createDiscoveryRoutes } from './discovery/routes.ts';
 import { createEditorRoutes } from './editor/routes.ts';
+import { createMaterialRoutes } from './material/routes.ts';
 import { createPlayerRoutes } from './player/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
@@ -35,6 +36,7 @@ const server = createServer({
     ...createWorkspaceRoutes({ database }),
     ...createDiscoveryRoutes({ database }),
     ...createEditorRoutes({ database }),
+    ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),
   ],
 });

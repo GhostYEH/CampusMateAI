@@ -120,6 +120,37 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_stages_updated ON stages (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
     ],
   },
+  {
+    version: 4,
+    name: 'materials',
+    statements: [
+      // A material is one course-scoped document a student brought in. The
+      // digest is stored instead of the bytes: what a later stage cites is the
+      // extracted text, and the digest is what turns re-uploading the same file
+      // into the same material rather than a duplicate row.
+      `CREATE TABLE materials (
+         id TEXT PRIMARY KEY,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         filename TEXT NOT NULL,
+         media_type TEXT NOT NULL,
+         byte_size INTEGER NOT NULL,
+         sha256 TEXT NOT NULL,
+         extraction_status TEXT NOT NULL,
+         text_content TEXT NOT NULL DEFAULT '',
+         revision INTEGER NOT NULL DEFAULT 1,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         deleted_at TEXT
+       )`,
+      `CREATE INDEX idx_materials_owner_page
+         ON materials (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
+      // Partial on purpose: a soft-deleted row must not block re-uploading the
+      // same file, which is a new material as far as the student is concerned.
+      `CREATE UNIQUE INDEX idx_materials_owner_digest
+         ON materials (user_id, course_id, sha256) WHERE deleted_at IS NULL`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

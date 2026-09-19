@@ -49,6 +49,7 @@ from .routes import (
     openmaic_discovery,
     openmaic_editor,
     openmaic_fusion,
+    openmaic_materials,
     openmaic_workspaces,
 )
 
@@ -128,5 +129,7 @@ api_router.include_router(openmaic_workspaces.router)
 api_router.include_router(openmaic_discovery.router)
 # OpenMAIC 编辑器(Stage/Scene 命令,If-Match + Idempotency-Key)
 api_router.include_router(openmaic_editor.router)
+# OpenMAIC 课程资料(上传即解析,正文只在单份读取时返回)
+api_router.include_router(openmaic_materials.router)
 
 __all__ = ["api_router"]
