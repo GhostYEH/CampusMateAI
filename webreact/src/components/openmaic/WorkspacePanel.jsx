@@ -16,8 +16,32 @@ import {
   DISCOVERY_PAGE_LIMIT,
   normalizeFolderList,
 } from "../../features/openmaic/discoveryModel.js";
+import {
+  describeArchiveError,
+  filenameFromContentDisposition,
+  normalizeImportedStage,
+  validateImportCandidate,
+} from "../../features/openmaic/archiveModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
+
+/**
+ * 把一份导出结果存成文件。
+ *
+ * 用 `Content-Disposition` 里的名字，而不是用标题现拼：服务端已经决定过下载名，
+ * 前端再拼一次只会在两边规则分叉时静默不一致。
+ */
+function saveBlob(blob, filename) {
+  if (typeof document === "undefined" || typeof URL === "undefined") return;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * 课程内的学习工作台列表。
@@ -26,7 +50,14 @@ const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeSty
  * 的是"读写正确"：创建走幂等键，删除带回读到的 revision，409 提示重新读取而不是
  * 原样重试。
  */
-export default function WorkspacePanel({ courseId, courseName = "", canFile = false, canEdit = false }) {
+export default function WorkspacePanel({
+  courseId,
+  courseName = "",
+  canFile = false,
+  canEdit = false,
+  canExportArchive = false,
+  canImportArchive = false,
+}) {
   const [items, setItems] = React.useState([]);
   const [cursor, setCursor] = React.useState(null);
   const [folders, setFolders] = React.useState([]);
@@ -43,6 +74,8 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
   const [editingStageId, setEditingStageId] = React.useState("");
   // 切换课程后迟到的响应不得写进新课程上下文。
   const epoch = React.useRef(0);
+  const importInputRef = React.useRef(null);
+  const [localReject, setLocalReject] = React.useState("");
   // 同一个用户动作的幂等键必须在重试之间保持不变，所以它跟着"这次提交"走，
   // 而不是每次请求现生成。
   const pendingKey = React.useRef(null);
@@ -94,6 +127,10 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
     setOpenWorkspaceId(next);
     setEditingStageId("");
     setStages([]);
+    setLocalReject("");
+    if (importInputRef.current) importInputRef.current.value = "";
+    // 换工作台就换一次"这次提交"：上一个工作台没提交的导入不该复用它的幂等键。
+    pendingKey.current = null;
     if (next) await loadStages(next);
   }
 
@@ -113,6 +150,70 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
       await loadStages(workspaceId);
     } catch (err) {
       setError(describeWorkspaceError(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * 导出一份内容为 `.maic.zip`。
+   *
+   * 响应是字节流，所以走 blob；下载名由服务端的 `Content-Disposition` 决定。
+   */
+  async function exportStage(workspaceId, stage) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.exportOpenMAICStage(courseId, workspaceId, stage.id);
+      saveBlob(result.blob, filenameFromContentDisposition(result.disposition));
+      setNotice(`已导出「${stage.title}」`);
+    } catch (err) {
+      setError(describeArchiveError(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * 导入一份 `.maic.zip`。
+   *
+   * 落点始终是当前展开的工作台：档案里的来源说明只是说明文字。
+   * 可重试的失败复用同一个幂等键，否则重试会真的产生第二份内容。
+   */
+  async function importArchive(workspaceId) {
+    const file = importInputRef.current?.files?.[0] || null;
+    const rejected = validateImportCandidate(file);
+    if (rejected) {
+      setLocalReject(rejected);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setLocalReject("");
+    setError("");
+    setNotice("");
+    pendingKey.current = pendingKey.current || api.newIdempotencyKey();
+    try {
+      const payload = await api.importOpenMAICStage(courseId, workspaceId, {
+        file,
+        idempotencyKey: pendingKey.current,
+      });
+      pendingKey.current = null;
+      if (importInputRef.current) importInputRef.current.value = "";
+      const imported = normalizeImportedStage(payload);
+      setNotice(
+        imported
+          ? `已导入「${imported.title}」${imported.migrated ? "（已按当前 DSL 版本迁移）" : ""}`
+          : "已导入",
+      );
+      await loadStages(workspaceId);
+    } catch (err) {
+      const described = describeArchiveError(err);
+      // 只有"这个档案本身不合格"才弃键；可重试的失败必须复用同一个键。
+      if (!described.retryable) pendingKey.current = null;
+      setError(described.message);
     } finally {
       setBusy(false);
     }
@@ -280,12 +381,38 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
         </Button>
       </div>
 
+      {localReject ? <p className="openmaic-hint openmaic-hint--error" role="alert">{localReject}</p> : null}
+
+      {/* 导入入口只在服务端上报 import-maic 时出现。 */}
+      {canImportArchive ? <div className="openmaic-command">
+        <label className="openmaic-command__input">
+          <Icon name="PhFileText" size={18} />
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            aria-label="选择要导入的 .maic.zip 档案"
+            onChange={(event) => setLocalReject(validateImportCandidate(event.target.files?.[0]) || "")}
+          />
+        </label>
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => importArchive(openWorkspaceId)}>
+          导入档案
+        </Button>
+      </div> : null}
+
       {stages.length ? <ul className="openmaic-stage-browser__list">
         {stages.map((stage) => <li key={stage.id}>
           <span className="row-copy">
             <strong>{stage.title}</strong>
             <small>{stage.dslVersion ? `DSL ${stage.dslVersion}` : "尚未写入内容"} · revision {stage.revision}</small>
           </span>
+          {/* 导出只在服务端上报 export-maic 时出现。 */}
+          {canExportArchive ? <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => exportStage(openWorkspaceId, stage)}
+          >导出</Button> : null}
           {canEdit ? <Button
             type="button"
             variant="secondary"

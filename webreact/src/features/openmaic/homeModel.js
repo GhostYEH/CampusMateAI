@@ -79,6 +79,9 @@ export function describeFusionState(status) {
     canEdit: has("editor"),
     // 课程资料同理：material 未上报时整块不渲染，而不是渲染一个必然失败的入口。
     canManageMaterials: has("material"),
+    // `.maic.zip` 的两个方向各有自己的能力标签：能导出不等于能导入。
+    canExportArchive: has("export-maic"),
+    canImportArchive: has("import-maic"),
   };
 }
 

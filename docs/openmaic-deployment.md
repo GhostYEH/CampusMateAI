@@ -94,6 +94,12 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
   **状态与正文必须一致**（`unsupported` 带正文会被服务端拒绝）。
   正文解析依赖 `python-docx` 与 `PyPDF2`（已在 `backend/requirements.txt`）；缺失时该格式降级为
   `unsupported`，而不是报错。
+- `.maic.zip` 的解包面按"永不信任容器"处理：路径穿越名、Zip64、加密条目、未知压缩方法、
+  软链接条目、重复条目名、CRC 或声明尺寸不符、条目数与解压总量超限，全部**按名字拒绝**，
+  绝不做尽力而为的解析。解压上限按目录声明的尺寸在解压**之前**判定，再用实际解出的长度复核。
+  已解出的文档仍然要走 `prepareStage`，档案不是绕开编辑器校验的旁门。
+  导出响应是 `application/zip`；因为是 HTTP 头（latin-1），中文文件名使用 RFC 5987 的
+  `filename*=UTF-8''…` 并附一个 ASCII 回退名。
 - 生产部署不得把内部服务 origin 或访问码投影给浏览器。
 
 ## 能力状态
@@ -106,5 +112,9 @@ A 切片（来源审计、受管服务、断言强制、状态代理与最近内
 服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；E 切片中的课程资料部分
 （上传/解析/引用：`openmaic-service/src/material/**`、`material_extraction.py`、
 `openmaic_materials.py`、`MaterialsPanel.jsx`）同样已落地并通过三层自动化测试，
-**尚未执行浏览器验收，且本切片不保留上传文件的字节**；工作台的编辑器与播放器、
-素材存储、导入导出、TTS、多智能体和作业讲解仍需后续切片完成和验证。
+**尚未执行浏览器验收，且本切片不保留上传文件的字节**；
+`.maic.zip` 的单份 stage 导出与导入（`openmaic-service/src/archive/**`、
+`openmaic_archive.py`、`archiveModel.js`、`WorkspacePanel.jsx`）已打通服务端、网关与 Web
+三层并通过测试，**同样尚未执行浏览器验收，且素材不随档案往返**；
+工作台的编辑器与播放器、素材存储、PPTX 与 Markdown/DOCX 导入导出、TTS、多智能体和
+作业讲解仍需后续切片完成和验证。

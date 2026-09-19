@@ -560,6 +560,35 @@ export async function resolveOpenMAICMaterials(courseId, { materialIds }) {
   );
 }
 
+// ===== `.maic.zip` 导出 / 导入 =====
+//
+// 导出返回的是**字节**，不是 JSON：档案是学生要保存的文件。响应类型必须是 blob，
+// 否则 axios 会把 zip 当文本处理。下载名由服务端放在 `Content-Disposition` 里
+// （中文走 RFC 5987 的 filename*），前端只解析、不自己拼。
+// 导入用多部分表单：学生选的是文件，网关负责把它编码成内部调用需要的形状。
+
+export async function exportOpenMAICStage(courseId, workspaceId, stageId) {
+  const response = await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export`,
+    { responseType: "blob" },
+  );
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    sha256: response.headers?.["x-archive-sha256"] || "",
+  };
+}
+
+export async function importOpenMAICStage(courseId, workspaceId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/workspaces/${workspaceId}/import`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
 // ===== 编辑器（Stage 命令） =====
 //
 // 提交的是**命令列表**，不是整份文档：整份回传会让没看到并发修改的作者静默

@@ -104,6 +104,8 @@ export default function OpenMAICHome({
           courseName={courses.find((course) => String(course.id) === String(selectedCourseId))?.name || ""}
           canFile={status.canBrowseFolders}
           canEdit={status.canEdit}
+          canExportArchive={status.canExportArchive}
+          canImportArchive={status.canImportArchive}
         />
         : null}
 
