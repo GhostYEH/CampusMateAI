@@ -59,6 +59,17 @@ def test_capability_matrix_names_the_aggregate_endpoints():
     assert "/api/v1/openmaic/fusion/recent" in text
 
 
+def test_openmaic_docs_carry_no_machine_specific_paths():
+    """共享文档不得写入盘符 / 用户名 / 本机绝对路径（仓库级规则）。"""
+    import re as _re
+
+    machine_path = _re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}\S")
+    for path in sorted(DOCS.glob("openmaic-*.md")):
+        text = path.read_text(encoding="utf-8")
+        match = machine_path.search(text)
+        assert match is None, f"{path.name} 含本机绝对路径: {match.group(0) if match else ''}"
+
+
 def test_provenance_notice_has_no_unexpanded_placeholder():
     notice = (REPO_ROOT / "third_party" / "openmaic" / "NOTICE.md").read_text(encoding="utf-8")
     assert not re.search(r"\$[A-Za-z]", notice)

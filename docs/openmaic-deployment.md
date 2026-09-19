@@ -12,6 +12,18 @@
 
 受管服务只接入经过审计的必要 DSL、renderer、editor、importer/exporter 和服务端能力；不复制 `.git`、`node_modules`、`.next`、运行时数据、日志、密钥或本机配置。
 
+### 本机运行副本（不是来源）
+
+开发机上另有一份 OpenMAIC 运行副本。它**不是**上述来源，也不能作为 provenance：
+
+- `package.json` 版本为 `1.0.1`，比固定的 `v1.0.3` 旧；
+- 没有 `.git` 元数据，无法证明 commit；
+- 含构建产物、运行时数据和本地凭据文件。
+
+逐文件比对（`third_party/openmaic/source-manifest.sha256`，2976 条）：2760 条一致、166 条不同、50 条缺失。
+其中 `packages/@openmaic/dsl/src/**` 全部 16 个文件与 v1.0.3 **逐字节一致**，因此 DSL 契约的移植结论对该运行副本同样成立。
+它可以被当作只读的“实际运行行为”参考，但任何提交产物、清单或 NOTICE 都不得引用它，也不得把它的路径写进仓库文件。
+
 ## 拓扑和边界
 
 ```text
