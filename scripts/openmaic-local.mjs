@@ -51,7 +51,7 @@ const bad = (message) => console.log(`  \u2717 ${message}`);
 
 // ===== .env 读写 =====
 
-function parseEnv(text) {
+export function parseEnv(text) {
   const values = new Map();
   for (const line of text.split(/\r?\n/)) {
     const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(line);
@@ -64,25 +64,46 @@ function readEnvFile(file) {
   return existsSync(file) ? readFileSync(file, 'utf8') : '';
 }
 
-function upsertEnv(envPath, entries, header) {
+export function upsertEnv(envPath, entries, header) {
   const original = readEnvFile(envPath);
   const present = parseEnv(original);
-  const missing = entries.filter(([key]) => !present.has(key));
-  if (!missing.length) return [];
+  const lines = original ? original.split(/\r?\n/) : [];
+  const filled = [];
+  const missing = [];
+
+  for (const [key, value] of entries) {
+    const lineIndex = lines.findIndex((line) => new RegExp(`^\\s*${key}\\s*=`).test(line));
+    if (lineIndex < 0) {
+      missing.push([key, value]);
+      continue;
+    }
+    // `.env.example` intentionally keeps secrets blank. Treat a blank value as
+    // missing so `env` can bootstrap a clean local checkout without appending a
+    // duplicate key (dotenv implementations disagree about duplicate entries).
+    if (!String(present.get(key) || '').trim() && String(value || '').trim()) {
+      lines[lineIndex] = `${key}=${value}`;
+      filled.push(key);
+    }
+  }
+
+  if (!missing.length && !filled.length) return [];
 
   const base = original && !original.endsWith('\n') ? `${original}\n` : original;
   const block = `\n# --- ${header}（仅本机开发；该文件被 .gitignore 忽略）---\n`
     + missing.map(([key, value]) => `${key}=${value}`).join('\n')
     + '\n';
-  writeFileSync(envPath, base + block, 'utf8');
-  return missing.map(([key]) => key);
+  const updated = filled.length ? `${lines.join('\n')}${original.endsWith('\n') ? '' : '\n'}` : base;
+  writeFileSync(envPath, updated + (missing.length ? block : ''), 'utf8');
+  return [...filled, ...missing.map(([key]) => key)];
 }
 
 /** 复用已存在的本地密钥：换掉它会让正在跑的服务立刻验签失败。 */
 function existingSecret() {
-  const values = parseEnv(readEnvFile(BACKEND_ENV));
-  const value = values.get('OPENMAIC_INTERNAL_SECRET');
-  return value ? value : '';
+  const backendValue = parseEnv(readEnvFile(BACKEND_ENV)).get('OPENMAIC_INTERNAL_SECRET');
+  if (backendValue) return backendValue;
+  // If a service env already exists, reuse its local secret to repair a backend
+  // template copied with an empty value instead of creating a mismatched pair.
+  return parseEnv(readEnvFile(SERVICE_ENV)).get('OPENMAIC_INTERNAL_SECRET') || '';
 }
 
 function commandEnv() {
@@ -356,7 +377,9 @@ async function main() {
   return handler();
 }
 
-main().then((code) => { process.exitCode = code; }).catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  main().then((code) => { process.exitCode = code; }).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
