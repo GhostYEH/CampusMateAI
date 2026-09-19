@@ -24,6 +24,33 @@ test("whiteboard writes carry both revision and idempotency headers", async () =
   assert.deepEqual(request.data, { board: { id: "b1", title: "草稿", elements: [] } });
 });
 
+test("speech and discussion requests stay course-bound and idempotent", async () => {
+  const mock = createMockClient(api.default);
+  mock.onPost("/courses/c1/tts", { job_id: "tts-job", job: { status: "queued" } }, 202);
+  await api.synthesizeOpenMAICTts("c1", { text: "讲解极限", voice: "苏打", idempotencyKey: "tts-1" });
+  let request = mock.lastRequest();
+  assert.equal(request.url, "/courses/c1/tts");
+  assert.deepEqual(request.data, { text: "讲解极限", voice: "苏打" });
+  assert.equal(request.headers["Idempotency-Key"], "tts-1");
+
+  mock.reset();
+  mock.onPost("/courses/c1/discussion", { job_id: "discussion-job", job: { status: "queued" } }, 202);
+  await api.runOpenMAICDiscussion("c1", { prompt: "讨论极限的定义", idempotencyKey: "discussion-1" });
+  request = mock.lastRequest();
+  assert.equal(request.url, "/courses/c1/discussion");
+  assert.deepEqual(request.data, { prompt: "讨论极限的定义" });
+  assert.equal(request.headers["Idempotency-Key"], "discussion-1");
+});
+
+test("workspace provider tools are capability-gated and recover their artifact", async () => {
+  const source = await import("node:fs").then(({ readFileSync }) => readFileSync(new URL("../src/components/openmaic/ProviderToolsPanel.jsx", import.meta.url), "utf8"));
+  assert.match(source, /canTts/);
+  assert.match(source, /canDiscussion/);
+  assert.match(source, /getOpenMAICArtifact/);
+  assert.match(source, /synthesizeOpenMAICTts/);
+  assert.match(source, /runOpenMAICDiscussion/);
+});
+
 test("provider status uses the CampusMate route and does not need an exposed key", async () => {
   const mock = createMockClient(api.default);
   mock.onGet("/openmaic/fusion/providers", { state: "ready", providers: { llm: false, tts: false } });

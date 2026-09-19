@@ -485,6 +485,31 @@ export async function retryOpenMAICJob(courseId, jobId) {
   return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/retry`));
 }
 
+export async function synthesizeOpenMAICTts(courseId, { text, instruction, voice, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/tts`,
+    { text, ...(instruction ? { instruction } : {}), ...(voice ? { voice } : {}) },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function runOpenMAICDiscussion(courseId, { prompt, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/discussion`,
+    { prompt },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function getOpenMAICArtifact(courseId, artifactId) {
+  const response = await client.get(`/courses/${courseId}/artifacts/${artifactId}`, { responseType: "blob" });
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    mediaType: response.headers?.["content-type"] || "",
+  };
+}
+
 export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,

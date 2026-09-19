@@ -1986,6 +1986,11 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-capability-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .openmaic-capability-list span { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px dashed #b8c3d8; border-radius: 10px; color: #5e6b82; background: rgba(248,250,255,.65); font-size: 12px; }
 .openmaic-capability-list small { color: #9aa6ba; }
+.openmaic-provider-tools { display: grid; gap: 12px; }
+.openmaic-provider-tools__audio { width: 100%; }
+.openmaic-provider-tools__messages { display: grid; gap: 8px; margin: 0; padding-left: 24px; }
+.openmaic-provider-tools__messages li { display: grid; gap: 3px; padding: 9px 12px; border-left: 2px solid #b8c3d8; }
+.openmaic-provider-tools__messages span { color: #5e6b82; white-space: pre-wrap; }
 .openmaic-home__empty { display: grid; place-items: center; gap: 6px; min-height: 150px; color: var(--muted); text-align: center; }
 .openmaic-home__empty p, .openmaic-home__empty small { margin: 0; }
 .openmaic-home__empty--wide { display: flex; justify-content: center; gap: 12px; text-align: left; }

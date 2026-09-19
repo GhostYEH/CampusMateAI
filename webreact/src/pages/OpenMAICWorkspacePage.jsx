@@ -5,6 +5,7 @@ import { AsyncState, BackLink, Button, PageFrame, Panel, SectionHeading } from "
 import { Icon } from "../components/Icon.jsx";
 import StageEditorPanel from "../components/openmaic/StageEditorPanel.jsx";
 import StagePlayerPanel from "../components/openmaic/StagePlayerPanel.jsx";
+import ProviderToolsPanel from "../components/openmaic/ProviderToolsPanel.jsx";
 import { normalizeStageList, normalizeWorkspaceList } from "../features/openmaic/workspaceModel.js";
 import { formatDateTime } from "../utils/date.js";
 
@@ -16,6 +17,7 @@ export default function OpenMAICWorkspacePage() {
   const { courseId, workspaceId } = useParams();
   const [workspace, setWorkspace] = useState(null); const [stages, setStages] = useState([]); const [selectedStageId, setSelectedStageId] = useState("");
   const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const [providerStatus, setProviderStatus] = useState(null);
   const [mode, setMode] = useState("slide"); const [prompt, setPrompt] = useState(""); const [job, setJob] = useState(null); const [busy, setBusy] = useState(false); const [playing, setPlaying] = useState(false);
   const epoch = useRef(0); const polling = useRef(null);
 
@@ -30,7 +32,12 @@ export default function OpenMAICWorkspacePage() {
     finally { if (mine === epoch.current) setLoading(false); }
   }, [courseId, workspaceId]);
 
-  useEffect(() => { setJob(null); setPlaying(false); void load(); return () => { epoch.current += 1; if (polling.current) window.clearTimeout(polling.current); }; }, [load]);
+  const loadProviderStatus = useCallback(async () => {
+    try { setProviderStatus(await api.getOpenMAICProviderStatus()); }
+    catch { setProviderStatus(null); }
+  }, []);
+
+  useEffect(() => { setJob(null); setPlaying(false); void load(); void loadProviderStatus(); return () => { epoch.current += 1; if (polling.current) window.clearTimeout(polling.current); }; }, [load, loadProviderStatus]);
 
   const pollJob = useCallback(async (jobId) => {
     try {
@@ -55,6 +62,11 @@ export default function OpenMAICWorkspacePage() {
       {notice ? <div className="page-notice notice-info" role="status">{notice}</div> : null}
       <Panel className="openmaic-generation-panel"><SectionHeading title="创建学习内容" detail="生成结果会写入当前 workspace，服务不可用时不会伪造内容。" /><form className="openmaic-command" onSubmit={generate}><label className="openmaic-command__input"><Icon name="PhSparkle" size={18} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="例如：讲解函数极限的直觉、定义和一个例题" maxLength={2000} aria-label="学习内容主题" /></label><select value={mode} onChange={(event) => setMode(event.target.value)} aria-label="学习内容类型">{MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><Button type="submit" disabled={busy || !prompt.trim()}>{busy ? "提交中…" : "生成"}</Button></form>{job ? <div className="openmaic-job-status" role="status"><span>{job.status === "completed" ? "已完成" : job.status === "cancelled" ? "已中断" : job.status === "failed" ? "失败" : "生成中"}</span><strong>{Number(job.progress) || 0}%</strong>{jobBusy ? <Button variant="quiet" disabled={busy} onClick={cancelJob}>中断</Button> : null}{["failed", "cancelled"].includes(job.status) ? <Button variant="quiet" disabled={busy} onClick={retryJob}>重试</Button> : null}</div> : null}</Panel>
       <div className="openmaic-workspace-page__grid"><Panel><SectionHeading title="场景目录" detail={`${stages.length} 个内容`} />{stages.length ? <ol className="openmaic-stage-browser__list">{stages.map((stage) => <li key={stage.id} className={stage.id === selectedStageId ? "is-selected" : ""}><button type="button" className="openmaic-stage-select" onClick={() => { setSelectedStageId(stage.id); setPlaying(false); }}><span className="row-copy"><strong>{stage.title}</strong><small>DSL {stage.dslVersion || "—"} · revision {stage.revision}</small></span><Icon name="PhCaretRight" size={15} /></button></li>)}</ol> : <div className="openmaic-home__empty"><Icon name="PhLayout" size={24} /><p>还没有内容</p><small>在上方输入主题，创建第一份学习内容。</small></div>}</Panel><div className="openmaic-workspace-page__content">{selectedStage ? <Panel><SectionHeading title={selectedStage.title} detail={`最近更新于 ${dateText(selectedStage.updatedAt)}`} action={<Button variant="secondary" onClick={() => setPlaying((value) => !value)}>{playing ? "关闭播放" : "播放"}</Button>} />{playing ? <StagePlayerPanel courseId={courseId} workspaceId={workspaceId} stageId={selectedStage.id} onClose={() => setPlaying(false)} /> : <StageEditorPanel courseId={courseId} workspaceId={workspaceId} stageId={selectedStage.id} onSaved={load} />}</Panel> : <Panel><div className="openmaic-home__empty"><p>选择一个场景开始编辑。</p></div></Panel>}</div></div>
+      <ProviderToolsPanel
+        courseId={courseId}
+        canTts={providerStatus?.state === "ready" && providerStatus.providers?.tts === true}
+        canDiscussion={providerStatus?.state === "ready" && providerStatus.providers?.llm === true}
+      />
       <p className="muted-copy">workspace revision {workspace?.revision || "—"} · <Link to={`/courses/${courseId}`}>返回课程详情</Link></p>
     </div></AsyncState>
   </PageFrame>;
