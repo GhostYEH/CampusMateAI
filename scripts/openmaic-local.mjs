@@ -229,7 +229,10 @@ async function cmdDoctor() {
   else if (serviceReady === 200) warn('readiness 匿名返回 200 —— 断言强制可能没生效');
   else warn(`readiness=${serviceReady ?? 'unreachable'}`);
 
-  const backendHealth = await probe(`http://127.0.0.1:${BACKEND_PORT}/health`);
+  // 站点的健康路由挂在 /api/v1 前缀下（见 backend/app/api/routes/health.py）。
+  // 探 /health 只会拿到 404，把"服务已起来"误报成"未就绪"——这个坑在浏览器
+  // 验收脚本里踩过一次，这里保持一致。
+  const backendHealth = await probe(`http://127.0.0.1:${BACKEND_PORT}/api/v1/health`);
   if (backendHealth === 200) ok(`FastAPI :${BACKEND_PORT} 健康`);
   else warn(`FastAPI :${BACKEND_PORT} 未就绪（status=${backendHealth ?? 'unreachable'}）`);
 
@@ -307,7 +310,7 @@ async function cmdStart() {
       {},
     );
     children.push(backend);
-    await waitFor(`http://127.0.0.1:${BACKEND_PORT}/health`, 'FastAPI', 90000);
+    await waitFor(`http://127.0.0.1:${BACKEND_PORT}/api/v1/health`, 'FastAPI', 90000);
     ok(`FastAPI :${BACKEND_PORT}`);
 
     const vite = spawnService(
