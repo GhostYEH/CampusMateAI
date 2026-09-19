@@ -8,6 +8,9 @@ import { createEditorRoutes } from './editor/routes.ts';
 import { createMaterialRoutes } from './material/routes.ts';
 import { createPlayerRoutes } from './player/routes.ts';
 import { createJobRoutes } from './jobs/routes.ts';
+import { createGenerationRoutes } from './generation/routes.ts';
+import { createWhiteboardRoutes } from './whiteboard/routes.ts';
+import { createProviderRoutes } from './provider/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
 
@@ -42,6 +45,9 @@ const server = createServer({
     ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),
     ...createJobRoutes({ database }),
+    ...createGenerationRoutes({ database }),
+    ...createWhiteboardRoutes({ database }),
+    ...createProviderRoutes({ database }),
   ],
 });
 
