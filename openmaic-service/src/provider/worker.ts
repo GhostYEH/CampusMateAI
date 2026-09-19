@@ -3,7 +3,7 @@ import type { ServiceDatabase } from '../db/database.ts';
 import { DslLimitError } from '../dsl/limits.ts';
 import { DslValidationError, prepareStage } from '../dsl/validate.ts';
 import { DslVersionError } from '../dsl/version.ts';
-import { isGenerationMode } from '../generation/generator.ts';
+import { isGenerationMode, materializeGeneratedStage } from '../generation/generator.ts';
 import type { JobRepository } from '../jobs/repository.ts';
 import type { WorkspaceRepository } from '../workspace/repository.ts';
 import {
@@ -92,7 +92,7 @@ export function createProviderJobWorker(options: {
       throw new ProviderError('internal_error', 'generation job input is incomplete');
     }
     const raw = await generateStageDocument(options.provider, { mode, prompt });
-    const prepared = prepareStage(raw);
+    const prepared = prepareStage(materializeGeneratedStage(raw));
     const title = String(prepared.document.stage?.name ?? prompt).slice(0, 200);
     workspaces.createStage({
       userId: identity.userId,

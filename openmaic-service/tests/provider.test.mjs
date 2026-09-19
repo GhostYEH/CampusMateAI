@@ -6,7 +6,6 @@ import { ConfigError, loadConfig } from '../src/config.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 import { createDiscussionRoutes } from '../src/discussion/routes.ts';
 import { createGenerationRoutes } from '../src/generation/routes.ts';
-import { buildGeneratedStage } from '../src/generation/generator.ts';
 import { createJobRoutes } from '../src/jobs/routes.ts';
 import { JobRepository } from '../src/jobs/repository.ts';
 import { createProviderJobWorker } from '../src/provider/worker.ts';
@@ -18,6 +17,36 @@ const BASE_ENV = { OPENMAIC_INTERNAL_SECRET: 'secret', OPENMAIC_DATABASE_URL: ':
 
 function stubConfig(baseUrl, extra = {}) {
   return { baseUrl, apiKey: 'stub-key', model: 'stub-model', timeoutMs: 5000, ...extra };
+}
+
+// A realistic model answer: content only — no ids, no timestamps, no wiring.
+function rawModelDoc(mode, title) {
+  if (mode === 'quiz') {
+    return {
+      dslVersion: '0.3.0',
+      stage: { name: title, description: `关于${title}的自测` },
+      scenes: [
+        {
+          title, type: 'quiz',
+          content: { type: 'quiz', questions: [
+            {
+              type: 'single', question: `关于“${title}”，下面哪个说法更接近本质？`,
+              options: [{ label: '趋势与逼近', value: 'a' }, { label: '死记公式', value: 'b' }],
+              answer: ['a'], analysis: '极限关心趋势。', points: 1,
+            },
+          ] },
+        },
+      ],
+    };
+  }
+  return {
+    dslVersion: '0.3.0',
+    stage: { name: title, description: `围绕${title}的讲解` },
+    scenes: [
+      { title, type: 'slide', content: { type: 'slide', canvas: { title, body: '从生活情境出发。' } } },
+      { title: `${title}·练习`, type: 'slide', content: { type: 'slide', canvas: { title: `${title}·练习`, body: '动手试一试。' } } },
+    ],
+  };
 }
 
 function tinyWav() {
@@ -162,8 +191,8 @@ test('generation with a provider: enqueue, worker produces a DSL-valid stage, ho
   let mode = 'doc';
   const stub = await startStub((request, response) => {
     response.setHeader('content-type', 'application/json');
-    if (mode === 'doc') response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(buildGeneratedStage('quiz', '函数的极限')) } }] }));
-    else if (mode === 'fenced') response.end(JSON.stringify({ choices: [{ message: { content: '```json\n' + JSON.stringify(buildGeneratedStage('slide', '导数')) + '\n```' } }] }));
+    if (mode === 'doc') response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(rawModelDoc('quiz', '函数的极限')) } }] }));
+    else if (mode === 'fenced') response.end(JSON.stringify({ choices: [{ message: { content: '```json\n' + JSON.stringify(rawModelDoc('slide', '导数')) + '\n```' } }] }));
     else response.end(JSON.stringify({ choices: [{ message: { content: 'no json here at all' } }] }));
   });
   try {
@@ -186,6 +215,12 @@ test('generation with a provider: enqueue, worker produces a DSL-valid stage, ho
       const artifact = await get(base, `/internal/courses/course-1/artifacts/${job.body.artifact_id}`, ['job:read']);
       const document = JSON.parse(Buffer.from(artifact.body.content_base64, 'base64').toString('utf8'));
       assert.equal(document.scenes[0].type, 'quiz');
+      // The stub answered like a real model (no identities); the service owns ids.
+      assert.ok(document.stage.id.startsWith('stage_'));
+      assert.ok(document.scenes[0].id.startsWith('scene_'));
+      assert.equal(document.scenes[0].stageId, document.stage.id);
+      assert.ok(document.scenes[0].content.questions[0].id.startsWith('question_'));
+      assert.equal(typeof document.stage.createdAt, 'number');
 
       mode = 'garbage';
       const second = await post(base, `/internal/courses/course-1/workspaces/${workspace.id}/generate`, { body: { mode: 'slide', prompt: '导数' }, scopes: ['generation:write', 'workspace:write', 'job:write'], key: 'gen-2' });

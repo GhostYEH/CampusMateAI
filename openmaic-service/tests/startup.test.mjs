@@ -73,6 +73,11 @@ test('comes up on a complete configuration and serves authenticated readiness', 
       OPENMAIC_DATABASE_URL: join(directory, 'service.db'),
       OPENMAIC_HOST: '127.0.0.1',
       OPENMAIC_PORT: String(port),
+      // Keep this startup contract independent of a developer's local .env.
+      OPENMAIC_PROVIDER_BASE_URL: '',
+      OPENMAIC_PROVIDER_API_KEY: '',
+      OPENMAIC_TTS_BASE_URL: '',
+      OPENMAIC_TTS_API_KEY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
