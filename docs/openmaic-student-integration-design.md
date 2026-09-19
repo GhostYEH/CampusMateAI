@@ -64,7 +64,8 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    （`backend/app/api/routes/openmaic_workspaces.py`，含 `Idempotency-Key` /
    `If-Match` 强制、412→409 翻译、内部地址不外泄）与课程内工作台面板
    （`webreact/src/components/openmaic/WorkspacePanel.jsx`，按真实 capability
-   开关）已落地并验证；编辑器与播放器未接入。
+   开关）已落地并验证；原生工作台、生成恢复、编辑器与播放器已接入，但快速询问尚未绑定
+   同一 native workspace 会话。
    本轮补齐了**内容发现**这一层：文件夹树与站内搜索
    （`openmaic-service/src/discovery/**` + `backend/app/api/routes/openmaic_discovery.py`
    + `webreact/src/components/openmaic/DiscoveryPanel.jsx`），并让工作台可以归档到
@@ -77,13 +78,14 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    播放器接通播放计划（`src/player/playback.ts` + `src/player/routes.ts`）与
    `StagePlayerPanel.jsx`：逐场景给出渲染决定（native / sandbox-html /
    sandbox-url / unsupported）、`allow-scripts` 沙箱、动作时间线与恢复位置，
-   渲染不了时明示缺什么。场景**内容**编辑、白板/TTS/多智能体的实际播放未接入。
+   渲染不了时明示缺什么。白板写入、TTS/圆桌工作台工具已接入；场景内容细编辑和白板/
+   音频/圆桌时间线播放仍未完成。
 5. E：材料、导入导出、高级能力和 Provider 设置。**进行中**：材料上传/解析/引用已接通
    （`openmaic-service/src/material/**` 的迁移 4 与路由、`backend/app/services/openmaic/material_extraction.py`
    的取字策略、`openmaic_materials.py` 网关、`MaterialsPanel.jsx`）。三条边界在这里定死：
    格式由**扩展名**决定而不是客户端声明的 Content-Type；解析不了就记 `unsupported` 且正文为空，
    绝不写成"已提取"；正文只在单份读取时返回，列表只带字符数。
-   **本切片不保留文件字节**，素材存储与浏览器验收仍未开始。
+   原始文件在 2 MiB 上限内以受限 base64 传给受管服务并落库，后续可用于资产/导出；素材尚未并入 `.maic.zip`，浏览器验收仍未开始。
    `.maic.zip` 的两个方向也已接通，但**以单份 stage 为单位**：档案是学生保存和转交的
    文件，而浏览器到网关的通道是 4 MiB 的 JSON 请求上限，一份 stage 文档的 DSL 上限是
    2 MiB —— 导出整个工作台会在两份大 stage 时越界，而"看起来完整"的部分导出比拒绝更糟。
@@ -92,7 +94,9 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    解压总量超限一律按名字拒绝。导入的文档仍走同一条 `prepareStage` 写路径，档案不是绕开
    编辑器校验的旁门。导出返回字节而不是 JSON，中文下载名走 RFC 5987 的 `filename*`。
    导入导出**均未执行浏览器验收**，素材条目仍不随档案往返。
-6. F：作业讲解确认门和最小上下文。未开始。
-7. G：安全回归、离线降级和浏览器验收。离线降级四态已验证；其余未开始。
+6. F：作业讲解确认门和最小上下文。**部分完成**：作业/课程授权、上下文预览、明确确认门、
+   默认不带答案正文、provider gating 和失败恢复已有服务端/Web 测试；真实 Provider 与浏览器验收待执行。
+7. G：安全回归、离线降级和浏览器验收。离线降级四态、断言/replay/归属/上传/zip/render 边界已有
+   自动化证据；完整浏览器 40 项验收仍未执行，不能用源码契约测试替代。
 
 每一行能力必须有源码依据、CampusMate 文件、契约、权限、测试、命令和证据；未实现能力不能显示为可点击入口。矩阵全部完成前，项目状态必须是“部分完成”。

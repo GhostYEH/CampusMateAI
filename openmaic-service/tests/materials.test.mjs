@@ -109,6 +109,17 @@ test('a material uploads at revision 1 and lists without its text', async () => 
   });
 });
 
+test('a material stores the original bounded bytes for later asset/export use', async () => {
+  const { server, database } = harness();
+  await withServer(server, async (base) => {
+    const bytes = Buffer.from('original-pdf-bytes');
+    const created = await upload(base, { byte_size: bytes.length, content_base64: bytes.toString('base64') });
+    assert.equal(created.status, 201);
+    const stored = database.raw.prepare('SELECT payload FROM materials WHERE id = ?').get(created.body.id);
+    assert.deepEqual(Buffer.from(stored.payload), bytes);
+  });
+});
+
 test('a create without an Idempotency-Key is refused, and a replay returns the first answer', async () => {
   const { server } = harness();
   await withServer(server, async (base) => {

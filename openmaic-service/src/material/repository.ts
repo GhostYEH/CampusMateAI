@@ -81,6 +81,7 @@ export interface CreateMaterialInput {
   sha256: string;
   extractionStatus: ExtractionStatus;
   text: string;
+  payload?: Buffer;
   now?: string;
 }
 
@@ -118,8 +119,8 @@ export class MaterialRepository {
       this.#db
         .prepare(
           `INSERT INTO materials (id, user_id, course_id, filename, media_type, byte_size, sha256,
-                                 extraction_status, text_content, revision, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+                                 extraction_status, text_content, payload, revision, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
         )
         .run(
           id,
@@ -131,6 +132,7 @@ export class MaterialRepository {
           input.sha256,
           input.extractionStatus,
           input.text,
+          input.payload ?? null,
           now,
           now,
         );

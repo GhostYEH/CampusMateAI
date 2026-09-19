@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import io
+import base64
 
 import pytest
 from fastapi.testclient import TestClient
@@ -132,7 +133,7 @@ def _upload(http, headers, course_id, *, name="讲义.md", content=b"# \xe7\xac\
 # ===== 上传主线 =====
 
 
-def test_upload_extracts_text_and_sends_only_metadata_upstream():
+def test_upload_extracts_text_and_preserves_original_bytes_upstream():
     _, transport, http, headers, course_id = _setup()
     response = _upload(http, headers, course_id)
     assert response.status_code == 201, response.text
@@ -148,7 +149,7 @@ def test_upload_extracts_text_and_sends_only_metadata_upstream():
     # 摘要与正文一起算出来,由网关决定,不是客户端给的
     assert len(body["sha256"]) == 64
     assert body["byte_size"] == len("# 第一章".encode("utf-8"))
-    # 多部分表单本身不进入内部调用:上游只看到解析结果,看不到上传帧。
+    # 多部分表单本身不进入内部调用；上游收到受限的原始字节信封，而不是上传帧。
     assert "file" not in body
     assert set(body) == {
         "filename",
@@ -157,7 +158,9 @@ def test_upload_extracts_text_and_sends_only_metadata_upstream():
         "sha256",
         "extraction_status",
         "text",
+        "content_base64",
     }
+    assert base64.b64decode(body["content_base64"]) == "# 第一章".encode("utf-8")
 
 
 def test_upload_mints_a_material_write_assertion_for_the_server_side_identity():

@@ -7,6 +7,7 @@ import { exportDocx } from '../src/exporters/docx.ts';
 import { exportPptx } from '../src/exporters/pptx.ts';
 import { importPptx } from '../src/importers/pptx.ts';
 import { readZip } from '../src/archive/zip.ts';
+import { writeZip } from '../src/archive/zip.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 
 const stage = {
@@ -94,6 +95,19 @@ test('pptx importer rejects oversized input and extracts a bounded slide subset'
   assert.equal(imported.scenes[0].type, 'slide');
   assert.equal(imported.scenes[0].title, '第一讲 <基础>');
   assert.throws(() => importPptx(Buffer.alloc(5 * 1024 * 1024)), /exceeds/);
+});
+
+test('pptx importer keeps bounded image references and basic OOXML layout', () => {
+  const slide = `<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:cSld><p:spTree><p:sp><p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="300" cy="400"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>定位标题</a:t></a:r></a:p></p:txBody></p:sp><p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill></p:pic></p:spTree></p:cSld></p:sld>`;
+  const rels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Target="../media/image1.png"/></Relationships>`;
+  const imported = importPptx(writeZip([
+    { name: 'ppt/slides/slide1.xml', data: Buffer.from(slide) },
+    { name: 'ppt/slides/_rels/slide1.xml.rels', data: Buffer.from(rels) },
+    { name: 'ppt/media/image1.png', data: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) },
+  ], { modifiedAt: new Date('2026-01-01T00:00:00.000Z') }), { title: '含图片课件' });
+  const elements = imported.scenes[0].content.canvas.elements;
+  assert.ok(elements.some((element) => element.kind === 'text' && element.x === 100 && element.y === 200));
+  assert.ok(elements.some((element) => element.kind === 'image' && element.mediaType === 'image/png' && element.dataUri.startsWith('data:image/png;base64,')));
 });
 
 test('archive routes advertise and mount every implemented format route', () => {

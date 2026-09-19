@@ -59,6 +59,9 @@ FastAPI 的脱敏模板位于 `backend/.env.example`：
 - `OPENMAIC_TTS_BASE_URL` / `OPENMAIC_TTS_API_KEY` / `OPENMAIC_TTS_MODEL` / `OPENMAIC_TTS_VOICE`：
   语音合成上游（MiMo TTS：`mimo-v2.5-tts`，默认音色 `苏打`，响应为 base64 WAV）。
   未配置时语音合成如实返回 `provider_unavailable`。
+- `OPENMAIC_RENDER_SERVICE_URL` / `OPENMAIC_RENDER_SERVICE_TOKEN`：私有 MP4 render-service；
+  两者必须成对出现，服务只在配置完整时广告 `export-video`/`render`。render-service 默认绑定
+  `127.0.0.1`，只接受 token 保护的受限 Stage JSON，并调用本机 ffmpeg；不得暴露到公网。
 - 两组各自支持 `*_TIMEOUT_SECONDS`（默认生成 120、TTS 180）。
 - 密钥只写在被 git 忽略的 `.env` 或 secret provider 里；`provider-status` 路由只暴露
   能力布尔值，永不回显密钥或上游地址。
@@ -129,5 +132,7 @@ A 切片（来源审计、受管服务、断言强制、状态代理与最近内
 `.maic.zip` 的单份 stage 导出与导入（`openmaic-service/src/archive/**`、
 `openmaic_archive.py`、`archiveModel.js`、`WorkspacePanel.jsx`）已打通服务端、网关与 Web
 三层并通过测试，**同样尚未执行浏览器验收，且素材不随档案往返**；
-工作台的编辑器与播放器、素材存储、PPTX 与 Markdown/DOCX 导入导出、TTS、多智能体和
-作业讲解仍需后续切片完成和验证。
+当前已补齐工作台编辑/播放、PPTX/Markdown/DOCX 导出、Provider 生成、白板、TTS、圆桌、
+作业讲解确认门和受管 MP4 任务边界；完整 Stage 内容编辑、PPTX 图片/版式保真、素材原文件
+字节存储、白板/音频/圆桌时间线播放、快速询问与 native workspace 会话绑定、真实 Provider/ffmpeg
+联调以及浏览器 40 项验收仍保持“部分完成”。浏览器工具不可用时不得用源码测试冒充浏览器证据。

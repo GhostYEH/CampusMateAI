@@ -169,6 +169,19 @@ function requireText(value: unknown, status: ExtractionStatus): string {
   return text;
 }
 
+function requirePayload(value: unknown, byteSize: number): Buffer | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || value.length > Math.ceil((MAX_MATERIAL_BYTES * 4) / 3) + 8) {
+    throw new WorkspaceError('document_rejected', 'content_base64 is too large');
+  }
+  let decoded: Buffer;
+  try { decoded = Buffer.from(value, 'base64'); } catch { throw new WorkspaceError('invalid_request', 'content_base64 is not valid base64'); }
+  if (decoded.toString('base64') !== value.replace(/\s/g, '') || decoded.length !== byteSize) {
+    throw new WorkspaceError('invalid_request', 'content_base64 does not match byte_size');
+  }
+  return decoded;
+}
+
 function requireMaterialIds(value: unknown): string[] {
   if (!Array.isArray(value)) {
     throw new WorkspaceError('invalid_request', 'material_ids must be a list');
@@ -283,14 +296,16 @@ export function createMaterialRoutes(options: MaterialRouteOptions): RouteDefini
         const body = parseJsonBody(request);
         return withIdempotency(request, body, () => {
           const extractionStatus = requireExtractionStatus(body.extraction_status);
+          const byteSize = requireByteSize(body.byte_size);
           const created = repository.createMaterial({
             ...actor(request),
             filename: requireFilename(body.filename),
             mediaType: requireString(body.media_type, 'media_type', MAX_MEDIA_TYPE_LENGTH),
-            byteSize: requireByteSize(body.byte_size),
+            byteSize,
             sha256: requireSha256(body.sha256),
             extractionStatus,
             text: requireText(body.text, extractionStatus),
+            payload: requirePayload(body.content_base64, byteSize),
             now: now(),
           });
           return {

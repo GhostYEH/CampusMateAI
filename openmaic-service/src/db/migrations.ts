@@ -191,6 +191,13 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_artifacts_owner ON artifacts (id, user_id, course_id)`,
     ],
   },
+  {
+    version: 6,
+    name: 'material_payloads',
+    statements: [
+      `ALTER TABLE materials ADD COLUMN payload BLOB`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

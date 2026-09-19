@@ -668,9 +668,10 @@ class OpenMAICFusionClient:
         sha256: str,
         extraction_status: str,
         text: str,
+        content_base64: str,
         idempotency_key: str,
     ) -> dict[str, Any]:
-        """Record one intake decision. The bytes themselves never travel here."""
+        """Record one bounded intake decision, including its original bytes."""
         return await self._request(
             "POST",
             f"/internal/courses/{course_id}/materials",
@@ -684,6 +685,7 @@ class OpenMAICFusionClient:
                 "sha256": sha256,
                 "extraction_status": extraction_status,
                 "text": text,
+                "content_base64": content_base64,
             },
             idempotency_key=idempotency_key,
         )

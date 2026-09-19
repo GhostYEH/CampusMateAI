@@ -167,6 +167,7 @@ async def upload_material(
         sha256=extracted.sha256,
         extraction_status=extracted.extraction_status,
         text=extracted.text,
+        content_base64=extracted.content_base64,
         idempotency_key=key,
     )
     return _material_out(created)

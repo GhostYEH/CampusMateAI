@@ -19,6 +19,7 @@ document would later be cited as if it were complete.
 from __future__ import annotations
 
 import hashlib
+import base64
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -80,6 +81,7 @@ class ExtractedMaterial:
     sha256: str
     extraction_status: str
     text: str
+    content_base64: str
 
 
 def sanitize_filename(raw: Optional[str]) -> str:
@@ -186,6 +188,7 @@ def extract_material(*, filename: str, content: bytes) -> ExtractedMaterial:
             sha256=digest,
             extraction_status=status,
             text=text if status == "extracted" else "",
+            content_base64=base64.b64encode(content).decode("ascii"),
         )
 
     if byte_size == 0:
