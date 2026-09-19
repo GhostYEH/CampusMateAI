@@ -13,10 +13,12 @@
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from app.core.config import Settings
 from app.core.security import hash_password
+from app.services.agent_runtime.handlers.base import HandlerContext
 from app.services.container import reset_container_for_tests
 
 from test_adaptive_closed_loop_integrity import (  # noqa: F401 - 复用真实场景夹具
@@ -116,6 +118,46 @@ def test_planner_generate_with_supersedes_links_both_plan_sides():
     )
 
     _assert_two_sided_lineage(container, student.id, first.plan_id, second.plan_id)
+
+
+# ============================================ 普通计划替换（Agent 处理器端到端）
+
+def test_learning_goal_handler_replacement_links_both_plan_sides():
+    """真正的 Agent 学习目标处理器：`input_ref.plan_id` 就是被替换的旧计划。
+
+    这条路径不经过 `/replan` 路由，因此不会碰到那条显式的 `link_superseded`；
+    血缘必须由规划器统一补上，否则学生的"换计划"操作在历史上是不留痕的。
+    """
+    container, student = _student("lineage_handler_student")
+    _seed_tasks(container, student.id)
+    first = container.learning_planner_service.generate(
+        user_id=student.id, available_minutes=60, idempotency_key="handler-first",
+    )
+    goal = _goal(container, student.id, key="handler")
+    input_ref = {
+        "goal_id": goal.goal_id, "available_minutes": 60, "plan_id": first.plan_id,
+    }
+
+    runtime = container.agent_runtime_repository
+    job_id = runtime.create_job(
+        user_id=student.id, job_kind="learning_goal", input_ref=input_ref,
+        idempotency_key="handler-job-1",
+    )
+    run_id = runtime.create_run(
+        job_id=job_id, user_id=student.id, idempotency_key="handler-run-1",
+        handler_code="learning_goal", handler_version="1.1.0",
+    )
+    handler = container.agent_handler_registry.get("learning_goal")
+    assert handler is not None
+
+    result = asyncio.run(handler.execute(HandlerContext(
+        run_id=run_id, job_id=job_id, user_id=student.id, job_kind="learning_goal",
+        input_ref=input_ref, checkpoint=None, attempt_no=1,
+    )))
+
+    assert result.status == "SUCCEEDED", result
+    new_plan_id = result.job_output_patch["plan_id"]
+    _assert_two_sided_lineage(container, student.id, first.plan_id, new_plan_id)
 
 
 # ================================================ 自动重规划：与干预血缘同生共死
