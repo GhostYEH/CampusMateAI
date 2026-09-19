@@ -95,5 +95,8 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 
 完整逐项状态以 `docs/openmaic-capability-matrix.md` 为准。当前状态是“部分完成”：
 A 切片（来源审计、受管服务、断言强制、状态代理与最近内容聚合）与 B 切片
-（`/courses` 原生首页与真实课程栏）已完成并验证；工作台、DSL、编辑器、播放器、
+（`/courses` 原生首页与真实课程栏）已完成并验证；C 切片中的内容发现部分
+（文件夹树与站内搜索：`openmaic-service/src/discovery/**`、网关
+`openmaic_discovery.py`、Web `DiscoveryPanel.jsx`，含工作台归档）已落地并通过
+服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；工作台的编辑器与播放器、
 导入导出、材料、TTS、多智能体和作业讲解仍需后续切片完成和验证。

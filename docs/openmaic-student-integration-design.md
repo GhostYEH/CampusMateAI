@@ -65,6 +65,10 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    `If-Match` 强制、412→409 翻译、内部地址不外泄）与课程内工作台面板
    （`webreact/src/components/openmaic/WorkspacePanel.jsx`，按真实 capability
    开关）已落地并验证；编辑器与播放器未接入。
+   本轮补齐了**内容发现**这一层：文件夹树与站内搜索
+   （`openmaic-service/src/discovery/**` + `backend/app/api/routes/openmaic_discovery.py`
+   + `webreact/src/components/openmaic/DiscoveryPanel.jsx`），并让工作台可以归档到
+   文件夹（`folder_id`）。文件夹与搜索的浏览器验收仍未执行。
 4. D：DSL、编辑器和播放器。未开始。
 5. E：材料、导入导出、高级能力和 Provider 设置。未开始。
 6. F：作业讲解确认门和最小上下文。未开始。

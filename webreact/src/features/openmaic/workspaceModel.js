@@ -22,6 +22,8 @@ export function normalizeWorkspaceList(payload) {
       courseId: item.course_id,
       name: item.name || "未命名工作台",
       description: item.description || "",
+      // `null` 表示未归档，与"字段缺失"不同：界面用它决定下拉框选中哪一项。
+      folderId: item.folder_id || null,
       revision: Number(item.revision) || 0,
       createdAt: item.created_at || "",
       updatedAt: item.updated_at || item.created_at || "",

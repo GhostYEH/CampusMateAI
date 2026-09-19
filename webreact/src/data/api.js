@@ -380,11 +380,11 @@ export async function listOpenMAICWorkspaces(courseId, { limit = 20, cursor = nu
   );
 }
 
-export async function createOpenMAICWorkspace(courseId, { name, description = "", idempotencyKey }) {
+export async function createOpenMAICWorkspace(courseId, { name, description = "", folderId, idempotencyKey }) {
   return dataOf(
     await client.post(
       `/courses/${courseId}/workspaces`,
-      { name, description },
+      { name, description, ...(folderId === undefined || folderId === null ? {} : { folder_id: folderId }) },
       { headers: { "Idempotency-Key": idempotencyKey } },
     ),
   );
@@ -394,10 +394,18 @@ export async function getOpenMAICWorkspace(courseId, workspaceId) {
   return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}`));
 }
 
-export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision, name, description }) {
+/**
+ * 条件更新工作台。
+ *
+ * `folderId` 的三种取值含义不同，必须原样传下去：`undefined` = 不动归档位置，
+ * `null` = 取消归档，字符串 = 归档到该文件夹。把它折叠成一种会让"取消归档"
+ * 变成"什么都不做"。
+ */
+export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision, name, description, folderId }) {
   const payload = {};
   if (name !== undefined) payload.name = name;
   if (description !== undefined) payload.description = description;
+  if (folderId !== undefined) payload.folder_id = folderId;
   return dataOf(
     await client.patch(`/courses/${courseId}/workspaces/${workspaceId}`, payload, {
       headers: { "If-Match": String(revision) },
@@ -449,6 +457,61 @@ export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revi
   return dataOf(
     await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
       headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+// ===== 文件夹与站内搜索 =====
+//
+// 两者都只经 CampusMate 后端。搜索的关键词长度与空值在网关和受管服务各校验
+// 一次；前端这里只负责"空关键词不发请求"，避免把"没输入"变成"返回全部"。
+
+export async function listOpenMAICFolders(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/folders`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function createOpenMAICFolder(courseId, { name, parentId = null, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/folders`,
+      { name, ...(parentId ? { parent_id: parentId } : {}) },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function getOpenMAICFolder(courseId, folderId) {
+  return dataOf(await client.get(`/courses/${courseId}/folders/${folderId}`));
+}
+
+/** `parentId` 为 `null` 表示移动到根层；`undefined` 表示不改层级。 */
+export async function updateOpenMAICFolder(courseId, folderId, { revision, name, parentId }) {
+  const payload = {};
+  if (name !== undefined) payload.name = name;
+  if (parentId !== undefined) payload.parent_id = parentId;
+  return dataOf(
+    await client.patch(`/courses/${courseId}/folders/${folderId}`, payload, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function deleteOpenMAICFolder(courseId, folderId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/folders/${folderId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function searchOpenMAICContent(courseId, { query, limit = 20, cursor = null }) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/search`, {
+      params: { q: query, limit, ...(cursor ? { cursor } : {}) },
     }),
   );
 }

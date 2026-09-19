@@ -4,6 +4,7 @@ import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import { formatDateTime } from "../../utils/date.js";
 import WorkspacePanel from "./WorkspacePanel.jsx";
+import DiscoveryPanel from "./DiscoveryPanel.jsx";
 import {
   buildCourseRailItems,
   describeFusionState,
@@ -100,6 +101,16 @@ export default function OpenMAICHome({
         ? <WorkspacePanel
           courseId={selectedCourseId}
           courseName={courses.find((course) => String(course.id) === String(selectedCourseId))?.name || ""}
+          canFile={status.canBrowseFolders}
+        />
+        : null}
+
+      {/* 文件夹与搜索各自按真实 capability 开关；两项都不可用时整块不渲染。 */}
+      {selectedCourseId && (status.canBrowseFolders || status.canSearch)
+        ? <DiscoveryPanel
+          courseId={selectedCourseId}
+          canBrowseFolders={status.canBrowseFolders}
+          canSearch={status.canSearch}
         />
         : null}
     </div>
