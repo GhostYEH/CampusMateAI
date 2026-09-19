@@ -3,7 +3,7 @@
   CampusMateAI 学习模型演示入口
 .DESCRIPTION
   从脚本位置解析仓库根目录，使用独立演示数据库，明确拒绝 production。
-  支持四个场景：deadline-pressure, pointer-recovery, stale-source-replan, shadow-model-blocked
+  支持三个场景：deadline-pressure, stale-source-replan, shadow-model-blocked
   不修改开发者现有数据库，不创建截图、日志、缓存、临时预测文件。
 .PARAMETER Action
   seed | start | verify | clear | all
@@ -37,7 +37,7 @@ $DemoDb = Join-Path $RepoRoot "backend\demo_learner_model.db"
 if (Test-Path $DemoDb) { Remove-Item $DemoDb -Force }
 $DbUrl = "sqlite:///$DemoDb"
 
-$Scenarios = @("deadline-pressure","pointer-recovery","stale-source-replan","shadow-model-blocked")
+$Scenarios = @("deadline-pressure","stale-source-replan","shadow-model-blocked")
 if ($Scenario -ne "all" -and $Scenarios -notcontains $Scenario) {
     Write-Error "Unknown scenario: $Scenario. Valid: $($Scenarios -join ', ')"
     exit 1

@@ -6,9 +6,34 @@ CampusMateAI 学生世界模型由确定性生产链路和可选影子评测组�
 
 ```
 学习事件 → 事件采集 → 状态投影 → 学习计划 → 计划执行 → 效果评估
-                ↑                         ↑
-          数据源控制                 状态纠正
+                ↑                         ↑              ↓
+          数据源控制                 状态纠正      持久化决策（落库，页面只读）
+                                                             ↓
+                              CONTINUE / WAIT_FOR_EVIDENCE / SUSPEND / REPLAN
+                                                             ↓
+                              REPLAN → 唯一后继 → 计划血缘与干预血缘原子替换
 ```
+
+### 自动重规划闭环
+
+效果评估之后不是终点：后台 Worker 会在观测窗到期后比较干预前后的状态，
+把决定**落库**，并在需要时自动替换学习计划。整条链路不依赖页面访问。
+
+1. **决策**：`ReplanDecisionPolicy` 是确定性纯函数，不调用任何模型。
+   取值只有 `CONTINUE` / `WAIT_FOR_EVIDENCE` / `SUSPEND` / `REPLAN`。
+2. **防抖先于落库**：冷却（12h）、单日上限（2 次）、链深（3 层）在**持久化 REPLAN 之前**判定；
+   命中时降级为带稳定 reason code 的 `SUSPEND`（保守等待），**不是 FAILED**。
+3. **CAS 抢占**：`adaptive_replan_decisions` 的 `APPLYING` 由带 owner + 到期时间的租约持有。
+   只有 `PENDING` / 可重试 `FAILED` / **租约已过期** 的 `APPLYING` 能被接手；
+   租约未过期时其他 Worker 必须原样退出，**不无条件抢占**。
+4. **原子血缘**：计划血缘（旧计划 → 新计划）与干预血缘（旧干预 → 新干预）
+   在同一个事务里成对写入。任一步失败整体回滚，旧计划仍是正式版本，
+   后继保持暂存态供重试复用，**不会产生两份"当前计划"**。
+5. **崩溃可恢复**：决策刚进入 `APPLYING`、后继已暂存但血缘未绑定、
+   血缘已绑定但未写 `APPLIED` —— 三种残留都能被重启后的 Worker 幂等完成。
+
+**前端只读**：页面展示的是后端**落库**的决策与 `decision_status`，
+不按 delta 或观测结果自行推测；只有 `decision_status = APPLIED` 才显示"已调整学习计划"。
 
 ### 确定性生产链路
 
@@ -37,7 +62,11 @@ CampusMateAI 学生世界模型由确定性生产链路和可选影子评测组�
 - 日志只记录 run_id、capability、model key/version、异常类型，不记录异常消息或模型原文
 - API key、base URL、绝对路径不写入数据库、响应或日志
 
-## 四个演示场景
+## 三个演示场景
+
+> 说明：这里只列**当前代码真正支持**的场景。C 语言练习系统（`practice_attempts`、
+> 误区假设等）已在 `ad6fa731` 整体移除，原先的 `pointer-recovery` 场景随之删除；
+> 若在文档或脚本里再看到它，说明那份材料已经过时。
 
 ### 1. deadline-pressure（截止任务与时间预算）
 
@@ -46,21 +75,14 @@ CampusMateAI 学生世界模型由确定性生产链路和可选影子评测组�
 - 生成 CORE snapshot 展示任务负载
 - 生成可解释计划展示时间预算
 
-### 2. pointer-recovery（C 语言指针误区闭环）
-
-- 写入 2 次 failed practice_attempts（pointer_indirection 错误码）
-- 写入 1 次 passed attempt
-- 生成 KNOWLEDGE snapshot 展示掌握度估计
-- 形成误区假设并进入 RESOLVED
-
-### 3. stale-source-replan（数据源失效）
+### 2. stale-source-replan（数据源失效）
 
 - CHAOXING 数据源设为 PAUSED
 - 计入 48h 前的 stale 同步事件
 - 状态显示 PARTIAL/STALE
 - replan 不依赖已暂停来源
 
-### 4. shadow-model-blocked（模型影子评测）
+### 3. shadow-model-blocked（模型影子评测）
 
 - 候选模型产生 quality_gate_micro_f1 门禁失败
 - promotion decision 为 BLOCKED
@@ -93,7 +115,7 @@ CandidateModelClient 已实现 OpenAI 兼容客户端，但需配置 `CAMPUSMATE
 .\scripts\run-learner-model-demo.ps1 -Action clear
 
 # 指定场景
-.\scripts\run-learner-model-demo.ps1 -Action all -Scenario pointer-recovery
+.\scripts\run-learner-model-demo.ps1 -Action all -Scenario stale-source-replan
 ```
 
 脚本从自身位置解析仓库根目录，使用独立演示数据库，不修改开发者现有数据库。
@@ -103,5 +125,5 @@ CandidateModelClient 已实现 OpenAI 兼容客户端，但需配置 `CAMPUSMATE
 1. **真实模型推理未执行**：CandidateModelClient 已实现适配器和模拟服务测试，但未连接真实 CampusMate-LM 服务
 2. **金丝雀展示未启用**：门禁逻辑已实现，但只读 canary 链路尚未接入生产 API 响应
 3. **数据源控制部分生效**：数据源暂停状态已纳入投影 input_digest，但事件采集链路尚未完全消费
-4. **前端闭环部分完成**：页面已拆分但 mutation 刷新和 PlanEvaluation 真实加载仍需完善
-5. **Playwright E2E 需要环境**：E2E 测试需要安装 Playwright 和启动后端+前端服务
+4. **前端决策展示已完成，闭环 E2E 未跑**：页面按后端落库的 `decision_status` 分档展示（只有 `APPLIED` 才显示"已调整学习计划"），并有投影层单测覆盖；但驱动真实后端 + 浏览器的闭环 E2E 在当前环境无法执行
+5. **Playwright E2E 需要环境**：当前环境无法获取 chromium（npm registry 502、本机无 `ms-playwright` 缓存），浏览器验收**未执行**；脚本保留，但不得记为通过
