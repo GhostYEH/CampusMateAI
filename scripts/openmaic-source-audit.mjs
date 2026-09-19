@@ -126,12 +126,16 @@ function sha256Of(file) {
 }
 
 export function buildNotice({ tag, repository, commit }) {
+  // Repository, tag and commit are three separate auditable facts, so each gets
+  // its own line: a reader who only skims the bullet list must still be able to
+  // quote the exact upstream revision this tree was audited against.
   return [
     '# OpenMAIC provenance notice',
     '',
     `This directory records the audited source boundary for OpenMAIC \`${tag}\`.`,
     '',
     `- Repository: \`${repository}\``,
+    `- Tag: \`${tag}\``,
     `- Commit: \`${commit}\``,
     '- License: MIT; see `LICENSE`.',
     '- The source checkout itself, package managers, build output, runtime data, logs, credentials and local configuration are not vendored here.',

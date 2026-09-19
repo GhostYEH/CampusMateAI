@@ -47,6 +47,14 @@ export {
 export type { DslLimitName } from './limits.ts';
 
 export {
+  STAGE_COMMANDS,
+  DslCommandError,
+  applyStageCommands,
+  isStageCommandType,
+} from './commands.ts';
+export type { ApplyOptions, StageCommandType } from './commands.ts';
+
+export {
   sanitizeInteractiveHtml,
   sanitizeStrings,
   sanitizeText,

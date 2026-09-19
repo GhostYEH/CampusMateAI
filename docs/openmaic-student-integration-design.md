@@ -69,7 +69,12 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    （`openmaic-service/src/discovery/**` + `backend/app/api/routes/openmaic_discovery.py`
    + `webreact/src/components/openmaic/DiscoveryPanel.jsx`），并让工作台可以归档到
    文件夹（`folder_id`）。文件夹与搜索的浏览器验收仍未执行。
-4. D：DSL、编辑器和播放器。未开始。
+4. D：DSL、编辑器和播放器。**进行中**：DSL 已移植并有版本/迁移/净化/校验；
+   编辑器本轮接通命令层（`openmaic-service/src/dsl/commands.ts`）、内部路由
+   （`src/editor/routes.ts`）、FastAPI 网关（`openmaic_editor.py`）与 Web
+   （`StageEditorPanel.jsx` + `editorModel.js`）：提交的是命令列表而非整份文档、
+   有界 undo/redo、`If-Match` 并发冲突后重新读取、本地不接受的命令不发出去。
+   场景**内容**编辑、播放器与白板未接入。
 5. E：材料、导入导出、高级能力和 Provider 设置。未开始。
 6. F：作业讲解确认门和最小上下文。未开始。
 7. G：安全回归、离线降级和浏览器验收。离线降级四态已验证；其余未开始。

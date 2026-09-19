@@ -56,7 +56,7 @@ function toWorkspace(row: WorkspaceRow): Record<string, unknown> {
  * megabytes, and a list is a navigation surface. Clients fetch the single stage
  * they are about to open.
  */
-function toStage(row: StageRow, options: { includeDocument: boolean }): Record<string, unknown> {
+export function stageResponse(row: StageRow, options: { includeDocument: boolean }): Record<string, unknown> {
   const base: Record<string, unknown> = {
     id: row.id,
     workspace_id: row.workspace_id,
@@ -325,7 +325,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
         return {
           status: 200,
           body: {
-            items: page.items.map((row) => toStage(row, { includeDocument: false })),
+            items: page.items.map((row) => stageResponse(row, { includeDocument: false })),
             next_cursor: page.nextCursor,
           },
         };
@@ -359,7 +359,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
             dslVersion: String((prepared.document as { dslVersion: string }).dslVersion),
             now: now(),
           });
-          return { status: 201, body: toStage(created, { includeDocument: true }) };
+          return { status: 201, body: stageResponse(created, { includeDocument: true }) };
         });
       }),
     },
@@ -371,7 +371,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
       capabilities: [WORKSPACE_CAPABILITY],
       handler: (request) => respond(() => ({
         status: 200,
-        body: toStage(
+        body: stageResponse(
           repository.getStage({
             ...actor(request),
             workspaceId: request.params.workspaceId ?? '',
@@ -403,7 +403,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
           dslVersion: String((prepared.document as { dslVersion: string }).dslVersion),
           now: now(),
         });
-        return { status: 200, body: toStage(replaced, { includeDocument: true }) };
+        return { status: 200, body: stageResponse(replaced, { includeDocument: true }) };
       }),
     },
     {

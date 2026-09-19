@@ -75,6 +75,8 @@ export function describeFusionState(status) {
     canImport: has("import-pptx") || has("import-maic"),
     canSearch: has("search"),
     canBrowseFolders: has("folder"),
+    // 编辑器只在服务端真的挂载了 editor 路由（并上报该能力）时才开放。
+    canEdit: has("editor"),
   };
 }
 

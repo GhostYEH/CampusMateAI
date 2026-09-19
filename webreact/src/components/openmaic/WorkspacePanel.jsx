@@ -3,10 +3,12 @@ import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
 import { formatDateTime } from "../../utils/date.js";
+import StageEditorPanel from "./StageEditorPanel.jsx";
 import {
   WORKSPACE_PAGE_LIMIT,
   describeWorkspaceError,
   nextCursorOf,
+  normalizeStageList,
   normalizeWorkspaceList,
   normalizeWorkspaceName,
 } from "../../features/openmaic/workspaceModel.js";
@@ -24,7 +26,7 @@ const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeSty
  * 的是"读写正确"：创建走幂等键，删除带回读到的 revision，409 提示重新读取而不是
  * 原样重试。
  */
-export default function WorkspacePanel({ courseId, courseName = "", canFile = false }) {
+export default function WorkspacePanel({ courseId, courseName = "", canFile = false, canEdit = false }) {
   const [items, setItems] = React.useState([]);
   const [cursor, setCursor] = React.useState(null);
   const [folders, setFolders] = React.useState([]);
@@ -34,6 +36,13 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
   const [notice, setNotice] = React.useState("");
   const [name, setName] = React.useState("");
   const [targetFolder, setTargetFolder] = React.useState("");
+  // 展开的 workspace 与它的场景列表：编辑入口只在用户主动展开后加载。
+  const [openWorkspaceId, setOpenWorkspaceId] = React.useState("");
+  const [stages, setStages] = React.useState([]);
+  const [stageTitle, setStageTitle] = React.useState("");
+  const [editingStageId, setEditingStageId] = React.useState("");
+  // 切换课程后迟到的响应不得写进新课程上下文。
+  const epoch = React.useRef(0);
   // 同一个用户动作的幂等键必须在重试之间保持不变，所以它跟着"这次提交"走，
   // 而不是每次请求现生成。
   const pendingKey = React.useRef(null);
@@ -65,6 +74,49 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
     setNotice("");
     void load();
   }, [courseId, load]);
+
+  const loadStages = React.useCallback(async (workspaceId) => {
+    const mine = (epoch.current += 1);
+    setError("");
+    try {
+      const payload = await api.listOpenMAICStages(courseId, workspaceId, { limit: WORKSPACE_PAGE_LIMIT });
+      if (mine !== epoch.current) return;
+      setStages(normalizeStageList(payload));
+    } catch (err) {
+      if (mine !== epoch.current) return;
+      setStages([]);
+      setError(describeWorkspaceError(err).message);
+    }
+  }, [courseId]);
+
+  async function toggleStages(item) {
+    const next = openWorkspaceId === item.id ? "" : item.id;
+    setOpenWorkspaceId(next);
+    setEditingStageId("");
+    setStages([]);
+    if (next) await loadStages(next);
+  }
+
+  async function addStage(workspaceId) {
+    const title = stageTitle.trim();
+    if (!title) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.createOpenMAICStage(courseId, workspaceId, {
+        title,
+        idempotencyKey: api.newIdempotencyKey(),
+      });
+      setStageTitle("");
+      setNotice(`已新增内容「${title}」`);
+      await loadStages(workspaceId);
+    } catch (err) {
+      setError(describeWorkspaceError(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function loadMore() {
     if (!cursor) return;
@@ -202,10 +254,53 @@ export default function WorkspacePanel({ courseId, courseName = "", canFile = fa
             <option value="">未归档</option>
             {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
           </select> : null}
+          <Button variant="quiet" disabled={busy} onClick={() => toggleStages(item)}>
+            {openWorkspaceId === item.id ? "收起内容" : "内容"}
+          </Button>
           <Button variant="quiet" disabled={busy} onClick={() => remove(item)}>删除</Button>
         </article>)}</div>
         {cursor && <Button variant="quiet" disabled={busy} onClick={loadMore}>加载更多</Button>}
       </>
       : <div className="openmaic-home__empty"><Icon name="PhSquaresFour" size={24} /><p>还没有工作台</p><small>工作台用来把一门课的学习内容分开存放，例如「期末复习」「第三章练习」。</small></div>}
+
+    {openWorkspaceId ? <section className="openmaic-stage-browser" aria-label="内容列表">
+      <div className="openmaic-command">
+        <label className="openmaic-command__input">
+          <Icon name="PhLayout" size={18} />
+          <input
+            value={stageTitle}
+            onChange={(event) => setStageTitle(event.target.value)}
+            placeholder="新增内容，例如「第一章讲解」"
+            aria-label="新增内容标题"
+            maxLength={200}
+          />
+        </label>
+        <Button type="button" disabled={!stageTitle.trim() || busy} onClick={() => addStage(openWorkspaceId)}>
+          新增内容
+        </Button>
+      </div>
+
+      {stages.length ? <ul className="openmaic-stage-browser__list">
+        {stages.map((stage) => <li key={stage.id}>
+          <span className="row-copy">
+            <strong>{stage.title}</strong>
+            <small>{stage.dslVersion ? `DSL ${stage.dslVersion}` : "尚未写入内容"} · revision {stage.revision}</small>
+          </span>
+          {canEdit ? <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setEditingStageId((current) => (current === stage.id ? "" : stage.id))}
+          >{editingStageId === stage.id ? "结束编辑" : "编辑场景"}</Button> : null}
+        </li>)}
+      </ul> : <p className="openmaic-hint">这个工作台还没有内容。</p>}
+
+      {/* 只有服务端上报 editor 能力时才挂载编辑器；未上报时连组件都不出现。 */}
+      {canEdit && editingStageId ? <StageEditorPanel
+        courseId={courseId}
+        workspaceId={openWorkspaceId}
+        stageId={editingStageId}
+        onSaved={() => loadStages(openWorkspaceId)}
+      /> : null}
+    </section> : null}
   </Panel>;
 }

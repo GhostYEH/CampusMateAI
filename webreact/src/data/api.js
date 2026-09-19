@@ -516,6 +516,36 @@ export async function searchOpenMAICContent(courseId, { query, limit = 20, curso
   );
 }
 
+// ===== 编辑器（Stage 命令） =====
+//
+// 提交的是**命令列表**，不是整份文档：整份回传会让没看到并发修改的作者静默
+// 回退别人的改动。两个头同样属于协议：Idempotency-Key 防止重试重复建场景，
+// If-Match 携带这组命令所基于的 revision。
+
+export async function getOpenMAICStageOutline(courseId, workspaceId, stageId) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/outline`),
+  );
+}
+
+export async function getOpenMAICStageScene(courseId, workspaceId, stageId, sceneId) {
+  return dataOf(
+    await client.get(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}`,
+    ),
+  );
+}
+
+export async function applyOpenMAICStageCommands(courseId, workspaceId, stageId, { commands, revision, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/commands`,
+      { commands },
+      { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+    ),
+  );
+}
+
 /** 失败时重试生成。 */
 export async function retryInteractiveClassroom(courseId, sessionId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));

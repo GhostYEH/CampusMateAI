@@ -29,6 +29,8 @@ export const DSL_LIMITS = {
   maxQuizQuestions: 100,
   /** Options per quiz question. */
   maxQuizOptions: 26,
+  /** Commands accepted in one editor request. */
+  maxCommandsPerRequest: 50,
 } as const;
 
 export type DslLimitName = keyof typeof DSL_LIMITS;

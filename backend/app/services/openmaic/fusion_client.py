@@ -56,6 +56,10 @@ WRITE_SCOPES = ("workspace:read", "workspace:write")
 FOLDER_READ_SCOPES = ("folder:read",)
 FOLDER_WRITE_SCOPES = ("folder:read", "folder:write")
 SEARCH_READ_SCOPES = ("search:read",)
+# Editing a stage is a distinct capability from owning the workspace: reading is
+# enough to render an outline, writing additionally allows commands.
+STAGE_READ_SCOPES = ("stage:read",)
+STAGE_WRITE_SCOPES = ("stage:read", "stage:write")
 
 
 def _status(
@@ -530,6 +534,66 @@ class OpenMAICFusionClient:
         )
 
 
+    # ===== editor =====
+
+    async def apply_stage_commands(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        commands: list[dict[str, Any]],
+        revision: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Apply an editor command list to one stage.
+
+        The command list (not a document) is what travels: the service applies it
+        to the row it reads inside the request transaction, so an author who never
+        saw a concurrent change cannot revert it. `If-Match` carries the revision
+        this list was composed against.
+        """
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/commands",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=STAGE_WRITE_SCOPES,
+            json_body={"commands": commands},
+            idempotency_key=idempotency_key,
+            if_match=revision,
+        )
+
+    async def get_stage_outline(
+        self, *, user_id: str, course_id: str, workspace_id: str, stage_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/outline",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=STAGE_READ_SCOPES,
+        )
+
+    async def get_stage_scene(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        scene_id: str,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=STAGE_READ_SCOPES,
+        )
+
+
 def _safe_json(response: Any) -> Any:
     """Never let a malformed body become an exception the caller cannot classify."""
     try:
@@ -549,5 +613,7 @@ __all__ = [
     "FOLDER_READ_SCOPES",
     "FOLDER_WRITE_SCOPES",
     "SEARCH_READ_SCOPES",
+    "STAGE_READ_SCOPES",
+    "STAGE_WRITE_SCOPES",
     "UNSET",
 ]

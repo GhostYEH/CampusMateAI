@@ -95,6 +95,12 @@ def raise_for_service_error(status_code: int, body: Optional[Any]) -> None:
             details["issues"] = payload["issues"]
         if isinstance(payload.get("limit"), str):
             details["limit"] = payload["limit"]
+        # An editor command rejection carries the stable code and the JSON path of
+        # the offending command; the editor highlights that row, so both travel.
+        if error_code:
+            details["service_error"] = error_code
+        if isinstance(payload.get("path"), str):
+            details["path"] = payload["path"]
         raise FusionDocumentRejected(details=details or None)
     if status_code == 400:
         raise FusionInvalidRequest(message or None)

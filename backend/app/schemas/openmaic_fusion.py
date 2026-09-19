@@ -201,6 +201,47 @@ class SearchListOut(BaseModel):
     query: str
 
 
+# ===== editor =====
+
+
+class StageCommandsIn(BaseModel):
+    """编辑器提交的**命令列表**，不是整份文档。
+
+    整份 PUT 会让没看到并发修改的作者静默回退别人的改动；命令列表由服务端
+    作用在它刚读到的行上。上限与服务端的 `maxCommandsPerRequest` 保持一致，
+    这样超限在网关就得到 400，而不是变成一次昂贵的内部调用。
+    """
+
+    commands: List[dict] = Field(..., min_length=1, max_length=50)
+
+
+class SceneOutlineOut(BaseModel):
+    """场景目录项：**不含场景正文**（列表是导航面）。"""
+
+    id: str
+    type: str
+    title: str
+    order: int
+    actions: int = 0
+    updated_at: Optional[int] = None
+
+
+class StageOutlineOut(BaseModel):
+    stage_id: str
+    workspace_id: str
+    title: str
+    revision: int
+    dsl_version: str = ""
+    scenes: List[SceneOutlineOut] = Field(default_factory=list)
+
+
+class StageCommandResultOut(StageOut):
+    """命令应用后的 stage，附带本次实际应用了多少条命令。"""
+
+    applied_commands: int = 0
+    migrated: bool = False
+
+
 __all__ = [
     "FusionState",
     "FusionStatus",
@@ -221,4 +262,8 @@ __all__ = [
     "FolderUpdateIn",
     "SearchHitOut",
     "SearchListOut",
+    "StageCommandsIn",
+    "SceneOutlineOut",
+    "StageOutlineOut",
+    "StageCommandResultOut",
 ]
