@@ -128,10 +128,10 @@ A 切片（来源审计、受管服务、断言强制、状态代理与最近内
 服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；E 切片中的课程资料部分
 （上传/解析/引用：`openmaic-service/src/material/**`、`material_extraction.py`、
 `openmaic_materials.py`、`MaterialsPanel.jsx`）同样已落地并通过三层自动化测试，
-**尚未执行浏览器验收，且本切片不保留上传文件的字节**；
+**尚未执行浏览器验收；原始字节在 2 MiB 内受限落库，并可随 stage 引用进入归档**；
 `.maic.zip` 的单份 stage 导出与导入（`openmaic-service/src/archive/**`、
 `openmaic_archive.py`、`archiveModel.js`、`WorkspacePanel.jsx`）已打通服务端、网关与 Web
-三层并通过测试，**同样尚未执行浏览器验收，且素材不随档案往返**；
+三层并通过测试，**同样尚未执行浏览器验收；v2 档案会携带 stage 明确引用的素材资源**；
 当前已补齐工作台编辑/播放、PPTX/Markdown/DOCX 导出、Provider 生成、白板、TTS、圆桌、
 作业讲解确认门和受管 MP4 任务边界；完整 Stage 内容编辑、PPTX 图片/版式保真、素材原文件
 字节存储、白板/音频/圆桌时间线播放、快速询问与 native workspace 会话绑定、真实 Provider/ffmpeg

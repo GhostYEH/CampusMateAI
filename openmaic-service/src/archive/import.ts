@@ -18,12 +18,13 @@
  */
 
 import { WorkspaceError } from '../workspace/errors.ts';
-import { MANIFEST_PATH, MAX_ARCHIVE_BYTES, parseManifest, type MaicManifest } from './manifest.ts';
+import { MANIFEST_PATH, MAX_ARCHIVE_BYTES, parseManifest, type MaicManifest, type MaicManifestResource } from './manifest.ts';
 import { readZip } from './zip.ts';
 
 export interface ReadArchiveResult {
   manifest: MaicManifest;
   document: unknown;
+  resources: Array<{ manifest: MaicManifestResource; payload: Buffer | null }>;
   archiveBytes: number;
 }
 
@@ -76,15 +77,24 @@ export function readArchive(archive: Buffer): ReadArchiveResult {
   if (!stageEntry) {
     throw new WorkspaceError('document_rejected', `archive is missing the stage it declares`);
   }
-  // A version-1 archive has exactly two members. An extra one is content this
-  // build cannot represent, and dropping it silently would lose it.
-  if (entries.length !== 2) {
-    const unexpected = entries.map((entry) => entry.name).filter((name) => name !== MANIFEST_PATH && name !== manifest.stage.path);
+  const resourcePaths = new Set(manifest.resources.map((resource) => resource.path).filter((path): path is string => Boolean(path)));
+  const allowed = new Set([MANIFEST_PATH, manifest.stage.path, ...resourcePaths]);
+  if (entries.some((entry) => !allowed.has(entry.name)) || entries.length !== 2 + resourcePaths.size) {
+    const unexpected = entries.map((entry) => entry.name).filter((name) => !allowed.has(name));
     throw new WorkspaceError(
       'document_rejected',
-      `archive holds entries this format version does not define: ${unexpected.join(', ')}`,
+      `archive holds entries this format version does not define: ${unexpected.join(', ') || 'resource entries are incomplete'}`,
     );
   }
+
+  const resources = manifest.resources.map((resource) => {
+    const entry = resource.path ? byName.get(resource.path) : undefined;
+    if (resource.path && !entry) throw new WorkspaceError('document_rejected', `archive is missing resource ${resource.path}`);
+    if (entry && entry.data.length !== resource.byte_size) {
+      throw new WorkspaceError('document_rejected', `resource ${resource.filename} does not match byte_size`);
+    }
+    return { manifest: resource, payload: entry?.data ?? null };
+  });
 
   let document: unknown;
   try {
@@ -96,6 +106,7 @@ export function readArchive(archive: Buffer): ReadArchiveResult {
   return {
     manifest,
     document,
+    resources,
     archiveBytes: archive.length,
   };
 }

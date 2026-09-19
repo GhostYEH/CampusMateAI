@@ -17,6 +17,7 @@
  */
 
 import type { Capability } from '../capabilities.ts';
+import { createHash } from 'node:crypto';
 import { DslLimitError } from '../dsl/limits.ts';
 import { DslVersionError } from '../dsl/version.ts';
 import { DslValidationError, prepareStage } from '../dsl/validate.ts';
@@ -36,6 +37,7 @@ import { exportPptx } from '../exporters/pptx.ts';
 import { importPptx } from '../importers/pptx.ts';
 import { JobRepository } from '../jobs/repository.ts';
 import { jobResponse } from '../jobs/routes.ts';
+import { MaterialRepository } from '../material/repository.ts';
 
 export const ARCHIVE_READ_SCOPE = 'archive:read';
 export const ARCHIVE_WRITE_SCOPE = 'archive:write';
@@ -50,6 +52,48 @@ export const EXPORT_VIDEO_CAPABILITY: Capability = 'export-video';
 export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 
 const FALLBACK_TITLE = '导入的学习内容';
+
+const MAX_ARCHIVE_MATERIALS = 50;
+
+function materialIdsInDocument(document: unknown): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (typeof value !== 'object' || value === null) return;
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'material_id' && typeof child === 'string' && child.trim()) {
+        if (!seen.has(child)) { seen.add(child); ids.push(child); }
+      } else if (key === 'material_ids' && Array.isArray(child)) {
+        for (const item of child) {
+          if (typeof item !== 'string' || !item.trim()) continue;
+          if (!seen.has(item)) { seen.add(item); ids.push(item); }
+        }
+      }
+      visit(child);
+    }
+  };
+  visit(document);
+  if (ids.length > MAX_ARCHIVE_MATERIALS) {
+    throw new WorkspaceError('document_rejected', `stage references more than ${MAX_ARCHIVE_MATERIALS} materials`);
+  }
+  return ids;
+}
+
+function remapMaterialIds(value: unknown, mapping: Map<string, string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => remapMaterialIds(item, mapping));
+  if (typeof value !== 'object' || value === null) return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'material_id' && typeof child === 'string') output[key] = mapping.get(child) ?? child;
+    else if (key === 'material_ids' && Array.isArray(child)) output[key] = child.map((item) => typeof item === 'string' ? (mapping.get(item) ?? item) : item);
+    else output[key] = remapMaterialIds(child, mapping);
+  }
+  return output;
+}
 
 function parseJsonBody(request: RouteRequest): Record<string, unknown> {
   if (!request.body || request.body.length === 0) {
@@ -113,6 +157,7 @@ export interface ArchiveRouteOptions {
 
 export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefinition[] {
   const repository = new WorkspaceRepository(options.database);
+  const materials = new MaterialRepository(options.database);
   const idempotency = new IdempotencyStore(options.database);
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -138,10 +183,18 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
         // manifest; both lookups enforce ownership inside the query.
         const workspace = repository.getWorkspace(identity);
         const stage = repository.getStage({ ...identity, stageId });
+        let document: unknown;
+        try { document = JSON.parse(stage.document); } catch { throw new WorkspaceError('document_rejected', 'stored stage document is not valid JSON'); }
+        const stageMaterials = materialIdsInDocument(document).map((materialId) => materials.getMaterialForArchive({
+          userId: identity.userId,
+          courseId: identity.courseId,
+          materialId,
+        }));
         const exported = exportStage({
           stage,
           workspaceName: workspace.name,
           exportedAt: now(),
+          materials: stageMaterials,
         });
         return {
           status: 200,
@@ -259,7 +312,26 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
         // Everything below happens inside the request transaction, so a failure
         // anywhere leaves no half-imported stage behind.
         const parsed = readArchive(decodeArchivePayload(body.archive));
-        const prepared = prepareStage(parsed.document);
+        const materialMapping = new Map<string, string>();
+        for (const resource of parsed.resources) {
+          if (resource.payload && createHash('sha256').update(resource.payload).digest('hex') !== resource.manifest.sha256) {
+            throw new WorkspaceError('document_rejected', `resource ${resource.manifest.filename} failed its integrity check`);
+          }
+          const createdMaterial = materials.createMaterial({
+            userId: identity.userId,
+            courseId: identity.courseId,
+            filename: resource.manifest.filename,
+            mediaType: resource.manifest.media_type,
+            byteSize: resource.manifest.byte_size,
+            sha256: resource.manifest.sha256,
+            extractionStatus: resource.manifest.extraction_status,
+            text: resource.manifest.text,
+            payload: resource.payload ?? undefined,
+            now: now(),
+          });
+          materialMapping.set(resource.manifest.source_id, createdMaterial.material.id);
+        }
+        const prepared = prepareStage(remapMaterialIds(parsed.document, materialMapping));
         const title = parsed.manifest.stage.title.trim() || FALLBACK_TITLE;
         const created = repository.createStage({
           ...identity,

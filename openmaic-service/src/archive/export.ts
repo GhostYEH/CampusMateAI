@@ -11,6 +11,7 @@
 import { createHash } from 'node:crypto';
 
 import type { StageRow } from '../workspace/repository.ts';
+import type { MaterialArchiveRecord } from '../material/repository.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
 import {
   MANIFEST_PATH,
@@ -18,6 +19,7 @@ import {
   buildManifest,
   archiveFilename,
   stagePathFor,
+  type MaicManifestResource,
 } from './manifest.ts';
 import { writeZip } from './zip.ts';
 
@@ -34,6 +36,11 @@ export interface ExportStageInput {
   stage: StageRow;
   workspaceName: string;
   exportedAt: string;
+  materials?: MaterialArchiveRecord[];
+}
+
+function resourcePathFor(material: MaterialArchiveRecord): string | null {
+  return material.payload ? `resources/${material.sha256}.bin` : null;
 }
 
 export function exportStage(input: ExportStageInput): ExportedArchive {
@@ -48,18 +55,33 @@ export function exportStage(input: ExportStageInput): ExportedArchive {
   }
 
   const stagePath = stagePathFor(input.stage.id);
+  const resources: MaicManifestResource[] = (input.materials ?? []).map((material) => ({
+    path: resourcePathFor(material),
+    source_id: material.id,
+    filename: material.filename,
+    media_type: material.media_type,
+    byte_size: Number(material.byte_size),
+    sha256: material.sha256,
+    extraction_status: material.extraction_status,
+    text: material.text,
+  }));
   const manifest = buildManifest({
     exportedAt: input.exportedAt,
     workspaceName: input.workspaceName,
     title: input.stage.title,
     dslVersion: input.stage.dsl_version,
     stagePath,
+    resources,
   });
 
   const archive = writeZip(
     [
       { name: MANIFEST_PATH, data: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8') },
       { name: stagePath, data: Buffer.from(`${JSON.stringify(document, null, 2)}\n`, 'utf8') },
+      ...(input.materials ?? []).flatMap((material) => {
+        const path = resourcePathFor(material);
+        return path && material.payload ? [{ name: path, data: material.payload }] : [];
+      }),
     ],
     { modifiedAt: new Date(input.exportedAt) },
   );

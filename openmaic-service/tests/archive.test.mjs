@@ -31,6 +31,7 @@ import { DSL_VERSION } from '../src/dsl/version.ts';
 import { MAX_REQUEST_BODY_BYTES } from '../src/server.ts';
 import { ServiceDatabase } from '../src/db/database.ts';
 import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
+import { MaterialRepository } from '../src/material/repository.ts';
 import { createHarness, mintAssertion, withServer } from './helpers.mjs';
 
 const ALL_SCOPES = [
@@ -487,6 +488,44 @@ test('a stage exports and imports back with the same document', async () => {
     assert.equal(fetched.body.document.scenes.length, 1);
     assert.equal(fetched.body.document.scenes[0].title, '开场');
     assert.equal(fetched.body.document.dslVersion, DSL_VERSION);
+  });
+});
+
+test('a stage archive carries referenced material bytes and remaps them on import', async () => {
+  const { server, database } = harness();
+  await withServer(server, async (base) => {
+    const workspace = await createWorkspace(base, { name: '资料源' });
+    const materials = new MaterialRepository(database);
+    const payload = Buffer.from('原始课件字节', 'utf8');
+    const material = materials.createMaterial({
+      userId: 'user-1',
+      courseId: 'course-1',
+      filename: '讲义.txt',
+      mediaType: 'text/plain',
+      byteSize: payload.length,
+      sha256: (await import('node:crypto')).createHash('sha256').update(payload).digest('hex'),
+      extractionStatus: 'extracted',
+      text: '课件正文',
+      payload,
+    }).material;
+    const stage = await createStage(base, workspace.body.id, {
+      title: '带资料的章节',
+      document: { ...stageDocument('带资料的章节'), material_ids: [material.id] },
+    });
+    const exported = await call(base, 'GET', `/internal/courses/course-1/workspaces/${workspace.body.id}/stages/${stage.body.id}/export`);
+    assert.equal(exported.status, 200, JSON.stringify(exported.body));
+    const parsed = readArchive(Buffer.from(exported.body.archive, 'base64'));
+    assert.equal(parsed.manifest.resources.length, 1);
+    assert.equal(parsed.resources[0].payload.toString('utf8'), '原始课件字节');
+
+    const target = await createWorkspace(base, { name: '资料目标', sub: 'user-2' });
+    const imported = await importArchive(base, target.body.id, Buffer.from(exported.body.archive, 'base64'), { sub: 'user-2' });
+    assert.equal(imported.status, 201, JSON.stringify(imported.body));
+    const fetched = await call(base, 'GET', `/internal/courses/course-1/workspaces/${target.body.id}/stages/${imported.body.stage.id}`, { headers: headers({ sub: 'user-2' }) });
+    assert.notEqual(fetched.body.document.material_ids[0], material.id);
+    const copied = materials.getMaterialForArchive({ userId: 'user-2', courseId: 'course-1', materialId: fetched.body.document.material_ids[0] });
+    assert.equal(copied.text, '课件正文');
+    assert.equal(copied.payload.toString('utf8'), '原始课件字节');
   });
 });
 

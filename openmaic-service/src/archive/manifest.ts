@@ -19,7 +19,7 @@ import { DSL_VERSION } from '../dsl/version.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
 
 export const MAIC_FORMAT = 'campusmate.maic';
-export const MAIC_FORMAT_VERSION = 1;
+export const MAIC_FORMAT_VERSION = 2;
 export const MANIFEST_PATH = 'manifest.json';
 export const STAGE_DIRECTORY = 'stages';
 
@@ -40,6 +40,17 @@ export interface MaicManifestStage {
   dsl_version: string;
 }
 
+export interface MaicManifestResource {
+  path: string | null;
+  source_id: string;
+  filename: string;
+  media_type: string;
+  byte_size: number;
+  sha256: string;
+  extraction_status: 'extracted' | 'unsupported' | 'empty';
+  text: string;
+}
+
 export interface MaicManifest {
   format: string;
   format_version: number;
@@ -47,6 +58,7 @@ export interface MaicManifest {
   dsl_version: string;
   source: { workspace_name: string };
   stage: MaicManifestStage;
+  resources: MaicManifestResource[];
 }
 
 export interface BuildManifestInput {
@@ -55,6 +67,7 @@ export interface BuildManifestInput {
   title: string;
   dslVersion: string;
   stagePath: string;
+  resources?: MaicManifestResource[];
 }
 
 export function stagePathFor(stageId: string): string {
@@ -73,6 +86,7 @@ export function buildManifest(input: BuildManifestInput): MaicManifest {
       title: clip(input.title),
       dsl_version: input.dslVersion,
     },
+    resources: input.resources ?? [],
   };
 }
 
@@ -126,6 +140,7 @@ export function parseManifest(raw: unknown): MaicManifest {
     typeof source === 'object' && source !== null && typeof (source as Record<string, unknown>).workspace_name === 'string'
       ? ((source as Record<string, unknown>).workspace_name as string)
       : '';
+  const resources = parseResources(value.resources);
   return {
     format: MAIC_FORMAT,
     format_version: version,
@@ -133,7 +148,64 @@ export function parseManifest(raw: unknown): MaicManifest {
     dsl_version: dslVersion || DSL_VERSION,
     source: { workspace_name: workspaceName },
     stage: { path: stageRecord.path, title: stageRecord.title, dsl_version: dslVersion || DSL_VERSION },
+    resources,
   };
+}
+
+function parseResources(raw: unknown): MaicManifestResource[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > 50) reject('manifest resources are malformed or too numerous');
+  const seen = new Set<string>();
+  const paths = new Set<string>();
+  return raw.map((entry, index) => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      reject(`manifest resource ${index} is not an object`);
+    }
+    const resource = entry as Record<string, unknown>;
+    const sourceId = resource.source_id;
+    const filename = resource.filename;
+    const mediaType = resource.media_type;
+    const sha256 = resource.sha256;
+    const status = resource.extraction_status;
+    const text = resource.text;
+    const path = resource.path;
+    if (typeof sourceId !== 'string' || sourceId.length < 1 || sourceId.length > 200 || seen.has(sourceId)) {
+      reject(`manifest resource ${index} has an invalid source_id`);
+    }
+    if (typeof filename !== 'string' || filename.length < 1 || filename.length > 255 || /[\\/\u0000-\u001f]/.test(filename)) {
+      reject(`manifest resource ${index} has an invalid filename`);
+    }
+    if (typeof mediaType !== 'string' || mediaType.length < 1 || mediaType.length > 200) {
+      reject(`manifest resource ${index} has an invalid media_type`);
+    }
+    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) reject(`manifest resource ${index} has an invalid sha256`);
+    if (typeof status !== 'string' || !['extracted', 'unsupported', 'empty'].includes(status)) {
+      reject(`manifest resource ${index} has an invalid extraction_status`);
+    }
+    if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 512 * 1024) {
+      reject(`manifest resource ${index} has invalid text`);
+    }
+    if (status === 'extracted' && (text as string).length === 0) reject(`manifest resource ${index} has no extracted text`);
+    if (status !== 'extracted' && (text as string).length > 0) reject(`manifest resource ${index} has text for an unsupported extraction`);
+    if (typeof resource.byte_size !== 'number' || !Number.isInteger(resource.byte_size) || resource.byte_size < 0 || resource.byte_size > 2 * 1024 * 1024) {
+      reject(`manifest resource ${index} has an invalid byte_size`);
+    }
+    if (path !== null && (typeof path !== 'string' || !path.startsWith('resources/') || paths.has(path))) {
+      reject(`manifest resource ${index} has an invalid path`);
+    }
+    seen.add(sourceId);
+    if (typeof path === 'string') paths.add(path);
+    return {
+      path: path as string | null,
+      source_id: sourceId,
+      filename,
+      media_type: mediaType,
+      byte_size: resource.byte_size,
+      sha256,
+      extraction_status: status as MaicManifestResource['extraction_status'],
+      text,
+    };
+  });
 }
 
 /** A filename a browser can save without a path separator or a reserved name. */

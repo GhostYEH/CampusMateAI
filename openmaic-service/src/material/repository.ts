@@ -57,6 +57,11 @@ export interface MaterialRecord extends Omit<MaterialSummary, 'text_chars'> {
   text: string;
 }
 
+/** A portable material record used only while building or reading an archive. */
+export interface MaterialArchiveRecord extends MaterialRecord {
+  payload: Buffer | null;
+}
+
 /** A reference a stage may cite: enough to render and to link, never the body. */
 export interface MaterialReference {
   id: string;
@@ -90,6 +95,9 @@ const SUMMARY_COLUMNS = `id, user_id, course_id, filename, media_type, byte_size
 
 const RECORD_COLUMNS = `id, user_id, course_id, filename, media_type, byte_size, sha256,
        extraction_status, text_content AS text, revision, created_at, updated_at`;
+
+const ARCHIVE_COLUMNS = `id, user_id, course_id, filename, media_type, byte_size, sha256,
+       extraction_status, text_content AS text, payload, revision, created_at, updated_at`;
 
 export class MaterialRepository {
   readonly #database: ServiceDatabase;
@@ -214,6 +222,19 @@ export class MaterialRepository {
       .get(input.materialId, input.userId, input.courseId) as MaterialRecord | undefined;
     if (!row) notFound();
     return row;
+  }
+
+  /** Read the complete bounded record for a stage archive, including original bytes. */
+  getMaterialForArchive(input: { userId: string; courseId: string; materialId: string }): MaterialArchiveRecord {
+    const row = this.#db
+      .prepare(
+        `SELECT ${ARCHIVE_COLUMNS}
+           FROM materials
+          WHERE id = ? AND user_id = ? AND course_id = ? AND deleted_at IS NULL`,
+      )
+      .get(input.materialId, input.userId, input.courseId) as MaterialArchiveRecord | undefined;
+    if (!row) notFound();
+    return { ...row, payload: row.payload ? Buffer.from(row.payload) : null };
   }
 
   /** Conditional delete: the caller's expected revision is part of the predicate. */
