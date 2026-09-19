@@ -50,7 +50,20 @@ FastAPI 的脱敏模板位于 `backend/.env.example`：
 - `OPENMAIC_SERVICE_TIMEOUT_SECONDS`：内部调用超时。
 - 既有 `OPENMAIC_*` 课堂适配配置继续由 `backend/app/services/openmaic/**` 使用。
 
-服务模板位于 `openmaic-service/.env.example`。启动脚本从仓库根目录解析路径：
+服务模板位于 `openmaic-service/.env.example`。除地址/密钥/数据库外，服务还接受可选的
+上游 provider 配置；两组变量必须成对出现，缺一在启动即报错（fail-closed）：
+
+- `OPENMAIC_PROVIDER_BASE_URL` / `OPENMAIC_PROVIDER_API_KEY` / `OPENMAIC_PROVIDER_MODEL`：
+  OpenAI 兼容的 chat-completions 上游，用于学习内容生成与圆桌讨论。
+  未配置时生成退回内置 local template，讨论如实返回 `provider_unavailable`。
+- `OPENMAIC_TTS_BASE_URL` / `OPENMAIC_TTS_API_KEY` / `OPENMAIC_TTS_MODEL` / `OPENMAIC_TTS_VOICE`：
+  语音合成上游（MiMo TTS：`mimo-v2.5-tts`，默认音色 `苏打`，响应为 base64 WAV）。
+  未配置时语音合成如实返回 `provider_unavailable`。
+- 两组各自支持 `*_TIMEOUT_SECONDS`（默认生成 120、TTS 180）。
+- 密钥只写在被 git 忽略的 `.env` 或 secret provider 里；`provider-status` 路由只暴露
+  能力布尔值，永不回显密钥或上游地址。
+
+启动脚本从仓库根目录解析路径：
 
 ```powershell
 pwsh -NoProfile -File openmaic-service/scripts/start.ps1
