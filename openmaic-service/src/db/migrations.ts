@@ -31,6 +31,61 @@ export const MIGRATIONS: Migration[] = [
          ON consumed_service_assertions (expires_at)`,
     ],
   },
+  {
+    version: 2,
+    name: 'workspaces_stages_and_idempotency',
+    statements: [
+      // A workspace is the unit a student names and returns to; a stage is one
+      // versioned document inside it. `course_id` and `user_id` are denormalized
+      // onto both rows on purpose: every read filters by both, and a join to
+      // recover them would be a place for an ownership check to go missing.
+      `CREATE TABLE workspaces (
+         id TEXT PRIMARY KEY,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         name TEXT NOT NULL,
+         description TEXT NOT NULL DEFAULT '',
+         revision INTEGER NOT NULL DEFAULT 1,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         deleted_at TEXT
+       )`,
+      // Keyset pagination walks (updated_at, id) descending, so the index order
+      // matches the query order and the list never re-sorts in memory.
+      `CREATE INDEX idx_workspaces_owner_page
+         ON workspaces (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
+      `CREATE TABLE stages (
+         id TEXT PRIMARY KEY,
+         workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         title TEXT NOT NULL,
+         document TEXT NOT NULL,
+         dsl_version TEXT NOT NULL,
+         revision INTEGER NOT NULL DEFAULT 1,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         deleted_at TEXT
+       )`,
+      `CREATE INDEX idx_stages_workspace_page
+         ON stages (user_id, course_id, workspace_id, deleted_at, updated_at DESC, id DESC)`,
+      // Idempotency is scoped to the caller and the route: the same key from a
+      // different user, or against a different path, is a different operation.
+      `CREATE TABLE idempotency_keys (
+         key TEXT NOT NULL,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         method TEXT NOT NULL,
+         path TEXT NOT NULL,
+         request_hash TEXT NOT NULL,
+         status INTEGER NOT NULL,
+         response_body TEXT NOT NULL,
+         created_at INTEGER NOT NULL,
+         PRIMARY KEY (user_id, key)
+       )`,
+      `CREATE INDEX idx_idempotency_keys_created_at ON idempotency_keys (created_at)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

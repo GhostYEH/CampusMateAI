@@ -6,7 +6,15 @@ import type { ServiceDatabase } from './db/database.ts';
 import { ServiceAssertionError, type ServiceAssertionClaims } from './serviceAssertion.ts';
 
 export const ASSERTION_HEADER = 'x-campusmate-service-assertion';
-export const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+/**
+ * Transport-level body cap.
+ *
+ * Must stay **above** `DSL_LIMITS.maxDocumentBytes`: if it were lower, the
+ * transport would answer first and the DSL's named `maxDocumentBytes` rejection
+ * could never be reached — the limit would be documentation rather than
+ * behaviour. `tests/workspace.test.mjs` pins that ordering.
+ */
+export const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
 export type ReadinessState = Record<string, boolean>;
 
@@ -16,6 +24,8 @@ export interface RouteRequest {
   params: Record<string, string>;
   claims: ServiceAssertionClaims;
   body: Buffer | null;
+  /** Lower-cased request headers; absent headers read as `undefined`. */
+  headers: Record<string, string | undefined>;
 }
 
 export interface RouteResponse {
@@ -67,12 +77,30 @@ function patternToRegExp(pattern: string) {
   return new RegExp(`^${segments.join('/')}$`);
 }
 
-function matchRoute(compiled: Array<{ route: RouteDefinition; matcher: RegExp }>, pathname: string): MatchedRoute | null {
+/**
+ * Find the route for a request.
+ *
+ * A pattern match alone is not enough: several methods share one path shape
+ * (`GET`/`POST` on a collection, `GET`/`PATCH`/`DELETE` on a member), so a
+ * pattern-first lookup would answer 405 for a method that *is* mounted further
+ * down the list. The method is therefore part of the search; the first
+ * path-only match is kept so a genuinely unsupported method still gets a 405
+ * rather than a 404.
+ */
+function matchRoute(
+  compiled: Array<{ route: RouteDefinition; matcher: RegExp }>,
+  pathname: string,
+  method: string,
+): MatchedRoute | null {
+  let pathOnly: MatchedRoute | null = null;
   for (const entry of compiled) {
     const match = entry.matcher.exec(pathname);
-    if (match) return { route: entry.route, params: { ...(match.groups ?? {}) } };
+    if (!match) continue;
+    const params = { ...(match.groups ?? {}) };
+    if (entry.route.method === method) return { route: entry.route, params };
+    pathOnly ??= { route: entry.route, params };
   }
-  return null;
+  return pathOnly;
 }
 
 /**
@@ -128,7 +156,7 @@ export function createServer(dependencies: ServiceDependencies) {
     }
 
     const isReady = pathname === '/internal/health/ready';
-    const matched = isReady ? null : matchRoute(compiled, pathname);
+    const matched = isReady ? null : matchRoute(compiled, pathname, method);
     const requiredScopes = isReady ? ['service:status'] : (matched?.route.scopes ?? []);
     // `null` means "this route is not course-scoped", so the claim's course is
     // deliberately not compared. Only a `:courseId` route binds the assertion.
@@ -161,7 +189,11 @@ export function createServer(dependencies: ServiceDependencies) {
       if (!matched) return { status: 404, body: { error: 'not_found' } };
       if (matched.route.method !== method) return { status: 405, body: { error: 'method_not_allowed' } };
       const url = new URL(request.url ?? '/', 'http://openmaic.internal');
-      return matched.route.handler({ method, url, params: matched.params, claims, body });
+      const headers: Record<string, string | undefined> = {};
+      for (const [name, value] of Object.entries(request.headers)) {
+        headers[name.toLowerCase()] = Array.isArray(value) ? value[0] : value;
+      }
+      return matched.route.handler({ method, url, params: matched.params, claims, body, headers });
     };
 
     try {

@@ -92,7 +92,9 @@ test('comes up on a complete configuration and serves authenticated readiness', 
     const payload = await ready.json();
     assert.equal(payload.status, 'ready');
     assert.equal(payload.dependencies.database, true);
-    assert.deepEqual(payload.capabilities, []);
+    // The advertised set is exactly what the mounted routes declare — never a
+    // hardcoded list, so it cannot drift ahead of the implementation.
+    assert.deepEqual(payload.capabilities, ['workspace']);
 
     // The database survives a restart, so the replay guard must too.
     const replayToken = mintAssertion(['service:status']);

@@ -3,6 +3,7 @@ import { loadConfig } from './config.ts';
 import { ServiceDatabase } from './db/database.ts';
 import { SqliteReplayStore } from './db/replayStore.ts';
 import { createServer } from './server.ts';
+import { createWorkspaceRoutes } from './workspace/routes.ts';
 
 // Startup is fail-closed. A missing internal secret or database location stops
 // the process instead of degrading into an unauthenticated or amnesiac service.
@@ -25,7 +26,9 @@ const server = createServer({
   authenticator,
   database,
   readiness: () => ({ runtime: true, database: databaseIsReady() }),
-  routes: [],
+  // The advertised capability set is derived from these routes, so a capability
+  // can never be reported before its handlers exist.
+  routes: createWorkspaceRoutes({ database }),
 });
 
 server.on('error', (error) => {
