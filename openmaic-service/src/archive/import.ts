@@ -11,8 +11,8 @@
  *
  * - the archive size is bounded before it is decoded at all;
  * - a `format_version` newer than this build is refused, not partially read;
- * - the entry set must be *exactly* what a version-1 archive declares — an extra
- *   entry is meaning this build cannot represent, so it cannot be ignored;
+ * - the entry set must be *exactly* what the declared archive version defines —
+ *   an extra entry is meaning this build cannot represent, so it cannot be ignored;
  * - the stage document still goes through `prepareStage`, so an imported stage
  *   meets the same migration, sanitizing and validation as an edited one.
  */

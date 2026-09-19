@@ -393,6 +393,29 @@ test('a newer format_version is refused rather than partially read', () => {
   );
 });
 
+test('version 1 refuses resource metadata instead of accepting a v2 archive shape', () => {
+  assert.throws(
+    () => readArchive(archiveBytes({
+      manifestOverrides: {
+        format_version: 1,
+        resources: [{
+          path: 'resources/a.bin', source_id: 'mt_a', filename: 'a.bin', media_type: 'application/octet-stream',
+          byte_size: 1, sha256: '0'.repeat(64), extraction_status: 'empty', text: '',
+        }],
+      },
+      extraEntries: [{ name: 'resources/a.bin', data: Buffer.from([1]) }],
+    })),
+    /format_version 1 archives cannot declare resources/,
+  );
+});
+
+test('a stage manifest path must stay inside the stages namespace', () => {
+  assert.throws(
+    () => readArchive(archiveBytes({ manifestOverrides: { stage: { path: 'notes.json', title: 'x', dsl_version: DSL_VERSION } } })),
+    /stages\/\*\.json/,
+  );
+});
+
 test('an archive without a manifest is refused', () => {
   const archive = writeZip([{ name: 'stages/stg_1.json', data: Buffer.from('{}', 'utf8') }], {
     modifiedAt: new Date('2026-01-01T00:00:00.000Z'),

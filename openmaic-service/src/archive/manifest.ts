@@ -131,6 +131,9 @@ export function parseManifest(raw: unknown): MaicManifest {
   if (typeof stageRecord.path !== 'string' || stageRecord.path.length === 0) {
     reject('manifest stage record is missing its path');
   }
+  if (!/^stages\/[^/\\\u0000-\u001f]+\.json$/.test(stageRecord.path)) {
+    reject('manifest stage record path must be a stages/*.json entry');
+  }
   if (typeof stageRecord.title !== 'string') {
     reject('manifest stage record is missing its title');
   }
@@ -140,7 +143,10 @@ export function parseManifest(raw: unknown): MaicManifest {
     typeof source === 'object' && source !== null && typeof (source as Record<string, unknown>).workspace_name === 'string'
       ? ((source as Record<string, unknown>).workspace_name as string)
       : '';
-  const resources = parseResources(value.resources);
+  if (version === 1 && value.resources !== undefined) {
+    reject('format_version 1 archives cannot declare resources');
+  }
+  const resources = version >= 2 ? parseResources(value.resources) : [];
   return {
     format: MAIC_FORMAT,
     format_version: version,
