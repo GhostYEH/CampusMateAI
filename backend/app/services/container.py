@@ -108,6 +108,7 @@ from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
 from ..services.adaptive_agent.intervention_service import AdaptiveInterventionService
 from ..services.adaptive_agent.outcome_evaluator import InterventionOutcomeEvaluator
+from ..services.adaptive_agent.replanning_worker import AdaptiveReplanningWorker
 from ..services.adaptive_agent.state_analyzer import StudentStateAnalyzer
 from ..services.adaptive_agent.strategy_policy import StrategyPolicy
 from ..repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
@@ -179,6 +180,7 @@ class ServiceContainer:
     student_state_analyzer: StudentStateAnalyzer
     strategy_policy: StrategyPolicy
     adaptive_intervention_service: AdaptiveInterventionService
+    adaptive_replanning_worker: AdaptiveReplanningWorker
     learning_agent_tools: LearningAgentToolRegistry
     learner_control_repository: LearnerControlRepository
     learner_control_service: LearnerControlService
@@ -391,6 +393,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         state_service=learner_state_service,
         student_goal_repository=student_goal_repo,
         outcome_evaluator=InterventionOutcomeEvaluator(),
+        learner_event_service=learner_event_service,
     )
     agent_handler_registry.register(
         LearningGoalHandler(
@@ -543,6 +546,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         student_state_analyzer=student_state_analyzer,
         strategy_policy=strategy_policy,
         adaptive_intervention_service=adaptive_intervention_service,
+        adaptive_replanning_worker=AdaptiveReplanningWorker(
+            repository=adaptive_intervention_repository,
+            intervention_service=adaptive_intervention_service,
+            interval_seconds=settings.adaptive_replanning_interval_seconds,
+        ),
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,

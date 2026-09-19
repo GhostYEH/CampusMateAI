@@ -150,9 +150,9 @@ def test_bind_plan_and_status_transitions(repository: AdaptiveInterventionReposi
     assert observing is not None and observing.status == "OBSERVING"
     cancelled = repository.update_status(user_id=USER, intervention_id=row.intervention_id, status="CANCELLED")
     assert cancelled is not None and cancelled.status == "CANCELLED"
-    # 表约束里预留但本轮没有推进路径的状态必须被写入白名单拒绝。
-    with pytest.raises(ValueError):
-        repository.update_status(user_id=USER, intervention_id=row.intervention_id, status="SUPERSEDED")
+    # 事务性重规划成功后，旧干预允许收口为 SUPERSEDED。
+    superseded = repository.update_status(user_id=USER, intervention_id=row.intervention_id, status="SUPERSEDED")
+    assert superseded is not None and superseded.status == "SUPERSEDED"
     with pytest.raises(ValueError):
         repository.update_status(user_id=USER, intervention_id=row.intervention_id, status="NOT_A_STATUS")
 
@@ -475,7 +475,7 @@ def test_evaluated_status_is_not_downgraded_by_a_later_observation(
     current = repository.get(user_id=USER, intervention_id=row.intervention_id)
     assert current is not None
     assert current.status == "EVALUATED"  # 不回退
-    assert current.outcome_verdict == "PARTIALLY_EFFECTIVE"  # 但结论对齐到最新一次观测
+    assert current.outcome_verdict == "EFFECTIVE"  # 弱 OBSERVING 不能覆盖最终结论
     assert current.evaluated_at is not None
     assert len(repository.list_evaluations(user_id=USER, intervention_id=row.intervention_id)) == 2
     # 同一份观测重复落库：复用既有行，不产生第三条。

@@ -158,6 +158,17 @@ def feedback_learning_plan(
             feedback_id,
             type(exc).__name__,
         )
+    try:
+        intervention = container.adaptive_intervention_repository.find_by_plan(user_id=user.id, plan_id=plan_id)
+        if intervention is not None:
+            container.learner_event_service.record_intervention_event(
+                user_id=user.id, event_type="intervention_feedback_received",
+                intervention_id=intervention.intervention_id, goal_id=intervention.goal_id,
+                evaluation_id=intervention.evaluation_id, occurred_at=datetime.now(timezone.utc),
+                evidence_refs=[feedback_id], outcome="reported",
+            )
+    except Exception:
+        logger.warning("adaptive_feedback_event_failed user_id={} plan_id={}", user.id, plan_id)
     return LearningPlanFeedbackOut(plan_id=plan_id, feedback=req.feedback)
 
 

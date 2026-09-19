@@ -88,6 +88,7 @@ class LearningPlannerService:
                  idempotency_key: str | None = None, as_of: datetime | None = None,
                  force_new: bool = False, supersedes_plan_id: str | None = None,
                  replan_key: str | None = None, ignore_rejection: bool = False,
+                 defer_lineage: bool = False,
                  strategy_context: PlanningStrategyContext | dict[str, Any] | None = None) -> LearningPlanRow:
         """生成计划草案。
 
@@ -95,6 +96,15 @@ class LearningPlannerService:
         `app.services.adaptive_agent`）。不传时行为与历史版本一致：
         digest 不变、条目时长不变、不追加 strategy_* 解释码。
         传入时策略版本与规划参数会进入 input digest，因此策略规则变化会让旧计划失效。
+
+        `supersedes_plan_id` 决定血缘：默认在计划创建成功后**立即**把双向血缘
+        （`old.superseded_by_plan_id` + `new.supersedes_plan_id`）一次写成，
+        这是普通计划替换（Agent 学习目标路径）的正确语义。
+
+        自动重规划必须传 `defer_lineage=True`：它要把计划血缘与干预血缘放进
+        **同一个事务**，所以创建阶段只能暂存，写入时机交给
+        `AdaptiveInterventionService.replan_from_evaluation`。两条路径共用同一个
+        仓储方法，不引入第二套血缘规则。
         """
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
         strategy = self._coerce_strategy_context(strategy_context)
@@ -321,7 +331,17 @@ class LearningPlannerService:
         for item in selected:
             item_key = [run["run_id"], item["item_type"], item.get("task_id")]
             item["item_id"] = f"lpitem_{_digest(item_key)[:16]}"
-        return self.repository.create_plan(user_id=user_id, run=run, items=selected)
+        plan = self.repository.create_plan(user_id=user_id, run=run, items=selected)
+        if supersedes_plan_id and not defer_lineage:
+            # 普通计划替换：血缘必须在这里一次写成双向，不能只留"新计划指向旧计划"
+            # 的一半 —— 那会让旧计划仍被当成正式版本，同一时间存在两份"当前计划"。
+            self.repository.link_superseded(
+                old_plan_id=supersedes_plan_id, new_plan_id=plan.plan_id, user_id=user_id,
+                replan_key=replan_key or idempotency_key,
+            )
+            # 回读一次，让返回值带上刚写入的血缘（调用方据此渲染"来源计划"）。
+            plan = self.repository.get_plan(plan.plan_id, user_id=user_id)
+        return plan
 
     @staticmethod
     def _task_summary(task) -> dict[str, Any]:
@@ -658,14 +678,14 @@ class LearningPlannerService:
         existing = self.repository.find_by_idempotency_key(user_id=user_id, idempotency_key=key)
         if existing:
             return existing
-        result = self.generate(
+        # 血缘由 `generate` 统一写入（这里不再重复调用 link_superseded，
+        # 避免同一套规则出现在两个地方而产生双重写入）。
+        return self.generate(
             user_id=user_id, available_minutes=old.run.available_minutes, course_id=old.run.course_scope,
             goal_id=old.run.goal_id,
             window_start=old.run.window_start, window_end=old.run.window_end, idempotency_key=key,
             force_new=True, supersedes_plan_id=plan_id, replan_key=key, ignore_rejection=True,
         )
-        self.repository.link_superseded(old_plan_id=plan_id, new_plan_id=result.plan_id, user_id=user_id, replan_key=key)
-        return self.repository.get_plan(result.plan_id, user_id=user_id)  # type: ignore[return-value]
 
     def record_feedback(self, *, user_id: str, plan_id: str, feedback: str) -> str:
         if self.repository.get_plan(plan_id, user_id=user_id) is None:
