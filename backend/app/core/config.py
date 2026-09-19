@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import ipaddress
+import math
 from functools import lru_cache
 from pathlib import Path
 from typing import List
@@ -147,6 +148,7 @@ class Settings(BaseSettings):
     agent_artifact_path: str = "./data/agent_artifacts"
     # 单次上下文快照的 token 预算:超出后按占用从大到小确定性裁剪并记录报告。
     agent_context_budget_tokens: int = 6000
+    adaptive_replanning_interval_seconds: float = 60.0
 
     # ===== CampusMate-LM shadow candidate (disabled by default) =====
     campusmate_lm_enabled: bool = False
@@ -440,6 +442,14 @@ class Settings(BaseSettings):
             raise ValueError("AGENT_WORKER_HEARTBEAT_SECONDS must be positive and less than the lease")
         if self.agent_worker_poll_ms < 0:
             raise ValueError("AGENT_WORKER_POLL_MS must not be negative")
+        # 自适应重规划调度周期：必须是有限正数，且落在合理区间。
+        # 非有限值(NaN/inf)会让 `asyncio.sleep` 行为未定义，0 或负值会变成忙等，
+        # 过大的值则等于静默关闭闭环 —— 三种都必须在启动前拦下来。
+        interval = self.adaptive_replanning_interval_seconds
+        if not math.isfinite(interval) or interval <= 0:
+            raise ValueError("ADAPTIVE_REPLANNING_INTERVAL_SECONDS must be a finite positive number")
+        if not 0.5 <= interval <= 86_400:
+            raise ValueError("ADAPTIVE_REPLANNING_INTERVAL_SECONDS must be between 0.5 and 86400 seconds")
         # 允许在 development 下未配置 LLM 时使用 fallback
         if self.llm_provider == "none" and not self.enable_fallback_mode:
             # 强制开启降级模式，否则功能不可用

@@ -1371,9 +1371,18 @@ CREATE TABLE IF NOT EXISTS adaptive_interventions (
     warning_codes_json TEXT NOT NULL DEFAULT '[]',
     idempotency_key TEXT NOT NULL,
     observation_started_at TEXT,
+    observation_due_at TEXT,
+    observation_completed_at TEXT,
     evaluated_at TEXT,
+    evaluation_version TEXT,
     outcome_verdict TEXT,
     evaluation_id TEXT,
+    supersedes_intervention_id TEXT,
+    superseded_by_intervention_id TEXT,
+    source_evaluation_id TEXT,
+    replan_decision_id TEXT,
+    replan_reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    chain_depth INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1383,6 +1392,37 @@ CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_user_created
     ON adaptive_interventions(user_id, created_at DESC, intervention_id DESC);
 CREATE INDEX IF NOT EXISTS idx_adaptive_interventions_plan
     ON adaptive_interventions(user_id, plan_id);
+
+CREATE TABLE IF NOT EXISTS adaptive_replan_decisions (
+    decision_id TEXT PRIMARY KEY,
+    decision_digest TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    goal_id TEXT NOT NULL,
+    intervention_id TEXT NOT NULL,
+    evaluation_id TEXT NOT NULL UNIQUE,
+    decision TEXT NOT NULL CHECK(decision IN ('CONTINUE','WAIT_FOR_EVIDENCE','REPLAN','SUSPEND')),
+    reason_codes_json TEXT NOT NULL DEFAULT '[]',
+    suggested_adjustments_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0 CHECK(confidence >= 0 AND confidence <= 1),
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL CHECK(status IN ('PENDING','APPLYING','APPLIED','FAILED')),
+    created_at TEXT NOT NULL,
+    applied_at TEXT,
+    failure_code TEXT,
+    failure_class TEXT NOT NULL DEFAULT 'NONE' CHECK(failure_class IN ('NONE','RETRYABLE','PERMANENT')),
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    -- 处理权租约。APPLYING 是"有人正在做"而不是终态：Worker 在拿到处理权之后、
+    -- 把决策写成 APPLIED 之前崩溃，会留下一条 APPLYING 残留。没有租约就无法区分
+    -- "别人正在做"与"别人已经死了"，要么永久卡死，要么只能无条件抢占。
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(intervention_id) REFERENCES adaptive_interventions(intervention_id) ON DELETE CASCADE,
+    FOREIGN KEY(evaluation_id) REFERENCES intervention_evaluations(evaluation_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_adaptive_replan_decisions_pending
+    ON adaptive_replan_decisions(status, created_at);
 """
 
 # 结果评估。UNIQUE(intervention_id, evaluator_version, input_digest) 让"同一份观测
@@ -1950,20 +1990,35 @@ class Database:
     def _restore_adaptive_interventions(conn: sqlite3.Connection, stash: str) -> None:
         """按列交集把暂存表的数据回填进新表，然后删除暂存表。
 
-        只回填两边都有的列：新增列取 DDL 默认值，不靠旧行伪造取值。
-        `INSERT OR IGNORE` 让"中断后重跑"不会因为主键冲突而失败。
+        恢复不是去重操作：任何冲突都必须让启动事务回滚，不能静默吞掉一条
+        干预记录。中断恢复只接受两种可证明安全的状态：目标表为空（完整回填），
+        或目标表已拥有和暂存表相同数量的行（前一次已完整回填、只差删暂存表）。
         """
         legacy_columns = {item["name"] for item in conn.execute(f"PRAGMA table_info({stash})")}
         current_columns = {
             item["name"] for item in conn.execute("PRAGMA table_info(adaptive_interventions)")
         }
         shared = sorted(legacy_columns & current_columns)
-        if shared:
+        source_count = int(conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0])
+        target_count = int(conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0])
+        if target_count not in (0, source_count):
+            raise sqlite3.IntegrityError(
+                "adaptive intervention recovery found a partial target; refusing lossy merge"
+            )
+        if target_count == 0 and shared:
             columns = ", ".join(shared)
             conn.execute(
-                f"INSERT OR IGNORE INTO adaptive_interventions ({columns}) "
+                f"INSERT INTO adaptive_interventions ({columns}) "
                 f"SELECT {columns} FROM {stash}"
             )
+        restored_count = int(conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0])
+        if restored_count != source_count:
+            raise sqlite3.IntegrityError(
+                "adaptive intervention recovery row count mismatch"
+            )
+        foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise sqlite3.IntegrityError("adaptive intervention recovery foreign-key validation failed")
         conn.execute(f"DROP TABLE {stash}")
 
     def _init_schema(self) -> None:
@@ -2024,6 +2079,26 @@ class Database:
                 "stale_reason": "TEXT", "replan_key": "TEXT",
             },
             "learning_plan_execution_actions": {"target_task_digest": "TEXT"},
+            "adaptive_interventions": {
+                "observation_due_at": "TEXT",
+                "observation_completed_at": "TEXT",
+                "evaluation_version": "TEXT",
+                "supersedes_intervention_id": "TEXT",
+                "superseded_by_intervention_id": "TEXT",
+                "source_evaluation_id": "TEXT",
+                "replan_decision_id": "TEXT",
+                "replan_reason_codes_json": "TEXT NOT NULL DEFAULT '[]'",
+                "chain_depth": "INTEGER NOT NULL DEFAULT 0",
+            },
+            "adaptive_replan_decisions": {
+                "failure_class": "TEXT NOT NULL DEFAULT 'NONE'",
+                "retry_count": "INTEGER NOT NULL DEFAULT 0",
+                "next_retry_at": "TEXT",
+                # 老库里已经存在、且永远停在 APPLYING 的残留行：补列后它们会走到
+                # "租约未知"分支，在租约窗口过去之后可以被安全接手。
+                "lease_owner": "TEXT",
+                "lease_expires_at": "TEXT",
+            },
             # 用量记账:老库补列,避免只有延迟没有 token 成本。
             "agent_model_calls": {
                 "prompt_tokens": "INTEGER",

@@ -111,6 +111,17 @@
 .ls-more-btn { display: block; margin: 12px auto; }
 .ls-retry-btn { background: var(--blue, #3267d6); color: #fff; border-radius: 6px; padding: 4px 12px; border: none; cursor: pointer; }
 
+/* ===== 干预闭环：后端持久化的系统决定 ===== */
+/* 五种展示状态刻意用不同色调区分，避免把"读不到"渲染成"证据不足"。 */
+.ls-decision {
+  display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 6px;
+  font-weight: 500; margin-left: 4px;
+}
+.ls-decision--ok { background: #d1fae5; color: #065f46; }
+.ls-decision--accent { background: var(--blue-soft, #eaf0ff); color: var(--blue, #3267d6); }
+.ls-decision--neutral { background: #e5e7eb; color: #4b5563; }
+.ls-decision--warn { background: #fef3c7; color: #92400e; }
+
 /* ===== Timeline ===== */
 .ls-timeline__list { list-style: none; padding: 0; margin: 0; }
 .ls-timeline__item {

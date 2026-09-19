@@ -92,7 +92,8 @@ class LearnerStateProjectionService:
         self._student_goal_repository = student_goal_repository
 
     def project_user(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True,
+        exclude_evaluation_id: str | None = None,
     ) -> ProjectionResult:
         as_of = _require_utc(as_of)
         current = None
@@ -100,7 +101,8 @@ class LearnerStateProjectionService:
             current = self.repository.get_current_run(
                 user_id=user_id, projection_kind="CORE", projection_scope="__user__"
             )
-            inputs = self.repository.collect_inputs(user_id=user_id, limit=self.input_limit)
+            inputs = self.repository.collect_inputs(user_id=user_id, limit=self.input_limit,
+                                                   exclude_evaluation_id=exclude_evaluation_id)
             if self._control_repository is not None:
                 corrections = self._control_repository.list_active_corrections(user_id=user_id)
                 inputs["active_corrections"] = [
@@ -165,7 +167,8 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_academic(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True,
+        exclude_evaluation_id: str | None = None,
     ) -> ProjectionResult:
         """ACADEMIC 投影：将教务事实安全地投影到学生状态世界模型。
 
@@ -178,7 +181,7 @@ class LearnerStateProjectionService:
             current = self.repository.get_current_run(
                 user_id=user_id, projection_kind="ACADEMIC", projection_scope="__user__"
             )
-            inputs = self._collect_academic_inputs(user_id=user_id)
+            inputs = self._collect_academic_inputs(user_id=user_id, exclude_evaluation_id=exclude_evaluation_id)
             if self._source_policy is not None:
                 inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
             input_digest = _digest(inputs)
@@ -226,7 +229,8 @@ class LearnerStateProjectionService:
             return self._unavailable_result(user_id=user_id, as_of=as_of)
 
     def project_world(
-        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True
+        self, user_id: str, *, as_of: datetime, trigger: str = "read", persist: bool = True,
+        exclude_evaluation_id: str | None = None,
     ) -> ProjectionResult:
         """WORLD 投影：通用大学生世界状态(校园生活/事务/个人成长)。
 
@@ -239,7 +243,7 @@ class LearnerStateProjectionService:
             current = self.repository.get_current_run(
                 user_id=user_id, projection_kind="WORLD", projection_scope="__user__"
             )
-            inputs = self._collect_world_inputs(user_id=user_id, as_of=as_of)
+            inputs = self._collect_world_inputs(user_id=user_id, as_of=as_of, exclude_evaluation_id=exclude_evaluation_id)
             if self._source_policy is not None:
                 inputs["paused_sources"] = sorted(self._source_policy.get_paused_sources(user_id=user_id))
             input_digest = _digest(inputs)
@@ -286,7 +290,8 @@ class LearnerStateProjectionService:
                 return self._stale_result(current, as_of=as_of)
             return self._unavailable_world_result(user_id=user_id, as_of=as_of)
 
-    def _collect_world_inputs(self, *, user_id: str, as_of: datetime) -> dict[str, Any]:
+    def _collect_world_inputs(self, *, user_id: str, as_of: datetime,
+                              exclude_evaluation_id: str | None = None) -> dict[str, Any]:
         inputs: dict[str, Any] = {
             "sessions": [],
             "tasks": [],
@@ -339,15 +344,23 @@ class LearnerStateProjectionService:
         if self._learner_event_repository is not None:
             try:
                 events, _ = self._learner_event_repository.list_for_user(
-                    user_id=user_id, page=1, page_size=200
+                    # `list_for_user` 只接受 page_size <= 100；此前写 200 会被它
+                    # 直接拒绝，而下面的 `except Exception: pass` 又把异常吞掉，
+                    # 于是 WORLD 投影的 learner event 永远是空的（自证据隔离
+                    # 也因此从未真正生效过）。这里取仓储支持的上限。
+                    user_id=user_id, page=1, page_size=100
                 )
                 inputs["events"] = [
                     {"event_id": e.event_id, "event_type": e.event_type,
                      "occurred_at": e.occurred_at, "source": e.source}
                     for e in events
+                    if not exclude_evaluation_id or (e.payload or {}).get("evaluation_id") != exclude_evaluation_id
                 ]
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 - 事件缺失不能让整个投影失败
+                logger.warning(
+                    "world_projection_event_load_failed user_id={} trigger={} error_code={}",
+                    user_id, trigger, type(exc).__name__,
+                )
         try:
             with self.repository._db.query() as conn:
                 task_rows = conn.execute(
@@ -815,7 +828,8 @@ class LearnerStateProjectionService:
             quality=quality,
         )
 
-    def _collect_academic_inputs(self, *, user_id: str) -> dict[str, Any]:
+    def _collect_academic_inputs(self, *, user_id: str,
+                                 exclude_evaluation_id: str | None = None) -> dict[str, Any]:
         inputs: dict[str, Any] = {
             "schedule_items": [],
             "grade_items": [],
@@ -900,6 +914,7 @@ class LearnerStateProjectionService:
                 inputs["edu_events"] = [
                     {"event_id": e.event_id, "event_type": e.event_type, "occurred_at": e.occurred_at}
                     for e in events
+                    if not exclude_evaluation_id or (e.payload or {}).get("evaluation_id") != exclude_evaluation_id
                 ]
             except Exception:
                 pass

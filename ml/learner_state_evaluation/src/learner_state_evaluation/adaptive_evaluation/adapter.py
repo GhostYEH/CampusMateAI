@@ -18,6 +18,20 @@ class EvaluationMode(str, Enum):
     CLOSED_LOOP = "CLOSED_LOOP"
 
 
+class AblationVariant(str, Enum):
+    """同条件消融：每个变体只关掉**一个**能力，其余输入、种子与版本完全一致。
+
+    消融必须真的改变策略输出，否则报告里的"已实现"只是声明。因此这里不写
+    `implemented: True` 常量，而是逐变体重跑并比较与 full_system 的差异。
+    """
+
+    FULL_SYSTEM = "full_system"
+    REMOVE_CONFIDENCE = "remove_confidence"
+    REMOVE_RISK = "remove_risk"
+    REMOVE_FEEDBACK = "remove_feedback"
+    REMOVE_REPLAN = "remove_replan"
+
+
 @dataclass(frozen=True)
 class Snapshot:
     snapshot_id: str
@@ -137,10 +151,13 @@ class EvaluationPolicyAdapter:
         self.replan_policy = replan_policy
         self.planner_version = planner_version
 
-    def evaluate(self, scenario: Scenario, mode: EvaluationMode, *, seed: int) -> dict[str, Any]:
+    def evaluate(self, scenario: Scenario, mode: EvaluationMode, *, seed: int,
+                 ablation: AblationVariant = AblationVariant.FULL_SYSTEM) -> dict[str, Any]:
         if mode in {EvaluationMode.STATIC_PLAN, EvaluationMode.PROFILE_ONLY}:
+            # 基线模式没有可消融的闭环能力，保持与 full_system 完全一致，
+            # 这样"四组对照"与"消融"共享同一份输入口径。
             return self._static_or_profile(scenario, mode)
-        return self._state_or_closed_loop(scenario, mode, seed=seed)
+        return self._state_or_closed_loop(scenario, mode, seed=seed, ablation=ablation)
 
     def _static_or_profile(self, scenario: Scenario, mode: EvaluationMode) -> dict[str, Any]:
         goal = scenario.goal
@@ -156,7 +173,8 @@ class EvaluationPolicyAdapter:
             "planned_minutes": 0 if strategy == "SUSPEND" else min(available, 30),
         }, None, [], None, source="profile" if mode is EvaluationMode.PROFILE_ONLY else "static")
 
-    def _state_or_closed_loop(self, scenario: Scenario, mode: EvaluationMode, *, seed: int) -> dict[str, Any]:
+    def _state_or_closed_loop(self, scenario: Scenario, mode: EvaluationMode, *, seed: int,
+                              ablation: AblationVariant = AblationVariant.FULL_SYSTEM) -> dict[str, Any]:
         dynamic = dict(scenario.initial_state.get("dynamic", {}))
         assessment = self._assessment(scenario, dynamic)
         strategy = self.strategy_policy.select(
@@ -173,57 +191,108 @@ class EvaluationPolicyAdapter:
             self._plan_summary(strategy), None, warnings, self._state_summary(assessment), source="state",
         )
         if mode is EvaluationMode.STATE_DRIVEN:
-            return result
+            return self._finalize(result, ablation=ablation, outcome=None, observed_outcome_count=0,
+                                  duplicate_event_count=0, duplicate_decision_prevented=False,
+                                  successor_plan_changed=None)
         if str(scenario.goal.get("status", "active")).lower() in {"completed", "cancelled", "inactive", "stopped"}:
             result["strategy_code"] = "SUSPEND"
             result["plan_summary"] = {"item_count": 0, "planned_minutes": 0}
             decision = self.replan_policy.decide(
-                evaluation={"observed_outcome": "STABLE"}, state=dynamic, goal=scenario.goal, now=scenario.as_of,
-                evidence_refs=result["evidence_refs"],
+                evaluation={"observed_outcome": "STABLE"}, state=self._ablation_state(dynamic, ablation),
+                goal=scenario.goal, now=scenario.as_of, evidence_refs=result["evidence_refs"],
             )
-            return self._with_decision(result, decision)
-        if getattr(assessment, "data_quality", "unavailable") in {"partial", "stale", "unavailable"}:
+            result = self._with_decision(result, decision)
+            return self._finalize(result, ablation=ablation, outcome=None, observed_outcome_count=0,
+                                  duplicate_event_count=0, duplicate_decision_prevented=False,
+                                  successor_plan_changed=None)
+        # 证据门：数据质量不足时保守等待。`remove_confidence` 消融关掉的正是这道门。
+        insufficient = getattr(assessment, "data_quality", "unavailable") in {"partial", "stale", "unavailable"}
+        if insufficient and ablation is not AblationVariant.REMOVE_CONFIDENCE:
             decision = self.replan_policy.decide(
-                evaluation={"observed_outcome": "INSUFFICIENT_EVIDENCE"}, state=dynamic, goal=scenario.goal,
-                now=scenario.as_of, evidence_refs=result["evidence_refs"],
+                evaluation={"observed_outcome": "INSUFFICIENT_EVIDENCE"}, state=self._ablation_state(dynamic, ablation),
+                goal=scenario.goal, now=scenario.as_of, evidence_refs=result["evidence_refs"],
             )
-            return self._with_decision(result, decision)
+            result = self._with_decision(result, decision)
+            return self._finalize(result, ablation=ablation, outcome=None, observed_outcome_count=0,
+                                  duplicate_event_count=0, duplicate_decision_prevented=False,
+                                  successor_plan_changed=None)
         chain = [strategy_code]
         seen: set[str] = set()
+        decided_events: dict[str, str] = {}
+        duplicate_event_count = 0
+        duplicate_decision_prevented = False
+        observed_outcome_count = 0
+        last_outcome: str | None = None
+        replan_changed: bool | None = None
+        replan_timestamps: list[str] = []
+        decision_event_ids: list[str] = []
+        processed_order: list[str] = []
         for event in sorted(scenario.event_sequence, key=lambda item: (item["occurred_at"], item["event_id"])):
             if event["event_id"] in seen:
+                # 重复事件必须被幂等丢弃：它既不能再次驱动决策，也不能改写状态。
+                duplicate_event_count += 1
+                if decided_events.get(event["event_id"]):
+                    duplicate_decision_prevented = True
                 continue
             seen.add(event["event_id"])
+            processed_order.append(str(event["occurred_at"]))
             payload = event["payload"]
             if payload.get("strategy_code") and payload["strategy_code"] not in {
                 "FOUNDATION_REINFORCEMENT", "WORKLOAD_REDUCTION", "PACE_RECOVERY", "BALANCED_PROGRESS", "CHALLENGE_UPSHIFT"
             }:
                 warnings.append("unknown_strategy")
+            if payload.get("outcome") is not None:
+                observed_outcome_count += 1
+                last_outcome = str(payload["outcome"])
             evaluation = {
                 "observed_outcome": payload.get("outcome", "INSUFFICIENT_EVIDENCE"),
                 "adoption": payload.get("adoption", "UNAVAILABLE"),
             }
             state = {**dynamic, **{key: value for key, value in payload.items() if key in {"stress_risk"}}}
             decision = self.replan_policy.decide(
-                evaluation=evaluation, state=state, goal=scenario.goal, now=event["occurred_at"],
-                evidence_refs=result["evidence_refs"],
+                evaluation=evaluation, state=self._ablation_state(state, ablation), goal=scenario.goal,
+                now=event["occurred_at"], evidence_refs=result["evidence_refs"],
             )
-            if decision.decision == "REPLAN":
-                if payload.get("feedback_code") == "TASK_TOO_LONG":
+            effective = decision.decision
+            if ablation is AblationVariant.REMOVE_REPLAN and effective == "REPLAN":
+                # 消融"自动重规划"：决策仍被算出，但不允许改动计划。
+                effective = "CONTINUE"
+            decided_events[event["event_id"]] = effective
+            decision_event_ids.append(event["event_id"])
+            if effective == "REPLAN":
+                if ablation is AblationVariant.REMOVE_FEEDBACK or not payload.get("feedback_code"):
+                    next_strategy = "FOUNDATION_REINFORCEMENT"
+                elif payload.get("feedback_code") == "TASK_TOO_LONG":
                     next_strategy = "PACE_RECOVERY"
                 elif float(state.get("stress_risk") or 0) >= 0.7:
                     next_strategy = "WORKLOAD_REDUCTION"
                 else:
                     next_strategy = "FOUNDATION_REINFORCEMENT"
+                # 真实的"重规划是否产生了变化"：后继策略必须不同于决策前生效的策略。
+                previous = chain[-1]
+                replan_changed = (next_strategy != previous) if replan_changed is None else (replan_changed or next_strategy != previous)
                 chain.append(next_strategy)
-            elif decision.decision == "CONTINUE":
+                replan_timestamps.append(str(event["occurred_at"]))
+            elif effective == "CONTINUE":
                 chain.append("BALANCED_PROGRESS")
-            elif decision.decision == "WAIT_FOR_EVIDENCE":
+            elif effective == "WAIT_FOR_EVIDENCE":
                 chain.append("BALANCED_PROGRESS")
             result = self._with_decision(result, decision)
+            if effective != decision.decision:
+                result["replan_decision"] = effective
         result["decision_chain"] = chain
         result["warning_codes"] = sorted(set(result["warning_codes"] + warnings))
-        return result
+        return self._finalize(result, ablation=ablation, outcome=last_outcome,
+                              observed_outcome_count=observed_outcome_count,
+                              duplicate_event_count=duplicate_event_count,
+                              duplicate_decision_prevented=duplicate_decision_prevented,
+                              successor_plan_changed=replan_changed,
+                              replan_timestamps=replan_timestamps,
+                              # 真实的不变量检查：同一个事件被决策了几次。
+                              # 幂等生效时应为 0；一旦有人破坏去重，这里会立刻变成 >0。
+                              duplicate_decision_count=len(decision_event_ids) - len(set(decision_event_ids)),
+                              # 实测：处理顺序是否真的非降序（而不是断言"我们排过序了"）。
+                              processed_in_time_order=processed_order == sorted(processed_order))
 
     def _assessment(self, scenario: Scenario, state: dict[str, Any]) -> Any:
         core, academic, world, goal = _components(scenario, {"dynamic": state})
@@ -275,5 +344,37 @@ class EvaluationPolicyAdapter:
         result["suggested_adjustments"] = list(decision.suggested_adjustments)
         return result
 
+    @staticmethod
+    def _ablation_state(state: dict[str, Any], ablation: AblationVariant) -> dict[str, Any]:
+        """消融开关只影响喂给策略的输入，不改动策略本身的实现。"""
+        if ablation is AblationVariant.REMOVE_RISK:
+            return {key: value for key, value in state.items() if key != "stress_risk"}
+        return state
 
-__all__ = ["EvaluationMode", "EvaluationPolicyAdapter", "Snapshot", "Projection"]
+    @staticmethod
+    def _finalize(result: dict[str, Any], *, ablation: AblationVariant, outcome: str | None,
+                  observed_outcome_count: int, duplicate_event_count: int,
+                  duplicate_decision_prevented: bool, successor_plan_changed: bool | None,
+                  replan_timestamps: list[str] | None = None,
+                  duplicate_decision_count: int = 0,
+                  processed_in_time_order: bool | None = None) -> dict[str, Any]:
+        """把"这次到底观测到了什么"如实写进结果，供指标层真实测量。
+
+        这些字段以前是缺失的，导致 outcome_observability_rate / duplicate_decision_count
+        永远是 0 —— 那是"没记录"，不是"测出来是 0"。两者在论文里含义完全不同。
+        """
+        result = dict(result)
+        result["outcome"] = outcome
+        result["observed_outcome_count"] = observed_outcome_count
+        result["duplicate_event_count"] = duplicate_event_count
+        # 两个方向必须分开记：被抑制的重复（好）与实际产生的重复决策（坏）。
+        result["duplicate_decision_prevented"] = duplicate_decision_prevented
+        result["duplicate_decision_count"] = duplicate_decision_count
+        result["successor_plan_changed"] = successor_plan_changed
+        result["replan_timestamps"] = list(replan_timestamps or [])
+        result["processed_in_time_order"] = processed_in_time_order
+        result["ablation"] = ablation.value
+        return result
+
+
+__all__ = ["AblationVariant", "EvaluationMode", "EvaluationPolicyAdapter", "Snapshot", "Projection"]

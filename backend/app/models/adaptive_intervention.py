@@ -36,8 +36,9 @@ WRITABLE_INTERVENTION_STATUSES = (
     "CANCELLED",
     "OBSERVING",
     "EVALUATED",
+    "SUPERSEDED",
 )
-RESERVED_INTERVENTION_STATUSES = ("SUPERSEDED",)
+RESERVED_INTERVENTION_STATUSES = ()
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,15 @@ class AdaptiveInterventionRow:
     evaluation_id: str | None
     created_at: str
     updated_at: str
+    observation_due_at: str | None = None
+    observation_completed_at: str | None = None
+    evaluation_version: str | None = None
+    supersedes_intervention_id: str | None = None
+    superseded_by_intervention_id: str | None = None
+    source_evaluation_id: str | None = None
+    replan_decision_id: str | None = None
+    replan_reason_codes_json: str | None = None
+    chain_depth: int = 0
 
     @classmethod
     def from_row(cls, row: Any) -> "AdaptiveInterventionRow":
@@ -100,6 +110,15 @@ class AdaptiveInterventionRow:
             evaluation_id=row["evaluation_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            observation_due_at=row["observation_due_at"],
+            observation_completed_at=row["observation_completed_at"],
+            evaluation_version=row["evaluation_version"],
+            supersedes_intervention_id=row["supersedes_intervention_id"],
+            superseded_by_intervention_id=row["superseded_by_intervention_id"],
+            source_evaluation_id=row["source_evaluation_id"],
+            replan_decision_id=row["replan_decision_id"],
+            replan_reason_codes_json=row["replan_reason_codes_json"],
+            chain_depth=int(row["chain_depth"] or 0),
         )
 
 
@@ -144,9 +163,53 @@ class InterventionEvaluationRow:
         )
 
 
+@dataclass(frozen=True)
+class AdaptiveReplanDecisionRow:
+    decision_id: str
+    decision_digest: str
+    user_id: str
+    goal_id: str
+    intervention_id: str
+    evaluation_id: str
+    decision: str
+    reason_codes_json: str
+    suggested_adjustments_json: str
+    confidence: float
+    evidence_refs_json: str
+    status: str
+    created_at: str
+    applied_at: str | None
+    failure_code: str | None
+    failure_class: str = "NONE"
+    retry_count: int = 0
+    next_retry_at: str | None = None
+    # 处理权租约：APPLYING 期间由 `lease_owner` 持有，`lease_expires_at` 之后才允许
+    # 别的 Worker 接手。终态（APPLIED / FAILED）必须把两者清空。
+    lease_owner: str | None = None
+    lease_expires_at: str | None = None
+
+    @classmethod
+    def from_row(cls, row: Any) -> "AdaptiveReplanDecisionRow":
+        return cls(
+            decision_id=row["decision_id"], decision_digest=row["decision_digest"],
+            user_id=row["user_id"], goal_id=row["goal_id"], intervention_id=row["intervention_id"],
+            evaluation_id=row["evaluation_id"], decision=row["decision"],
+            reason_codes_json=row["reason_codes_json"], suggested_adjustments_json=row["suggested_adjustments_json"],
+            confidence=float(row["confidence"]), evidence_refs_json=row["evidence_refs_json"],
+            status=row["status"], created_at=row["created_at"], applied_at=row["applied_at"],
+            failure_code=row["failure_code"],
+            failure_class=row["failure_class"] if "failure_class" in row.keys() else "NONE",
+            retry_count=int(row["retry_count"] or 0) if "retry_count" in row.keys() else 0,
+            next_retry_at=row["next_retry_at"] if "next_retry_at" in row.keys() else None,
+            lease_owner=row["lease_owner"] if "lease_owner" in row.keys() else None,
+            lease_expires_at=row["lease_expires_at"] if "lease_expires_at" in row.keys() else None,
+        )
+
+
 __all__ = [
     "AdaptiveInterventionRow",
     "InterventionEvaluationRow",
+    "AdaptiveReplanDecisionRow",
     "INTERVENTION_STATUSES",
     "WRITABLE_INTERVENTION_STATUSES",
     "RESERVED_INTERVENTION_STATUSES",

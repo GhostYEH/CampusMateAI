@@ -126,7 +126,7 @@ def test_reduced_workload_plan_reconciles_every_claim() -> None:
     assert _reasons(evaluation)["TOTAL_WORKLOAD_REDUCED"] == "allocated_below_available"
     assert evaluation.plan_fidelity == "MATCHED"
     # 一条执行记录都没有且窗口未结束：还不能下结论。
-    assert evaluation.verdict == "NOT_OBSERVED"
+    assert evaluation.verdict == "INCONCLUSIVE"
     assert evaluation.execution_signal == "NOT_STARTED"
     assert evaluation.observation_status == "NOT_STARTED"
     # 每条判定都必须带证据引用，且只指向既有结构化对象。
@@ -154,7 +154,7 @@ def test_reduction_claim_fails_when_plan_uses_the_whole_budget() -> None:
     assert _reasons(evaluation)["TOTAL_WORKLOAD_REDUCED"] == "allocated_equals_available"
     assert evaluation.plan_fidelity == "MISMATCHED"
     # 有通过也有未通过 -> 部分有效（窗口未结束也不能说"没观测到"，因为已经有对账结果）。
-    assert evaluation.verdict == "PARTIALLY_EFFECTIVE"
+    assert evaluation.verdict == "INCONCLUSIVE"
 
 
 def test_item_count_cap_and_short_item_target_are_both_enforced() -> None:
@@ -337,7 +337,7 @@ def test_execution_signal_progresses_from_not_started_to_completed() -> None:
     ).evaluation
     assert partial.execution_signal == "IN_PROGRESS"
     assert partial.observation_status == "IN_PROGRESS"
-    assert partial.verdict == "PARTIALLY_EFFECTIVE"
+    assert partial.verdict == "INCONCLUSIVE"
 
     completed = evaluator.evaluate(
         intervention=intervention,
@@ -349,14 +349,15 @@ def test_execution_signal_progresses_from_not_started_to_completed() -> None:
     ).evaluation
     assert completed.execution_signal == "COMPLETED"
     assert completed.observation_status == "COMPLETE"
-    assert completed.verdict == "EFFECTIVE"
+    assert completed.verdict == "INCONCLUSIVE"
+    assert completed.adoption == "COMPLETED"
     assert completed.plan_fidelity == "MATCHED"
     assert completed.confidence == 1.0
     assert completed.execution_signals["completed_plan_task_count"] == 2
     assert completed.execution_signals["window_elapsed"] is False
 
 
-def test_window_passed_without_any_adoption_is_ineffective() -> None:
+def test_window_passed_without_any_adoption_is_not_a_state_outcome() -> None:
     """窗口结束却一条执行记录都没有：干预没有被采纳，这是可下的结论。"""
     strategy = _strategy(
         "WORKLOAD_REDUCTION",
@@ -371,8 +372,9 @@ def test_window_passed_without_any_adoption_is_ineffective() -> None:
         as_of=AS_OF,
     ).evaluation
     assert evaluation.execution_signal == "NOT_STARTED"
-    assert evaluation.verdict == "INEFFECTIVE"
-    assert "adoption_not_observed" in evaluation.warning_codes
+    assert evaluation.verdict == "INCONCLUSIVE"
+    assert evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
+    assert "adoption_not_observed" not in evaluation.warning_codes
     assert evaluation.plan_fidelity == "MATCHED"  # 计划结构没问题，是没人执行
     # 窗口走完就是观测完整：零执行本身就是要观测到的事实，不是"还没开始观测"。
     assert evaluation.observation_status == "COMPLETE"
@@ -389,7 +391,7 @@ def test_unparsable_window_is_treated_as_not_elapsed() -> None:
     ).evaluation
     assert WARNING_WINDOW_UNPARSABLE in evaluation.warning_codes
     assert evaluation.execution_signals["window_elapsed"] is False
-    assert evaluation.verdict == "NOT_OBSERVED"
+    assert evaluation.verdict == "INCONCLUSIVE"
 
 
 # --------------------------------------------------------------- 缺失与边界
@@ -511,6 +513,23 @@ def test_evaluation_never_invents_state_causality() -> None:
     serialized = json.dumps(evaluation.model_dump(mode="json"), ensure_ascii=False)
     assert "lrun_post" not in serialized
     assert "snapshot" not in serialized
+
+
+def test_completed_plan_is_adoption_not_observed_improvement() -> None:
+    """完成任务只说明采纳；没有前后状态比较时不得声称状态改善。"""
+    strategy = _strategy("WORKLOAD_REDUCTION", expected_outcomes=["TOTAL_WORKLOAD_REDUCED"])
+    evaluation = InterventionOutcomeEvaluator().evaluate(
+        intervention=_intervention(strategy),
+        observation=_observation(
+            items=[_item("i1", "TASK_FOCUS", 20, status="SUCCEEDED")],
+            metrics=_metrics(executed=1, completed_tasks=1, coverage=1.0),
+        ),
+        as_of=AS_OF,
+    ).evaluation
+
+    assert evaluation.adoption == "COMPLETED"
+    assert evaluation.observed_outcome == "INSUFFICIENT_EVIDENCE"
+    assert evaluation.causal_claim == "NOT_ESTIMATED"
 
 
 # --------------------------------------------------------------- 契约自洽

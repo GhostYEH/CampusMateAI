@@ -184,7 +184,7 @@ def test_each_scenario_declaration_reconciles_against_its_real_plan() -> None:
         )
         # 计划刚生成、还没有执行记录：能对账但不能下"有效"的结论。
         assert evaluation.execution_signal == "NOT_STARTED"
-        assert evaluation.verdict == "NOT_OBSERVED"
+        assert evaluation.verdict == "INCONCLUSIVE"
         assert result.persisted is False
         for check in evaluation.outcome_checks:
             assert check.evidence_refs, (letter, check.code)
