@@ -5,6 +5,7 @@ import { Icon } from "../Icon.jsx";
 import { formatDateTime } from "../../utils/date.js";
 import WorkspacePanel from "./WorkspacePanel.jsx";
 import DiscoveryPanel from "./DiscoveryPanel.jsx";
+import MaterialsPanel from "./MaterialsPanel.jsx";
 import {
   buildCourseRailItems,
   describeFusionState,
@@ -113,6 +114,11 @@ export default function OpenMAICHome({
           canBrowseFolders={status.canBrowseFolders}
           canSearch={status.canSearch}
         />
+        : null}
+
+      {/* 课程资料同样只在服务端上报 material 能力时出现。 */}
+      {status.canManageMaterials && selectedCourseId
+        ? <MaterialsPanel courseId={selectedCourseId} canManageMaterials={status.canManageMaterials} />
         : null}
     </div>
     <CourseRail courses={courses} assignments={assignments} />

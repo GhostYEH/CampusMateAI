@@ -1998,6 +1998,24 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-workspace-item .row-copy { display: grid; gap: 2px; min-width: 0; }
 .openmaic-workspace-item .row-copy strong { font-size: 14px; }
 .openmaic-workspace-item .row-copy small { color: var(--muted); font-size: 12px; }
+.openmaic-materials-panel { min-width: 0; padding: 18px; }
+.openmaic-materials__notice { margin: 8px 0 0; color: #1b6b3a; font-size: 12px; }
+.openmaic-materials__error { margin: 8px 0 0; color: #b4232b; font-size: 12px; }
+.openmaic-materials__upload { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.openmaic-materials__picker { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 12px; border: 1px dashed #b8c3d8; border-radius: 12px; color: #5e6b82; background: rgba(248,250,255,.65); font-size: 12px; }
+.openmaic-materials__picker input { max-width: 260px; min-width: 0; border: 0; background: transparent; color: var(--ink); font-size: 12px; }
+.openmaic-materials { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.openmaic-material { padding: 10px; border: 1px solid rgba(184,195,216,.55); border-radius: 12px; background: rgba(252,253,255,.75); }
+.openmaic-material__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.openmaic-material__name { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.openmaic-material__row small { color: var(--muted); font-size: 12px; }
+.openmaic-material__status { padding: 3px 8px; border-radius: 999px; font-size: 12px; }
+.openmaic-material__status--ready { color: #1b6b3a; background: rgba(27,107,58,.1); }
+.openmaic-material__status--muted { color: #5e6b82; background: rgba(148,163,184,.16); }
+.openmaic-material-detail { margin-top: 12px; padding: 12px; border: 1px solid rgba(184,195,216,.55); border-radius: 12px; background: rgba(252,253,255,.85); }
+.openmaic-material-detail__head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 8px; }
+.openmaic-material-detail__head small { color: var(--muted); font-size: 12px; }
+.openmaic-material-detail__text { max-height: 320px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; }
 @media (max-width: 1024px) { .openmaic-home { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); } .openmaic-command { grid-template-columns: minmax(0, 1fr) 150px; } .openmaic-command .button { width: 100%; } }
 @media (max-width: 767px) { .openmaic-home { grid-template-columns: 1fr; } .openmaic-command { grid-template-columns: 1fr; } .openmaic-command select, .openmaic-command .button { min-height: 42px; } .openmaic-recent-grid { grid-template-columns: 1fr; } .openmaic-home__rail { order: -1; } }
 @media (max-width: 360px) { .openmaic-command-panel, .openmaic-recent-panel, .openmaic-capability-panel, .openmaic-home__rail { padding: 13px; } .openmaic-command-panel h2 { font-size: 25px; } .openmaic-course-rail__item { grid-template-columns: 28px minmax(0, 1fr) 15px; } .openmaic-course-rail__meta { grid-column: 2 / -1; justify-items: start; text-align: left; } }

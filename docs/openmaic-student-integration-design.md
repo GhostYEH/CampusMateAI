@@ -78,7 +78,13 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    `StagePlayerPanel.jsx`：逐场景给出渲染决定（native / sandbox-html /
    sandbox-url / unsupported）、`allow-scripts` 沙箱、动作时间线与恢复位置，
    渲染不了时明示缺什么。场景**内容**编辑、白板/TTS/多智能体的实际播放未接入。
-5. E：材料、导入导出、高级能力和 Provider 设置。未开始。
+5. E：材料、导入导出、高级能力和 Provider 设置。**进行中**：材料上传/解析/引用已接通
+   （`openmaic-service/src/material/**` 的迁移 4 与路由、`backend/app/services/openmaic/material_extraction.py`
+   的取字策略、`openmaic_materials.py` 网关、`MaterialsPanel.jsx`）。三条边界在这里定死：
+   格式由**扩展名**决定而不是客户端声明的 Content-Type；解析不了就记 `unsupported` 且正文为空，
+   绝不写成"已提取"；正文只在单份读取时返回，列表只带字符数。
+   **本切片不保留文件字节**，素材存储、导入（PPTX / `.maic.zip`）与导出（`.maic.zip` / PPTX /
+   Markdown / DOCX）仍未开始，浏览器验收未执行。
 6. F：作业讲解确认门和最小上下文。未开始。
 7. G：安全回归、离线降级和浏览器验收。离线降级四态已验证；其余未开始。
 

@@ -516,6 +516,50 @@ export async function searchOpenMAICContent(courseId, { query, limit = 20, curso
   );
 }
 
+// ===== 课程资料 =====
+//
+// 上传是**多部分表单**：文件字节只走这一条路，且只在 CampusMate 网关与浏览器
+// 之间。网关解析出正文后才调用受管服务，所以内部调用里从来没有文件本身。
+// 创建必须带 Idempotency-Key（重试不能变成第二份资料），删除必须带 If-Match。
+
+export async function listOpenMAICMaterials(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/materials`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function uploadOpenMAICMaterial(courseId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/materials`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
+/** 唯一会返回正文的资料接口。 */
+export async function getOpenMAICMaterial(courseId, materialId) {
+  return dataOf(await client.get(`/courses/${courseId}/materials/${materialId}`));
+}
+
+export async function deleteOpenMAICMaterial(courseId, materialId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/materials/${materialId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+/** 批量解析引用：返回服务端**授权过**的引用与没能解析到的 id。 */
+export async function resolveOpenMAICMaterials(courseId, { materialIds }) {
+  return dataOf(
+    await client.post(`/courses/${courseId}/materials/resolve`, { material_ids: materialIds }),
+  );
+}
+
 // ===== 编辑器（Stage 命令） =====
 //
 // 提交的是**命令列表**，不是整份文档：整份回传会让没看到并发修改的作者静默

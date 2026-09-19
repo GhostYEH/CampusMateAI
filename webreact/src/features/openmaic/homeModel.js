@@ -77,6 +77,8 @@ export function describeFusionState(status) {
     canBrowseFolders: has("folder"),
     // 编辑器只在服务端真的挂载了 editor 路由（并上报该能力）时才开放。
     canEdit: has("editor"),
+    // 课程资料同理：material 未上报时整块不渲染，而不是渲染一个必然失败的入口。
+    canManageMaterials: has("material"),
   };
 }
 

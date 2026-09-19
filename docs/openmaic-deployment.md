@@ -89,6 +89,11 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 - Provider Key 只存在服务端，不能进入前端 bundle、API 响应、快照、数据库或日志。
 - `OPENMAIC_SERVICE_URL` 启动时拒绝凭据、query、fragment 和路径；后续出站调用仍需遵守 SSRF allowlist。
 - 上传必须限制大小、类型和解压路径；HTML 必须净化；跨源内容必须使用最小 sandbox。
+  课程资料的上传额外有三条硬规则：**格式由扩展名决定**（客户端声明的 Content-Type 不参与判断，
+  否则二进制可以被当成文本来解码）、**解析不了就记 `unsupported` 且正文为空**（不伪造正文）、
+  **状态与正文必须一致**（`unsupported` 带正文会被服务端拒绝）。
+  正文解析依赖 `python-docx` 与 `PyPDF2`（已在 `backend/requirements.txt`）；缺失时该格式降级为
+  `unsupported`，而不是报错。
 - 生产部署不得把内部服务 origin 或访问码投影给浏览器。
 
 ## 能力状态
@@ -98,5 +103,8 @@ A 切片（来源审计、受管服务、断言强制、状态代理与最近内
 （`/courses` 原生首页与真实课程栏）已完成并验证；C 切片中的内容发现部分
 （文件夹树与站内搜索：`openmaic-service/src/discovery/**`、网关
 `openmaic_discovery.py`、Web `DiscoveryPanel.jsx`，含工作台归档）已落地并通过
-服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；工作台的编辑器与播放器、
-导入导出、材料、TTS、多智能体和作业讲解仍需后续切片完成和验证。
+服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；E 切片中的课程资料部分
+（上传/解析/引用：`openmaic-service/src/material/**`、`material_extraction.py`、
+`openmaic_materials.py`、`MaterialsPanel.jsx`）同样已落地并通过三层自动化测试，
+**尚未执行浏览器验收，且本切片不保留上传文件的字节**；工作台的编辑器与播放器、
+素材存储、导入导出、TTS、多智能体和作业讲解仍需后续切片完成和验证。
