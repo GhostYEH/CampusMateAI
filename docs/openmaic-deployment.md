@@ -48,11 +48,28 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 
 ## 健康检查
 
-- `GET /internal/health/live`：进程存活，不检查依赖。
-- `GET /internal/health/ready`：依赖就绪；失败返回 503。
-- CampusMate `GET /api/v1/openmaic/fusion/status`：唯一面向浏览器的能力状态，失败只返回 `service_unavailable`/`degraded`，不泄露内部 URL、断言或密钥。
+- `GET /internal/health/live`：进程存活，不检查依赖，**匿名**。
+- `GET /internal/health/ready`：依赖就绪；需要 `service:status` 断言，失败返回 503。
+- CampusMate `GET /api/v1/openmaic/fusion/status`：唯一面向浏览器的能力状态。
+  响应里的 `state` 是唯一判据，取值 `disabled` / `unavailable` / `degraded` / `ready`：
+
+  | state | 含义 | `capabilities` |
+  | --- | --- | --- |
+  | `disabled` | `OPENMAIC_FUSION_ENABLED=false`，网关不去连服务 | 空 |
+  | `unavailable` | 未配置地址/密钥、连不上、或断言被拒（`service_unconfigured` / `service_unreachable` / `assertion_rejected`） | 空 |
+  | `degraded` | 服务在线但自身依赖未就绪（`dependency_unavailable`） | 空 |
+  | `ready` | 服务与依赖都就绪 | 服务端实际挂载的能力标签 |
+
+  只有 `ready` 才下发 capability —— 依赖没就绪时声称能力可用，会让浏览器打开一个必然失败的入口。
+  任何状态都不泄露内部 URL、断言或密钥。
+
+- `GET /api/v1/openmaic/fusion/recent?limit=20`：当前用户**所有可见课程**的最近学习内容，
+  一次请求取代浏览器对每门课程分别拉取历史。limit 默认 20、上限 50。
+  课程可见性复用统一策略（`can_view_course`），条目只含终态成功的课堂，
+  并附带站内深链 `/courses/{courseId}?tab=mentoring&session={sessionId}`。
 
 服务离线时，课程、作业查看、保存和提交仍由 CampusMate 正常提供；OpenMAIC 入口显示不可用或降级状态，不使用静态假数据。
+前端只按 `state` + 真实 `capabilities` 逐项开放入口：`disabled`/`unavailable`/`degraded` 一律关闭，不显示"正在接入"这类占位文案。
 
 ## 安全要求
 
@@ -64,4 +81,7 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 
 ## 能力状态
 
-完整逐项状态以 `docs/openmaic-capability-matrix.md` 为准。当前状态是“部分完成”：A 切片已提交，首页、工作台、编辑器、播放器、导入导出和作业讲解仍需后续切片完成和验证。
+完整逐项状态以 `docs/openmaic-capability-matrix.md` 为准。当前状态是“部分完成”：
+A 切片（来源审计、受管服务、断言强制、状态代理与最近内容聚合）与 B 切片
+（`/courses` 原生首页与真实课程栏）已完成并验证；工作台、DSL、编辑器、播放器、
+导入导出、材料、TTS、多智能体和作业讲解仍需后续切片完成和验证。
