@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import { formatDateTime } from "../../utils/date.js";
+import WorkspacePanel from "./WorkspacePanel.jsx";
 import {
   buildCourseRailItems,
   describeFusionState,
@@ -93,6 +94,14 @@ export default function OpenMAICHome({
         <CapabilityList fusion={status} />
         <p className="muted-copy">{status.detail}</p>
       </Panel>
+
+      {/* 只有服务端真实上报 workspace 能力时才渲染——未上报时不出现任何入口。 */}
+      {status.canCreateWorkspace && selectedCourseId
+        ? <WorkspacePanel
+          courseId={selectedCourseId}
+          courseName={courses.find((course) => String(course.id) === String(selectedCourseId))?.name || ""}
+        />
+        : null}
     </div>
     <CourseRail courses={courses} assignments={assignments} />
   </section>;

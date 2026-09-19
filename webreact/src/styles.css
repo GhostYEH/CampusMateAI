@@ -1991,6 +1991,13 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-home__empty--wide { display: flex; justify-content: center; gap: 12px; text-align: left; }
 .openmaic-home__empty--wide strong, .openmaic-home__empty--wide p { display: block; margin: 0; }
 .openmaic-home__empty--wide p { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.openmaic-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.openmaic-hint--error { color: #b4232b; }
+.openmaic-workspace-list { display: grid; gap: 8px; margin-top: 10px; }
+.openmaic-workspace-item { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(184,195,216,.55); border-radius: 12px; background: rgba(252,253,255,.75); }
+.openmaic-workspace-item .row-copy { display: grid; gap: 2px; min-width: 0; }
+.openmaic-workspace-item .row-copy strong { font-size: 14px; }
+.openmaic-workspace-item .row-copy small { color: var(--muted); font-size: 12px; }
 @media (max-width: 1024px) { .openmaic-home { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); } .openmaic-command { grid-template-columns: minmax(0, 1fr) 150px; } .openmaic-command .button { width: 100%; } }
 @media (max-width: 767px) { .openmaic-home { grid-template-columns: 1fr; } .openmaic-command { grid-template-columns: 1fr; } .openmaic-command select, .openmaic-command .button { min-height: 42px; } .openmaic-recent-grid { grid-template-columns: 1fr; } .openmaic-home__rail { order: -1; } }
 @media (max-width: 360px) { .openmaic-command-panel, .openmaic-recent-panel, .openmaic-capability-panel, .openmaic-home__rail { padding: 13px; } .openmaic-command-panel h2 { font-size: 25px; } .openmaic-course-rail__item { grid-template-columns: 28px minmax(0, 1fr) 15px; } .openmaic-course-rail__meta { grid-column: 2 / -1; justify-items: start; text-align: left; } }

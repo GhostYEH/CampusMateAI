@@ -360,6 +360,99 @@ export async function getOpenMAICRecent(limit = 20) {
   return dataOf(await client.get("/openmaic/fusion/recent", { params: { limit } }));
 }
 
+// ===== 学习工作台（workspace / stage） =====
+//
+// 两个头是**协议的一部分**，不是可选优化：
+// - 创建必须带 Idempotency-Key，用同一个键重试会拿回同一个工作台而不是再建一个；
+// - 条件写入必须带 If-Match（当前 revision），否则并发修改会被静默覆盖。
+
+/** 创建时使用的幂等键。同一个用户动作重试必须复用同一个键。 */
+export function newIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function listOpenMAICWorkspaces(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function createOpenMAICWorkspace(courseId, { name, description = "", idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces`,
+      { name, description },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function getOpenMAICWorkspace(courseId, workspaceId) {
+  return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}`));
+}
+
+export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision, name, description }) {
+  const payload = {};
+  if (name !== undefined) payload.name = name;
+  if (description !== undefined) payload.description = description;
+  return dataOf(
+    await client.patch(`/courses/${courseId}/workspaces/${workspaceId}`, payload, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function deleteOpenMAICWorkspace(courseId, workspaceId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/workspaces/${workspaceId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function listOpenMAICStages(courseId, workspaceId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function getOpenMAICStage(courseId, workspaceId, stageId) {
+  return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`));
+}
+
+export async function createOpenMAICStage(courseId, workspaceId, { title, document = null, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages`,
+      { title, ...(document ? { document } : {}) },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function replaceOpenMAICStage(courseId, workspaceId, stageId, { revision, document, title }) {
+  return dataOf(
+    await client.put(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`,
+      { document, ...(title === undefined ? {} : { title }) },
+      { headers: { "If-Match": String(revision) } },
+    ),
+  );
+}
+
+export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
 /** 失败时重试生成。 */
 export async function retryInteractiveClassroom(courseId, sessionId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));
