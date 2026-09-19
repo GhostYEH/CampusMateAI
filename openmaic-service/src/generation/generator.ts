@@ -85,3 +85,64 @@ export function buildGeneratedStage(mode: GenerationMode, prompt: string, now = 
     scenes: [scene],
   };
 }
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function assignContentIds(scene: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...scene };
+  const content = isObject(result.content) ? result.content : undefined;
+  if (content?.type === 'quiz' && Array.isArray(content.questions)) {
+    result.content = {
+      ...content,
+      questions: content.questions.map((question) => (isObject(question) ? { ...question, id: id('question') } : question)),
+    };
+  }
+  if (content?.type === 'pbl' && Array.isArray(content.phases)) {
+    result.content = {
+      ...content,
+      phases: content.phases.map((phase) => {
+        if (!isObject(phase)) return phase;
+        const filled = { ...phase, id: id('phase') };
+        if (Array.isArray(filled.tasks)) {
+          filled.tasks = filled.tasks.map((task) => (isObject(task) ? { ...task, id: id('task') } : task));
+        }
+        return filled;
+      }),
+    };
+  }
+  if (Array.isArray(result.actions)) {
+    result.actions = result.actions.map((action) => (isObject(action) ? { ...action, id: id('action') } : action));
+  }
+  return result;
+}
+
+/**
+ * Turn a model-authored document into a complete aggregate. The model writes
+ * content and never identities or timestamps (the prompt forbids it), so the
+ * service owns the ids, ordering and clock before the validator runs.
+ */
+export function materializeGeneratedStage(raw: unknown): StageAggregate & { dslVersion: string } {
+  const now = Date.now();
+  const stageId = id('stage');
+  const source = isObject(raw) ? raw : {};
+  const stageInput = isObject(source.stage) ? source.stage : {};
+  const scenesInput = Array.isArray(source.scenes) ? source.scenes : [];
+  const scenes = scenesInput.map((scene, index) => {
+    const input = isObject(scene) ? scene : {};
+    return {
+      ...assignContentIds(input),
+      id: id('scene'),
+      stageId,
+      order: index,
+      createdAt: now,
+      updatedAt: now,
+    } as unknown as Scene;
+  });
+  return {
+    dslVersion: DSL_VERSION,
+    stage: { ...stageInput, id: stageId, createdAt: now, updatedAt: now } as unknown as StageAggregate['stage'],
+    scenes,
+  };
+}
