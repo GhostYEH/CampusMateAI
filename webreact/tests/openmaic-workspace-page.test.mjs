@@ -18,6 +18,8 @@ test("workspace route restores owned content and exposes truthful generation rec
   assert.match(page, /StagePlayerPanel/);
   assert.match(page, /exportOpenMAICStageFormat\(courseId, workspaceId, stage\.id, "pptx"\)/);
   assert.match(page, /PPTX/);
+  assert.match(page, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 1000\)/);
+  assert.match(panel, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 1000\)/);
   assert.match(page, /ProviderToolsPanel/);
   assert.match(page, /already populated workspace/);
   assert.match(page, /launchPrompt/);

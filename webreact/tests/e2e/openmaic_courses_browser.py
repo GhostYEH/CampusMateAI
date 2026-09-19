@@ -29,7 +29,7 @@ STUDENT_USERNAME = os.environ.get("E2E_STUDENT_USERNAME", "student_demo")
 STUDENT_PASSWORD = os.environ.get("E2E_STUDENT_PASSWORD", "Demo123456")
 SHOTS = Path(os.environ.get("E2E_SHOTS_DIR", str(Path(__file__).resolve().parent / "shots")))
 
-VIEWPORTS = [(320, 720, "phone"), (768, 900, "tablet"), (1024, 900, "laptop"), (1440, 900, "desktop")]
+VIEWPORTS = [(320, 720, "phone"), (768, 900, "tablet"), (1024, 900, "laptop"), (1440, 622, "short-desktop"), (1440, 900, "desktop")]
 
 # 站内 console 允许出现的信息级提示（不含错误）。
 BENIGN_CONSOLE = (
@@ -234,6 +234,21 @@ def check_viewports(page, recorder: Recorder, report: list[str]) -> list[Path]:
         assert box["x"] >= -1 and box["x"] + box["width"] <= width + 1, (
             f"{width}px 输入工作区超出视口：x={box['x']} w={box['width']}"
         )
+        # 课程较多时菜单必须留在视口内，不能再出现原生 select 那样的超长
+        # 弹层，也不能在矮桌面窗口里从底部被裁掉。
+        picker = page.locator(".openmaic-course-picker__trigger")
+        picker.click()
+        menu = page.locator(".openmaic-course-picker__menu")
+        expect(menu).to_be_visible(timeout=5000)
+        menu_box = menu.bounding_box()
+        assert menu_box, f"{width}×{height} 找不到课程菜单布局盒子"
+        assert menu_box["x"] >= -1 and menu_box["x"] + menu_box["width"] <= width + 1, (
+            f"{width}×{height} 课程菜单横向越界：x={menu_box['x']} w={menu_box['width']}"
+        )
+        assert menu_box["y"] >= -1 and menu_box["y"] + menu_box["height"] <= height + 1, (
+            f"{width}×{height} 课程菜单被视口裁切：y={menu_box['y']} h={menu_box['height']}"
+        )
+        picker.click()
         shot = SHOTS / f"openmaic-courses-{label}-{width}x{height}.png"
         page.screenshot(path=str(shot), full_page=False)
         shots.append(shot)

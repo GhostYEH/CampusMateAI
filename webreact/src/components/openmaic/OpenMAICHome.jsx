@@ -126,11 +126,24 @@ function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
  */
 function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
   const [open, setOpen] = React.useState(false);
+  const [menuPlacement, setMenuPlacement] = React.useState({ upward: false, maxHeight: 360 });
   const rootRef = React.useRef(null);
   const triggerRef = React.useRef(null);
   const listboxId = React.useId();
   const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
   const selectedName = selectedCourse?.name || selectedCourse?.title || "选择课程";
+
+  const positionMenu = React.useCallback(() => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const gap = 8;
+    const below = Math.max(0, Math.floor(window.innerHeight - rect.bottom - gap));
+    const above = Math.max(0, Math.floor(rect.top - gap));
+    // 优先向下展开；只有下方不足以显示一行且上方更宽裕时才翻转，避免菜单
+    // 盖住标题。无论方向都把高度限制为真实可用视口空间。
+    const upward = below < 96 && above > below;
+    setMenuPlacement({ upward, maxHeight: Math.min(360, upward ? above : below) });
+  }, []);
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -143,13 +156,27 @@ function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
         triggerRef.current?.focus();
       }
     }
+    function repositionOnResize() {
+      positionMenu();
+    }
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", repositionOnResize);
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
       document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", repositionOnResize);
     };
-  }, [open]);
+  }, [open, positionMenu]);
+
+  function toggleMenu() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    positionMenu();
+    setOpen(true);
+  }
 
   function choose(courseId) {
     onSelectCourse(String(courseId));
@@ -167,13 +194,13 @@ function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
       aria-haspopup="listbox"
       aria-controls={listboxId}
       aria-expanded={open}
-      onClick={() => setOpen((value) => !value)}
+      onClick={toggleMenu}
     >
       <Icon name="PhBookOpenText" size={16} aria-hidden="true" />
       <span>{selectedName}</span>
       <Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" />
     </button>
-    {open ? <div id={listboxId} className="openmaic-course-picker__menu" role="listbox" aria-label="选择课程上下文">
+    {open ? <div id={listboxId} className={`openmaic-course-picker__menu${menuPlacement.upward ? " is-upward" : ""}`} style={{ maxHeight: menuPlacement.maxHeight }} role="listbox" aria-label="选择课程上下文">
       {courses.map((course) => {
         const courseId = String(course.id);
         const name = course.name || course.title || "未命名课程";

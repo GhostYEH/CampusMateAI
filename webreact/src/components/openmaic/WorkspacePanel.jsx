@@ -40,7 +40,8 @@ function saveBlob(blob, filename) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Keep the object URL alive long enough for Chrome to attach the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**

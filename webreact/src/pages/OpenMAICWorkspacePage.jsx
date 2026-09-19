@@ -25,7 +25,10 @@ function saveBlob(blob, filename) {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Chrome starts blob downloads asynchronously. Releasing it in the same task
+  // can cancel a valid download in browsers that observe the download event a
+  // little later (including real automation browsers).
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function StageExportActions({ courseId, workspaceId, stage, canExportPptx }) {
