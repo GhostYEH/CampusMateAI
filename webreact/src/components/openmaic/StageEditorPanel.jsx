@@ -14,6 +14,7 @@ import {
   sceneDeleteCommand,
   sceneDuplicateCommand,
   sceneMoveCommand,
+  sceneUpdateCommand,
 } from "../../features/openmaic/editorModel.js";
 
 /**
@@ -37,6 +38,9 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [notice, setNotice] = React.useState("");
+  const [editingScene, setEditingScene] = React.useState(null);
+  const [sceneDraft, setSceneDraft] = React.useState("");
+  const [sceneLoading, setSceneLoading] = React.useState(false);
   const [addType, setAddType] = React.useState("slide");
   // 正在播放的场景：播放器自己按 scene_id 恢复位置，编辑器只负责记下这一个 id。
   const [playingSceneId, setPlayingSceneId] = React.useState("");
@@ -70,6 +74,8 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
     buffer.current = createCommandBuffer();
     idempotencyKey.current = null;
     setPlayingSceneId("");
+    setEditingScene(null);
+    setSceneDraft("");
     setNotice("");
     void load();
     // scopeKey 变化即"换了一份被编辑的内容"：必须重建缓冲，否则会把上一个
@@ -82,9 +88,48 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
     try {
       buffer.current.run(command);
       setView((current) => (current ? { ...current, document: buffer.current.preview() } : current));
+      return true;
     } catch (failure) {
       // 本地不接受的命令绝不发出去，也就不会出现"界面改了服务端没改"。
       setError(failure.message || "这条编辑无法应用。");
+      return false;
+    }
+  }
+
+  async function editScene(sceneId) {
+    setSceneLoading(true);
+    setError("");
+    try {
+      const scene = await api.getOpenMAICStageScene(courseId, workspaceId, stageId, sceneId);
+      setEditingScene(scene);
+      setSceneDraft(JSON.stringify({ title: scene.title, content: scene.content }, null, 2));
+    } catch (failure) {
+      setError(failure?.response?.data?.message || failure?.message || "读取场景内容失败。");
+    } finally {
+      setSceneLoading(false);
+    }
+  }
+
+  function saveSceneDraft() {
+    let parsed;
+    try {
+      parsed = JSON.parse(sceneDraft);
+    } catch {
+      setError("场景内容必须是合法 JSON。");
+      return;
+    }
+    if (!parsed || typeof parsed !== "object" || typeof parsed.title !== "string" || !parsed.content || typeof parsed.content !== "object") {
+      setError("场景编辑器需要 title 与 content 字段。");
+      return;
+    }
+    if (parsed.content.type !== editingScene?.type) {
+      setError("content.type 必须保持原场景类型不变。");
+      return;
+    }
+    if (run(sceneUpdateCommand(editingScene.id, { title: parsed.title, content: parsed.content }))) {
+      setEditingScene(null);
+      setSceneDraft("");
+      setNotice("场景内容已加入待保存编辑。");
     }
   }
 
@@ -181,6 +226,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
           <Button type="button" variant="quiet" disabled={index === 0} onClick={() => run(sceneMoveCommand(scene.id, index - 1))}>上移</Button>
           <Button type="button" variant="quiet" disabled={index === scenes.length - 1} onClick={() => run(sceneMoveCommand(scene.id, index + 1))}>下移</Button>
           <Button type="button" variant="quiet" onClick={() => setPlayingSceneId(scene.id)}>播放</Button>
+          <Button type="button" variant="quiet" disabled={sceneLoading} onClick={() => editScene(scene.id)}>编辑内容</Button>
           <Button type="button" variant="quiet" onClick={() => run(sceneDuplicateCommand(scene.id))}>复制</Button>
           <Button type="button" variant="quiet" onClick={() => run(sceneDeleteCommand(scene.id))}>删除</Button>
         </li>)}
@@ -189,6 +235,21 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
         <Icon name="PhLayout" size={26} />
         <div><strong>这份内容还没有场景</strong><p>添加一个场景后即可继续编辑。</p></div>
       </div>}
+
+    {editingScene ? <section className="openmaic-scene-content-editor" aria-label="场景内容编辑器">
+      <SectionHeading title={`编辑：${editingScene.title}`} detail="服务端会再次执行 DSL 校验；保存前可继续撤销。" />
+      <textarea
+        aria-label="场景 DSL 内容"
+        value={sceneDraft}
+        onChange={(event) => setSceneDraft(event.target.value)}
+        rows={16}
+        spellCheck="false"
+      />
+      <div className="openmaic-stage-editor__toolbar">
+        <Button type="button" onClick={saveSceneDraft}>应用编辑</Button>
+        <Button type="button" variant="quiet" onClick={() => { setEditingScene(null); setSceneDraft(""); }}>取消</Button>
+      </div>
+    </section> : null}
 
     {/* 播放器只在服务端给出播放计划时才有内容；unsupported 场景会显示缺什么。 */}
     {playingSceneId ? <StagePlayerPanel

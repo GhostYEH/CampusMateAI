@@ -89,6 +89,12 @@ test("the component renders the degraded branch for unsupported scenes only", ()
   assert.match(playerSource, /currentScene\.render\.kind === "native"/);
 });
 
+test("native playback renders real slide elements and whiteboard payloads", () => {
+  assert.match(playerSource, /canvas\.elements/);
+  assert.match(playerSource, /scene\.whiteboards/);
+  assert.match(playerSource, /canvas\.title/);
+});
+
 // ===== 计划与导航 =====
 
 test("the plan is normalised, sorted by order and keeps the server resume index", () => {

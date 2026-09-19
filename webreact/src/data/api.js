@@ -740,7 +740,7 @@ export async function decideAgentApproval(approvalId, decision, reason) {
   );
 }
 
-export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null } = {}) {
+export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null, workspaceId = null } = {}) {
   try {
     const token = localStorage.getItem("campus_access_token");
     const response = await fetch(`${BASE_URL}/counselor/chat`, {
@@ -749,6 +749,7 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
         message, stream: true, web_search: webSearch, attachment, recent_tasks: recentTasks,
         ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(courseId ? { course_id: courseId } : {}),
+        ...(workspaceId ? { workspace_id: workspaceId } : {}),
       }), signal,
     });
     if (!response.ok) throw new Error(`服务器错误 (${response.status})`);

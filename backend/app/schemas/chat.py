@@ -94,6 +94,12 @@ class ChatRequest(BaseModel):
     """
     message: str = Field(..., min_length=1, description="用户问题")
     conversation_id: Optional[str] = Field(None, description="会话 ID(仅作会话标识)")
+    workspace_id: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=120,
+        description="原生 OpenMAIC workspace 会话归属；必须与 course_id 一起提供并通过服务端归属校验",
+    )
     recent_tasks: List[CounselorRecentTask] = Field(
         default_factory=list,
         description="最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),"

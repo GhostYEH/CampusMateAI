@@ -120,6 +120,12 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
+test("quick ask creates or reuses a native workspace before opening counselor", () => {
+  assert.match(pageSource, /api\.listOpenMAICWorkspaces\(courseId/);
+  assert.match(pageSource, /api\.createOpenMAICWorkspace\(courseId/);
+  assert.match(pageSource, /workspace=\$\{encodeURIComponent\(workspace\.id\)\}/);
+});
+
 test("home surface exposes no placeholder entries and no iframe", () => {
   assert.match(homeSource, /aria-label="OpenMAIC 学习工作台"/);
   assert.match(homeSource, /快速询问/);

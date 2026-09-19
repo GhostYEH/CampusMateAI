@@ -279,6 +279,12 @@ test("saving sends commands with If-Match and an Idempotency-Key, never a docume
   assert.equal("document" in call.data, false, "编辑器不得整份回传文档");
 });
 
+test("editor exposes a bounded scene document editor backed by scene.update", () => {
+  assert.match(editorSource, /api\.getOpenMAICStageScene\(/);
+  assert.match(editorSource, /aria-label="场景 DSL 内容"/);
+  assert.match(editorSource, /sceneUpdateCommand\(.*content/s);
+});
+
 test("the outline and a single scene are read from the editor endpoints", async () => {
   const mock = createMockClient(apiModule.default);
   mock.onGet("/courses/c1/workspaces/ws_1/stages/stg_1/outline", { stage_id: "stg_1", scenes: [] });

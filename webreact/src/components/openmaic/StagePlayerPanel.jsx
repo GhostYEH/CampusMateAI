@@ -171,10 +171,20 @@ function NativeScene({ scene, fallbackTitle }) {
     </ol> : <p className="openmaic-hint">这份测验还没有题目。</p>;
   }
   if (content.type === "slide") {
-    const blocks = Array.isArray(content.canvas?.blocks) ? content.canvas.blocks : [];
-    return <p className="openmaic-hint">
-      {blocks.length ? `幻灯片含 ${blocks.length} 个内容块。` : "这张幻灯片还没有内容块。"}
-    </p>;
+    const canvas = content.canvas || {};
+    const elements = Array.isArray(canvas.elements) ? canvas.elements : [];
+    const images = elements.filter((element) => typeof element?.dataUri === "string" && /^data:image\/(png|jpeg|gif|webp);base64,/i.test(element.dataUri));
+    return <div className="openmaic-player__slide">
+      {canvas.title ? <h3>{String(canvas.title)}</h3> : null}
+      {canvas.body ? <p>{String(canvas.body)}</p> : null}
+      {elements.length ? <ul aria-label="幻灯片内容元素">{elements.map((element, index) => <li key={`${element.kind || "element"}-${index}`}>
+        {images.includes(element) ? <img src={element.dataUri} alt={String(element.alt || "幻灯片图片")} /> : null}
+        {element.text || element.value || element.label ? <span>{String(element.text || element.value || element.label)}</span> : null}
+      </li>)}</ul> : <p className="openmaic-hint">这张幻灯片还没有内容元素。</p>}
+      {Array.isArray(scene.whiteboards) && scene.whiteboards.length ? <div className="openmaic-player__whiteboards" aria-label="白板内容">
+        {scene.whiteboards.map((board, index) => <article key={board.id || index}><strong>{board.title || `白板 ${index + 1}`}</strong><small>{Array.isArray(board.elements) ? `${board.elements.length} 个绘制元素` : "暂无绘制元素"}</small></article>)}
+      </div> : null}
+    </div>;
   }
   return <p className="openmaic-hint">该场景类型的内容由 CampusMate 原生渲染。</p>;
 }

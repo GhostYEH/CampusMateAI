@@ -19,6 +19,16 @@ def test_chat_request_accepts_web_search_and_text_attachment():
     assert request.attachment.content == "第一章考试范围"
 
 
+def test_chat_request_carries_native_workspace_binding():
+    request = ChatRequest.model_validate({
+        "message": "继续复习",
+        "course_id": "course-1",
+        "workspace_id": "ws-1",
+    })
+
+    assert request.workspace_id == "ws-1"
+
+
 def test_attachment_hint_marks_user_content_as_untrusted_context():
     request = ChatRequest.model_validate({
         "message": "总结",

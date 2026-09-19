@@ -57,9 +57,28 @@ export function CoursesParityPage() {
 
   useEffect(() => { void load(); }, []);
 
+  async function openQuickAsk(query, courseId) {
+    setError("");
+    try {
+      const payload = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
+      let workspace = list(payload)[0];
+      if (!workspace) {
+        workspace = await api.createOpenMAICWorkspace(courseId, {
+          name: "快速询问工作台",
+          description: "由课程快速询问自动创建，用于继续追问与恢复学习上下文。",
+          idempotencyKey: api.newIdempotencyKey(),
+        });
+      }
+      if (!workspace?.id) throw new Error("工作台创建结果缺少标识");
+      navigate(`/counselor?course=${encodeURIComponent(courseId)}&workspace=${encodeURIComponent(workspace.id)}&prompt=${encodeURIComponent(query)}`);
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "无法创建课程工作台，请稍后重试。");
+    }
+  }
+
   return <PageFrame className="courses-page" eyebrow="OpenMAIC / Courses" title="学习内容" description="在 CampusMate 课程上下文中创建、询问和继续学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
-      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} providerStatus={providerStatus} onQuickAsk={(query, courseId) => navigate(`/counselor?course=${encodeURIComponent(courseId)}&prompt=${encodeURIComponent(query)}`)} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
+      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} providerStatus={providerStatus} onQuickAsk={openQuickAsk} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
     </AsyncState>
   </PageFrame>;
 }

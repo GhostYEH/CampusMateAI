@@ -397,6 +397,12 @@ test("chatStream 在请求体中发送 course_id", () => {
   assert.match(api, /course_id: courseId/, "请求体未携带 course_id 字段");
 });
 
+test("chatStream 在快速询问中发送 workspace_id 绑定", () => {
+  const api = read("src/data/api.js");
+  assert.match(api, /workspaceId = null/, "chatStream 缺少 workspaceId 选项");
+  assert.match(api, /workspace_id: workspaceId/, "请求体未携带 workspace_id 字段");
+});
+
 test("调用 chatStream 含 courseId 时实际发送 course_id", async () => {
   let captured = null;
   globalThis.fetch = async (url, options) => {
@@ -440,6 +446,7 @@ test("CounselorPage 从 URL 读取 courseId 并展示/清除课程上下文", ()
   assert.match(page, /退出课程辅导/, "缺少退出课程上下文入口");
   assert.match(page, /exitCourseContext/, "未清除课程上下文");
   assert.match(page, /courseId: courseId \|\| undefined/, "对话未携带 courseId 上下文");
+  assert.match(page, /workspaceId: workspaceId/, "对话未携带 workspaceId 上下文");
 });
 
 test("课程上下文下提供基于课程的动态推荐问题（不硬编码掌握状态）", () => {

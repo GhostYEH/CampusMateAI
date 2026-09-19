@@ -55,6 +55,8 @@ from ...schemas.openmaic import MODE_INTENT_LABELS
 from ...services.container import ServiceContainer, get_container
 from ...services.course_access import can_view_course
 from ...services.emotion_context import EmotionContextBuilder
+from ...services.openmaic.fusion_client import OpenMAICFusionClient
+from ...services.openmaic.fusion_errors import FusionInvalidRequest
 from ..deps import current_user_optional
 
 router = APIRouter()
@@ -63,6 +65,15 @@ _emotion_context_builder = EmotionContextBuilder()
 
 def _container() -> ServiceContainer:
     return get_container()
+
+
+def _workspace_client(container: ServiceContainer = Depends(_container)) -> OpenMAICFusionClient:
+    settings = container.settings
+    return OpenMAICFusionClient(
+        base_url=settings.openmaic_service_url,
+        secret=settings.openmaic_internal_secret,
+        timeout_seconds=settings.openmaic_service_timeout_seconds,
+    )
 
 
 def _build_attachment_hint(attachment: Any) -> str:
@@ -651,8 +662,21 @@ async def build_interactive_classroom_action(
 async def chat(
     req: ChatRequest,
     user: Optional[UserRow] = Depends(current_user_optional),
+    workspace_client: OpenMAICFusionClient = Depends(_workspace_client),
 ):
     container = get_container()
+    # A quick question launched from /courses is a real native workspace
+    # session, not only a course query-string hint. Validate the workspace at
+    # the same boundary as the native workspace routes before starting SSE.
+    if req.workspace_id:
+        if user is None or not req.course_id:
+            raise FusionInvalidRequest("workspace_id 必须与已登录用户的 course_id 一起提供")
+        course = container.course_repository.get_course(req.course_id)
+        if course is None or not can_view_course(container, user, course):
+            raise FusionInvalidRequest("无法把快速询问绑定到该课程")
+        await workspace_client.get_workspace(
+            user_id=str(user.id), course_id=req.course_id, workspace_id=req.workspace_id
+        )
     # 解析多角色上下文(忽略+warning 模式,不抛异常)
     context_block, ctx_used, ctx_warnings = _collect_teaching_context(
         container, user, req
@@ -665,6 +689,8 @@ async def chat(
 
     # 构造 context_used(新结构: count + accepted + ignored + self_report_present)
     context_used = _build_context_used(req, ctx_used, sanitized_tasks)
+    if req.workspace_id:
+        context_used["workspace_id"] = req.workspace_id
     context_used["learner_state_used"] = learner_state_count > 0
     context_used["learner_state_snapshot_count"] = learner_state_count
     context_used["learner_forecast_used"] = "[未来七天预测摘要]" in learner_state_context
