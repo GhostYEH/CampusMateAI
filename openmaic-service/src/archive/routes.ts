@@ -29,11 +29,19 @@ import { IDEMPOTENCY_HEADER, stageResponse } from '../workspace/routes.ts';
 import { exportStage } from './export.ts';
 import { decodeArchivePayload, readArchive } from './import.ts';
 import { MAIC_FORMAT, MAIC_FORMAT_VERSION } from './manifest.ts';
+import { exportDocx } from '../exporters/docx.ts';
+import { exportMarkdown } from '../exporters/markdown.ts';
+import { exportPptx } from '../exporters/pptx.ts';
+import { importPptx } from '../importers/pptx.ts';
 
 export const ARCHIVE_READ_SCOPE = 'archive:read';
 export const ARCHIVE_WRITE_SCOPE = 'archive:write';
 export const EXPORT_MAIC_CAPABILITY: Capability = 'export-maic';
 export const IMPORT_MAIC_CAPABILITY: Capability = 'import-maic';
+export const EXPORT_PPTX_CAPABILITY: Capability = 'export-pptx';
+export const EXPORT_MARKDOWN_CAPABILITY: Capability = 'export-markdown';
+export const EXPORT_DOCX_CAPABILITY: Capability = 'export-docx';
+export const IMPORT_PPTX_CAPABILITY: Capability = 'import-pptx';
 
 export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 
@@ -53,6 +61,22 @@ function parseJsonBody(request: RouteRequest): Record<string, unknown> {
     throw new WorkspaceError('invalid_request', 'request body must be a JSON object');
   }
   return parsed as Record<string, unknown>;
+}
+
+function decodeBinaryBody(value: unknown, field: string): Buffer {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 6_000_000) {
+    throw new WorkspaceError('invalid_request', `${field} must be a bounded base64 string`);
+  }
+  let decoded: Buffer;
+  try {
+    decoded = Buffer.from(value, 'base64');
+  } catch {
+    throw new WorkspaceError('invalid_request', `${field} is not valid base64`);
+  }
+  if (decoded.length === 0 || decoded.toString('base64') !== value.replace(/\s/g, '')) {
+    throw new WorkspaceError('invalid_request', `${field} is not valid base64`);
+  }
+  return decoded;
 }
 
 /** Same translation the editor uses, so a rejected document reads the same way. */
@@ -126,6 +150,80 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
             archive: exported.archive.toString('base64'),
           },
         };
+      }),
+    },
+    ...[
+      ['markdown', EXPORT_MARKDOWN_CAPABILITY, exportMarkdown],
+      ['docx', EXPORT_DOCX_CAPABILITY, exportDocx],
+      ['pptx', EXPORT_PPTX_CAPABILITY, exportPptx],
+    ].map(([format, capability, exporter]) => ({
+      method: 'GET' as const,
+      pattern: `/internal/courses/:courseId/workspaces/:workspaceId/stages/:stageId/export/${format}`,
+      scopes: [ARCHIVE_READ_SCOPE],
+      courseScoped: true,
+      capabilities: [capability as Capability],
+      handler: (request: RouteRequest) => respond(() => {
+        const identity = actor(request);
+        const workspace = repository.getWorkspace(identity);
+        const stage = repository.getStage({ ...identity, stageId: request.params.stageId ?? '' });
+        const exported = (exporter as (input: { stage: typeof stage; exportedAt: string }) => ReturnType<typeof exportMarkdown>)({
+          stage,
+          exportedAt: now(),
+        });
+        return {
+          status: 200,
+          body: {
+            format,
+            filename: exported.filename,
+            stage_title: exported.stageTitle,
+            byte_size: exported.byteSize,
+            sha256: exported.sha256,
+            media_type: exported.mediaType,
+            workspace_name: workspace.name,
+            content: exported.content.toString('base64'),
+          },
+        };
+      }),
+    })),
+    {
+      method: 'POST',
+      pattern: '/internal/courses/:courseId/workspaces/:workspaceId/import/pptx',
+      scopes: [ARCHIVE_WRITE_SCOPE],
+      courseScoped: true,
+      capabilities: [IMPORT_PPTX_CAPABILITY],
+      handler: (request) => respond(() => {
+        const body = parseJsonBody(request);
+        const key = request.headers[IDEMPOTENCY_HEADER]?.trim();
+        if (!key) throw new WorkspaceError('invalid_request', 'Idempotency-Key is required for this request');
+        if (key.length > MAX_IDEMPOTENCY_KEY_LENGTH) throw new WorkspaceError('invalid_request', 'Idempotency-Key is too long');
+        const identity = actor(request);
+        const userId = request.claims.sub;
+        const requestHash = hashRequest({ method: request.method, path: request.url.pathname, body });
+        const stored = idempotency.lookup(userId, key, requestHash);
+        if (stored) return stored;
+        const imported = importPptx(decodeBinaryBody(body.pptx, 'pptx'), {
+          title: typeof body.title === 'string' ? body.title : '导入的课件',
+        });
+        const prepared = prepareStage(imported);
+        const created = repository.createStage({
+          ...identity,
+          title: prepared.document.stage.name,
+          document: prepared.document,
+          dslVersion: prepared.document.dslVersion,
+          now: now(),
+        });
+        const response: RouteResponse = {
+          status: 201,
+          body: { stage: stageResponse(created, { includeDocument: false }), migrated: prepared.migrated, format: 'pptx' },
+        };
+        idempotency.record(
+          userId,
+          key,
+          { courseId: identity.courseId, method: request.method, path: request.url.pathname },
+          requestHash,
+          response,
+        );
+        return response;
       }),
     },
     {
