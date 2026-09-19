@@ -118,6 +118,7 @@ export default function CounselorPage() {
   const recentTasksRef = useRef([]);
   // 课程辅导上下文：从 URL 查询参数读取（?course=<id>&prompt=<初始问题>）。
   const [courseId, setCourseId] = useState(() => new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("course") || null);
+  const [workspaceId] = useState(() => new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("workspace") || null);
   const [courseName, setCourseName] = useState("");
 
   useEffect(() => {
@@ -151,11 +152,11 @@ export default function CounselorPage() {
     const first = nextMessages.find((item) => item.role === "user");
     if (!first || !id) return;
     setSessions((current) => {
-      const next = [{ id, title: first.text.slice(0, 24), updatedAt: new Date().toISOString(), messages: nextMessages, sources: nextSources }, ...current.filter((item) => item.id !== id)].slice(0, 12);
+      const next = [{ id, workspaceId, title: first.text.slice(0, 24), updatedAt: new Date().toISOString(), messages: nextMessages, sources: nextSources }, ...current.filter((item) => item.id !== id)].slice(0, 12);
       localStorage.setItem("campus_counselor_sessions", JSON.stringify(next));
       return next;
     });
-  }, []);
+  }, [workspaceId]);
 
   const send = useCallback(async (value = input) => {
     const text = value.trim();
@@ -177,6 +178,7 @@ export default function CounselorPage() {
         recentTasks: recentTasksRef.current,
         webSearch: webSearchEnabled,
         attachment,
+        workspaceId: workspaceId,
         signal: aborter.current.signal,
         onSources: (items) => {
           if (!isCurrentChat()) return;
@@ -214,7 +216,7 @@ export default function CounselorPage() {
       // 只有仍属于本代次才清 loading：否则旧请求的 finally 会把新会话的发送态清掉
       if (isCurrentChat()) { setSending(false); aborter.current = null; }
     }
-  }, [attachment, conversationId, input, messages, persistSession, sending, speakSpeech, stopSpeech, webSearchEnabled, courseId]);
+  }, [attachment, conversationId, input, messages, persistSession, sending, speakSpeech, stopSpeech, webSearchEnabled, courseId, workspaceId]);
 
   useEffect(() => {
     const prompt = new URLSearchParams(window.location.search).get("prompt");
@@ -253,7 +255,7 @@ export default function CounselorPage() {
     <section className="counselor-reference-hero"><RippleDistortion className="counselor-ripple" src="/assets/counselor-campus-hero-reference.png" brushSize={110} strength={0.2} swirl={0.7} rings={4} spacing={8} glint={0.35} tint="#3168da" tintAmount={0.12} grayscale={false} highlightColor="#b9f4ff" trigger="both" quality="medium" enabled={!reduceMotion} /><div className="counselor-reference-hero-wash" /><div className="counselor-reference-hero-copy"><span className="counselor-hero-kicker">CAMPUS INTELLIGENCE · READY TO HELP</span><div className="counselor-reference-title"><h1>AI校园助手</h1><Icon name="PhSparkle" size={31} /></div><p>你的专属校园智能伙伴，随时为你解答疑问，<br />提供学习与生活的贴心帮助。</p></div></section>
     {notice && <div className="counselor-toast" role="status"><Icon name="PhInfo" size={16} />{notice}</div>}
     {classroomProposal && <ClassroomProposalCard key={classroomProposal.proposal_id || classroomProposal.course_id} proposal={classroomProposal} identity={classroomIdentity} onOpenClassroom={(deepLink) => { if (deepLink) window.location.assign(deepLink); }} />}
-      {courseId && <div className="counselor-course-context" role="status"><Icon name="PhBookOpen" size={18} /><span><strong>当前正在辅导：{courseName || "该课程"}</strong><small>{courseId} · 已定向到课程上下文</small></span><button type="button" onClick={exitCourseContext}><Icon name="PhX" size={14} />退出课程辅导</button></div>}
+      {courseId && <div className="counselor-course-context" role="status"><Icon name="PhBookOpen" size={18} /><span><strong>当前正在辅导：{courseName || "该课程"}</strong><small>{courseId} · {workspaceId ? `已绑定工作台 ${workspaceId}` : "已定向到课程上下文"}</small></span><button type="button" onClick={exitCourseContext}><Icon name="PhX" size={14} />退出课程辅导</button></div>}
     <section className="counselor-reference-grid">
       <aside className="counselor-reference-left">
         <section className="counselor-panel history-panel counselor-session-panel"><div className="counselor-panel-head"><h2>会话记录</h2><button className="new-chat" type="button" onClick={newSession}><Icon name="PhPlus" size={16} />新建对话</button></div><div className="reference-session-list">{displaySessions.map((session) => <button type="button" key={session.id} className={session.id === conversationId ? "active" : ""} onClick={() => restoreSession(session)}><Icon name="PhChatCircleText" size={15} /><strong>{session.title}</strong><small>{sessionTime(session)}</small></button>)}</div><button className="all-history" type="button" onClick={() => setShowAllSessions((value) => !value)}>{showAllSessions ? "收起记录" : "查看全部记录"}<Icon name={showAllSessions ? "PhCaretDown" : "PhCaretRight"} size={14} /></button></section>

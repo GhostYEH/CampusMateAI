@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import json
 
 import pytest
@@ -8,6 +10,12 @@ from app.services.openmaic.service_assertion import (
     decode_service_assertion,
     issue_service_assertion,
 )
+
+
+def _resign(header_b64: str, body_b64: str, secret: str) -> str:
+    """Re-sign a rewritten body so a claim check is reached instead of the MAC."""
+    signature = hmac.new(secret.encode("utf-8"), f"{header_b64}.{body_b64}".encode("ascii"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
 
 
 def test_assertion_is_short_lived_and_contains_course_scope():
@@ -41,7 +49,10 @@ def test_assertion_rejects_tampering_and_course_mismatch():
         payload = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
         payload["aud"] = "other-service"
         tampered_body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).rstrip(b"=").decode()
-        tampered_token = f"{token.split('.')[0]}.{tampered_body}.{token.split('.')[2]}"
+        # The body is re-signed with the real secret, otherwise the MAC check
+        # fails first and the audience rule is never exercised.
+        header_b64 = token.split(".")[0]
+        tampered_token = f"{header_b64}.{tampered_body}.{_resign(header_b64, tampered_body, 'shared-secret')}"
         decode_service_assertion(tampered_token, secret="shared-secret", now=100)
 
 

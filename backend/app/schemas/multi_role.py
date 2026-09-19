@@ -313,6 +313,7 @@ class AssignmentUpdate(BaseModel):
 class AssignmentOut(BaseModel):
     id: str
     class_group_id: str
+    course_id: Optional[str] = None
     author_id: str
     author_name: Optional[str] = None
     title: str

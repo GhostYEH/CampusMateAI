@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from .client import (
     GENERATION_STEPS,
@@ -48,6 +48,7 @@ from .requirement_builder import (
     build_input_payload,
     build_requirement,
     choose_adaptive_mode,
+    mode_label,
     normalize_mode,
 )
 from .public_url import project_session_url, resolve_public_classroom_url
@@ -75,6 +76,14 @@ def _public_step(step: str, status: str = "") -> str:
     """归一化 step 到真实契约取值。"""
     normalized = normalize_step(step, status)
     return normalized if normalized in PUBLIC_STEPS else "initializing"
+
+
+def _safe_mode_label(mode: Any) -> str:
+    """历史数据里可能存在已下线的模式，一条旧记录不该让整个列表失败。"""
+    try:
+        return mode_label(mode)
+    except ValueError:
+        return str(mode or "").strip() or "互动课堂"
 
 
 class OpenMAICClassroomService:
@@ -556,6 +565,58 @@ class OpenMAICClassroomService:
             key=lambda s: s.created_at,
             reverse=True,
         )
+
+    def list_recent(
+        self,
+        *,
+        user_id: str,
+        course_name_of: Callable[[str], Optional[str]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """跨课程"最近内容"聚合。
+
+        唯一职责：把**已经按权限解析过**的课程展平成一条按 `updated_at` 倒序的
+        列表，让浏览器不必为每门课程各发一次历史请求。
+
+        - `course_name_of(course_id)` 由调用方用统一课程可见性策略实现：返回
+          课程名表示可见，返回 `None` 表示不可见 —— 不可见的课程**一律不出现**，
+          因此不会跨课程/跨用户泄漏。
+        - 只收终态成功的课堂（与 `list_classrooms` 同口径）：失败或进行中的
+          任务不属于"最近内容"。
+        - `limit` 由调用方夹紧上限后传入，这里再兜一次底。
+        """
+        if limit <= 0:
+            return []
+        rows: List[Dict[str, Any]] = []
+        for session in self._store.list_user_sessions(user_id=user_id):
+            if session.status != "succeeded":
+                continue
+            course_name = course_name_of(session.course_id)
+            if course_name is None:
+                continue
+            url, reason = project_session_url(self._settings, session)
+            rows.append({
+                "kind": "classroom",
+                "id": session.session_id,
+                "course_id": session.course_id,
+                "course_name": course_name,
+                "title": _safe_mode_label(session.mode),
+                "mode": session.mode,
+                "status": session.status,
+                "scenes_count": session.scenes_count,
+                # 站内深链：回到课程详情的智能辅导栏目，并带上要打开的课堂。
+                # 参数名与 Agent Runtime 的 `input_ref.deep_link` 保持一致。
+                "href": f"/courses/{session.course_id}?tab=mentoring&session={session.session_id}",
+                "classroom_url": url,
+                "classroom_url_unavailable_reason": reason,
+                "created_at": session.created_at,
+                "updated_at": session.updated_at or session.created_at,
+            })
+        rows.sort(
+            key=lambda row: (row["updated_at"], row["created_at"], row["id"]),
+            reverse=True,
+        )
+        return rows[:limit]
 
     def list_classrooms(self, *, user_id: str, course_id: str) -> List[Dict[str, Any]]:
         """历史课堂列表。

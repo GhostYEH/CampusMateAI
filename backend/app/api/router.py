@@ -46,7 +46,16 @@ from .routes import (
     final_review,
     course_research,
     openmaic_classroom,
+    openmaic_archive,
+    openmaic_discovery,
+    openmaic_editor,
     openmaic_fusion,
+    openmaic_materials,
+    openmaic_workspaces,
+    openmaic_generation,
+    openmaic_discussion,
+    openmaic_provider,
+    openmaic_tts,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -119,5 +128,21 @@ api_router.include_router(edu.router)
 # OpenMAIC 互动课堂适配层(学生侧课程智能辅导空间)
 api_router.include_router(openmaic_classroom.router)
 api_router.include_router(openmaic_fusion.router)
+# OpenMAIC 学习工作台(受管服务的 workspace/stage 持久化)
+api_router.include_router(openmaic_workspaces.router)
+# OpenMAIC 内容发现(文件夹与站内搜索,同样只经 CampusMate 网关)
+api_router.include_router(openmaic_discovery.router)
+# OpenMAIC 编辑器(Stage/Scene 命令,If-Match + Idempotency-Key)
+api_router.include_router(openmaic_editor.router)
+# OpenMAIC 课程资料(上传即解析,正文只在单份读取时返回)
+api_router.include_router(openmaic_materials.router)
+# OpenMAIC 档案(单份 stage 的 .maic.zip 导出 / 导入)
+api_router.include_router(openmaic_archive.router)
+# OpenMAIC 生成任务与产物下载(排队 + 轮询)
+api_router.include_router(openmaic_generation.router)
+# OpenMAIC 语音合成与多智能体圆桌(入队即返回 202,音频/记录经产物下载)
+api_router.include_router(openmaic_tts.router)
+api_router.include_router(openmaic_discussion.router)
+api_router.include_router(openmaic_provider.router)
 
 __all__ = ["api_router"]

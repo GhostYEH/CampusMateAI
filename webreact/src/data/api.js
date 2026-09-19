@@ -343,6 +343,378 @@ export async function listInteractiveClassrooms(courseId) {
   return dataOf(await client.get(`/courses/${courseId}/interactive-classroom`));
 }
 
+/**
+ * 受管 OpenMAIC 服务的公开状态。
+ * `state` 是唯一判据：disabled / unavailable / degraded / ready。
+ * 只有 ready 时 `capabilities` 才非空。
+ */
+export async function getOpenMAICFusionStatus() {
+  return dataOf(await client.get("/openmaic/fusion/status"));
+}
+
+/**
+ * 跨课程"最近内容"聚合（服务端已按权限过滤并按 updated_at 倒序）。
+ * 取代浏览器对前 N 门课程分别发历史请求。
+ */
+export async function getOpenMAICRecent(limit = 20) {
+  return dataOf(await client.get("/openmaic/fusion/recent", { params: { limit } }));
+}
+
+export async function getOpenMAICProviderStatus() {
+  return dataOf(await client.get("/openmaic/fusion/providers"));
+}
+
+// ===== 学习工作台（workspace / stage） =====
+//
+// 两个头是**协议的一部分**，不是可选优化：
+// - 创建必须带 Idempotency-Key，用同一个键重试会拿回同一个工作台而不是再建一个；
+// - 条件写入必须带 If-Match（当前 revision），否则并发修改会被静默覆盖。
+
+/** 创建时使用的幂等键。同一个用户动作重试必须复用同一个键。 */
+export function newIdempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function listOpenMAICWorkspaces(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function createOpenMAICWorkspace(courseId, { name, description = "", folderId, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces`,
+      { name, description, ...(folderId === undefined || folderId === null ? {} : { folder_id: folderId }) },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function getOpenMAICWorkspace(courseId, workspaceId) {
+  return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}`));
+}
+
+/**
+ * 条件更新工作台。
+ *
+ * `folderId` 的三种取值含义不同，必须原样传下去：`undefined` = 不动归档位置，
+ * `null` = 取消归档，字符串 = 归档到该文件夹。把它折叠成一种会让"取消归档"
+ * 变成"什么都不做"。
+ */
+export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision, name, description, folderId }) {
+  const payload = {};
+  if (name !== undefined) payload.name = name;
+  if (description !== undefined) payload.description = description;
+  if (folderId !== undefined) payload.folder_id = folderId;
+  return dataOf(
+    await client.patch(`/courses/${courseId}/workspaces/${workspaceId}`, payload, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function deleteOpenMAICWorkspace(courseId, workspaceId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/workspaces/${workspaceId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function listOpenMAICStages(courseId, workspaceId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function getOpenMAICStage(courseId, workspaceId, stageId) {
+  return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`));
+}
+
+export async function createOpenMAICStage(courseId, workspaceId, { title, document = null, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages`,
+      { title, ...(document ? { document } : {}) },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function replaceOpenMAICStage(courseId, workspaceId, stageId, { revision, document, title }) {
+  return dataOf(
+    await client.put(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`,
+      { document, ...(title === undefined ? {} : { title }) },
+      { headers: { "If-Match": String(revision) } },
+    ),
+  );
+}
+
+export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function generateOpenMAICStage(courseId, workspaceId, { mode, prompt, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/generate`,
+    { mode, prompt },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function getOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.get(`/courses/${courseId}/jobs/${jobId}`));
+}
+
+export async function cancelOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/cancel`));
+}
+
+export async function retryOpenMAICJob(courseId, jobId) {
+  return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/retry`));
+}
+
+export async function synthesizeOpenMAICTts(courseId, { text, instruction, voice, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/tts`,
+    { text, ...(instruction ? { instruction } : {}), ...(voice ? { voice } : {}) },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function runOpenMAICDiscussion(courseId, { prompt, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/discussion`,
+    { prompt },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function getOpenMAICArtifact(courseId, artifactId) {
+  const response = await client.get(`/courses/${courseId}/artifacts/${artifactId}`, { responseType: "blob" });
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    mediaType: response.headers?.["content-type"] || "",
+  };
+}
+
+export async function enqueueOpenMAICStageVideo(courseId, workspaceId, stageId, { idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/video`,
+    {},
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
+export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,
+    { board },
+    { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+  ));
+}
+
+// ===== 文件夹与站内搜索 =====
+//
+// 两者都只经 CampusMate 后端。搜索的关键词长度与空值在网关和受管服务各校验
+// 一次；前端这里只负责"空关键词不发请求"，避免把"没输入"变成"返回全部"。
+
+export async function listOpenMAICFolders(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/folders`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function createOpenMAICFolder(courseId, { name, parentId = null, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/folders`,
+      { name, ...(parentId ? { parent_id: parentId } : {}) },
+      { headers: { "Idempotency-Key": idempotencyKey } },
+    ),
+  );
+}
+
+export async function getOpenMAICFolder(courseId, folderId) {
+  return dataOf(await client.get(`/courses/${courseId}/folders/${folderId}`));
+}
+
+/** `parentId` 为 `null` 表示移动到根层；`undefined` 表示不改层级。 */
+export async function updateOpenMAICFolder(courseId, folderId, { revision, name, parentId }) {
+  const payload = {};
+  if (name !== undefined) payload.name = name;
+  if (parentId !== undefined) payload.parent_id = parentId;
+  return dataOf(
+    await client.patch(`/courses/${courseId}/folders/${folderId}`, payload, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function deleteOpenMAICFolder(courseId, folderId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/folders/${folderId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+export async function searchOpenMAICContent(courseId, { query, limit = 20, cursor = null }) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/search`, {
+      params: { q: query, limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+// ===== 课程资料 =====
+//
+// 上传是**多部分表单**：文件字节只走这一条路，且只在 CampusMate 网关与浏览器
+// 之间。网关解析出正文后才调用受管服务，所以内部调用里从来没有文件本身。
+// 创建必须带 Idempotency-Key（重试不能变成第二份资料），删除必须带 If-Match。
+
+export async function listOpenMAICMaterials(courseId, { limit = 20, cursor = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/materials`, {
+      params: { limit, ...(cursor ? { cursor } : {}) },
+    }),
+  );
+}
+
+export async function uploadOpenMAICMaterial(courseId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/materials`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
+/** 唯一会返回正文的资料接口。 */
+export async function getOpenMAICMaterial(courseId, materialId) {
+  return dataOf(await client.get(`/courses/${courseId}/materials/${materialId}`));
+}
+
+export async function deleteOpenMAICMaterial(courseId, materialId, { revision }) {
+  return dataOf(
+    await client.delete(`/courses/${courseId}/materials/${materialId}`, {
+      headers: { "If-Match": String(revision) },
+    }),
+  );
+}
+
+/** 批量解析引用：返回服务端**授权过**的引用与没能解析到的 id。 */
+export async function resolveOpenMAICMaterials(courseId, { materialIds }) {
+  return dataOf(
+    await client.post(`/courses/${courseId}/materials/resolve`, { material_ids: materialIds }),
+  );
+}
+
+// ===== `.maic.zip` 导出 / 导入 =====
+//
+// 导出返回的是**字节**，不是 JSON：档案是学生要保存的文件。响应类型必须是 blob，
+// 否则 axios 会把 zip 当文本处理。下载名由服务端放在 `Content-Disposition` 里
+// （中文走 RFC 5987 的 filename*），前端只解析、不自己拼。
+// 导入用多部分表单：学生选的是文件，网关负责把它编码成内部调用需要的形状。
+
+export async function exportOpenMAICStage(courseId, workspaceId, stageId) {
+  const response = await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export`,
+    { responseType: "blob" },
+  );
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    sha256: response.headers?.["x-archive-sha256"] || "",
+  };
+}
+
+export async function exportOpenMAICStageFormat(courseId, workspaceId, stageId, format) {
+  const response = await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/${format}`,
+    { responseType: "blob" },
+  );
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    sha256: response.headers?.["x-archive-sha256"] || "",
+  };
+}
+
+export async function importOpenMAICStage(courseId, workspaceId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/workspaces/${workspaceId}/import`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
+export async function importOpenMAICPptx(courseId, workspaceId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/workspaces/${workspaceId}/import/pptx`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
+// ===== 编辑器（Stage 命令） =====
+//
+// 提交的是**命令列表**，不是整份文档：整份回传会让没看到并发修改的作者静默
+// 回退别人的改动。两个头同样属于协议：Idempotency-Key 防止重试重复建场景，
+// If-Match 携带这组命令所基于的 revision。
+
+export async function getOpenMAICStageOutline(courseId, workspaceId, stageId) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/outline`),
+  );
+}
+
+/** 播放计划（渲染决定 + 恢复位置）。`sceneId` 是刷新后要回到的场景。 */
+export async function getOpenMAICStagePlayback(courseId, workspaceId, stageId, { sceneId = null } = {}) {
+  return dataOf(
+    await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/playback`, {
+      params: sceneId ? { scene_id: sceneId } : {},
+    }),
+  );
+}
+
+export async function getOpenMAICStageScene(courseId, workspaceId, stageId, sceneId) {
+  return dataOf(
+    await client.get(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}`,
+    ),
+  );
+}
+
+export async function applyOpenMAICStageCommands(courseId, workspaceId, stageId, { commands, revision, idempotencyKey }) {
+  return dataOf(
+    await client.post(
+      `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/commands`,
+      { commands },
+      { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+    ),
+  );
+}
+
 /** 失败时重试生成。 */
 export async function retryInteractiveClassroom(courseId, sessionId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));
@@ -368,7 +740,7 @@ export async function decideAgentApproval(approvalId, decision, reason) {
   );
 }
 
-export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null } = {}) {
+export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null, workspaceId = null } = {}) {
   try {
     const token = localStorage.getItem("campus_access_token");
     const response = await fetch(`${BASE_URL}/counselor/chat`, {
@@ -377,6 +749,7 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
         message, stream: true, web_search: webSearch, attachment, recent_tasks: recentTasks,
         ...(conversationId ? { conversation_id: conversationId } : {}),
         ...(courseId ? { course_id: courseId } : {}),
+        ...(workspaceId ? { workspace_id: workspaceId } : {}),
       }), signal,
     });
     if (!response.ok) throw new Error(`服务器错误 (${response.status})`);

@@ -12,6 +12,18 @@
 
 受管服务只接入经过审计的必要 DSL、renderer、editor、importer/exporter 和服务端能力；不复制 `.git`、`node_modules`、`.next`、运行时数据、日志、密钥或本机配置。
 
+### 本机运行副本（不是来源）
+
+开发机上另有一份 OpenMAIC 运行副本。它**不是**上述来源，也不能作为 provenance：
+
+- `package.json` 版本为 `1.0.1`，比固定的 `v1.0.3` 旧；
+- 没有 `.git` 元数据，无法证明 commit；
+- 含构建产物、运行时数据和本地凭据文件。
+
+逐文件比对（`third_party/openmaic/source-manifest.sha256`，2976 条）：2760 条一致、166 条不同、50 条缺失。
+其中 `packages/@openmaic/dsl/src/**` 全部 16 个文件与 v1.0.3 **逐字节一致**，因此 DSL 契约的移植结论对该运行副本同样成立。
+它可以被当作只读的“实际运行行为”参考，但任何提交产物、清单或 NOTICE 都不得引用它，也不得把它的路径写进仓库文件。
+
 ## 拓扑和边界
 
 ```text
@@ -38,7 +50,23 @@ FastAPI 的脱敏模板位于 `backend/.env.example`：
 - `OPENMAIC_SERVICE_TIMEOUT_SECONDS`：内部调用超时。
 - 既有 `OPENMAIC_*` 课堂适配配置继续由 `backend/app/services/openmaic/**` 使用。
 
-服务模板位于 `openmaic-service/.env.example`。启动脚本从仓库根目录解析路径：
+服务模板位于 `openmaic-service/.env.example`。除地址/密钥/数据库外，服务还接受可选的
+上游 provider 配置；两组变量必须成对出现，缺一在启动即报错（fail-closed）：
+
+- `OPENMAIC_PROVIDER_BASE_URL` / `OPENMAIC_PROVIDER_API_KEY` / `OPENMAIC_PROVIDER_MODEL`：
+  OpenAI 兼容的 chat-completions 上游，用于学习内容生成与圆桌讨论。
+  未配置时生成退回内置 local template，讨论如实返回 `provider_unavailable`。
+- `OPENMAIC_TTS_BASE_URL` / `OPENMAIC_TTS_API_KEY` / `OPENMAIC_TTS_MODEL` / `OPENMAIC_TTS_VOICE`：
+  语音合成上游（MiMo TTS：`mimo-v2.5-tts`，默认音色 `苏打`，响应为 base64 WAV）。
+  未配置时语音合成如实返回 `provider_unavailable`。
+- `OPENMAIC_RENDER_SERVICE_URL` / `OPENMAIC_RENDER_SERVICE_TOKEN`：私有 MP4 render-service；
+  两者必须成对出现，服务只在配置完整时广告 `export-video`/`render`。render-service 默认绑定
+  `127.0.0.1`，只接受 token 保护的受限 Stage JSON，并调用本机 ffmpeg；不得暴露到公网。
+- 两组各自支持 `*_TIMEOUT_SECONDS`（默认生成 120、TTS 180）。
+- 密钥只写在被 git 忽略的 `.env` 或 secret provider 里；`provider-status` 路由只暴露
+  能力布尔值，永不回显密钥或上游地址。
+
+启动脚本从仓库根目录解析路径：
 
 ```powershell
 pwsh -NoProfile -File openmaic-service/scripts/start.ps1
@@ -48,11 +76,28 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 
 ## 健康检查
 
-- `GET /internal/health/live`：进程存活，不检查依赖。
-- `GET /internal/health/ready`：依赖就绪；失败返回 503。
-- CampusMate `GET /api/v1/openmaic/fusion/status`：唯一面向浏览器的能力状态，失败只返回 `service_unavailable`/`degraded`，不泄露内部 URL、断言或密钥。
+- `GET /internal/health/live`：进程存活，不检查依赖，**匿名**。
+- `GET /internal/health/ready`：依赖就绪；需要 `service:status` 断言，失败返回 503。
+- CampusMate `GET /api/v1/openmaic/fusion/status`：唯一面向浏览器的能力状态。
+  响应里的 `state` 是唯一判据，取值 `disabled` / `unavailable` / `degraded` / `ready`：
+
+  | state | 含义 | `capabilities` |
+  | --- | --- | --- |
+  | `disabled` | `OPENMAIC_FUSION_ENABLED=false`，网关不去连服务 | 空 |
+  | `unavailable` | 未配置地址/密钥、连不上、或断言被拒（`service_unconfigured` / `service_unreachable` / `assertion_rejected`） | 空 |
+  | `degraded` | 服务在线但自身依赖未就绪（`dependency_unavailable`） | 空 |
+  | `ready` | 服务与依赖都就绪 | 服务端实际挂载的能力标签 |
+
+  只有 `ready` 才下发 capability —— 依赖没就绪时声称能力可用，会让浏览器打开一个必然失败的入口。
+  任何状态都不泄露内部 URL、断言或密钥。
+
+- `GET /api/v1/openmaic/fusion/recent?limit=20`：当前用户**所有可见课程**的最近学习内容，
+  一次请求取代浏览器对每门课程分别拉取历史。limit 默认 20、上限 50。
+  课程可见性复用统一策略（`can_view_course`），条目只含终态成功的课堂，
+  并附带站内深链 `/courses/{courseId}?tab=mentoring&session={sessionId}`。
 
 服务离线时，课程、作业查看、保存和提交仍由 CampusMate 正常提供；OpenMAIC 入口显示不可用或降级状态，不使用静态假数据。
+前端只按 `state` + 真实 `capabilities` 逐项开放入口：`disabled`/`unavailable`/`degraded` 一律关闭，不显示"正在接入"这类占位文案。
 
 ## 安全要求
 
@@ -60,8 +105,34 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 - Provider Key 只存在服务端，不能进入前端 bundle、API 响应、快照、数据库或日志。
 - `OPENMAIC_SERVICE_URL` 启动时拒绝凭据、query、fragment 和路径；后续出站调用仍需遵守 SSRF allowlist。
 - 上传必须限制大小、类型和解压路径；HTML 必须净化；跨源内容必须使用最小 sandbox。
+  课程资料的上传额外有三条硬规则：**格式由扩展名决定**（客户端声明的 Content-Type 不参与判断，
+  否则二进制可以被当成文本来解码）、**解析不了就记 `unsupported` 且正文为空**（不伪造正文）、
+  **状态与正文必须一致**（`unsupported` 带正文会被服务端拒绝）。
+  正文解析依赖 `python-docx` 与 `PyPDF2`（已在 `backend/requirements.txt`）；缺失时该格式降级为
+  `unsupported`，而不是报错。
+- `.maic.zip` 的解包面按"永不信任容器"处理：路径穿越名、Zip64、加密条目、未知压缩方法、
+  软链接条目、重复条目名、CRC 或声明尺寸不符、条目数与解压总量超限，全部**按名字拒绝**，
+  绝不做尽力而为的解析。解压上限按目录声明的尺寸在解压**之前**判定，再用实际解出的长度复核。
+  已解出的文档仍然要走 `prepareStage`，档案不是绕开编辑器校验的旁门。
+  导出响应是 `application/zip`；因为是 HTTP 头（latin-1），中文文件名使用 RFC 5987 的
+  `filename*=UTF-8''…` 并附一个 ASCII 回退名。
 - 生产部署不得把内部服务 origin 或访问码投影给浏览器。
 
 ## 能力状态
 
-完整逐项状态以 `docs/openmaic-capability-matrix.md` 为准。当前状态是“部分完成”：A 切片已提交，首页、工作台、编辑器、播放器、导入导出和作业讲解仍需后续切片完成和验证。
+完整逐项状态以 `docs/openmaic-capability-matrix.md` 为准。当前状态是“部分完成”：
+A 切片（来源审计、受管服务、断言强制、状态代理与最近内容聚合）与 B 切片
+（`/courses` 原生首页与真实课程栏）已完成并验证；C 切片中的内容发现部分
+（文件夹树与站内搜索：`openmaic-service/src/discovery/**`、网关
+`openmaic_discovery.py`、Web `DiscoveryPanel.jsx`，含工作台归档）已落地并通过
+服务端/网关/Web 自动化测试，但**尚未执行浏览器验收**；E 切片中的课程资料部分
+（上传/解析/引用：`openmaic-service/src/material/**`、`material_extraction.py`、
+`openmaic_materials.py`、`MaterialsPanel.jsx`）同样已落地并通过三层自动化测试，
+**尚未执行浏览器验收；原始字节在 2 MiB 内受限落库，并可随 stage 引用进入归档**；
+`.maic.zip` 的单份 stage 导出与导入（`openmaic-service/src/archive/**`、
+`openmaic_archive.py`、`archiveModel.js`、`WorkspacePanel.jsx`）已打通服务端、网关与 Web
+三层并通过测试，**同样尚未执行浏览器验收；v2 档案会携带 stage 明确引用的素材资源**；
+当前已补齐工作台编辑/播放、PPTX/Markdown/DOCX 导出、Provider 生成、白板、TTS、圆桌、
+作业讲解确认门和受管 MP4 任务边界；完整 Stage 内容编辑、PPTX 图片/版式保真、素材原文件
+字节存储、白板/音频/圆桌时间线播放、快速询问与 native workspace 会话绑定、真实 Provider/ffmpeg
+联调以及浏览器 40 项验收仍保持“部分完成”。浏览器工具不可用时不得用源码测试冒充浏览器证据。

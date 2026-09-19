@@ -296,6 +296,40 @@ class OpenMAICResultStore:
         sessions.sort(key=lambda s: s.created_at)
         return sessions
 
+    def list_user_sessions(self, *, user_id: str) -> List[OpenMAICSession]:
+        """该用户**所有课程**下的会话（用于跨课程"最近内容"聚合）。
+
+        目录名是 `_safe()` 处理过的，不可逆推原始 course_id，因此以文件内记录的
+        `course_id` 为准；同时要求 `_safe(course_id) == 目录名`，这样被手工放进
+        错误目录、或从别的课程复制过来的文件不会被当成该课程的记录。
+        归属校验（`user_id` / `course_id`）与 `_read_session_file` 同口径。
+        """
+        user_dir = self._root / self._safe(user_id)
+        sessions: List[OpenMAICSession] = []
+        if not user_dir.is_dir():
+            return sessions
+        for course_dir in user_dir.iterdir():
+            if not course_dir.is_dir():
+                continue
+            for path in course_dir.glob("*.json"):
+                if path.name.startswith("."):
+                    continue
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                course_id = data.get("course_id")
+                # 归属校验：文件声明的 user/course 必须与它所在的目录位置一致，
+                # 否则该文件不属于这门课（手工搬动 / 跨用户或跨课程复制）。
+                if data.get("user_id") != user_id:
+                    continue
+                if not isinstance(course_id, str) or self._safe(course_id) != course_dir.name:
+                    continue
+                sessions.append(OpenMAICSession.from_dict(data))
+        return sessions
+
     def active_session(self, *, user_id: str, course_id: str) -> Optional[OpenMAICSession]:
         for session in self.list_sessions(user_id=user_id, course_id=course_id):
             if not session.is_terminal:

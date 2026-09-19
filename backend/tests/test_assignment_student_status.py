@@ -24,3 +24,16 @@ def test_assignment_output_includes_current_student_submission_status():
     output = _assignment_to_out(assignment, container=container, student_id="student-1")
 
     assert output.submission_status == "submitted"
+
+
+def test_assignment_output_keeps_authorized_course_binding():
+    assignment = AssignmentRow(
+        id="assignment-1",
+        class_group_id="class-1",
+        author_id="teacher-1",
+        title="实验报告",
+    )
+
+    output = _assignment_to_out(assignment, course_id="course-1")
+
+    assert output.course_id == "course-1"

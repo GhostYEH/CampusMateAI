@@ -6,31 +6,48 @@ import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
+import { normalizeRecentItems } from "../features/openmaic/homeModel.js";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
+
+/** 最近内容的默认条数；上限由服务端固定（50）。 */
+const RECENT_LIMIT = 20;
+
 export function CoursesParityPage() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [assignments, setAssignments] = useState([]);
-  const [recentClassrooms, setRecentClassrooms] = useState([]);
+  const [recentItems, setRecentItems] = useState([]);
+  const [recentError, setRecentError] = useState("");
+  const [fusion, setFusion] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   async function load() {
     setLoading(true);
     setError("");
+    setRecentError("");
     try {
       const [coursePayload, assignmentPayload] = await Promise.all([api.getCourses(), api.getAssignments()]);
-      const nextCourses = list(coursePayload);
-      setCourses(nextCourses);
+      setCourses(list(coursePayload));
       setAssignments(list(assignmentPayload));
-      const historyResults = await Promise.allSettled(nextCourses.slice(0, 12).map(async (course) => ({
-        courseId: course.id,
-        ...(await api.listInteractiveClassrooms(course.id)),
-      })));
-      setRecentClassrooms(historyResults.filter((result) => result.status === "fulfilled").map((result) => result.value));
+      // 两个辅助请求各自独立降级：任一失败都不该让课程列表整页失败。
+      const [recentResult, fusionResult, providerResult] = await Promise.allSettled([
+        api.getOpenMAICRecent(RECENT_LIMIT),
+        api.getOpenMAICFusionStatus(),
+        api.getOpenMAICProviderStatus(),
+      ]);
+      if (recentResult.status === "fulfilled") {
+        setRecentItems(normalizeRecentItems(recentResult.value));
+      } else {
+        setRecentItems([]);
+        setRecentError("受管服务暂时不可用，请稍后重试。");
+      }
+      setFusion(fusionResult.status === "fulfilled" ? fusionResult.value : null);
+      setProviderStatus(providerResult.status === "fulfilled" ? providerResult.value : null);
     } catch (err) {
       setError(err?.response?.data?.detail || err?.message || "课程加载失败，请重试。");
     } finally {
@@ -40,9 +57,28 @@ export function CoursesParityPage() {
 
   useEffect(() => { void load(); }, []);
 
+  async function openQuickAsk(query, courseId) {
+    setError("");
+    try {
+      const payload = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
+      let workspace = list(payload)[0];
+      if (!workspace) {
+        workspace = await api.createOpenMAICWorkspace(courseId, {
+          name: "快速询问工作台",
+          description: "由课程快速询问自动创建，用于继续追问与恢复学习上下文。",
+          idempotencyKey: api.newIdempotencyKey(),
+        });
+      }
+      if (!workspace?.id) throw new Error("工作台创建结果缺少标识");
+      navigate(`/counselor?course=${encodeURIComponent(courseId)}&workspace=${encodeURIComponent(workspace.id)}&prompt=${encodeURIComponent(query)}`);
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "无法创建课程工作台，请稍后重试。");
+    }
+  }
+
   return <PageFrame className="courses-page" eyebrow="OpenMAIC / Courses" title="学习内容" description="在 CampusMate 课程上下文中创建、询问和继续学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
-      <OpenMAICHome courses={courses} assignments={assignments} recentClassrooms={recentClassrooms.flatMap((history) => (history.items || []).map((item) => ({ ...item, courseId: history.courseId, courseName: courses.find((course) => String(course.id) === String(history.courseId))?.name }))) } onQuickAsk={(query, courseId) => navigate(`/counselor?course=${encodeURIComponent(courseId)}&prompt=${encodeURIComponent(query)}`)} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
+      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} providerStatus={providerStatus} onQuickAsk={openQuickAsk} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
     </AsyncState>
   </PageFrame>;
 }

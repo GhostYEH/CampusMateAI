@@ -39,11 +39,15 @@ test("the courses page renders the native OpenMAIC command and real course rail"
   assert.match(fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8"), /我的课程/);
 });
 
-test("the courses home does not expose unimplemented import and folder controls as buttons", () => {
+test("the courses home gates import and folder entries on real server capabilities", () => {
   const homeSource = fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8");
-  assert.match(homeSource, /导入能力正在接入/);
-  assert.match(homeSource, /正在接入/);
-  assert.doesNotMatch(homeSource, /onClick=.*导入/);
+  // 入口是否可点只由服务端上报的 capability 决定，不出现"正在接入"这类占位文案，
+  // 也不出现点了没反应的按钮。
+  assert.match(homeSource, /describeFusionState/);
+  assert.match(homeSource, /canImport/);
+  assert.match(homeSource, /canBrowseFolders/);
+  assert.doesNotMatch(homeSource, /正在接入/);
+  assert.doesNotMatch(homeSource, /TODO/);
 });
 
 test("the native home has responsive layouts for desktop, tablet and phone widths", () => {
