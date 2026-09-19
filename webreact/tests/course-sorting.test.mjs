@@ -31,43 +31,24 @@ test("sorts courses by the newest available date in both directions", () => {
   assert.deepEqual(oldestFirst.map((course) => course.id), ["english", "algorithms", "missing-date", "art"]);
 });
 
-test("the courses page renders an animated scroll list with stable course ids and four sort modes", () => {
-  assert.doesNotMatch(pageSource, /react-flip-toolkit/);
-  assert.match(pageSource, /from "\.\.\/components\/AnimatedList\.jsx"/);
-  assert.match(pageSource, /<AnimatedList[\s\S]*items=\{visible\}/);
-  assert.match(pageSource, /topFadeOnScroll/);
-  assert.match(pageSource, /renderItem=\{\(course\)/);
-  assert.match(pageSource, /onItemSelect=\{\(course\) => navigate/);
-  assert.match(pageSource, /enableArrowNavigation=\{!motionReduced\}/);
-  assert.match(pageSource, /name-asc/);
-  assert.match(pageSource, /name-desc/);
-  assert.match(pageSource, /date-asc/);
-  assert.match(pageSource, /date-desc/);
-  assert.match(pageSource, /prefers-reduced-motion/);
-  assert.doesNotMatch(animatedListSource, /react-flip-toolkit/);
-  assert.match(animatedListSource, /layout=\{animateLayout \? "position" : false\}/);
+test("the courses page renders the native OpenMAIC command and real course rail", () => {
+  assert.match(pageSource, /OpenMAICHome/);
+  assert.match(pageSource, /api\.getCourses\(\)/);
+  assert.match(pageSource, /api\.getAssignments\(\)/);
+  assert.doesNotMatch(pageSource, /<AnimatedList/);
+  assert.match(fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8"), /我的课程/);
 });
 
-test("the courses toolbar uses flat targetable sort buttons without a course search field", () => {
-  assert.doesNotMatch(pageSource, /placeholder="搜索课程名称、代码或教师"/);
-  assert.doesNotMatch(pageSource, /<select aria-label="课程排序"/);
-  assert.match(pageSource, /role="group" aria-label="课程排序"/);
-  assert.match(pageSource, /data-target-cursor/);
-  for (const option of ["name-asc", "name-desc", "date-desc", "date-asc"]) {
-    assert.match(pageSource, new RegExp(`value: "${option}"`));
-  }
+test("the courses home does not expose unimplemented import and folder controls as buttons", () => {
+  const homeSource = fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8");
+  assert.match(homeSource, /导入能力正在接入/);
+  assert.match(homeSource, /正在接入/);
+  assert.doesNotMatch(homeSource, /onClick=.*导入/);
 });
 
-test("the courses page keeps the header fixed while only the course list scrolls", () => {
-  assert.match(pageSource, /className="courses-page__scroll-shell"/);
-  assert.match(stylesSource, /\.courses-page\s*\{[\s\S]*height:\s*calc\(100dvh - 112px\)[\s\S]*overflow:\s*hidden/);
-  assert.match(stylesSource, /\.courses-page__content\s*\{[\s\S]*min-height:\s*0/);
-  assert.match(stylesSource, /\.courses-page__scroll-shell\s*\{[\s\S]*overflow:\s*hidden/);
-  assert.match(stylesSource, /\.courses-page__scroll-shell > \.scroll-list-container\s*\{[\s\S]*height:\s*100%/);
-  assert.match(stylesSource, /\.course-sort-list \.animated-list-scroll--grid\s*\{[\s\S]*height:\s*100%[\s\S]*overflow-y:\s*auto/);
-  assert.match(stylesSource, /\.course-sort-list \.animated-list-scroll--top-fade\s*\{[\s\S]*var\(--animated-list-top-alpha, 1\)[\s\S]*var\(--animated-list-mid-alpha, 1\)[\s\S]*#000 112px/);
-  assert.doesNotMatch(stylesSource, /\.courses-page__scroll-shell::before/);
-  assert.match(animatedListSource, /scrollTop \/ 112/);
-  assert.match(animatedListSource, /--animated-list-top-alpha/);
-  assert.match(animatedListSource, /--animated-list-mid-alpha/);
+test("the native home has responsive layouts for desktop, tablet and phone widths", () => {
+  assert.match(stylesSource, /\.openmaic-home\s*\{[\s\S]*grid-template-columns/);
+  assert.match(stylesSource, /@media \(max-width: 1024px\)[\s\S]*\.openmaic-home/);
+  assert.match(stylesSource, /@media \(max-width: 767px\)[\s\S]*\.openmaic-home/);
+  assert.match(stylesSource, /@media \(max-width: 360px\)[\s\S]*\.openmaic-command-panel/);
 });

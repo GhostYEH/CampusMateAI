@@ -54,9 +54,10 @@ test("keeps course identity, teaching information and progress in the redesigned
   );
 });
 
-test("the live courses route uses the interactive course card and no legacy hero", () => {
-  assert.match(parityPageSource, /import \{ CourseCard \} from .*CourseCard\.jsx/);
-  assert.match(parityPageSource, /<CourseCard[\s\S]*progress=/);
+test("the live courses route uses the native OpenMAIC home and no legacy card grid", () => {
+  assert.match(parityPageSource, /OpenMAICHome/);
+  assert.match(parityPageSource, /api\.listInteractiveClassrooms/);
+  assert.doesNotMatch(parityPageSource, /<AnimatedList/);
   assert.doesNotMatch(parityPageSource, /asset-page-hero/);
 });
 
