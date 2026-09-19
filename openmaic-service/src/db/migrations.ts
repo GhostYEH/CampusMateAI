@@ -151,6 +151,46 @@ export const MIGRATIONS: Migration[] = [
          ON materials (user_id, course_id, sha256) WHERE deleted_at IS NULL`,
     ],
   },
+  {
+    version: 5,
+    name: 'jobs_and_artifacts',
+    statements: [
+      `CREATE TABLE jobs (
+         id TEXT PRIMARY KEY,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         kind TEXT NOT NULL,
+         mode TEXT NOT NULL,
+         input_json TEXT NOT NULL,
+         status TEXT NOT NULL,
+         progress INTEGER NOT NULL DEFAULT 0,
+         attempts INTEGER NOT NULL DEFAULT 0,
+         error_code TEXT,
+         artifact_id TEXT,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         started_at TEXT,
+         finished_at TEXT,
+         cancelled_at TEXT,
+         FOREIGN KEY (artifact_id) REFERENCES artifacts(id)
+       )`,
+      `CREATE INDEX idx_jobs_owner_page
+         ON jobs (user_id, course_id, updated_at DESC, id DESC)`,
+      `CREATE TABLE artifacts (
+         id TEXT PRIMARY KEY,
+         job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         filename TEXT NOT NULL,
+         media_type TEXT NOT NULL,
+         byte_size INTEGER NOT NULL,
+         sha256 TEXT NOT NULL,
+         payload BLOB NOT NULL,
+         created_at TEXT NOT NULL
+       )`,
+      `CREATE INDEX idx_artifacts_owner ON artifacts (id, user_id, course_id)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

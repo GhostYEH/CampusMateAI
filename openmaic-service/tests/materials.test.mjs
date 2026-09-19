@@ -462,9 +462,9 @@ test('a missing read scope is forbidden and a missing write scope cannot create'
   });
 });
 
-test('the material table arrives as migration 4 and the schema version tracks it', () => {
+test('the material table remains migration 4 and the schema version tracks later additions', () => {
   assert.equal(SCHEMA_VERSION, MIGRATIONS.at(-1).version);
-  assert.equal(MIGRATIONS.at(-1).version, 4);
+  assert.equal(MIGRATIONS.find((migration) => migration.name === 'materials')?.version, 4);
   const database = new ServiceDatabase(':memory:');
   const row = database.raw
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'materials'")

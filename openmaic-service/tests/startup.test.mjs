@@ -14,6 +14,7 @@ import { createDiscoveryRoutes } from '../src/discovery/routes.ts';
 import { createEditorRoutes } from '../src/editor/routes.ts';
 import { createMaterialRoutes } from '../src/material/routes.ts';
 import { createPlayerRoutes } from '../src/player/routes.ts';
+import { createJobRoutes } from '../src/jobs/routes.ts';
 import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
 
 const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
@@ -112,6 +113,7 @@ test('comes up on a complete configuration and serves authenticated readiness', 
       ...createEditorRoutes({ database: mounted }),
       ...createMaterialRoutes({ database: mounted }),
       ...createPlayerRoutes({ database: mounted }),
+      ...createJobRoutes({ database: mounted }),
     ].flatMap((route) => route.capabilities));
     mounted.close();
     assert.deepEqual(payload.capabilities, declared);

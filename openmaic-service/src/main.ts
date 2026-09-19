@@ -7,6 +7,7 @@ import { createDiscoveryRoutes } from './discovery/routes.ts';
 import { createEditorRoutes } from './editor/routes.ts';
 import { createMaterialRoutes } from './material/routes.ts';
 import { createPlayerRoutes } from './player/routes.ts';
+import { createJobRoutes } from './jobs/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
 
@@ -40,6 +41,7 @@ const server = createServer({
     ...createEditorRoutes({ database }),
     ...createMaterialRoutes({ database }),
     ...createPlayerRoutes({ database, capabilities: { externalCdnAvailable: Boolean(config.externalCdnUrl) } }),
+    ...createJobRoutes({ database }),
   ],
 });
 
