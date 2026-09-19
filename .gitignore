@@ -130,6 +130,13 @@ backend/data/*.db-wal
 backend/data/*.db-shm
 backend/data/uploads/
 
+# OpenMAIC 受管服务自有数据库(断言重放记录 / workspace / stage)
+openmaic-service/data/
+openmaic-service/*.db
+openmaic-service/*.db-journal
+openmaic-service/*.db-wal
+openmaic-service/*.db-shm
+
 # CNN 训练产物与工程验证模型(不纳入版本控制)
 ml/expression_recognition/artifacts/
 ml/expression_recognition/data/

@@ -54,3 +54,42 @@ test('rejects expiry, course mismatch, missing scope and tampering', () => {
   assert.throws(() => verifyServiceAssertion(fixtureToken({ jti: 'scope', scope: [] }), 'c1', ['stage:read'], 100, options), /scope/i);
   assert.throws(() => verifyServiceAssertion(`${fixtureToken()}x`, 'c1', ['stage:read'], 100, options), /signature/i);
 });
+
+test('caps the assertion lifetime', () => {
+  const options = { secret, replayStore: new InMemoryReplayStore() };
+  // 60s is the documented maximum; one second more must be refused.
+  assert.throws(
+    () => verifyServiceAssertion(fixtureToken({ jti: 'long', iat: 100, exp: 161 }), 'c1', ['stage:read'], 100, options),
+    /lifetime/i,
+  );
+  assert.equal(
+    verifyServiceAssertion(fixtureToken({ jti: 'at-limit', iat: 100, exp: 160 }), 'c1', ['stage:read'], 100, options).jti,
+    'at-limit',
+  );
+});
+
+test('skips the course comparison for a route that is not course-scoped', () => {
+  const options = { secret, replayStore: new InMemoryReplayStore() };
+  const claims = verifyServiceAssertion(fixtureToken({ jti: 'unscoped' }), null, ['stage:read'], 100, options);
+  assert.equal(claims.course_id, 'c1');
+});
+
+test('exposes a machine-readable failure code without leaking material', () => {
+  const options = { secret, replayStore: new InMemoryReplayStore() };
+  const cases = [
+    [fixtureToken({ exp: 100 }), 'assertion_expired'],
+    [fixtureToken({ jti: 'code-course' }), 'assertion_course'],
+    [fixtureToken({ jti: 'code-scope', scope: [] }), 'assertion_scope'],
+    [`${fixtureToken({ jti: 'code-sig' })}x`, 'assertion_signature'],
+  ];
+  for (const [token, expectedCode] of cases) {
+    const course = expectedCode === 'assertion_course' ? 'c2' : 'c1';
+    try {
+      verifyServiceAssertion(token, course, ['stage:read'], 100, options);
+      assert.fail(`expected ${expectedCode}`);
+    } catch (error) {
+      assert.equal(error.code, expectedCode);
+      assert.equal(error.message.includes(secret), false);
+    }
+  }
+});

@@ -7,7 +7,12 @@ from typing import Any, Optional
 import httpx
 
 from ...schemas.openmaic_fusion import FusionStatus
+from .capabilities import filter_capabilities
 from .service_assertion import issue_service_assertion
+
+# Health/status is not course-scoped, so the assertion carries a sentinel that is
+# obviously not a CampusMate course id rather than borrowing a real one.
+SERVICE_SCOPE_SENTINEL = "__service__"
 
 
 class OpenMAICFusionClient:
@@ -35,7 +40,7 @@ class OpenMAICFusionClient:
         try:
             assertion = issue_service_assertion(
                 user_id=user_id,
-                course_id="__fusion_status__",
+                course_id=SERVICE_SCOPE_SENTINEL,
                 scopes=["service:status"],
                 secret=self.secret,
             )
@@ -49,11 +54,13 @@ class OpenMAICFusionClient:
                     reason="service_unavailable" if response.status_code >= 500 else "degraded",
                 )
             payload = response.json()
-            capabilities = payload.get("capabilities", []) if isinstance(payload, dict) else []
+            raw = payload.get("capabilities", []) if isinstance(payload, dict) else []
+            # Only tags this build actually understands may reach the browser.
+            capabilities = filter_capabilities(raw if isinstance(raw, list) else [])
             return FusionStatus(
                 enabled=True,
                 available=True,
-                capabilities=[item for item in capabilities if isinstance(item, str)],
+                capabilities=capabilities,
                 reason="ready",
             )
         except Exception:
