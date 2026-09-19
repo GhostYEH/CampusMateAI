@@ -13,12 +13,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
-  counselorHref,
+  workspaceHref,
   describeQuickAskFailure,
   pickReusableWorkspace,
   quickAskRejection,
   shouldBindWorkspace,
 } from "../src/features/openmaic/quickAskModel.js";
+import { DEFAULT_SELECTED_ROLE_IDS, OPENMAIC_AGENT_ROLES } from "../src/features/openmaic/roleModel.js";
 import { describeFusionState } from "../src/features/openmaic/homeModel.js";
 import { describeWorkspaceError } from "../src/features/openmaic/workspaceModel.js";
 
@@ -28,24 +29,36 @@ const homeSource = read("src/components/openmaic/OpenMAICHome.jsx");
 
 // ===== 深链 =====
 
-test("the counselor deep link carries the course and prompt", () => {
-  const href = counselorHref("crs_1", "什么是进程？");
-  assert.match(href, /^\/counselor\?/);
-  assert.match(href, /course=crs_1/);
+test("the OpenMAIC deep link carries the course, prompt, mode and roles", () => {
+  const href = workspaceHref("crs_1", "ws_1", "什么是进程？", {
+    mode: "preset",
+    selectedRoleIds: DEFAULT_SELECTED_ROLE_IDS,
+  });
+  assert.match(href, /^\/courses\/crs_1\/workspaces\/ws_1\?/);
+  assert.match(href, /\/courses\/crs_1\/workspaces\/ws_1/);
   assert.match(href, /prompt=%E4%BB%80%E4%B9%88%E6%98%AF%E8%BF%9B%E7%A8%8B%EF%BC%9F/);
+  assert.match(href, /mode=preset/);
+  assert.match(href, /roles=default-1%2Cdefault-3%2Cdefault-4/);
 });
 
-test("the deep link omits the workspace instead of inventing one", () => {
-  assert.doesNotMatch(counselorHref("crs_1", "q"), /workspace=/);
-  assert.doesNotMatch(counselorHref("crs_1", "q", null), /workspace=/);
-  assert.doesNotMatch(counselorHref("crs_1", "q", ""), /workspace=/);
-  assert.match(counselorHref("crs_1", "q", "ws_9"), /workspace=ws_9/);
+test("the deep link refuses to invent a workspace", () => {
+  assert.throws(() => workspaceHref("crs_1", "", "q"), /工作台/);
+  assert.match(workspaceHref("crs_1", "ws_9", "q"), /\/courses\/crs_1\/workspaces\/ws_9/);
+});
+
+test("the migrated role roster matches the reference classroom controls", () => {
+  assert.deepEqual(OPENMAIC_AGENT_ROLES.map((role) => role.name), [
+    "AI教师", "AI助教", "显眼包", "好奇宝宝", "笔记员", "思考者",
+  ]);
+  assert.deepEqual(DEFAULT_SELECTED_ROLE_IDS, ["default-1", "default-3", "default-4"]);
+  assert.equal(OPENMAIC_AGENT_ROLES.find((role) => role.id === "default-1").required, true);
 });
 
 // ===== 决策 =====
 
-test("a workspace is bound only when the server actually advertised the capability", () => {
-  assert.equal(shouldBindWorkspace(describeFusionState({ state: "ready", capabilities: ["workspace"] })), true);
+test("a workspace is bound only when the server advertises workspace and generation", () => {
+  assert.equal(shouldBindWorkspace(describeFusionState({ state: "ready", capabilities: ["workspace", "generation"] })), true);
+  assert.equal(shouldBindWorkspace(describeFusionState({ state: "ready", capabilities: ["workspace"] })), false);
   assert.equal(shouldBindWorkspace(describeFusionState({ state: "ready", capabilities: ["folder"] })), false);
 
   for (const state of ["disabled", "unavailable", "degraded"]) {

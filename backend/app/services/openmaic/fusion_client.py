@@ -839,6 +839,8 @@ class OpenMAICFusionClient:
         mode: str,
         prompt: str,
         idempotency_key: str,
+        role_mode: str = "preset",
+        selected_role_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
@@ -846,7 +848,12 @@ class OpenMAICFusionClient:
             user_id=user_id,
             course_id=course_id,
             scopes=GENERATION_WRITE_SCOPES,
-            json_body={"mode": mode, "prompt": prompt},
+            json_body={
+                "mode": mode,
+                "prompt": prompt,
+                "role_mode": role_mode,
+                "selected_role_ids": selected_role_ids or [],
+            },
             idempotency_key=idempotency_key,
         )
 

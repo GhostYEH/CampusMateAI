@@ -3,38 +3,36 @@
  *
  * 两条产品事实决定了这里的实现，缺一条就会重演"点一下就整页 503"：
  *
- * 1. **课程辅导本身不依赖学习工作台。** `/counselor?course=…` 只要课程上下文就能
- *    工作，工作台只是"继续追问"的上下文绑定。所以受管服务没就绪时，正确做法是
- *    **不发** `GET /workspaces` 直接进入课程辅导，而不是把一次必然失败的请求
- *    塞进用户的主流程。
+ * 1. **课程 OpenMAIC 生成必须进入工作台。** 这条入口不是校园助手的快捷链接；
+ *    工作台负责持久化生成内容、恢复场景和继续编辑，所以不能降级成 `/counselor`。
  * 2. **绑定失败不是页级错误。** 它只影响这一次绑定，返回的是可展示的局部文案
  *    与下一步动作，不写入页面级 error。
  */
 import { describeWorkspaceError } from "./workspaceModel.js";
 
 /**
- * 课程辅导深链。
- *
- * `workspaceId` 为空时只带课程上下文——**不伪造**工作台关联：辅导页会如实显示
- * "已定向到课程上下文"。
+ * OpenMAIC 工作台深链。工作台 id 是服务端真实创建/复用的结果，禁止客户端猜造。
  */
-export function counselorHref(courseId, prompt, workspaceId = null) {
-  const parts = [];
-  if (courseId) parts.push(`course=${encodeURIComponent(courseId)}`);
-  if (workspaceId) parts.push(`workspace=${encodeURIComponent(workspaceId)}`);
-  if (prompt) parts.push(`prompt=${encodeURIComponent(prompt)}`);
-  return `/counselor?${parts.join("&")}`;
+export function workspaceHref(courseId, workspaceId, prompt, { mode = "preset", selectedRoleIds = [] } = {}) {
+  if (!courseId || !workspaceId) throw new Error("打开 OpenMAIC 工作台需要真实的课程和工作台");
+  const parts = [`prompt=${encodeURIComponent(prompt || "")}`, `mode=${encodeURIComponent(mode)}`];
+  if (selectedRoleIds.length) parts.push(`roles=${encodeURIComponent(selectedRoleIds.join(","))}`);
+  return `/courses/${encodeURIComponent(courseId)}/workspaces/${encodeURIComponent(workspaceId)}?${parts.join("&")}`;
 }
 
 /**
  * 快速询问要不要先绑定工作台。
  *
  * 只有服务端**真实上报**了 `workspace` 能力（即 `state === "ready"`）时才尝试。
- * disabled / unavailable / degraded 一律直接进入课程辅导——那些状态下能力列表
- * 是空的，先请求一次只会拿到 503。
+ * disabled / unavailable / degraded 都不能伪装成已成功进入工作台；入口应显示局部
+ * 可操作错误，让用户在服务恢复后重试。
  */
 export function shouldBindWorkspace(fusionView) {
-  return Boolean(fusionView?.canCreateWorkspace);
+  return Boolean(
+    fusionView?.canCreateWorkspace &&
+    Array.isArray(fusionView?.capabilities) &&
+    fusionView.capabilities.includes("generation"),
+  );
 }
 
 /**
@@ -52,7 +50,7 @@ export function pickReusableWorkspace(payload) {
 /**
  * 把绑定失败翻译成局部文案与可行动作。
  *
- * `fallbackLabel` 恒非空：课程辅导始终可以走，绑定失败不应该让用户问不出问题。
+ * `fallbackLabel` 保留为兼容字段，但课程页不再把它渲染成校园助手跳转。
  */
 export function describeQuickAskFailure(error) {
   const described = describeWorkspaceError(error);
@@ -61,7 +59,7 @@ export function describeQuickAskFailure(error) {
     reason: described.reason || "unknown",
     retryable: described.retryable,
     message: described.message,
-    fallbackLabel: "不绑定工作台，直接进入课程辅导",
+    fallbackLabel: "服务恢复后重试",
   };
 }
 

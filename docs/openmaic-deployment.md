@@ -186,15 +186,15 @@ backend/.venv/Scripts/python.exe webreact/tests/e2e/run_openmaic_courses_e2e.py
 **本轮（课程页故障修复）已通过真实浏览器验收的部分。** 起因是课程页点"快速询问"时
 `GET /api/v1/courses/{courseId}/workspaces?limit=1` 返回 503，页面中央直接显示
 `Request failed with status code 503` 并把整块课程内容替换成一张错误卡片。根因有两个，
-都是结构性的：一是快速询问在一个**不需要**工作台也能运行的流程里，先去做了一次必然
-失败的受管服务请求；二是它把这次失败写进了**页级** error，而页级 error 由 `AsyncState`
-消费，于是整页被替换。修复后 503 带稳定 `details.reason`，前端按原因给出中文文案与
-正确的可重试性，快速询问的失败只出现在输入区，且服务不可用时直接进入课程辅导而不是
-伪造工作台关联。以下各项经 `run_openmaic_courses_e2e.py` 在真实三服务上验证：
+都是结构性的：一是入口原先把工作台失败降级成了 `/counselor`，绕过了 OpenMAIC 的持久化
+生成链路；二是它把失败写进了页级 `error`，页级 error 由 `AsyncState` 消费，于是整页被
+替换。修复后，课程入口只有在服务真实上报 `workspace + generation` 时才创建/复用工作台，
+随后进入原生 OpenMAIC 工作台并自动提交生成；服务异常只显示在输入区，绝不跳小助手或伪造
+工作台关联。以下各项经 `run_openmaic_courses_e2e.py` 在真实三服务上验证：
 
 - 健康链路：真实登录 → `/courses` → 快速询问，`workspaces?limit=1` 为 **200**，
-  并跳转到 `/counselor` 且 URL 携带 `course` / `workspace` / `prompt`；
-- 刷新 `/counselor` 后课程上下文仍在（状态来自 URL，不依赖内存）；
+  并进入 `/courses/{courseId}/workspaces/{workspaceId}`，URL 携带 `prompt` / `mode` / `roles`；
+- 刷新工作台后仍能读取真实 workspace/stage 数据，不会重新跳进 `/counselor`；
 - 运行中停掉受管服务后点击提交：得到 **503** 与局部中文错误
   （`暂时连不上受管 OpenMAIC 服务，请稍后重试。`），**31 门课程列表原样保留**、
   未出现整页错误卡片、已输入的问题与所选课程未丢失；

@@ -8,11 +8,11 @@ import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
 import { describeFusionState, normalizeRecentItems } from "../features/openmaic/homeModel.js";
 import {
-  counselorHref,
   describeQuickAskFailure,
   pickReusableWorkspace,
   quickAskRejection,
   shouldBindWorkspace,
+  workspaceHref,
 } from "../features/openmaic/quickAskModel.js";
 import { formatDateTime } from "../utils/date.js";
 
@@ -89,8 +89,11 @@ export function CoursesParityPage() {
     setQuickAskError(null);
   }
 
-  function gotoCounselor(courseId, query, workspaceId, extras) {
-    navigate(counselorHref(courseId, query, workspaceId), {
+  function gotoOpenMAICWorkspace(courseId, query, workspaceId, extras) {
+    navigate(workspaceHref(courseId, workspaceId, query, {
+      mode: extras?.mode,
+      selectedRoleIds: extras?.selectedRoleIds,
+    }), {
       // 附件是浏览器里的 File 对象，只能走 SPA 导航状态；不落 URL、不落存储。
       state: {
         openmaicWebSearch: Boolean(extras?.webSearch),
@@ -123,11 +126,15 @@ export function CoursesParityPage() {
     const seq = ++quickAskSeq.current;
     setQuickAskError(null);
 
-    // 服务端没上报 workspace 能力（disabled / unavailable / degraded）时直接进入
-    // 课程辅导：课程辅导本来就能独立运行，先发一次必然失败的 GET /workspaces
-    // 只会把它挡住，并且把"没启用"伪装成用户的错误。
+    // OpenMAIC 课程入口必须落到可持久化的工作台；不能用课程辅导页冒充成功。
     if (!shouldBindWorkspace(describeFusionState(fusion))) {
-      gotoCounselor(courseId, query, null, extras);
+      setQuickAskError({
+        kind: "unavailable",
+        reason: "workspace_unavailable",
+        retryable: true,
+        message: "OpenMAIC 学习工作台暂时不可用，请稍后重试。",
+        fallbackLabel: "",
+      });
       return;
     }
 
@@ -135,7 +142,7 @@ export function CoursesParityPage() {
     try {
       const workspace = await resolveQuickAskWorkspace(courseId, seq);
       if (quickAskSeq.current !== seq || !aliveRef.current) return;
-      gotoCounselor(courseId, query, workspace ? workspace.id : null, extras);
+      gotoOpenMAICWorkspace(courseId, query, workspace.id, extras);
     } catch (err) {
       if (quickAskSeq.current !== seq || !aliveRef.current) return;
       logApiError("openmaic-quick-ask", err);
@@ -147,14 +154,6 @@ export function CoursesParityPage() {
       // 也写进条件会让"守卫提前 return"把 busy 永久卡住（按钮从此不可点）。
       if (quickAskSeq.current === seq) setQuickAskBusy(false);
     }
-  }
-
-  /** 绑定失败时的退路：不带工作台直接进入课程辅导（不伪造关联）。 */
-  function skipWorkspaceBinding(query, courseId, extras) {
-    quickAskSeq.current += 1;
-    setQuickAskBusy(false);
-    setQuickAskError(null);
-    gotoCounselor(courseId, query, null, extras);
   }
 
   return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接提问，或创建一份可以继续编辑的学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
@@ -169,9 +168,8 @@ export function CoursesParityPage() {
         quickAskError={quickAskError}
         quickAskBusy={quickAskBusy}
         onQuickAsk={openQuickAsk}
-        onQuickAskFallback={skipWorkspaceBinding}
         onCourseChange={handleCourseChange}
-        onCreateContent={(courseId) => navigate(`/courses/${courseId}`)}
+        onCreateContent={(courseId) => openQuickAsk("创建一份课程学习内容", courseId)}
       />
     </AsyncState>
   </PageFrame>;

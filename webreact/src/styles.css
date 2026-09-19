@@ -1995,6 +1995,34 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-ask__select { width: 100%; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.95); color: var(--ink); font: inherit; }
 .openmaic-ask__input:focus-visible, .openmaic-ask__select:focus-visible { outline: 2px solid #7d9fe8; outline-offset: 1px; border-color: #9bb6ed; }
 .openmaic-ask__context { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.openmaic-role-picker { position: relative; min-width: 0; margin-top: 4px; }
+.openmaic-role-picker__trigger { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.86); color: var(--ink); text-align: left; cursor: pointer; }
+.openmaic-role-picker__trigger:hover, .openmaic-role-picker__trigger:focus-visible { border-color: #9bb6ed; outline: 0; box-shadow: 0 0 0 2px rgba(125,159,232,.12); }
+.openmaic-role-picker__avatars { display: flex; flex: 0 0 auto; padding-left: 3px; }
+.openmaic-role-picker__avatars span, .openmaic-role-row__avatar { display: inline-grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; }
+.openmaic-role-picker__avatars span { width: 24px; height: 24px; margin-left: -3px; border: 2px solid #fff; border-radius: 50%; }
+.openmaic-role-picker__summary { display: grid; min-width: 0; flex: 1; gap: 1px; font-size: 12px; font-weight: 650; }
+.openmaic-role-picker__summary small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.openmaic-role-picker__panel { position: absolute; z-index: 30; top: calc(100% + 7px); right: 0; width: min(100%, 310px); min-width: 270px; padding: 10px; border: 1px solid rgba(184,195,216,.7); border-radius: 15px; background: rgba(255,255,255,.97); box-shadow: 0 18px 42px rgba(53,80,135,.18); }
+.openmaic-role-picker__head { display: grid; gap: 3px; padding: 3px 4px 9px; }
+.openmaic-role-picker__head strong { font-size: 13px; }
+.openmaic-role-picker__head span { color: var(--muted); font-size: 11px; }
+.openmaic-role-picker__modes { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 9px; background: rgba(242,245,251,.84); }
+.openmaic-role-picker__modes button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; padding: 6px 5px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
+.openmaic-role-picker__modes button.is-active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(53,80,135,.12); font-weight: 650; }
+.openmaic-role-picker__list { display: grid; gap: 2px; max-height: 250px; overflow: auto; }
+.openmaic-role-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 6px; border: 0; border-radius: 9px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.openmaic-role-row:hover:not(:disabled), .openmaic-role-row.is-selected { background: #f3f6ff; }
+.openmaic-role-row:disabled { cursor: default; }
+.openmaic-role-row__check { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1px solid #b8c3d8; border-radius: 5px; color: #fff; font-size: 11px; }
+.openmaic-role-row__check.is-checked { border-color: #7254d8; background: #7254d8; }
+.openmaic-role-row__avatar { flex: 0 0 auto; width: 27px; height: 27px; border-radius: 50%; }
+.openmaic-role-row__name { display: grid; min-width: 0; flex: 1; gap: 1px; font-size: 12px; font-weight: 600; }
+.openmaic-role-row__name small, .openmaic-role-row__required { color: var(--muted); font-size: 10px; font-weight: 500; }
+.openmaic-role-picker__auto { display: grid; justify-items: center; gap: 10px; padding: 22px 12px 18px; text-align: center; }
+.openmaic-role-picker__auto-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; color: #7254d8; background: #f0ebff; }
+.openmaic-role-picker__auto p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.openmaic-launch-context { margin: 0 0 -5px; padding: 8px 12px; border-radius: 10px; color: #4e4b89; background: #f4f1ff; font-size: 12px; }
 .openmaic-ask__tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .openmaic-ask__tool { display: inline-flex; align-items: center; gap: 6px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,255,255,.8); color: #4d5a72; font: inherit; font-size: 12.5px; cursor: pointer; }
 .openmaic-ask__tool:hover, .openmaic-ask__tool:focus-visible { border-color: #9bb6ed; color: var(--blue); outline: 0; }

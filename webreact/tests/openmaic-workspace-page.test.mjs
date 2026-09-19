@@ -16,6 +16,8 @@ test("workspace route restores owned content and exposes truthful generation rec
   assert.match(page, /retryOpenMAICJob\(courseId, job\.id\)/);
   assert.match(page, /StageEditorPanel/);
   assert.match(page, /StagePlayerPanel/);
+  assert.match(page, /already populated workspace/);
+  assert.match(page, /launchPrompt/);
 });
 
 test("workspace list links to the native workspace route", () => {

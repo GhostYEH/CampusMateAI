@@ -5,12 +5,12 @@ import "./helpers/setup-globals.mjs";
 import * as api from "../src/data/api.js";
 import { createMockClient } from "./helpers/mock-client.mjs";
 
-test("generation sends the selected mode, prompt and stable idempotency key", async () => {
+test("generation sends the selected mode, prompt, roster and stable idempotency key", async () => {
   const mock = createMockClient(api.default);
   mock.onPost("/courses/c1/workspaces/ws1/generate", { job: { id: "job1", status: "completed" }, stage_id: "stg1" }, 201);
   await api.generateOpenMAICStage("c1", "ws1", { mode: "quiz", prompt: "复习极限", idempotencyKey: "generate-1" });
   const request = mock.lastRequest();
-  assert.deepEqual(request.data, { mode: "quiz", prompt: "复习极限" });
+  assert.deepEqual(request.data, { mode: "quiz", prompt: "复习极限", role_mode: "preset", selected_role_ids: [] });
   assert.equal(request.headers["Idempotency-Key"], "generate-1");
 });
 

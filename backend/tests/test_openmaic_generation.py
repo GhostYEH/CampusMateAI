@@ -41,7 +41,12 @@ def test_generation_route_forwards_course_bound_prompt_and_returns_stage():
     assert response.json()["stage_id"] == "stg_1"
     call = transport.calls[0]
     assert call["url"].endswith("/internal/courses/%s/workspaces/ws_1/generate" % course_id)
-    assert call["json"] == {"mode": "slide", "prompt": "函数极限"}
+    assert call["json"] == {
+        "mode": "slide",
+        "prompt": "函数极限",
+        "role_mode": "preset",
+        "selected_role_ids": [],
+    }
     assert call["headers"]["Idempotency-Key"] == "generate-1"
 
 

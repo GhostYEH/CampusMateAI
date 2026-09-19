@@ -31,6 +31,8 @@ ARTIFACT_MEDIA_TYPES = {
 class GenerationIn(BaseModel):
     mode: str = Field(..., min_length=1, max_length=80)
     prompt: str = Field(..., min_length=1, max_length=2000)
+    role_mode: str = Field("preset", pattern="^(preset|auto)$")
+    selected_role_ids: list[str] = Field(default_factory=list, max_length=7)
 
 
 def _container() -> ServiceContainer:
@@ -66,7 +68,12 @@ async def generate_stage(
 ) -> Dict[str, Any]:
     _require(container)
     assert_course_access(container, user, course_id)
-    return await client.generate_stage(user_id=str(user.id), course_id=course_id, workspace_id=workspace_id, mode=body.mode, prompt=body.prompt, idempotency_key=_key(idempotency_key))
+    return await client.generate_stage(
+        user_id=str(user.id), course_id=course_id, workspace_id=workspace_id,
+        mode=body.mode, prompt=body.prompt, role_mode=body.role_mode,
+        selected_role_ids=body.selected_role_ids,
+        idempotency_key=_key(idempotency_key),
+    )
 
 
 @router.get("/{course_id}/jobs/{job_id}")

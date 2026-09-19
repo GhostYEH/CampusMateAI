@@ -22,6 +22,17 @@ function parseBody(request: RouteRequest): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function selectedRoleIds(body: Record<string, unknown>): string[] {
+  if (!Array.isArray(body.selected_role_ids)) return [];
+  return [...new Set(body.selected_role_ids
+    .filter((value): value is string => typeof value === 'string' && value.trim())
+    .map((value) => value.trim()))].slice(0, 7);
+}
+
+function roleMode(body: Record<string, unknown>): 'preset' | 'auto' {
+  return body.role_mode === 'auto' ? 'auto' : 'preset';
+}
+
 function respond(work: () => RouteResponse): RouteResponse {
   try { return work(); } catch (error) {
     if (error instanceof WorkspaceError) return { status: error.status, body: { error: error.code, message: error.message } };
@@ -72,6 +83,7 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       }
 
       workspaceRepository.getWorkspace({ userId, courseId, workspaceId });
+      const agentIds = roleMode(body) === 'preset' ? selectedRoleIds(body) : [];
       if (options.provider) {
         // Real generation is asynchronous: enqueue and let the worker run the
         // upstream call, then clients poll the job.
@@ -85,7 +97,7 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       }
       const job = jobs.create({ userId, courseId, kind: 'generation', mode, request: body, now: now() });
       jobs.markRunning({ userId, courseId, jobId: job.id, now: now() });
-      const prepared = prepareStage(buildGeneratedStage(mode, prompt));
+      const prepared = prepareStage(buildGeneratedStage(mode, prompt, Date.now(), { agentIds }));
       const stage = workspaceRepository.createStage({
         userId, courseId, workspaceId, title: prompt.slice(0, 200),
         document: prepared.document, dslVersion: prepared.document.dslVersion, now: now(),

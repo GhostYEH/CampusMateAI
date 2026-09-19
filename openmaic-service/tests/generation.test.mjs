@@ -53,6 +53,23 @@ test('generation creates a real persisted stage for every supported mode', async
   });
 });
 
+test('generation persists the selected classroom roster on the stage', async () => {
+  const { server, workspace } = harness();
+  await withServer(server, async (base) => {
+    const result = await call(base, 'POST', `/internal/courses/course-1/workspaces/${workspace.id}/generate`, {
+      body: {
+        mode: 'slide',
+        prompt: '进程和线程',
+        role_mode: 'preset',
+        selected_role_ids: ['default-1', 'default-3', 'default-4'],
+      },
+      headers: headers({ extra: { 'idempotency-key': 'generate-roster' } }),
+    });
+    assert.equal(result.status, 201);
+    assert.deepEqual(result.body.stage.document.stage.agentIds, ['default-1', 'default-3', 'default-4']);
+  });
+});
+
 test('generation rejects unknown modes and does not create a stage', async () => {
   const { server, workspace, database } = harness();
   await withServer(server, async (base) => {

@@ -38,7 +38,12 @@ function widgetContent(mode: GenerationMode, title: string): { type: 'interactiv
   };
 }
 
-export function buildGeneratedStage(mode: GenerationMode, prompt: string, now = Date.now()): StageAggregate & { dslVersion: string } {
+export function buildGeneratedStage(
+  mode: GenerationMode,
+  prompt: string,
+  now = Date.now(),
+  options: { agentIds?: string[] } = {},
+): StageAggregate & { dslVersion: string } {
   const title = clipPrompt(prompt) || '未命名学习内容';
   const stageId = id('stage');
   const sceneId = id('scene');
@@ -81,7 +86,14 @@ export function buildGeneratedStage(mode: GenerationMode, prompt: string, now = 
 
   return {
     dslVersion: DSL_VERSION,
-    stage: { id: stageId, name: title, description: `由本地受管生成流程创建：${title}`, createdAt: now, updatedAt: now },
+    stage: {
+      id: stageId,
+      name: title,
+      description: `由本地受管生成流程创建：${title}`,
+      createdAt: now,
+      updatedAt: now,
+      ...(options.agentIds?.length ? { agentIds: options.agentIds } : {}),
+    },
     scenes: [scene],
   };
 }
@@ -123,7 +135,7 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
  * content and never identities or timestamps (the prompt forbids it), so the
  * service owns the ids, ordering and clock before the validator runs.
  */
-export function materializeGeneratedStage(raw: unknown): StageAggregate & { dslVersion: string } {
+export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[] } = {}): StageAggregate & { dslVersion: string } {
   const now = Date.now();
   const stageId = id('stage');
   const source = isObject(raw) ? raw : {};
@@ -142,7 +154,13 @@ export function materializeGeneratedStage(raw: unknown): StageAggregate & { dslV
   });
   return {
     dslVersion: DSL_VERSION,
-    stage: { ...stageInput, id: stageId, createdAt: now, updatedAt: now } as unknown as StageAggregate['stage'],
+    stage: {
+      ...stageInput,
+      id: stageId,
+      createdAt: now,
+      updatedAt: now,
+      ...(options.agentIds?.length ? { agentIds: options.agentIds } : {}),
+    } as unknown as StageAggregate['stage'],
     scenes,
   };
 }

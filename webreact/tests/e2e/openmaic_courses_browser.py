@@ -375,22 +375,23 @@ def run_checks(service_control) -> dict:
             page.locator("textarea.openmaic-ask__input").fill(question)
             recorder.responses.clear()
             page.locator('form.openmaic-ask button[type="submit"]').click()
-            page.wait_for_url("**/counselor**", timeout=20000)
+            page.wait_for_url(f"**/courses/{course_id}/workspaces/**", timeout=20000)
             list_status = recorder.await_status(page, f"/courses/{course_id}/workspaces?limit=1")
             assert list_status == 200, f"workspaces?limit=1 返回 {list_status}，期望 200"
             _step(report, f"GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {list_status}")
 
             current = page.url
-            assert "course=" in current and "prompt=" in current, f"深链缺少课程或问题：{current}"
-            assert "workspace=" in current, "能力可用时应绑定真实工作台"
-            _step(report, f"跳转到课程辅导，URL 携带 course / workspace / prompt：{current.split('?')[-1][:120]}")
-            expect(page.locator(".counselor-course-context")).to_be_visible(timeout=15000)
-            _step(report, "辅导页显示课程上下文横幅（含工作台绑定）")
+            assert "/counselor" not in current, f"课程 OpenMAIC 入口错误跳进小助手：{current}"
+            assert "prompt=" in current and "mode=" in current and "roles=" in current, f"深链缺少问题、模式或角色：{current}"
+            _step(report, f"进入 OpenMAIC 课程工作台，URL 携带 prompt / mode / roles：{current.split('?')[-1][:160]}")
+            expect(page.locator(".openmaic-generation-panel")).to_be_visible(timeout=15000)
+            _step(report, "工作台显示真实生成面板，没有跳转到小助手")
 
             print("步骤 3：刷新后课程上下文可恢复")
             page.reload(wait_until="domcontentloaded")
-            expect(page.locator(".counselor-course-context")).to_be_visible(timeout=15000)
-            _step(report, "刷新 /counselor 后课程上下文仍在（状态来自 URL，不依赖内存）")
+            expect(page.locator(".openmaic-generation-panel")).to_be_visible(timeout=15000)
+            assert "/counselor" not in page.url
+            _step(report, "刷新工作台后仍可恢复（状态来自真实 workspace/stage 数据）")
 
             print("步骤 4：运行中掉线 —— 局部降级，课程页不被替换")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
@@ -434,9 +435,8 @@ def run_checks(service_control) -> dict:
 
             print("步骤 6：恢复服务后重试，无需刷新整站")
             # 关键顺序：页面必须在**服务在线时**加载，此时 fusion=ready，点击会去绑定
-            # 工作台；随后才停服务，让这一次点击撞上 503。若在服务已停时加载页面，
-            # 页面会正确地走"不绑定工作台、直接进入课程辅导"的降级路径——那是另一种
-            # 正确行为，拿它来断言"出现局部错误"就是测错了东西。
+            # 工作台；随后才停服务，让这一次点击撞上 503。课程 OpenMAIC 入口不能
+            # 以小助手作为伪降级路径。
             service_control.start()
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
             page.wait_for_selector("select.openmaic-ask__select", timeout=20000)
@@ -450,10 +450,11 @@ def run_checks(service_control) -> dict:
             _step(report, "已恢复 openmaic-service，点击局部错误里的「重试」")
             recorder.responses.clear()
             page.locator('.openmaic-ask__error-actions button:has-text("重试")').click()
-            page.wait_for_url("**/counselor**", timeout=25000)
+            page.wait_for_url(f"**/courses/{course_id}/workspaces/**", timeout=25000)
             retry_status = recorder.await_status(page, f"/courses/{course_id}/workspaces?limit=1")
             assert retry_status == 200, f"重试后 workspaces 仍为 {retry_status}"
-            _step(report, f"重试成功：GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {retry_status}，未刷新整站")
+            assert "/counselor" not in page.url
+            _step(report, f"重试成功：GET /api/v1/courses/{course_id}/workspaces?limit=1 → HTTP {retry_status}，进入 OpenMAIC 工作台且未刷新整站")
 
             print("步骤 7：四尺寸截图与溢出检查")
             page.goto(f"{BASE}/courses", wait_until="domcontentloaded")

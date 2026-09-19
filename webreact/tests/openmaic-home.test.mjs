@@ -12,6 +12,7 @@ import {
 
 const pageSource = fs.readFileSync(new URL("../src/pages/ParityPages.jsx", import.meta.url), "utf8");
 const homeSource = fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8");
+const roleSource = fs.readFileSync(new URL("../src/features/openmaic/roleModel.js", import.meta.url), "utf8");
 const courseDetailSource = fs.readFileSync(new URL("../src/pages/CourseDetailPage.jsx", import.meta.url), "utf8");
 
 test("course rail uses real course identity and pending assignment deadlines", () => {
@@ -120,15 +121,14 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask reuses or creates a native workspace before opening counselor", () => {
+test("quick ask reuses or creates a native workspace before opening OpenMAIC", () => {
   assert.match(pageSource, /api\.listOpenMAICWorkspaces\(courseId/);
   assert.match(pageSource, /api\.createOpenMAICWorkspace\(courseId/);
   assert.match(pageSource, /pickReusableWorkspace/);
-  // 只有服务端**真实上报** workspace 能力时才先绑定工作台；其余状态直接进入
-  // 课程辅导，不发那次必然失败的 GET /workspaces。
+  // 只有服务端**真实上报** workspace 能力时才进入 OpenMAIC 工作台。
   assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
-  // 工作台 id 只在真的拿到时才进 URL —— 不伪造关联。
-  assert.match(pageSource, /gotoCounselor\(courseId, query, workspace \? workspace\.id : null, extras\)/);
+  assert.match(pageSource, /gotoOpenMAICWorkspace\(courseId, query, workspace\.id, extras\)/);
+  assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
 });
 
 test("quick ask failures stay local and never replace the course content area", () => {
@@ -148,6 +148,10 @@ test("quick ask failures stay local and never replace the course content area", 
 test("home surface exposes no placeholder entries and no iframe", () => {
   assert.match(homeSource, /aria-label="OpenMAIC 学习工作台"/);
   assert.match(homeSource, /快速询问/);
+  assert.match(homeSource, /课堂角色配置/);
+  assert.match(roleSource, /AI教师/);
+  assert.match(homeSource, /预设模式/);
+  assert.match(homeSource, /自动生成/);
   assert.match(homeSource, /describeFusionState/);
   assert.doesNotMatch(homeSource, /正在接入/);
   assert.doesNotMatch(homeSource, /iframe/);

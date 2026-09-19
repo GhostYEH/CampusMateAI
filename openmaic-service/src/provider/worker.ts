@@ -93,8 +93,13 @@ export function createProviderJobWorker(options: {
     if (!isGenerationMode(mode) || !prompt || !workspaceId) {
       throw new ProviderError('internal_error', 'generation job input is incomplete');
     }
+    const agentIds = input.role_mode === 'preset' && Array.isArray(input.selected_role_ids)
+      ? [...new Set(input.selected_role_ids
+        .filter((value): value is string => typeof value === 'string' && value.trim())
+        .map((value) => value.trim()))].slice(0, 7)
+      : [];
     const raw = await generateStageDocument(options.provider, { mode, prompt });
-    const prepared = prepareStage(materializeGeneratedStage(raw));
+    const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds }));
     const title = String(prepared.document.stage?.name ?? prompt).slice(0, 200);
     workspaces.createStage({
       userId: identity.userId,

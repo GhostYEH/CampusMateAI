@@ -465,10 +465,10 @@ export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revi
   );
 }
 
-export async function generateOpenMAICStage(courseId, workspaceId, { mode, prompt, idempotencyKey }) {
+export async function generateOpenMAICStage(courseId, workspaceId, { mode, prompt, roleMode = "preset", selectedRoleIds = [], idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/generate`,
-    { mode, prompt },
+    { mode, prompt, role_mode: roleMode, selected_role_ids: selectedRoleIds },
     { headers: { "Idempotency-Key": idempotencyKey } },
   ));
 }
