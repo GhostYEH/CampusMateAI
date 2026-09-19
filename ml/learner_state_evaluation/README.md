@@ -108,6 +108,27 @@ coverage/availability, policy safety and determinism, closed-loop recovery and
 oscillation metrics, and a reproducibility manifest. Outputs are ignored under
 `artifacts/`.
 
+### Reading the numbers
+
+The harness reports **measured** values only. Two conventions matter when
+citing these tables:
+
+- `table5_ablation` comes from actually re-running each variant and diffing it
+  against `full_system`. `changed_vs_full_system: false` means the ablated
+  capability had no measurable effect on this dataset — that is a coverage
+  finding about the synthetic scenarios, not evidence that the capability is
+  unnecessary. The comparison includes `decision_chain`, because feedback
+  changes the successor strategy rather than the current decision.
+- Any metric the offline adapter cannot observe is `null`, never `0` or `1.0`,
+  and appears in `metrics.unmeasured` with a reason. `null` means "not
+  measured"; it must not be read as a zero. Likewise
+  `replan_recovery_success_rate` is measured (REPLAN decisions whose successor
+  actually differs from the pre-decision strategy), and it is `null` when no
+  REPLAN occurred.
+
+Every row carries `data_source_type: synthetic`. These are offline engineering
+results and say nothing about real student outcomes.
+
 The replay evaluator uses a simulated clock and returns lineage, evidence
 references, plan summaries, outcomes, decisions, and warning codes. It accepts
 no repository writer, creates no task, sends no notification, and makes no
