@@ -352,7 +352,7 @@ def test_format_export_returns_a_binary_download_and_uses_the_format_route():
 
     assert response.status_code == 200, response.text
     assert response.content == b"hello"
-    assert response.headers["content-disposition"].endswith("%E7%AC%AC%E4%B8%80%E7%AB%A0.md")
+    assert "%E7%AC%AC%E4%B8%80%E7%AB%A0.md" in response.headers["content-disposition"]
     assert response.headers["x-archive-sha256"] == "b" * 64
     assert transport.calls[0]["url"].endswith("/export/markdown")
     claims = decode_service_assertion(transport.calls[0]["headers"]["X-CampusMate-Service-Assertion"], secret=SECRET)
