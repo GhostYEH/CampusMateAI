@@ -53,7 +53,9 @@ from .routes import (
     openmaic_materials,
     openmaic_workspaces,
     openmaic_generation,
+    openmaic_discussion,
     openmaic_provider,
+    openmaic_tts,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -136,7 +138,11 @@ api_router.include_router(openmaic_editor.router)
 api_router.include_router(openmaic_materials.router)
 # OpenMAIC 档案(单份 stage 的 .maic.zip 导出 / 导入)
 api_router.include_router(openmaic_archive.router)
+# OpenMAIC 生成任务与产物下载(排队 + 轮询)
 api_router.include_router(openmaic_generation.router)
+# OpenMAIC 语音合成与多智能体圆桌(入队即返回 202,音频/记录经产物下载)
+api_router.include_router(openmaic_tts.router)
+api_router.include_router(openmaic_discussion.router)
 api_router.include_router(openmaic_provider.router)
 
 __all__ = ["api_router"]

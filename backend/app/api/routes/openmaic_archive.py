@@ -77,7 +77,12 @@ def _require_idempotency_key(value: Optional[str]) -> str:
     return key
 
 
-def _content_disposition(filename: str) -> str:
+def content_disposition(
+    filename: str,
+    *,
+    ascii_fallback: str = "archive.maic.zip",
+    fallback: str = "学习内容.maic.zip",
+) -> str:
     """A download filename header that survives a non-ASCII title.
 
     HTTP header values are latin-1, so a Chinese filename cannot go in the quoted
@@ -96,9 +101,9 @@ def _content_disposition(filename: str) -> str:
     # The fallback is what a client that ignores `filename*` will save. Deriving it
     # by dropping the non-ASCII characters yielded things like ".maic.zip", so a
     # name that is not already pure ASCII gets one clear, predictable stand-in.
-    ascii_fallback = cleaned if cleaned and cleaned.isascii() else "archive.maic.zip"
-    encoded = quote(cleaned or "学习内容.maic.zip", safe="")
-    return f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded}\''
+    ascii_name = cleaned if cleaned and cleaned.isascii() else ascii_fallback
+    encoded = quote(cleaned or fallback, safe="")
+    return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}\''
 
 
 @router.get("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export")
@@ -134,7 +139,7 @@ async def export_stage(
         content=archive,
         media_type="application/zip",
         headers={
-            "Content-Disposition": _content_disposition(filename),
+            "Content-Disposition": content_disposition(filename),
             "Cache-Control": "no-store",
             "X-Archive-Sha256": str(payload.get("sha256") or ""),
             "X-Archive-Format-Version": str(payload.get("format_version") or ""),
@@ -178,7 +183,7 @@ async def export_stage_format(
         content=content,
         media_type=media_type,
         headers={
-            "Content-Disposition": _content_disposition(filename),
+            "Content-Disposition": content_disposition(filename),
             "Cache-Control": "no-store",
             "X-Archive-Sha256": str(payload.get("sha256") or ""),
         },

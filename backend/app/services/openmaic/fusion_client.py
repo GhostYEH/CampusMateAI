@@ -69,6 +69,11 @@ MATERIAL_WRITE_SCOPES = ("material:read", "material:write")
 ARCHIVE_READ_SCOPES = ("archive:read",)
 ARCHIVE_WRITE_SCOPES = ("archive:write",)
 GENERATION_WRITE_SCOPES = ("generation:write", "workspace:write", "job:write")
+TTS_WRITE_SCOPES = ("tts:write",)
+DISCUSSION_WRITE_SCOPES = ("multi-agent:write",)
+# Artifacts are the finished products of jobs (stage JSON, WAV audio); reading
+# one is a job-level capability, so it reuses the job read scope.
+ARTIFACT_READ_SCOPES = ("job:read",)
 JOB_READ_SCOPES = ("job:read",)
 JOB_CANCEL_SCOPES = ("job:cancel",)
 PROVIDER_STATUS_SCOPES = ("service:status",)
@@ -841,6 +846,46 @@ class OpenMAICFusionClient:
             user_id=user_id, course_id=course_id, scopes=("job:write",),
         )
 
+    async def synthesize_speech(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        text: str,
+        instruction: Optional[str] = None,
+        voice: Optional[str] = None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Enqueue one speech-synthesis job; the audio arrives via an artifact."""
+        body: dict[str, Any] = {"text": text}
+        if instruction is not None:
+            body["instruction"] = instruction
+        if voice is not None:
+            body["voice"] = voice
+        return await self._request(
+            "POST", f"/internal/courses/{course_id}/tts",
+            user_id=user_id, course_id=course_id, scopes=TTS_WRITE_SCOPES,
+            json_body=body, idempotency_key=idempotency_key,
+        )
+
+    async def run_discussion(
+        self, *, user_id: str, course_id: str, prompt: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Enqueue one multi-agent round-table job; the transcript arrives via an artifact."""
+        return await self._request(
+            "POST", f"/internal/courses/{course_id}/discussion",
+            user_id=user_id, course_id=course_id, scopes=DISCUSSION_WRITE_SCOPES,
+            json_body={"prompt": prompt}, idempotency_key=idempotency_key,
+        )
+
+    async def get_artifact(
+        self, *, user_id: str, course_id: str, artifact_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET", f"/internal/courses/{course_id}/artifacts/{artifact_id}",
+            user_id=user_id, course_id=course_id, scopes=ARTIFACT_READ_SCOPES,
+        )
+
     async def provider_status(self, *, user_id: str) -> dict[str, Any]:
         return await self._request(
             "GET", "/internal/settings/providers", user_id=user_id,
@@ -892,6 +937,9 @@ __all__ = [
     "ARCHIVE_READ_SCOPES",
     "ARCHIVE_WRITE_SCOPES",
     "GENERATION_WRITE_SCOPES",
+    "TTS_WRITE_SCOPES",
+    "DISCUSSION_WRITE_SCOPES",
+    "ARTIFACT_READ_SCOPES",
     "JOB_READ_SCOPES",
     "JOB_CANCEL_SCOPES",
     "PROVIDER_STATUS_SCOPES",
