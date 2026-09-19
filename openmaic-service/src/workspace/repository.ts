@@ -20,6 +20,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import type { ServiceDatabase } from '../db/database.ts';
+import { IdempotencyStore } from '../db/idempotencyStore.ts';
+import { folderIsOwned } from '../discovery/ownership.ts';
 import { decodeCursor, encodeCursor } from './cursor.ts';
 import { WorkspaceError, notFound } from './errors.ts';
 
@@ -29,6 +31,7 @@ export interface WorkspaceRow {
   course_id: string;
   name: string;
   description: string;
+  folder_id: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -67,12 +70,6 @@ export function hashRequest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value ?? null), 'utf8').digest('hex');
 }
 
-interface IdempotencyRecord {
-  request_hash: string;
-  status: number;
-  response_body: string;
-}
-
 export interface ReplayedResponse {
   status: number;
   body: Record<string, unknown>;
@@ -80,9 +77,16 @@ export interface ReplayedResponse {
 
 export class WorkspaceRepository {
   readonly #database: ServiceDatabase;
+  /**
+   * Idempotency now lives in one place so a second route module cannot grow its
+   * own subtly different replay rule. These two methods stay as the class's
+   * public surface for the existing callers.
+   */
+  readonly #idempotency: IdempotencyStore;
 
   constructor(database: ServiceDatabase) {
     this.#database = database;
+    this.#idempotency = new IdempotencyStore(database);
   }
 
   get #db() {
@@ -91,22 +95,8 @@ export class WorkspaceRepository {
 
   // ===== idempotency =====
 
-  /**
-   * Look up a previously stored response for this caller + key.
-   *
-   * A key reused with a *different* body is a client bug, not a retry: replaying
-   * the first response would silently discard the second request, so it is
-   * reported as a conflict instead.
-   */
   lookupIdempotency(userId: string, key: string, requestHash: string): ReplayedResponse | null {
-    const row = this.#db
-      .prepare('SELECT request_hash, status, response_body FROM idempotency_keys WHERE user_id = ? AND key = ?')
-      .get(userId, key) as IdempotencyRecord | undefined;
-    if (!row) return null;
-    if (row.request_hash !== requestHash) {
-      throw new WorkspaceError('idempotency_conflict');
-    }
-    return { status: Number(row.status), body: JSON.parse(row.response_body) as Record<string, unknown> };
+    return this.#idempotency.lookup(userId, key, requestHash);
   }
 
   recordIdempotency(
@@ -116,23 +106,7 @@ export class WorkspaceRepository {
     requestHash: string,
     response: ReplayedResponse,
   ): void {
-    this.#db
-      .prepare(
-        `INSERT INTO idempotency_keys (key, user_id, course_id, method, path, request_hash, status, response_body, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, key) DO NOTHING`,
-      )
-      .run(
-        key,
-        userId,
-        scope.courseId,
-        scope.method,
-        scope.path,
-        requestHash,
-        response.status,
-        JSON.stringify(response.body),
-        Date.now(),
-      );
+    this.#idempotency.record(userId, key, scope, requestHash, response);
   }
 
   // ===== workspaces =====
@@ -142,16 +116,21 @@ export class WorkspaceRepository {
     courseId: string;
     name: string;
     description?: string;
+    folderId?: string | null;
     now?: string;
   }): WorkspaceRow {
     const now = input.now ?? new Date().toISOString();
+    const folderId = input.folderId ?? null;
+    // Filing is only ever into the caller's own folder in this course; a foreign
+    // id is answered exactly like a missing one.
+    if (folderId !== null && !folderIsOwned(this.#database, { ...input, folderId })) notFound();
     const id = `ws_${randomUUID().replaceAll('-', '')}`;
     this.#db
       .prepare(
-        `INSERT INTO workspaces (id, user_id, course_id, name, description, revision, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO workspaces (id, user_id, course_id, name, description, folder_id, revision, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       )
-      .run(id, input.userId, input.courseId, input.name, input.description ?? '', now, now);
+      .run(id, input.userId, input.courseId, input.name, input.description ?? '', folderId, now, now);
     return this.getWorkspace({ userId: input.userId, courseId: input.courseId, workspaceId: id });
   }
 
@@ -173,7 +152,7 @@ export class WorkspaceRepository {
     params.push(limit + 1);
     const rows = this.#db
       .prepare(
-        `SELECT id, user_id, course_id, name, description, revision, created_at, updated_at
+        `SELECT id, user_id, course_id, name, description, folder_id, revision, created_at, updated_at
            FROM workspaces
           WHERE user_id = ? AND course_id = ? AND deleted_at IS NULL${keyset}
           ORDER BY updated_at DESC, id DESC
@@ -193,7 +172,7 @@ export class WorkspaceRepository {
   getWorkspace(input: { userId: string; courseId: string; workspaceId: string }): WorkspaceRow {
     const row = this.#db
       .prepare(
-        `SELECT id, user_id, course_id, name, description, revision, created_at, updated_at
+        `SELECT id, user_id, course_id, name, description, folder_id, revision, created_at, updated_at
            FROM workspaces
           WHERE id = ? AND user_id = ? AND course_id = ? AND deleted_at IS NULL`,
       )
@@ -207,7 +186,8 @@ export class WorkspaceRepository {
     courseId: string;
     workspaceId: string;
     expectedRevision: number;
-    patch: { name?: string; description?: string };
+    /** `null` moves the workspace back to the unfiled list. */
+    patch: { name?: string; description?: string; folderId?: string | null };
     now?: string;
   }): WorkspaceRow {
     const now = input.now ?? new Date().toISOString();
@@ -220,6 +200,12 @@ export class WorkspaceRepository {
     if (input.patch.description !== undefined) {
       assignments.push('description = ?');
       params.push(input.patch.description);
+    }
+    if (input.patch.folderId !== undefined) {
+      const folderId = input.patch.folderId;
+      if (folderId !== null && !folderIsOwned(this.#database, { ...input, folderId })) notFound();
+      assignments.push('folder_id = ?');
+      params.push(folderId);
     }
     if (assignments.length === 0) {
       throw new WorkspaceError('invalid_request', 'no updatable field was provided');

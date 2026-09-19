@@ -86,6 +86,40 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX idx_idempotency_keys_created_at ON idempotency_keys (created_at)`,
     ],
   },
+  {
+    version: 3,
+    name: 'folders_and_workspace_filing',
+    statements: [
+      // A folder is a user-visible grouping inside one course. `parent_id` is a
+      // self-reference so a tree needs no second table; the route layer refuses
+      // cycles, because a cycle would make an "all descendants" walk non-total.
+      `CREATE TABLE folders (
+         id TEXT PRIMARY KEY,
+         user_id TEXT NOT NULL,
+         course_id TEXT NOT NULL,
+         parent_id TEXT REFERENCES folders(id),
+         name TEXT NOT NULL,
+         revision INTEGER NOT NULL DEFAULT 1,
+         created_at TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         deleted_at TEXT
+       )`,
+      `CREATE INDEX idx_folders_owner_page
+         ON folders (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
+      `CREATE INDEX idx_folders_parent ON folders (user_id, course_id, parent_id)`,
+      // Compatibility migration: the column is added to the existing table
+      // rather than the table being rebuilt, so an already-deployed database
+      // keeps every workspace. Existing rows read back as `NULL` = "unfiled",
+      // which is exactly the pre-folder behaviour.
+      `ALTER TABLE workspaces ADD COLUMN folder_id TEXT REFERENCES folders(id)`,
+      `CREATE INDEX idx_workspaces_folder
+         ON workspaces (user_id, course_id, folder_id, deleted_at, updated_at DESC, id DESC)`,
+      // Search filters on these columns; without the indexes the keyword scan is
+      // fine at demo size but degrades as a student accumulates stages.
+      `CREATE INDEX idx_workspaces_updated ON workspaces (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
+      `CREATE INDEX idx_stages_updated ON stages (user_id, course_id, deleted_at, updated_at DESC, id DESC)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

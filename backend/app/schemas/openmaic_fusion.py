@@ -75,12 +75,14 @@ class WorkspaceOut(BaseModel):
 
     `revision` 是并发控制的唯一凭据：客户端读到的值必须原样回传，否则写入被拒。
     `course_id` 由服务端回填，客户端**不能**在请求体里指定归属。
+    `folder_id` 为 `None` 表示未归档（等同于没有文件夹功能之前的行为）。
     """
 
     id: str
     course_id: str
     name: str
     description: str = ""
+    folder_id: Optional[str] = None
     revision: int
     created_at: str = ""
     updated_at: str = ""
@@ -119,11 +121,15 @@ class StageListOut(BaseModel):
 class WorkspaceCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     description: str = Field("", max_length=4000)
+    # 省略表示不归档；显式 null 与省略在服务端同义。
+    folder_id: Optional[str] = Field(None, min_length=1, max_length=120)
 
 
 class WorkspaceUpdateIn(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=4000)
+    # 只有显式提供时才改变归档位置；`model_fields_set` 用来区分"未传"与"传了 null"。
+    folder_id: Optional[str] = Field(None, min_length=1, max_length=120)
 
 
 class StageCreateIn(BaseModel):
@@ -135,6 +141,64 @@ class StageCreateIn(BaseModel):
 class StageReplaceIn(BaseModel):
     document: dict
     title: Optional[str] = Field(None, min_length=1, max_length=200)
+
+
+# ===== folders / search =====
+
+
+class FolderOut(BaseModel):
+    """一个用户可见的文件夹。
+
+    与 workspace 一样，`revision` 是并发控制的唯一凭据；`parent_id` 为 `None`
+    表示位于根层。`workspace_count` 只统计调用者自己、仍然存活的工作台。
+    """
+
+    id: str
+    course_id: str
+    parent_id: Optional[str] = None
+    name: str
+    revision: int
+    created_at: str = ""
+    updated_at: str = ""
+    workspace_count: Optional[int] = None
+
+
+class FolderListOut(BaseModel):
+    items: List[FolderOut] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
+
+
+class FolderCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    parent_id: Optional[str] = Field(None, min_length=1, max_length=120)
+
+
+class FolderUpdateIn(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    # 显式 null 表示"移动到根层"，与"未提供该字段"不同。
+    parent_id: Optional[str] = Field(None, min_length=1, max_length=120)
+
+
+class SearchHitOut(BaseModel):
+    """一条搜索命中。
+
+    `path` 是 CampusMate 站内深链，服务端生成，客户端不得自行拼接。
+    """
+
+    kind: Literal["workspace", "stage"]
+    workspace_id: str
+    stage_id: Optional[str] = None
+    title: str
+    snippet: str = ""
+    folder_id: Optional[str] = None
+    updated_at: str = ""
+    path: str
+
+
+class SearchListOut(BaseModel):
+    items: List[SearchHitOut] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
+    query: str
 
 
 __all__ = [
@@ -151,4 +215,10 @@ __all__ = [
     "WorkspaceUpdateIn",
     "StageCreateIn",
     "StageReplaceIn",
+    "FolderOut",
+    "FolderListOut",
+    "FolderCreateIn",
+    "FolderUpdateIn",
+    "SearchHitOut",
+    "SearchListOut",
 ]

@@ -31,8 +31,31 @@ ASSERTION_HEADER = "X-CampusMate-Service-Assertion"
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 IF_MATCH_HEADER = "If-Match"
 
+
+class _Unset:
+    """Sentinel for "the caller did not pass this argument".
+
+    Optional body fields need three states (absent, present-with-value,
+    present-with-null); `None` alone collapses two of them.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid only
+        return "UNSET"
+
+
+UNSET = _Unset()
+
 READ_SCOPES = ("workspace:read",)
 WRITE_SCOPES = ("workspace:read", "workspace:write")
+
+# Discovery is a navigation surface over the same rows, so it keeps its own
+# narrow scopes: a token minted to browse folders cannot be replayed to write a
+# stage, and a search token is read-only by construction.
+FOLDER_READ_SCOPES = ("folder:read",)
+FOLDER_WRITE_SCOPES = ("folder:read", "folder:write")
+SEARCH_READ_SCOPES = ("search:read",)
 
 
 def _status(
@@ -217,15 +240,19 @@ class OpenMAICFusionClient:
         course_id: str,
         name: str,
         description: str = "",
+        folder_id: Optional[str] = None,
         idempotency_key: str,
     ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name, "description": description}
+        if folder_id is not None:
+            body["folder_id"] = folder_id
         return await self._request(
             "POST",
             f"/internal/courses/{course_id}/workspaces",
             user_id=user_id,
             course_id=course_id,
             scopes=WRITE_SCOPES,
-            json_body={"name": name, "description": description},
+            json_body=body,
             idempotency_key=idempotency_key,
         )
 
@@ -249,12 +276,17 @@ class OpenMAICFusionClient:
         revision: int,
         name: Optional[str] = None,
         description: Optional[str] = None,
+        folder_id: Any = UNSET,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {}
         if name is not None:
             body["name"] = name
         if description is not None:
             body["description"] = description
+        if folder_id is not UNSET:
+            # An explicit `null` moves the workspace back to the unfiled list, so
+            # "not provided" must stay distinguishable from "clear it".
+            body["folder_id"] = folder_id
         return await self._request(
             "PATCH",
             f"/internal/courses/{course_id}/workspaces/{workspace_id}",
@@ -378,6 +410,125 @@ class OpenMAICFusionClient:
             if_match=revision,
         )
 
+    # ===== folders =====
+
+    async def list_folders(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = int(limit)
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/folders",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=FOLDER_READ_SCOPES,
+            params=params or None,
+        )
+
+    async def create_folder(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        name: str,
+        parent_id: Optional[str] = None,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"name": name}
+        if parent_id is not None:
+            body["parent_id"] = parent_id
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/folders",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=FOLDER_WRITE_SCOPES,
+            json_body=body,
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_folder(
+        self, *, user_id: str, course_id: str, folder_id: str
+    ) -> dict[str, Any]:
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/folders/{folder_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=FOLDER_READ_SCOPES,
+        )
+
+    async def update_folder(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        folder_id: str,
+        revision: int,
+        name: Optional[str] = None,
+        parent_id: Any = UNSET,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if name is not None:
+            body["name"] = name
+        if parent_id is not UNSET:
+            body["parent_id"] = parent_id
+        return await self._request(
+            "PATCH",
+            f"/internal/courses/{course_id}/folders/{folder_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=FOLDER_WRITE_SCOPES,
+            json_body=body,
+            if_match=revision,
+        )
+
+    async def delete_folder(
+        self, *, user_id: str, course_id: str, folder_id: str, revision: int
+    ) -> dict[str, Any]:
+        return await self._request(
+            "DELETE",
+            f"/internal/courses/{course_id}/folders/{folder_id}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=FOLDER_WRITE_SCOPES,
+            if_match=revision,
+        )
+
+    # ===== search =====
+
+    async def search(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        query: str,
+        limit: Optional[int] = None,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {"q": query}
+        if limit is not None:
+            params["limit"] = int(limit)
+        if cursor:
+            params["cursor"] = cursor
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/search",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=SEARCH_READ_SCOPES,
+            params=params,
+        )
+
 
 def _safe_json(response: Any) -> Any:
     """Never let a malformed body become an exception the caller cannot classify."""
@@ -395,4 +546,8 @@ __all__ = [
     "IF_MATCH_HEADER",
     "READ_SCOPES",
     "WRITE_SCOPES",
+    "FOLDER_READ_SCOPES",
+    "FOLDER_WRITE_SCOPES",
+    "SEARCH_READ_SCOPES",
+    "UNSET",
 ]

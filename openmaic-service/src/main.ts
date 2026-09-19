@@ -2,6 +2,7 @@ import { ServiceAuthenticator } from './auth/authenticator.ts';
 import { loadConfig } from './config.ts';
 import { ServiceDatabase } from './db/database.ts';
 import { SqliteReplayStore } from './db/replayStore.ts';
+import { createDiscoveryRoutes } from './discovery/routes.ts';
 import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
 
@@ -28,7 +29,7 @@ const server = createServer({
   readiness: () => ({ runtime: true, database: databaseIsReady() }),
   // The advertised capability set is derived from these routes, so a capability
   // can never be reported before its handlers exist.
-  routes: createWorkspaceRoutes({ database }),
+  routes: [...createWorkspaceRoutes({ database }), ...createDiscoveryRoutes({ database })],
 });
 
 server.on('error', (error) => {

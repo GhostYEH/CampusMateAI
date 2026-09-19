@@ -46,6 +46,7 @@ from .routes import (
     final_review,
     course_research,
     openmaic_classroom,
+    openmaic_discovery,
     openmaic_fusion,
     openmaic_workspaces,
 )
@@ -122,5 +123,7 @@ api_router.include_router(openmaic_classroom.router)
 api_router.include_router(openmaic_fusion.router)
 # OpenMAIC 学习工作台(受管服务的 workspace/stage 持久化)
 api_router.include_router(openmaic_workspaces.router)
+# OpenMAIC 内容发现(文件夹与站内搜索,同样只经 CampusMate 网关)
+api_router.include_router(openmaic_discovery.router)
 
 __all__ = ["api_router"]

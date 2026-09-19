@@ -44,6 +44,7 @@ function toWorkspace(row: WorkspaceRow): Record<string, unknown> {
     course_id: row.course_id,
     name: row.name,
     description: row.description,
+    folder_id: row.folder_id,
     revision: Number(row.revision),
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -100,6 +101,19 @@ function optionalString(value: unknown, field: string, maxLength = 4000): string
   if (typeof value !== 'string') throw new WorkspaceError('invalid_request', `${field} must be a string`);
   if (value.length > maxLength) throw new WorkspaceError('invalid_request', `${field} is too long`);
   return value;
+}
+
+/**
+ * Read a folder reference. `undefined` means "leave unfiled / unchanged" and
+ * `null` means "move back to the unfiled list", so the two are not collapsed.
+ */
+function optionalFolderId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new WorkspaceError('invalid_request', 'folder_id must be a non-empty string or null');
+  }
+  return value.trim();
 }
 
 /**
@@ -236,6 +250,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
             ...actor(request),
             name: requireString(body.name, 'name', 120),
             description: optionalString(body.description, 'description'),
+            folderId: optionalFolderId(body.folder_id) ?? null,
             now: now(),
           });
           return { status: 201, body: toWorkspace(created) };
@@ -271,6 +286,7 @@ export function createWorkspaceRoutes(options: WorkspaceRouteOptions): RouteDefi
           patch: {
             name: body.name === undefined ? undefined : requireString(body.name, 'name', 120),
             description: optionalString(body.description, 'description'),
+            folderId: optionalFolderId(body.folder_id),
           },
           now: now(),
         });

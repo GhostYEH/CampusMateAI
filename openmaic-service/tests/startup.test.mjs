@@ -7,6 +7,11 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { normalizeCapabilities } from '../src/capabilities.ts';
+import { ServiceDatabase } from '../src/db/database.ts';
+import { createDiscoveryRoutes } from '../src/discovery/routes.ts';
+import { createWorkspaceRoutes } from '../src/workspace/routes.ts';
+
 const main = fileURLToPath(new URL('../src/main.ts', import.meta.url));
 const node = process.execPath;
 const SECRET = 'startup-test-secret';
@@ -92,9 +97,19 @@ test('comes up on a complete configuration and serves authenticated readiness', 
     const payload = await ready.json();
     assert.equal(payload.status, 'ready');
     assert.equal(payload.dependencies.database, true);
-    // The advertised set is exactly what the mounted routes declare — never a
-    // hardcoded list, so it cannot drift ahead of the implementation.
-    assert.deepEqual(payload.capabilities, ['workspace']);
+    // The advertised set is exactly what the mounted route modules declare —
+    // derived here from the same factories `main.ts` mounts, so this can fail
+    // only when the running service and the route table disagree.
+    const mounted = new ServiceDatabase(':memory:');
+    const declared = normalizeCapabilities([
+      ...createWorkspaceRoutes({ database: mounted }),
+      ...createDiscoveryRoutes({ database: mounted }),
+    ].flatMap((route) => route.capabilities));
+    mounted.close();
+    assert.deepEqual(payload.capabilities, declared);
+    assert.ok(payload.capabilities.includes('workspace'));
+    assert.ok(payload.capabilities.includes('folder'));
+    assert.ok(payload.capabilities.includes('search'));
 
     // The database survives a restart, so the replay guard must too.
     const replayToken = mintAssertion(['service:status']);

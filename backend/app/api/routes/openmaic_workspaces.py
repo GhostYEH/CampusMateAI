@@ -38,7 +38,7 @@ from ...schemas.openmaic_fusion import (
 )
 from ...services.container import ServiceContainer, get_container
 from ...services.openmaic.course_context import assert_course_access
-from ...services.openmaic.fusion_client import OpenMAICFusionClient
+from ...services.openmaic.fusion_client import UNSET, OpenMAICFusionClient
 from ...services.openmaic.fusion_errors import FusionInvalidRequest, FusionUnavailable
 from ..deps import current_user
 
@@ -155,6 +155,7 @@ async def create_workspace(
         course_id=course_id,
         name=body.name,
         description=body.description,
+        folder_id=body.folder_id,
         idempotency_key=_require_idempotency_key(idempotency_key),
     )
     return _workspace_out(payload)
@@ -187,7 +188,8 @@ async def update_workspace(
 ) -> WorkspaceOut:
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
-    if body.name is None and body.description is None:
+    provides_folder = "folder_id" in body.model_fields_set
+    if body.name is None and body.description is None and not provides_folder:
         raise FusionInvalidRequest("没有需要更新的字段")
     return _workspace_out(
         await client.update_workspace(
@@ -197,6 +199,8 @@ async def update_workspace(
             revision=_require_revision(if_match),
             name=body.name,
             description=body.description,
+            # `None` here means the client explicitly sent null = unfile.
+            folder_id=body.folder_id if provides_folder else UNSET,
         )
     )
 
