@@ -116,6 +116,10 @@ export default function OpenMAICHome({
           canEdit={status.canEdit}
           canExportArchive={status.canExportArchive}
           canImportArchive={status.canImportArchive}
+          canExportMarkdown={status.canExportMarkdown}
+          canExportDocx={status.canExportDocx}
+          canExportPptx={status.canExportPptx}
+          canImportPptx={status.canImportPptx}
         />
         : null}
 

@@ -20,6 +20,7 @@ Nothing in an archive decides ownership: the stage lands in the workspace named 
 from __future__ import annotations
 
 import base64
+import re
 from typing import Optional
 from urllib.parse import quote
 
@@ -41,6 +42,12 @@ router = APIRouter(prefix="/courses", tags=["openmaic-archive"])
 #: same number so a direct caller cannot bypass it.
 MAX_ARCHIVE_BYTES = int(2.5 * 1024 * 1024)
 MAX_IDEMPOTENCY_KEY_LENGTH = 200
+MAX_PPTX_BYTES = 3 * 1024 * 1024
+FORMAT_MEDIA_TYPES = {
+    "markdown": "text/markdown; charset=utf-8",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
 def _container() -> ServiceContainer:
@@ -135,6 +142,49 @@ async def export_stage(
     )
 
 
+@router.get("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/{format}")
+async def export_stage_format(
+    course_id: str,
+    workspace_id: str,
+    stage_id: str,
+    format: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    client: OpenMAICFusionClient = Depends(_client),
+) -> Response:
+    _require_fusion_enabled(container.settings)
+    if format not in FORMAT_MEDIA_TYPES:
+        raise FusionInvalidRequest("暂不支持该导出格式")
+    assert_course_access(container, user, course_id)
+    payload = await client.export_stage_format(
+        user_id=str(user.id),
+        course_id=course_id,
+        workspace_id=workspace_id,
+        stage_id=stage_id,
+        format=format,
+    )
+    encoded = payload.get("content")
+    if not isinstance(encoded, str) or not encoded:
+        raise FusionUnavailable("受管服务未返回可用导出文件")
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except Exception as exc:
+        raise FusionUnavailable("受管服务返回的文件无法解码") from exc
+    media_type = str(payload.get("media_type") or FORMAT_MEDIA_TYPES[format])
+    if media_type.split(";", 1)[0] != FORMAT_MEDIA_TYPES[format].split(";", 1)[0]:
+        raise FusionUnavailable("受管服务返回了不匹配的文件类型")
+    filename = str(payload.get("filename") or f"学习内容.{format}")
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": _content_disposition(filename),
+            "Cache-Control": "no-store",
+            "X-Archive-Sha256": str(payload.get("sha256") or ""),
+        },
+    )
+
+
 @router.post("/{course_id}/workspaces/{workspace_id}/import", response_model=StageOut, status_code=status.HTTP_201_CREATED)
 async def import_stage(
     course_id: str,
@@ -170,4 +220,39 @@ async def import_stage(
     return StageOut(**{name: stage[name] for name in StageOut.model_fields if name in stage})
 
 
-__all__ = ["router", "MAX_ARCHIVE_BYTES"]
+@router.post("/{course_id}/workspaces/{workspace_id}/import/pptx", response_model=StageOut, status_code=status.HTTP_201_CREATED)
+async def import_pptx_stage(
+    course_id: str,
+    workspace_id: str,
+    file: UploadFile = File(...),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    client: OpenMAICFusionClient = Depends(_client),
+) -> StageOut:
+    _require_fusion_enabled(container.settings)
+    assert_course_access(container, user, course_id)
+    key = _require_idempotency_key(idempotency_key)
+    content = await file.read(MAX_PPTX_BYTES + 1)
+    if len(content) > MAX_PPTX_BYTES:
+        raise FusionInvalidRequest(f"PPTX 不能超过 {MAX_PPTX_BYTES} 字节")
+    if not content:
+        raise FusionInvalidRequest("PPTX 文件为空")
+    raw_name = str(file.filename or "课件.pptx")
+    title = re.sub(r"[\\/:*?\"<>|\x00-\x1f]", " ", raw_name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1])
+    title = re.sub(r"\.pptx$", "", title, flags=re.IGNORECASE).strip()[:200] or "导入的课件"
+    payload = await client.import_pptx(
+        user_id=str(user.id),
+        course_id=course_id,
+        workspace_id=workspace_id,
+        pptx_b64=base64.b64encode(content).decode("ascii"),
+        title=title,
+        idempotency_key=key,
+    )
+    stage = payload.get("stage") if isinstance(payload, dict) else None
+    if not isinstance(stage, dict):
+        raise FusionUnavailable("受管服务未返回导入结果")
+    return StageOut(**{name: stage[name] for name in StageOut.model_fields if name in stage})
+
+
+__all__ = ["router", "MAX_ARCHIVE_BYTES", "MAX_PPTX_BYTES", "FORMAT_MEDIA_TYPES"]

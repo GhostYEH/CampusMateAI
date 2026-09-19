@@ -57,6 +57,10 @@ export default function WorkspacePanel({
   canEdit = false,
   canExportArchive = false,
   canImportArchive = false,
+  canExportMarkdown = false,
+  canExportDocx = false,
+  canExportPptx = false,
+  canImportPptx = false,
 }) {
   const [items, setItems] = React.useState([]);
   const [cursor, setCursor] = React.useState(null);
@@ -75,6 +79,7 @@ export default function WorkspacePanel({
   // 切换课程后迟到的响应不得写进新课程上下文。
   const epoch = React.useRef(0);
   const importInputRef = React.useRef(null);
+  const pptxInputRef = React.useRef(null);
   const [localReject, setLocalReject] = React.useState("");
   // 同一个用户动作的幂等键必须在重试之间保持不变，所以它跟着"这次提交"走，
   // 而不是每次请求现生成。
@@ -129,6 +134,7 @@ export default function WorkspacePanel({
     setStages([]);
     setLocalReject("");
     if (importInputRef.current) importInputRef.current.value = "";
+    if (pptxInputRef.current) pptxInputRef.current.value = "";
     // 换工作台就换一次"这次提交"：上一个工作台没提交的导入不该复用它的幂等键。
     pendingKey.current = null;
     if (next) await loadStages(next);
@@ -176,6 +182,22 @@ export default function WorkspacePanel({
     }
   }
 
+  async function exportFormat(workspaceId, stage, format) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.exportOpenMAICStageFormat(courseId, workspaceId, stage.id, format);
+      saveBlob(result.blob, filenameFromContentDisposition(result.disposition));
+      setNotice(`已导出「${stage.title}」为 ${format.toUpperCase()}`);
+    } catch (err) {
+      setError(describeArchiveError(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /**
    * 导入一份 `.maic.zip`。
    *
@@ -214,6 +236,41 @@ export default function WorkspacePanel({
       // 只有"这个档案本身不合格"才弃键；可重试的失败必须复用同一个键。
       if (!described.retryable) pendingKey.current = null;
       setError(described.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importPptx(workspaceId) {
+    const file = pptxInputRef.current?.files?.[0] || null;
+    if (!file) {
+      setLocalReject("请选择一个 .pptx 课件。");
+      return;
+    }
+    if (!/\.pptx$/i.test(String(file.name || ""))) {
+      setLocalReject("请选择 .pptx 课件。");
+      return;
+    }
+    if (Number(file.size) > 3 * 1024 * 1024) {
+      setLocalReject("PPTX 不能超过 3 MB。");
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    setLocalReject("");
+    setError("");
+    setNotice("");
+    try {
+      const payload = await api.importOpenMAICPptx(courseId, workspaceId, {
+        file,
+        idempotencyKey: api.newIdempotencyKey(),
+      });
+      if (pptxInputRef.current) pptxInputRef.current.value = "";
+      const imported = normalizeImportedStage(payload);
+      setNotice(imported ? `已导入 PPTX「${imported.title}」` : "已导入 PPTX");
+      await loadStages(workspaceId);
+    } catch (err) {
+      setError(describeArchiveError(err).message);
     } finally {
       setBusy(false);
     }
@@ -401,6 +458,22 @@ export default function WorkspacePanel({
         </Button>
       </div> : null}
 
+      {canImportPptx ? <div className="openmaic-command">
+        <label className="openmaic-command__input">
+          <Icon name="PhFileText" size={18} />
+          <input
+            ref={pptxInputRef}
+            type="file"
+            accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            aria-label="选择要导入的 PPTX 课件"
+            onChange={(event) => setLocalReject(event.target.files?.[0] && !/\.pptx$/i.test(event.target.files[0].name) ? "请选择 .pptx 课件。" : "")}
+          />
+        </label>
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => importPptx(openWorkspaceId)}>
+          导入 PPTX
+        </Button>
+      </div> : null}
+
       {stages.length ? <ul className="openmaic-stage-browser__list">
         {stages.map((stage) => <li key={stage.id}>
           <span className="row-copy">
@@ -414,6 +487,9 @@ export default function WorkspacePanel({
             disabled={busy}
             onClick={() => exportStage(openWorkspaceId, stage)}
           >导出</Button> : null}
+          {canExportMarkdown ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "markdown")}>Markdown</Button> : null}
+          {canExportDocx ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "docx")}>DOCX</Button> : null}
+          {canExportPptx ? <Button type="button" variant="quiet" disabled={busy} onClick={() => exportFormat(openWorkspaceId, stage, "pptx")}>PPTX</Button> : null}
           {canEdit ? <Button
             type="button"
             variant="secondary"

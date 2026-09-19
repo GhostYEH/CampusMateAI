@@ -738,6 +738,45 @@ class OpenMAICFusionClient:
             scopes=ARCHIVE_READ_SCOPES,
         )
 
+    async def export_stage_format(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        format: str,
+    ) -> dict[str, Any]:
+        """导出一个受限格式文件，内部仍使用 JSON + base64 信封。"""
+        return await self._request(
+            "GET",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/{format}",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=ARCHIVE_READ_SCOPES,
+        )
+
+    async def import_pptx(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        pptx_b64: str,
+        title: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """把 PPTX 的结构化子集导入当前工作台。"""
+        return await self._request(
+            "POST",
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}/import/pptx",
+            user_id=user_id,
+            course_id=course_id,
+            scopes=ARCHIVE_WRITE_SCOPES,
+            json_body={"pptx": pptx_b64, "title": title},
+            idempotency_key=idempotency_key,
+        )
+
     async def import_stage(
         self,
         *,

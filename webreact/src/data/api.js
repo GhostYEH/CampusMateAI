@@ -611,11 +611,33 @@ export async function exportOpenMAICStage(courseId, workspaceId, stageId) {
   };
 }
 
+export async function exportOpenMAICStageFormat(courseId, workspaceId, stageId, format) {
+  const response = await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/${format}`,
+    { responseType: "blob" },
+  );
+  return {
+    blob: response.data,
+    disposition: response.headers?.["content-disposition"] || "",
+    sha256: response.headers?.["x-archive-sha256"] || "",
+  };
+}
+
 export async function importOpenMAICStage(courseId, workspaceId, { file, idempotencyKey }) {
   const form = new FormData();
   form.append("file", file);
   return dataOf(
     await client.post(`/courses/${courseId}/workspaces/${workspaceId}/import`, form, {
+      headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
+    }),
+  );
+}
+
+export async function importOpenMAICPptx(courseId, workspaceId, { file, idempotencyKey }) {
+  const form = new FormData();
+  form.append("file", file);
+  return dataOf(
+    await client.post(`/courses/${courseId}/workspaces/${workspaceId}/import/pptx`, form, {
       headers: { "Content-Type": "multipart/form-data", "Idempotency-Key": idempotencyKey },
     }),
   );

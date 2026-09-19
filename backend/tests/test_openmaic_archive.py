@@ -141,6 +141,14 @@ def _import_path(course_id, workspace_id="ws_1"):
     return f"/api/v1/courses/{course_id}/workspaces/{workspace_id}/import"
 
 
+def _format_export_path(course_id, fmt, workspace_id="ws_1", stage_id="stg_1"):
+    return f"/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/{fmt}"
+
+
+def _pptx_import_path(course_id, workspace_id="ws_1"):
+    return f"/api/v1/courses/{course_id}/workspaces/{workspace_id}/import/pptx"
+
+
 # ===== 导出 =====
 
 
@@ -319,3 +327,50 @@ def test_an_anonymous_caller_cannot_import():
         headers={"Idempotency-Key": "k"},
     )
     assert response.status_code == 401
+
+
+# ===== structural format exports / PPTX import =====
+
+
+def _format_export_payload(fmt="markdown", **overrides):
+    payload = {
+        "format": fmt,
+        "filename": "第一章.md" if fmt == "markdown" else f"第一章.{fmt}",
+        "media_type": "text/markdown; charset=utf-8" if fmt == "markdown" else "application/octet-stream",
+        "stage_title": "第一章",
+        "byte_size": 5,
+        "sha256": "b" * 64,
+        "content": base64.b64encode(b"hello").decode("ascii"),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_format_export_returns_a_binary_download_and_uses_the_format_route():
+    _, transport, http, headers, course_id = _setup(script=[(200, _format_export_payload("markdown"))])
+    response = http.get(_format_export_path(course_id, "markdown"), headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.content == b"hello"
+    assert response.headers["content-disposition"].endswith("%E7%AC%AC%E4%B8%80%E7%AB%A0.md")
+    assert response.headers["x-archive-sha256"] == "b" * 64
+    assert transport.calls[0]["url"].endswith("/export/markdown")
+    claims = decode_service_assertion(transport.calls[0]["headers"]["X-CampusMate-Service-Assertion"], secret=SECRET)
+    assert claims["scope"] == ["archive:read"]
+
+
+def test_pptx_import_is_bounded_before_reaching_the_service():
+    _, transport, http, headers, course_id = _setup(script=[(201, {"stage": _stage_payload()})])
+    response = http.post(
+        _pptx_import_path(course_id),
+        files={"file": ("课件.pptx", b"pptx-bytes", "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+        headers={**headers, "Idempotency-Key": "pptx-1"},
+    )
+
+    assert response.status_code == 201
+    call = transport.calls[0]
+    assert call["url"].endswith("/import/pptx")
+    assert base64.b64decode(call["json"]["pptx"]) == b"pptx-bytes"
+    assert call["json"]["title"] == "课件"
+    claims = decode_service_assertion(call["headers"]["X-CampusMate-Service-Assertion"], secret=SECRET)
+    assert claims["scope"] == ["archive:write"]

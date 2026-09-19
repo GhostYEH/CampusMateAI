@@ -82,6 +82,10 @@ export function describeFusionState(status) {
     // `.maic.zip` 的两个方向各有自己的能力标签：能导出不等于能导入。
     canExportArchive: has("export-maic"),
     canImportArchive: has("import-maic"),
+    canExportMarkdown: has("export-markdown"),
+    canExportDocx: has("export-docx"),
+    canExportPptx: has("export-pptx"),
+    canImportPptx: has("import-pptx"),
   };
 }
 

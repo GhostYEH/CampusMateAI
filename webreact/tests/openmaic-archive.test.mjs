@@ -159,6 +159,23 @@ test("importing posts a multipart form with the idempotency key", async () => {
   assert.equal(request.data.get("file").name, "第一章.maic.zip");
 });
 
+test("format export uses a blob route and PPTX import keeps the multipart boundary", async () => {
+  const mock = createMockClient(apiModule.default);
+  mock.reset();
+  mock.onGet("/courses/c1/workspaces/ws_1/stages/stg_1/export/markdown", new Uint8Array([4, 5]));
+  await apiModule.exportOpenMAICStageFormat("c1", "ws_1", "stg_1", "markdown");
+  assert.equal(mock.lastRequest().url, "/courses/c1/workspaces/ws_1/stages/stg_1/export/markdown");
+
+  mock.reset();
+  mock.onPost("/courses/c1/workspaces/ws_1/import/pptx", { stage: { id: "stg_new" } }, 201);
+  const file = new File([new Uint8Array([6, 7])], "课件.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+  await apiModule.importOpenMAICPptx("c1", "ws_1", { file, idempotencyKey: "pptx-key" });
+  const request = mock.lastRequest();
+  assert.equal(request.url, "/courses/c1/workspaces/ws_1/import/pptx");
+  assert.equal(request.headers["Idempotency-Key"], "pptx-key");
+  assert.equal(request.data.get("file").name, "课件.pptx");
+});
+
 // ===== 入口开关与源码契约 =====
 
 test("export and import each open only on their own capability", () => {
@@ -174,6 +191,12 @@ test("export and import each open only on their own capability", () => {
   assert.equal(importOnly.canExportArchive, false);
   assert.equal(importOnly.canImportArchive, true);
 
+  const formats = describeFusionState({ state: "ready", capabilities: ["export-markdown", "export-docx", "export-pptx", "import-pptx"] });
+  assert.equal(formats.canExportMarkdown, true);
+  assert.equal(formats.canExportDocx, true);
+  assert.equal(formats.canExportPptx, true);
+  assert.equal(formats.canImportPptx, true);
+
   // 未就绪时即使上报了能力也不开入口。
   const degraded = describeFusionState({ state: "degraded", capabilities: ["export-maic", "import-maic"] });
   assert.equal(degraded.canExportArchive, false);
@@ -183,11 +206,15 @@ test("export and import each open only on their own capability", () => {
 test("the home passes both archive capabilities down to the workspace panel", () => {
   assert.match(homeSource, /canExportArchive=\{status\.canExportArchive\}/);
   assert.match(homeSource, /canImportArchive=\{status\.canImportArchive\}/);
+  assert.match(homeSource, /canExportMarkdown=\{status\.canExportMarkdown\}/);
+  assert.match(homeSource, /canImportPptx=\{status\.canImportPptx\}/);
 });
 
 test("the panel gates both entries on the capability and never renders them unconditionally", () => {
   assert.match(panelSource, /\{canExportArchive \? <Button/);
   assert.match(panelSource, /\{canImportArchive \? <div className="openmaic-command">/);
+  assert.match(panelSource, /\{canImportPptx \? <div className="openmaic-command">/);
+  assert.match(panelSource, /exportOpenMAICStageFormat/);
 });
 
 test("the panel downloads under the server's filename and reuses one key across a retry", () => {
