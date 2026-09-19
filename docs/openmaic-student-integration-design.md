@@ -64,8 +64,8 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    （`backend/app/api/routes/openmaic_workspaces.py`，含 `Idempotency-Key` /
    `If-Match` 强制、412→409 翻译、内部地址不外泄）与课程内工作台面板
    （`webreact/src/components/openmaic/WorkspacePanel.jsx`，按真实 capability
-   开关）已落地并验证；原生工作台、生成恢复、编辑器与播放器已接入，但快速询问尚未绑定
-   同一 native workspace 会话。
+   开关）已落地并验证；原生工作台、生成恢复、编辑器与播放器已接入，快速询问入口会复用/创建
+   workspace 并把其归属传入 SSE；服务端对 workspace 做归属复核。
    本轮补齐了**内容发现**这一层：文件夹树与站内搜索
    （`openmaic-service/src/discovery/**` + `backend/app/api/routes/openmaic_discovery.py`
    + `webreact/src/components/openmaic/DiscoveryPanel.jsx`），并让工作台可以归档到
@@ -78,8 +78,8 @@ OpenMAIC 不存在的取消接口不被伪造：生成任务的“停止查看�
    播放器接通播放计划（`src/player/playback.ts` + `src/player/routes.ts`）与
    `StagePlayerPanel.jsx`：逐场景给出渲染决定（native / sandbox-html /
    sandbox-url / unsupported）、`allow-scripts` 沙箱、动作时间线与恢复位置，
-   渲染不了时明示缺什么。白板写入、TTS/圆桌工作台工具已接入；场景内容细编辑和白板/
-   音频/圆桌时间线播放仍未完成。
+   渲染不了时明示缺什么；现在还会呈现真实 slide 元素、quiz 题目和白板条目。白板写入、
+   TTS/圆桌工作台工具已接入；音频/圆桌动作仍是时间线说明而非播放器内执行。
 5. E：材料、导入导出、高级能力和 Provider 设置。**进行中**：材料上传/解析/引用已接通
    （`openmaic-service/src/material/**` 的迁移 4 与路由、`backend/app/services/openmaic/material_extraction.py`
    的取字策略、`openmaic_materials.py` 网关、`MaterialsPanel.jsx`）。三条边界在这里定死：
