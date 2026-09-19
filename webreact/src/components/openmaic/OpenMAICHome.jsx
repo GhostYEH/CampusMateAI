@@ -46,11 +46,19 @@ function CapabilityList({ fusion }) {
   </div>;
 }
 
+function ProviderList({ providerStatus }) {
+  const labels = { llm: "模型", web_search: "联网搜索", image: "图片", video: "视频", tts: "TTS", render: "渲染", external_3d: "外部 3D" };
+  if (!providerStatus) return <p className="muted-copy">Provider 状态暂时取不到，相关入口保持关闭。</p>;
+  if (providerStatus.state === "disabled") return <p className="muted-copy">Provider 未启用；课程和已有内容仍可用。</p>;
+  return <div className="openmaic-capability-list" aria-label="Provider 能力状态">{Object.entries(labels).map(([key, label]) => <span key={key} className={providerStatus.providers?.[key] ? "is-ready" : "is-closed"}><Icon name={providerStatus.providers?.[key] ? "PhCheckCircle" : "PhMinusCircle"} size={16} />{label}<small>{providerStatus.providers?.[key] ? "已配置" : "未配置"}</small></span>)}</div>;
+}
+
 export default function OpenMAICHome({
   courses = [],
   assignments = [],
   recentItems = [],
   fusion = null,
+  providerStatus = null,
   recentError = "",
   onQuickAsk,
   onCreateContent,
@@ -94,6 +102,8 @@ export default function OpenMAICHome({
       <Panel className="openmaic-capability-panel">
         <SectionHeading title="内容入口" detail={`服务状态：${status.label}`} />
         <CapabilityList fusion={status} />
+        <SectionHeading title="Provider 状态" detail="只展示能力，不展示密钥或内部地址" />
+        <ProviderList providerStatus={providerStatus} />
         <p className="muted-copy">{status.detail}</p>
       </Panel>
 

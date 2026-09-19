@@ -59,6 +59,7 @@ def _container() -> ServiceContainer:
 def _assignment_to_out(
     a: AssignmentRow,
     *,
+    course_id: Optional[str] = None,
     author_name: Optional[str] = None,
     container: Optional[ServiceContainer] = None,
     student_id: Optional[str] = None,
@@ -93,6 +94,7 @@ def _assignment_to_out(
     return AssignmentOut(
         id=a.id,
         class_group_id=a.class_group_id,
+        course_id=course_id,
         author_id=a.author_id,
         author_name=author_name,
         title=a.title,
@@ -144,6 +146,7 @@ def list_assignments(
     items = [
         _assignment_to_out(
             r,
+            course_id=cls.course_id,
             author_name=_author_name(container, r.author_id),
             container=container,
             student_id=user.id if user.role == "student" else None,
@@ -204,6 +207,7 @@ def get_assignment(
         raise AssignmentNotFound()
     return _assignment_to_out(
         a,
+        course_id=cls.course_id,
         author_name=_author_name(container, a.author_id),
         container=container,
         student_id=user.id if user.role == "student" else None,

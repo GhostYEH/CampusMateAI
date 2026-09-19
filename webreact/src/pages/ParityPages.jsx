@@ -22,6 +22,7 @@ export function CoursesParityPage() {
   const [recentItems, setRecentItems] = useState([]);
   const [recentError, setRecentError] = useState("");
   const [fusion, setFusion] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -34,9 +35,10 @@ export function CoursesParityPage() {
       setCourses(list(coursePayload));
       setAssignments(list(assignmentPayload));
       // 两个辅助请求各自独立降级：任一失败都不该让课程列表整页失败。
-      const [recentResult, fusionResult] = await Promise.allSettled([
+      const [recentResult, fusionResult, providerResult] = await Promise.allSettled([
         api.getOpenMAICRecent(RECENT_LIMIT),
         api.getOpenMAICFusionStatus(),
+        api.getOpenMAICProviderStatus(),
       ]);
       if (recentResult.status === "fulfilled") {
         setRecentItems(normalizeRecentItems(recentResult.value));
@@ -45,6 +47,7 @@ export function CoursesParityPage() {
         setRecentError("受管服务暂时不可用，请稍后重试。");
       }
       setFusion(fusionResult.status === "fulfilled" ? fusionResult.value : null);
+      setProviderStatus(providerResult.status === "fulfilled" ? providerResult.value : null);
     } catch (err) {
       setError(err?.response?.data?.detail || err?.message || "课程加载失败，请重试。");
     } finally {
@@ -56,7 +59,7 @@ export function CoursesParityPage() {
 
   return <PageFrame className="courses-page" eyebrow="OpenMAIC / Courses" title="学习内容" description="在 CampusMate 课程上下文中创建、询问和继续学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
-      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} onQuickAsk={(query, courseId) => navigate(`/counselor?course=${encodeURIComponent(courseId)}&prompt=${encodeURIComponent(query)}`)} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
+      <OpenMAICHome courses={courses} assignments={assignments} recentItems={recentItems} recentError={recentError} fusion={fusion} providerStatus={providerStatus} onQuickAsk={(query, courseId) => navigate(`/counselor?course=${encodeURIComponent(courseId)}&prompt=${encodeURIComponent(query)}`)} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
     </AsyncState>
   </PageFrame>;
 }

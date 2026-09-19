@@ -31,3 +31,9 @@ test("provider status uses the CampusMate route and does not need an exposed key
   assert.equal(status.providers.tts, false);
   assert.equal(mock.lastRequest().url, "/openmaic/fusion/providers");
 });
+
+test("courses home fetches provider status independently from course content", async () => {
+  const source = await import("node:fs").then(({ readFileSync }) => readFileSync(new URL("../src/pages/ParityPages.jsx", import.meta.url), "utf8"));
+  assert.match(source, /api\.getOpenMAICProviderStatus\(\)/);
+  assert.match(source, /providerStatus/);
+});

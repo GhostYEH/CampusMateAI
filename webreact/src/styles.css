@@ -1995,6 +1995,10 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-workspace-page { display: grid; gap: 18px; }
 .openmaic-generation-panel { padding: 18px; }
 .openmaic-job-status { display: flex; align-items: center; gap: 10px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.assignment-explain-context { margin: 10px 0 14px; padding: 12px; border-left: 2px solid #9bb6ed; border-radius: 8px; background: #f6f8fe; color: var(--muted); font-size: 12px; }
+.assignment-explain-context ul { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 18px; }
+.assignment-explain-result { display: flex; gap: 9px; margin-top: 14px; padding: 12px; border-radius: 10px; background: #f7f9fd; color: var(--ink); }
+.assignment-explain-result p { margin: 0; white-space: pre-wrap; line-height: 1.6; }
 .openmaic-job-status strong { color: var(--ink); }
 .openmaic-workspace-page__grid { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .openmaic-workspace-page__content { min-width: 0; }
