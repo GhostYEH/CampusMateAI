@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from ...core.logging import logger
+
 _QUALITY = {"verified": 1.0, "partial": 0.6, "stale": 0.25, "unavailable": 0.0}
 _PRESSURE = {"LOW": 0.2, "MODERATE": 0.5, "HIGH": 0.8, "VERY_HIGH": 1.0}
 
@@ -62,8 +64,13 @@ class AdaptiveStateNormalizer:
             before=before_values, after=after_values, strategy_code=strategy_code,
             comparison_as_of=as_of.astimezone(timezone.utc).isoformat(),
             evidence_refs=sorted({ref for item in records.values() for ref in item["evidence_refs"]}),
+            # before 是历史事实：它的有效性只能按"干预创建时刻"判断，
+            # 不能按评估时刻判断（否则 1 小时的 before TTL 会被 7 天观察窗口判死）。
+            baseline_capture_at=intervention.created_at,
         )
         result["dimensions"] = records
+        # 反馈只是辅助证据：它既不能单独把结果判成 IMPROVED，也不能覆盖真实行为证据。
+        # 因此它不进 `_dimensions`、不参与 delta 计算，只作为可解释性附件返回。
         result["learning_plan_feedback"] = self._feedback(intervention.user_id, intervention.plan_id)
         result["before_run_ids"] = {k: v for k, v in baseline.items() if v}
         result["after_run_ids"] = {k: v for k, v in after.get("run_ids", {}).items() if v}
@@ -86,7 +93,12 @@ class AdaptiveStateNormalizer:
                 ).fetchall()
             return [{"feedback_id": row["feedback_id"], "feedback": row["feedback"], "created_at": row["created_at"],
                      "role": "AUXILIARY_EVIDENCE"} for row in rows]
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - 反馈是辅助证据，缺失不能让比较失败
+            # 保守降级但不再静默：只记录错误码与阶段，不记录反馈正文或学生隐私内容。
+            logger.warning(
+                "adaptive_state_comparison_failed stage=plan_feedback plan_id={} error_code={}",
+                plan_id, type(exc).__name__,
+            )
             return []
 
     def _load_baseline(self, user_id: str, run_ids: dict[str, str | None]) -> list[Any]:

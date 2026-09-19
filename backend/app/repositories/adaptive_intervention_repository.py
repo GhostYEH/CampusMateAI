@@ -144,28 +144,71 @@ class AdaptiveInterventionRepository:
     def link_replanned(
         self, *, user_id: str, old_intervention_id: str, new_intervention_id: str,
         evaluation_id: str, decision_id: str, reason_codes: list[str],
+        conn: sqlite3.Connection | None = None,
     ) -> None:
-        """Only call after successor plan binding succeeds; the old record stays usable on failure."""
-        with self._db.transaction() as conn:
-            old_cursor = conn.execute(
-                "UPDATE adaptive_interventions SET status='SUPERSEDED', superseded_by_intervention_id=?, "
-                "updated_at=? WHERE intervention_id=? AND user_id=? AND status IN ('EVALUATED','OBSERVING','PLAN_GENERATED','ACCEPTED','EXECUTING')",
-                (new_intervention_id, _now(), old_intervention_id, user_id),
-            )
-            if old_cursor.rowcount != 1:
-                raise sqlite3.IntegrityError("old intervention state changed before successor link")
-            new_cursor = conn.execute(
-                "UPDATE adaptive_interventions SET status='PLAN_GENERATED', supersedes_intervention_id=?, source_evaluation_id=?, "
-                "replan_decision_id=?, replan_reason_codes_json=?, chain_depth=(SELECT chain_depth+1 FROM adaptive_interventions "
-                "WHERE intervention_id=? AND user_id=?), updated_at=? WHERE intervention_id=? AND user_id=?",
-                (old_intervention_id, evaluation_id, decision_id, json.dumps(sorted(set(reason_codes))),
-                 old_intervention_id, user_id, _now(), new_intervention_id, user_id),
-            )
-            if new_cursor.rowcount != 1:
-                raise sqlite3.IntegrityError("successor intervention missing during link")
+        """把旧干预推进到 SUPERSEDED 并把新干预提升为正式版本。
 
-    def has_replan_guard_violation(self, *, user_id: str, goal_id: str, old_intervention_id: str,
-                                   since: str, day_start: str, daily_limit: int) -> bool:
+        `conn` 允许调用方把这一步并入一个更大的事务（计划血缘 + 干预血缘必须
+        同生共死）：任一步失败整体回滚，绝不留下"旧计划已被替代、旧干预还有效"
+        这种半截状态。独立调用时自建事务。
+        """
+        if conn is None:
+            with self._db.transaction() as owned:
+                self._link_replanned_on(owned, user_id=user_id, old_intervention_id=old_intervention_id,
+                                        new_intervention_id=new_intervention_id, evaluation_id=evaluation_id,
+                                        decision_id=decision_id, reason_codes=reason_codes)
+            return
+        self._link_replanned_on(conn, user_id=user_id, old_intervention_id=old_intervention_id,
+                                new_intervention_id=new_intervention_id, evaluation_id=evaluation_id,
+                                decision_id=decision_id, reason_codes=reason_codes)
+
+    def _link_replanned_on(self, conn: sqlite3.Connection, *, user_id: str, old_intervention_id: str,
+                           new_intervention_id: str, evaluation_id: str, decision_id: str,
+                           reason_codes: list[str]) -> None:
+        old_cursor = conn.execute(
+            "UPDATE adaptive_interventions SET status='SUPERSEDED', superseded_by_intervention_id=?, "
+            "updated_at=? WHERE intervention_id=? AND user_id=? AND status IN ('EVALUATED','OBSERVING','PLAN_GENERATED','ACCEPTED','EXECUTING')",
+            (new_intervention_id, _now(), old_intervention_id, user_id),
+        )
+        if old_cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("old intervention state changed before successor link")
+        new_cursor = conn.execute(
+            "UPDATE adaptive_interventions SET status='PLAN_GENERATED', supersedes_intervention_id=?, source_evaluation_id=?, "
+            "replan_decision_id=?, replan_reason_codes_json=?, chain_depth=(SELECT chain_depth+1 FROM adaptive_interventions "
+            "WHERE intervention_id=? AND user_id=?), updated_at=? WHERE intervention_id=? AND user_id=? "
+            "AND status IN ('PROPOSED','PLAN_GENERATED') AND supersedes_intervention_id IS NULL",
+            (old_intervention_id, evaluation_id, decision_id, json.dumps(sorted(set(reason_codes))),
+             old_intervention_id, user_id, _now(), new_intervention_id, user_id),
+        )
+        if new_cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("successor intervention missing or already linked")
+
+    def claim_decision(self, *, user_id: str, decision_id: str) -> bool:
+        """CAS 抢占：只有 PENDING 或"可恢复的 RETRYABLE"决策能进入 APPLYING。
+
+        返回 True 表示本 Worker 拿到了处理权。`rowcount != 1` 表示另一个 Worker
+        已经先一步处理（或决策已进入终态）——此时**不得**继续生成后继，更不得取消
+        别人创建的后继。
+        """
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE adaptive_replan_decisions SET status='APPLYING' "
+                "WHERE decision_id=? AND user_id=? AND (status='PENDING' "
+                "OR (status='FAILED' AND failure_class='RETRYABLE'))",
+                (decision_id, user_id),
+            )
+            return cursor.rowcount == 1
+
+    def replan_guard_reason(
+        self, *, user_id: str, goal_id: str, old_intervention_id: str, chain_depth: int,
+        since: str, day_start: str, daily_limit: int, max_chain_depth: int,
+    ) -> str | None:
+        """防抖守卫：返回稳定 reason code，或 None 表示允许重规划。
+
+        检查顺序固定为 chain_depth → daily_limit → cooldown → active_intervention：
+        链深与日限额是"已经到顶"的硬上限，冷却窗口是"刚做过"的软上限；
+        固定顺序让每种情形都能被单独触发、单独断言。
+        """
         with self._db.query() as conn:
             active = conn.execute(
                 "SELECT COUNT(*) FROM adaptive_interventions WHERE user_id=? AND goal_id=? "
@@ -182,7 +225,23 @@ class AdaptiveInterventionRepository:
                 "AND supersedes_intervention_id IS NOT NULL AND created_at>=?",
                 (user_id, goal_id, day_start),
             ).fetchone()[0]
-        return bool(active or recent or daily >= daily_limit)
+        if chain_depth >= max_chain_depth:
+            return "replan_chain_depth_exceeded"
+        if daily >= daily_limit:
+            return "replan_daily_limit_reached"
+        if recent:
+            return "replan_cooldown_active"
+        if active:
+            return "replan_active_intervention_present"
+        return None
+
+    def has_replan_guard_violation(self, *, user_id: str, goal_id: str, old_intervention_id: str,
+                                   since: str, day_start: str, daily_limit: int) -> bool:
+        return bool(self.replan_guard_reason(
+            user_id=user_id, goal_id=goal_id, old_intervention_id=old_intervention_id,
+            chain_depth=0, since=since, day_start=day_start, daily_limit=daily_limit,
+            max_chain_depth=1_000_000,
+        ))
 
     def save_evaluation(
         self,

@@ -130,7 +130,9 @@ def test_after_provenance_is_the_conservative_confidence_bound():
         "before_confidence": 1.0, "after_confidence": 1.0,
         "before_snapshot_id": "b-snap", "after_snapshot_id": "a-snap",
         "before_run_id": "b-run", "after_run_id": "a-run",
-        "before_observed_at": "2026-09-18T00:00:00+00:00", "after_observed_at": "2026-09-18T00:00:00+00:00",
+        # before 是干预创建时的历史观测，必须严格早于 after：
+        # 同一个时刻不可能既是"干预前基线"又是"干预后观测"。
+        "before_observed_at": "2026-09-17T00:00:00+00:00", "after_observed_at": "2026-09-18T00:00:00+00:00",
         "before_valid_until": "2026-09-19T00:00:00+00:00", "after_valid_until": "2026-09-19T00:00:00+00:00",
         "evidence_refs": ["b-snap", "a-snap"],
     }

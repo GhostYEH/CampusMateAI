@@ -43,6 +43,66 @@ def _loads(value: str | None, fallback):
     return parsed if isinstance(parsed, type(fallback)) else fallback
 
 
+# 公开的 before/after 比较形状。**白名单**而不是黑名单：只有列在这里的字段会出网。
+_COMPARISON_KEYS = (
+    "relevant_dimensions", "before_values", "after_values", "delta", "outcome",
+    "confidence", "warnings", "comparison_as_of", "dimensions",
+)
+_DIMENSION_KEYS = (
+    "before", "after", "before_data_quality", "after_data_quality",
+    "before_confidence", "after_confidence", "before_observed_at", "after_observed_at",
+)
+# 内部 provenance 标识前缀：任何字符串值命中即丢弃。
+_INTERNAL_ID_PREFIXES = ("lsnap_", "lrun_", "lprun_")
+
+
+def _scrub_value(value):
+    if isinstance(value, str) and value.startswith(_INTERNAL_ID_PREFIXES):
+        return None
+    return value
+
+
+def _public_state_comparison(raw) -> dict | None:
+    """把内部状态比较投影成公开形状。
+
+    学生能看到的是：维度值、数据质量、置信度、观测时刻、结论与稳定 warning code。
+    内部 provenance（状态 run id、快照 id、证据引用、原始异常文本）一律不出网，
+    避免把内部实现标识泄露到客户端并形成隐式契约。
+    """
+    if not isinstance(raw, dict):
+        return None
+    out: dict = {}
+    for key in _COMPARISON_KEYS:
+        if key not in raw:
+            continue
+        value = raw[key]
+        if key == "dimensions":
+            dimensions: dict = {}
+            if isinstance(value, dict):
+                for name, record in value.items():
+                    if not isinstance(record, dict):
+                        continue
+                    cleaned = {}
+                    for field in _DIMENSION_KEYS:
+                        if field not in record:
+                            continue
+                        item = _scrub_value(record[field])
+                        if item is not None:
+                            cleaned[field] = item
+                    dimensions[str(name)] = cleaned
+            out[key] = dimensions
+        elif key == "warnings":
+            out[key] = [str(code) for code in value] if isinstance(value, (list, tuple)) else []
+        elif key in ("before_values", "after_values", "delta"):
+            out[key] = (
+                {str(k): v for k, v in value.items() if _scrub_value(v) is not None}
+                if isinstance(value, dict) else {}
+            )
+        else:
+            out[key] = value
+    return out
+
+
 def _out(row: AdaptiveInterventionRow) -> AdaptiveInterventionOut:
     assessment = _loads(row.assessment_json, {})
     return AdaptiveInterventionOut(
@@ -150,7 +210,7 @@ def get_adaptive_intervention_outcome(
         verdict=summary["verdict"],
         observed_outcome=summary["observed_outcome"],
         causal_claim=summary["causal_claim"],
-        state_comparison=evaluation.state_comparison,
+        state_comparison=_public_state_comparison(evaluation.state_comparison),
         decision=decision.decision if decision else None,
         decision_reason_codes=_loads(decision.reason_codes_json, []) if decision else [],
         suggested_adjustments=_loads(decision.suggested_adjustments_json, []) if decision else [],

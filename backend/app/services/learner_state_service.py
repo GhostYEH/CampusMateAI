@@ -344,7 +344,11 @@ class LearnerStateProjectionService:
         if self._learner_event_repository is not None:
             try:
                 events, _ = self._learner_event_repository.list_for_user(
-                    user_id=user_id, page=1, page_size=200
+                    # `list_for_user` 只接受 page_size <= 100；此前写 200 会被它
+                    # 直接拒绝，而下面的 `except Exception: pass` 又把异常吞掉，
+                    # 于是 WORLD 投影的 learner event 永远是空的（自证据隔离
+                    # 也因此从未真正生效过）。这里取仓储支持的上限。
+                    user_id=user_id, page=1, page_size=100
                 )
                 inputs["events"] = [
                     {"event_id": e.event_id, "event_type": e.event_type,
@@ -352,8 +356,11 @@ class LearnerStateProjectionService:
                     for e in events
                     if not exclude_evaluation_id or (e.payload or {}).get("evaluation_id") != exclude_evaluation_id
                 ]
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 - 事件缺失不能让整个投影失败
+                logger.warning(
+                    "world_projection_event_load_failed user_id={} trigger={} error_code={}",
+                    user_id, trigger, type(exc).__name__,
+                )
         try:
             with self.repository._db.query() as conn:
                 task_rows = conn.execute(

@@ -79,10 +79,14 @@ class AdaptiveReplanningWorker:
                     for key, item in (comparison.get("dimensions") or {}).items():
                         if isinstance(item, dict) and isinstance(item.get("after"), (int, float)):
                             state[key] = item["after"]
+                    # 防抖必须在**持久化 REPLAN 之前**判定：冷却 / 日限额 / 链深
+                    # 是安全策略，命中时本轮转成带稳定 reason code 的 SUSPEND
+                    # （保守等待，不改动计划），而不是记成基础设施 FAILED。
                     proposed = self._policy.decide(
                         evaluation=payload, state=state,
                         goal=getattr(goal, "__dict__", {}) or {}, now=now.isoformat(),
                         evidence_refs=list(comparison.get("evidence_refs") or [evaluation.evaluation_id]),
+                        replan_guard_code=self._guard_code(row, now),
                     )
                     decision = self._repository.save_decision(
                         user_id=row.user_id, goal_id=row.goal_id, intervention_id=row.intervention_id,
@@ -97,7 +101,12 @@ class AdaptiveReplanningWorker:
                 self._emit_event(row, "intervention_decided", evaluation.evaluation_id, decision.decision_id, now)
                 if decision.status == "APPLIED":
                     continue
-                self._repository.update_decision_status(user_id=row.user_id, decision_id=decision.decision_id, status="APPLYING")
+                # CAS 抢占：只有把决策从 PENDING（或可恢复的 RETRYABLE）原子推进到
+                # APPLYING 的 Worker 才拥有处理权。`False` 表示另一个 Worker 已经
+                # 先一步接手，或决策已进入终态 —— 此时**不得**继续生成后继，
+                # 更不得取消别人创建的后继。
+                if not self._claim(row, decision):
+                    continue
                 if decision.decision == "REPLAN":
                     successor = self._service.replan_from_evaluation(
                         user_id=row.user_id, intervention_id=row.intervention_id,
@@ -129,6 +138,26 @@ class AdaptiveReplanningWorker:
         return AdaptiveReplanTickReport(scanned=len(rows), evaluated=evaluated, reused=reused,
                                         decisions=decisions, applied=applied, failed=failed)
 
+    def _claim(self, row, decision) -> bool:
+        """抢占决策处理权；`False` 表示本 Worker 没拿到，必须原样退出。"""
+        claim = getattr(self._repository, "claim_decision", None)
+        if claim is None:
+            # 兼容只实现状态推进的小型测试替身：没有 CAS 时退化为原语义。
+            self._repository.update_decision_status(
+                user_id=row.user_id, decision_id=decision.decision_id, status="APPLYING",
+            )
+            return True
+        return bool(claim(user_id=row.user_id, decision_id=decision.decision_id))
+
+    def _guard_code(self, row, now: datetime) -> str | None:
+        resolver = getattr(self._service, "replan_guard_code", None)
+        if resolver is None:
+            return None
+        return resolver(
+            user_id=row.user_id, goal_id=row.goal_id, intervention_id=row.intervention_id,
+            chain_depth=int(getattr(row, "chain_depth", 0) or 0), as_of=now,
+        )
+
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
@@ -146,8 +175,24 @@ class AdaptiveReplanningWorker:
                 pass
 
     async def _run_loop(self) -> None:
+        """后台调度循环：**单轮失败绝不结束调度**。
+
+        每一轮都有顶层异常隔离：扫描/评估/决策阶段抛出的任何异常都在这里被
+        吸收并留下结构化日志（阶段 + 错误码，不含学生隐私内容与凭据），
+        下一轮照常继续。只有 `CancelledError`（`stop()` 或进程退出）才会
+        真正终止循环，保证关闭时不遗留后台任务。
+        """
         while not self._stopping:
-            await asyncio.to_thread(self.tick, batch_size=25)
+            try:
+                await asyncio.to_thread(self.tick, batch_size=25)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - 顶层隔离：单轮失败不能杀死调度
+                from ...core.logging import logger
+                logger.warning(
+                    "adaptive_replanning_round_failed stage=tick error_code={}",
+                    type(exc).__name__,
+                )
             waited = self._sleeper(self._interval_seconds)
             if inspect.isawaitable(waited):
                 await waited

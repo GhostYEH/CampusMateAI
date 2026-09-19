@@ -11,6 +11,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
 import * as runtimeApi from "../data/agentRuntimeApi.js";
+import {
+  DECISION_STATE,
+  describeAdoption,
+  describeInterventionDecision,
+  describeObservedOutcome,
+} from "../data/interventionDecisionView.js";
 import { useAgentRun } from "../hooks/useAgentRun.js";
 
 const DATA_QUALITY_LABEL = {
@@ -141,21 +147,32 @@ function ErrorBar({ error, onRetry }) {
   );
 }
 
-function InterventionLoopSummary({ intervention, outcome }) {
+function InterventionLoopSummary({ intervention, outcome, loading, error, onRetry }) {
   if (!intervention) return null;
-  const outcomeLabel = { IMPROVED: "观测到改善", STABLE: "状态基本稳定", DECLINED: "观测到下降", INSUFFICIENT_EVIDENCE: "证据不足" };
-  const decisionLabel = { CONTINUE: "继续当前计划", WAIT_FOR_EVIDENCE: "等待更多证据", REPLAN: "已决定调整计划", SUSPEND: "暂停后续规划" };
-  const decision = outcome?.decision ? decisionLabel[outcome.decision] || outcome.decision : "尚无持久化决策";
+  const decision = describeInterventionDecision({ outcome, loading, error });
+  const adoption = describeAdoption(outcome?.adoption);
+  const observed = describeObservedOutcome(decision.observedOutcome);
   return <section className="ls-section" aria-label="当前干预闭环">
     <div className="ls-section__heading"><h2>当前干预闭环</h2><span className="ls-section__hint">基于可追溯证据，不作因果断言</span></div>
     <article className="ls-state-card">
       <p><strong>当前策略：</strong>{intervention.strategy_code}</p>
       <p><strong>选择依据：</strong>{intervention.rationale_codes?.join("、") || "状态证据有限"}</p>
-      <p><strong>执行采纳：</strong>{outcome?.adoption === "COMPLETED" ? "计划已完成" : outcome?.adoption || "尚未开始"}</p>
-      <p><strong>观测结果：</strong>{outcomeLabel[outcome?.observed_outcome] || "证据不足"}</p>
-      <p><strong>系统决定：</strong>{decision}{intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}</p>
-      {outcome?.decision_reason_codes?.length > 0 && <p><strong>决定依据：</strong>{outcome.decision_reason_codes.join("、")}</p>}
-      {outcome?.suggested_adjustments?.length > 0 && <p><strong>调整项：</strong>{outcome.suggested_adjustments.join("、")}</p>}
+      <p><strong>执行采纳：</strong>{adoption}</p>
+      <p><strong>观测结果：</strong>{observed}</p>
+      <p>
+        <strong>系统决定：</strong>
+        <span className={`ls-decision ls-decision--${decision.tone}`} data-decision-state={decision.state}>
+          {decision.label}
+        </span>
+        {decision.state === DECISION_STATE.PENDING && decision.detail ? `（${decision.detail}）` : ""}
+        {intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}
+      </p>
+      {decision.state === DECISION_STATE.UNAVAILABLE && <p className="ls-error" role="alert">
+        <span>{decision.detail || "系统决定暂时读不到，页面不会按状态差值推测决定。"}</span>
+        {onRetry && <button onClick={onRetry} className="ls-retry-btn">重试</button>}
+      </p>}
+      {decision.reasonCodes.length > 0 && <p><strong>决定依据：</strong>{decision.reasonCodes.join("、")}</p>}
+      {decision.adjustments.length > 0 && <p><strong>调整项：</strong>{decision.adjustments.join("、")}</p>}
       {intervention.supersedes_intervention_id && <p>来源干预：{intervention.supersedes_intervention_id}</p>}
     </article>
   </section>;
@@ -948,7 +965,13 @@ export default function LearningStatePage() {
       <div className="ls-layout">
         <div className="ls-layout__main">
           <StateOverview snapshots={snapshots.data} onViewEvidence={setEvidenceSnapshot} onMarkInaccurate={handleMarkInaccurate} />
-          <InterventionLoopSummary intervention={currentIntervention} outcome={interventionOutcome.data} />
+          <InterventionLoopSummary
+            intervention={currentIntervention}
+            outcome={interventionOutcome.data}
+            loading={interventionOutcome.loading}
+            error={interventionOutcome.error}
+            onRetry={interventionOutcome.reload}
+          />
           <WorldSnapshotSection snapshots={worldSnapshots.data} onViewEvidence={setEvidenceSnapshot} />
           <StateTimeline changes={changes.data} />
           <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />

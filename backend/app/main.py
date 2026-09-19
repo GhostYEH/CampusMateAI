@@ -54,9 +54,14 @@ async def lifespan(app: FastAPI):
                 settings.agent_runtime_mode, settings.agent_worker_concurrency)
     # 自适应闭环不依赖页面访问：先执行一个有界 tick，再持续调度；
     # worker 自身具备决策持久化和两阶段恢复能力。
-    report = await asyncio.to_thread(container.adaptive_replanning_worker.tick, batch_size=25)
-    logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, decisions={}, applied={}, failed={}",
-                report.scanned, report.evaluated, report.reused, report.decisions, report.applied, report.failed)
+    # 首次 tick 失败**不能阻止应用启动**：闭环是后台增强能力，
+    # 调度循环起来之后后续轮次会自动重试未完成的工作。
+    try:
+        report = await asyncio.to_thread(container.adaptive_replanning_worker.tick, batch_size=25)
+        logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, decisions={}, applied={}, failed={}",
+                    report.scanned, report.evaluated, report.reused, report.decisions, report.applied, report.failed)
+    except Exception as e:
+        logger.warning("Adaptive replanning 首次 tick 失败(不影响启动): {}", str(e)[:200])
     await container.adaptive_replanning_worker.start()
     # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
     if settings.agent_allow_mock_providers and settings.app_env != "production":

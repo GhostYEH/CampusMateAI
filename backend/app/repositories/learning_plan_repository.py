@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -81,7 +82,14 @@ class LearningPlanRepository:
                 """INSERT INTO learning_plans(plan_id,run_id,user_id,status,llm_summary,
                    supersedes_plan_id,superseded_by_plan_id,stale_reason,replan_key,created_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (plan_id, run["run_id"], user_id, "PROPOSED", None, run.get("supersedes_plan_id"),
+                # 血缘在创建时刻**刻意不落库**：`supersedes_plan_id` 必须由
+                # `link_superseded` 与旧计划的 `superseded_by_plan_id` 在同一个事务里
+                # 成对写入。若在这里先写一半，一旦后续绑定失败就会留下
+                # "新计划指向旧计划、旧计划仍被当作正式版本"的半截血缘，
+                # 并且让 `link_superseded` 的 `supersedes_plan_id IS NULL` 前置条件失效。
+                # `replan_key` 仍然在创建时写入：唯一索引
+                # `idx_learning_plans_replan_key` 靠它保证"一次重规划只产出一个后继计划"。
+                (plan_id, run["run_id"], user_id, "PROPOSED", None, None,
                  None, None, run.get("replan_key"), now),
             )
             for item in items:
@@ -240,16 +248,39 @@ class LearningPlanRepository:
                 (reason[:64], plan_id, user_id),
             )
 
-    def link_superseded(self, *, old_plan_id: str, new_plan_id: str, user_id: str, replan_key: str | None = None) -> None:
-        with self._db.transaction() as conn:
-            conn.execute(
-                "UPDATE learning_plans SET superseded_by_plan_id=? WHERE plan_id=? AND user_id=?",
-                (new_plan_id, old_plan_id, user_id),
-            )
-            conn.execute(
-                "UPDATE learning_plans SET supersedes_plan_id=?, replan_key=? WHERE plan_id=? AND user_id=?",
-                (old_plan_id, replan_key, new_plan_id, user_id),
-            )
+    def link_superseded(self, *, old_plan_id: str, new_plan_id: str, user_id: str,
+                        replan_key: str | None = None,
+                        conn: sqlite3.Connection | None = None) -> None:
+        """把旧计划标记为被新计划替代（双向血缘）。
+
+        `conn` 允许调用方并入一个更大的事务：自适应闭环要求计划血缘与干预血缘
+        在同一个事务边界内完成，避免出现"计划已切换但干预还没切换"的半截状态。
+        独立调用时自建事务（保持原有语义不变）。
+        """
+        if conn is not None:
+            self._link_superseded_on(conn, old_plan_id=old_plan_id, new_plan_id=new_plan_id,
+                                     user_id=user_id, replan_key=replan_key)
+            return
+        with self._db.transaction() as owned:
+            self._link_superseded_on(owned, old_plan_id=old_plan_id, new_plan_id=new_plan_id,
+                                     user_id=user_id, replan_key=replan_key)
+
+    def _link_superseded_on(self, conn: sqlite3.Connection, *, old_plan_id: str, new_plan_id: str,
+                            user_id: str, replan_key: str | None) -> None:
+        old_cursor = conn.execute(
+            "UPDATE learning_plans SET superseded_by_plan_id=? WHERE plan_id=? AND user_id=? "
+            "AND superseded_by_plan_id IS NULL",
+            (new_plan_id, old_plan_id, user_id),
+        )
+        if old_cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("old plan missing or already superseded")
+        new_cursor = conn.execute(
+            "UPDATE learning_plans SET supersedes_plan_id=?, replan_key=? WHERE plan_id=? AND user_id=? "
+            "AND supersedes_plan_id IS NULL",
+            (old_plan_id, replan_key, new_plan_id, user_id),
+        )
+        if new_cursor.rowcount != 1:
+            raise sqlite3.IntegrityError("successor plan missing or already linked")
 
     def execute_atomic(self, *, plan_id: str, user_id: str, task_repository) -> None:
         """Execute all stored items on one database connection/transaction."""

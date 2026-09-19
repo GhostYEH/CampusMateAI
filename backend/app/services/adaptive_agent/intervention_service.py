@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from ...core.logging import logger
 from ...models.adaptive_intervention import AdaptiveInterventionRow
 from ...repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
 from ...schemas.adaptive_intervention import (
@@ -40,7 +41,7 @@ from ...schemas.adaptive_intervention import (
 from .outcome_evaluator import InterventionOutcomeEvaluator, PlanObservation
 from .observation_window import ObservationWindowPolicy
 from .state_analyzer import StudentStateAnalyzer
-from .strategy_policy import StrategyPolicy
+from .strategy_policy import FOUNDATION_EMPHASIS_ITEM_THRESHOLD, StrategyPolicy
 from .state_normalizer import AdaptiveStateNormalizer
 
 FORECAST_TYPES = (
@@ -91,6 +92,10 @@ class InterventionOutcomeResult:
 def _digest(value: Any) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+class InterventionReuseConflict(ValueError):
+    """同一幂等键对应的记录已经不可复用（已取消或已被替代）。"""
 
 
 class AdaptiveInterventionService:
@@ -148,6 +153,13 @@ class AdaptiveInterventionService:
             user_id=user_id, idempotency_key=idempotency_key
         )
         if existing is not None:
+            # 幂等复用是有条件的：已取消/已被替代的记录不是有效结果。
+            # 唯一的例外是"从未绑定过计划"的取消记录——那正是计划生成阶段失败后的
+            # 重试路径（同一幂等键不能再插一行，只能继续推进既有记录）。
+            if existing.status == "SUPERSEDED" or (existing.status == "CANCELLED" and existing.plan_id):
+                raise InterventionReuseConflict(
+                    f"干预记录 {existing.intervention_id} 处于 {existing.status}，不是有效的幂等后继"
+                )
             assessment, strategy = self._restore(existing)
             if existing.plan_id:
                 plan = self._load_plan(user_id=user_id, plan_id=existing.plan_id)
@@ -283,8 +295,15 @@ class AdaptiveInterventionService:
                 intervention=row, as_of=now, evaluation_id=row.evaluation_id,
                 strategy_code=row.strategy_code,
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - 比较失败必须保守降级，但不能静默
+            # 保守降级：拿不到比较结果时评估器会给出 INSUFFICIENT_EVIDENCE。
+            # 但错误必须可观察：记录干预/评估 id、错误码与所处阶段，
+            # 不记录学生隐私内容、证据正文或凭据。
             comparison = None
+            logger.warning(
+                "adaptive_state_comparison_failed stage=compare intervention_id={} evaluation_id={} error_code={}",
+                row.intervention_id, row.evaluation_id or "none", type(exc).__name__,
+            )
         result = self._outcome_evaluator.evaluate(
             intervention=row, observation=observation, as_of=now, state_comparison=comparison
         )
@@ -360,12 +379,10 @@ class AdaptiveInterventionService:
             return None
         if old.chain_depth >= MAX_REPLAN_CHAIN_DEPTH:
             return None
-        day_start = as_of.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        if self._repository.has_replan_guard_violation(
-            user_id=user_id, goal_id=old.goal_id, old_intervention_id=old.intervention_id,
-            since=(as_of - timedelta(hours=REPLAN_COOLDOWN_HOURS)).isoformat(),
-            day_start=day_start.isoformat(), daily_limit=REPLAN_DAILY_LIMIT,
-        ):
+        if self.replan_guard_code(
+            user_id=user_id, goal_id=old.goal_id, intervention_id=old.intervention_id,
+            chain_depth=int(getattr(old, "chain_depth", 0) or 0), as_of=as_of,
+        ) is not None:
             return None
         plan = self._load_plan(user_id=user_id, plan_id=old.plan_id)
         available = int(getattr(getattr(plan, "run", None), "available_minutes", 60) or 60)
@@ -376,18 +393,46 @@ class AdaptiveInterventionService:
             strategy_adjustments=suggested_adjustments or [],
             deferred_activation=True,
         )
-        try:
+        # 原子血缘：计划血缘（旧计划 -> 新计划）与干预血缘（旧干预 -> 新干预）
+        # 必须在**同一个事务边界**内完成。任一步失败整体回滚，绝不会留下
+        # "计划已切换但干预还没切换"（或反之）的半截状态。
+        #
+        # 失败时**不取消后继**：后继保持 PROPOSED 暂存态（既不是正式版本，
+        # 也没有指向它的血缘），旧干预与旧计划仍然是正式版本。
+        # 重试会复用同一个幂等后继，并在这里把血缘补齐。
+        new_plan_id = getattr(successor.plan, "plan_id", None)
+        with self._repository._db.transaction() as conn:
+            if new_plan_id:
+                self._planner.repository.link_superseded(
+                    old_plan_id=old.plan_id, new_plan_id=str(new_plan_id), user_id=user_id,
+                    replan_key=f"replan-decision:{decision_id}", conn=conn,
+                )
             self._repository.link_replanned(
                 user_id=user_id, old_intervention_id=old.intervention_id,
                 new_intervention_id=successor.intervention.intervention_id, evaluation_id=evaluation_id,
-                decision_id=decision_id, reason_codes=reason_codes,
+                decision_id=decision_id, reason_codes=reason_codes, conn=conn,
             )
-        except Exception:
-            self._repository.update_status(
-                user_id=user_id, intervention_id=successor.intervention.intervention_id, status="CANCELLED"
-            )
-            raise
         return successor
+
+    def replan_guard_code(
+        self, *, user_id: str, goal_id: str, intervention_id: str,
+        chain_depth: int, as_of: datetime,
+    ) -> str | None:
+        """防抖守卫的稳定 reason code；`None` 表示允许重规划。
+
+        冷却 / 日限额 / 链深是**安全策略**而不是基础设施故障：命中时本轮应当
+        转成带稳定 reason code 的 SUSPEND（保守等待），而不是记为 FAILED。
+        判定顺序由仓储固定为 chain_depth -> daily_limit -> cooldown -> active，
+        让每种情形都能被单独触发、单独断言。
+        """
+        day_start = as_of.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        return self._repository.replan_guard_reason(
+            user_id=user_id, goal_id=goal_id, old_intervention_id=intervention_id,
+            chain_depth=int(chain_depth or 0),
+            since=(as_of - timedelta(hours=REPLAN_COOLDOWN_HOURS)).isoformat(),
+            day_start=day_start.isoformat(), daily_limit=REPLAN_DAILY_LIMIT,
+            max_chain_depth=MAX_REPLAN_CHAIN_DEPTH,
+        )
 
     # ------------------------------------------------------------------ 内部
 
@@ -498,6 +543,17 @@ class AdaptiveInterventionService:
 
     @staticmethod
     def _adjustments_reflected(plan: Any, strategy: StrategyDecision, adjustments: list[str]) -> bool:
+        """每条建议必须能在新计划上找到**可验证**的落地效果。
+
+        - `reduce_workload` / `split_tasks` 直接作用于计划结构（分配时长、单项时长），
+          必须真的体现在计划上。
+        - `reinforce_foundation` 先作用于策略参数：把 `foundation_emphasis` 抬到
+          "追加基础复习项"的阈值之上，并把策略码切到 FOUNDATION_REINFORCEMENT。
+          复习项本身只有在存在真实知识掌握观测 + 课程内容证据时才会被规划器追加
+          （见 `LearningPlannerService._foundation_items`）。没有课程证据时要求
+          "必须出现复习项"等于要求规划器编造内容，所以：有课程范围的计划必须出现
+          复习项，没有课程范围的计划校验参数确实被抬过了阈值。
+        """
         params = strategy.planning_parameters
         items = list(getattr(plan, "items", []) or [])
         run = getattr(plan, "run", None)
@@ -507,8 +563,13 @@ class AdaptiveInterventionService:
         if "split_tasks" in adjustments and items:
             if max(int(getattr(item, "estimated_minutes", 0) or 0) for item in items) > params.target_item_minutes:
                 return False
-        if "reinforce_foundation" in adjustments and items:
-            if not any(getattr(item, "item_type", None) == "REVIEW_AND_REFLECT" for item in items):
+        if "reinforce_foundation" in adjustments:
+            if params.foundation_emphasis < FOUNDATION_EMPHASIS_ITEM_THRESHOLD:
+                return False
+            course_scoped = [item for item in items if getattr(item, "course_id", None)]
+            if course_scoped and not any(
+                getattr(item, "item_type", None) == "REVIEW_AND_REFLECT" for item in items
+            ):
                 return False
         return True
 
