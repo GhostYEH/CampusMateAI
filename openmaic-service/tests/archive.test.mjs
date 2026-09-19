@@ -573,6 +573,19 @@ test('an archive carrying an invalid document is refused and creates nothing', a
   });
 });
 
+test('an archive with a material reference but no declared resource is refused atomically', async () => {
+  const { server } = harness();
+  await withServer(server, async (base) => {
+    const workspace = await createWorkspace(base);
+    const broken = archiveBytes({ document: { ...stageDocument('缺少资料'), material_ids: ['mt_missing'] } });
+    const response = await importArchive(base, workspace.body.id, broken);
+    assert.equal(response.status, 422);
+    assert.equal(response.body.error, 'document_rejected');
+    const listed = await call(base, 'GET', `/internal/courses/course-1/workspaces/${workspace.body.id}/stages`);
+    assert.equal(listed.body.items.length, 0);
+  });
+});
+
 test('an empty stage imports as an empty stage, not as an error', async () => {
   const { server } = harness();
   await withServer(server, async (base) => {

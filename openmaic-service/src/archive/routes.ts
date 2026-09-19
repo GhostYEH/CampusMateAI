@@ -65,13 +65,20 @@ function materialIdsInDocument(document: unknown): string[] {
     }
     if (typeof value !== 'object' || value === null) return;
     for (const [key, child] of Object.entries(value)) {
-      if (key === 'material_id' && typeof child === 'string' && child.trim()) {
+      if (key === 'material_id') {
+        if (typeof child !== 'string' || !child.trim()) {
+          throw new WorkspaceError('document_rejected', 'material_id must be a non-empty string');
+        }
         if (!seen.has(child)) { seen.add(child); ids.push(child); }
       } else if (key === 'material_ids' && Array.isArray(child)) {
         for (const item of child) {
-          if (typeof item !== 'string' || !item.trim()) continue;
+          if (typeof item !== 'string' || !item.trim()) {
+            throw new WorkspaceError('document_rejected', 'material_ids must hold non-empty strings');
+          }
           if (!seen.has(item)) { seen.add(item); ids.push(item); }
         }
+      } else if (key === 'material_ids') {
+        throw new WorkspaceError('document_rejected', 'material_ids must be a list');
       }
       visit(child);
     }
@@ -330,6 +337,11 @@ export function createArchiveRoutes(options: ArchiveRouteOptions): RouteDefiniti
             now: now(),
           });
           materialMapping.set(resource.manifest.source_id, createdMaterial.material.id);
+        }
+        for (const materialId of materialIdsInDocument(parsed.document)) {
+          if (!materialMapping.has(materialId)) {
+            throw new WorkspaceError('document_rejected', `archive is missing material resource ${materialId}`);
+          }
         }
         const prepared = prepareStage(remapMaterialIds(parsed.document, materialMapping));
         const title = parsed.manifest.stage.title.trim() || FALLBACK_TITLE;
