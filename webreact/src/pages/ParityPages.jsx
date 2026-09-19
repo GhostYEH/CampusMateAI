@@ -1,51 +1,49 @@
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { useApp } from "../app/AppContext.jsx";
 import { itemsOf } from "../data/contracts.js";
-import { courseProgress, examDetailFields } from "../data/alignment.js";
-import { sortCourses } from "../features/courses/courseSorting.js";
+import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
-import { CourseCard } from "../components/CourseCard.jsx";
-import AnimatedList from "../components/AnimatedList.jsx";
+import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
-const courseSortOptions = [
-  { value: "name-asc", label: "名称正序" },
-  { value: "name-desc", label: "名称倒序" },
-  { value: "date-desc", label: "最新优先" },
-  { value: "date-asc", label: "最早优先" },
-];
-
 export function CoursesParityPage() {
   const navigate = useNavigate();
-  const { reduceMotion } = useApp();
-  const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false);
-  const [data, setData] = useState([[], []]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [sort, setSort] = useState("name-asc");
-  const [, startSortTransition] = useTransition();
-  const motionReduced = reduceMotion || systemReducedMotion;
-  const selectSort = (nextSort) => {
-    if (nextSort === sort) return;
-    startSortTransition(() => setSort(nextSort));
-  };
-  async function load() { setLoading(true); setError(""); try { const [courses, assignments] = await Promise.all([api.getCourses(), api.getAssignments()]); setData([list(courses), list(assignments)]); } catch (err) { setError(err?.response?.data?.detail || err?.message || "课程加载失败，请重试。"); } finally { setLoading(false); } }
-  useEffect(() => { load(); }, []);
-  useEffect(() => {
-    const mediaQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-    if (!mediaQuery) return undefined;
-    const syncMotionPreference = () => setSystemReducedMotion(mediaQuery.matches);
-    mediaQuery.addEventListener?.("change", syncMotionPreference);
-    return () => mediaQuery.removeEventListener?.("change", syncMotionPreference);
-  }, []);
-  const [courses, assignments] = data;
-  const visible = useMemo(() => sortCourses(courses, sort), [courses, sort]);
-  return <PageFrame className="courses-page" eyebrow="Learning / Courses" title="我的课程" description="按课程整理公告、作业和学习资料，进入详情继续处理。" actions={<><Button variant="secondary" icon="PhArrowClockwise" onClick={load}>刷新</Button><div className="filter-bar course-toolbar"><div className="sort-options" role="group" aria-label="课程排序"><span className="sort-options__label"><Icon name="PhArrowsDownUp" size={16} />排序</span>{courseSortOptions.map((option) => <button key={option.value} type="button" className={`sort-option ${sort === option.value ? "is-active" : ""}`} data-target-cursor aria-pressed={sort === option.value} onClick={() => selectSort(option.value)}><span className="sort-option__hover" aria-hidden="true" /><span className="sort-option__stack"><span className="sort-option__label">{option.label}</span><span className="sort-option__label-hover" aria-hidden="true">{option.label}</span></span></button>)}</div><span className="toolbar-count">共 {visible.length} 门课程</span></div></>}>
-    <div className="courses-page__content">
-      <section className="courses-page__scroll-shell" aria-label="课程列表"><AsyncState loading={loading} error={error} empty={!visible.length ? "暂时没有课程" : null} onRetry={load}><AnimatedList items={visible} className="course-sort-list reveal" itemClassName="course-sort-item" layout="grid" maxHeight="none" displayScrollbar={false} showGradients={false} topFadeOnScroll enableArrowNavigation={!motionReduced} animateLayout={!motionReduced} reducedMotion={motionReduced} onItemSelect={(course) => navigate(`/courses/${course.id}`)} renderItem={(course) => <CourseCard course={course} progress={courseProgress(course, assignments)} />} /></AsyncState></section>
-    </div>
+  const [courses, setCourses] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [recentClassrooms, setRecentClassrooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [coursePayload, assignmentPayload] = await Promise.all([api.getCourses(), api.getAssignments()]);
+      const nextCourses = list(coursePayload);
+      setCourses(nextCourses);
+      setAssignments(list(assignmentPayload));
+      const historyResults = await Promise.allSettled(nextCourses.slice(0, 12).map(async (course) => ({
+        courseId: course.id,
+        ...(await api.listInteractiveClassrooms(course.id)),
+      })));
+      setRecentClassrooms(historyResults.filter((result) => result.status === "fulfilled").map((result) => result.value));
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "课程加载失败，请重试。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
+  return <PageFrame className="courses-page" eyebrow="OpenMAIC / Courses" title="学习内容" description="在 CampusMate 课程上下文中创建、询问和继续学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
+    <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
+      <OpenMAICHome courses={courses} assignments={assignments} recentClassrooms={recentClassrooms.flatMap((history) => (history.items || []).map((item) => ({ ...item, courseId: history.courseId, courseName: courses.find((course) => String(course.id) === String(history.courseId))?.name }))) } onQuickAsk={(query, courseId) => navigate(`/counselor?course=${encodeURIComponent(courseId)}&prompt=${encodeURIComponent(query)}`)} onCreateContent={(courseId) => navigate(`/courses/${courseId}`)} />
+    </AsyncState>
   </PageFrame>;
 }
 

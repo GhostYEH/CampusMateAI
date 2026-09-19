@@ -213,6 +213,12 @@ class Settings(BaseSettings):
     # 返回明确的"服务未启用"状态，不影响课程详情与 CPM 基础聊天。
     openmaic_enabled: bool = False
     openmaic_base_url: str = ""
+    # 短时 FastAPI -> 受管 OpenMAIC 服务断言的共享密钥，仅存在服务端。
+    openmaic_internal_secret: str = ""
+    # 仓库内受管服务的融合状态总开关；关闭时不发起内部网络请求。
+    openmaic_fusion_enabled: bool = False
+    openmaic_service_url: str = ""
+    openmaic_service_timeout_seconds: float = 5.0
     # 目标 OpenMAIC 部署若启用了 ACCESS_CODE 保护，后端用此访问码换 cookie。
     # 仅后端可见：绝不写入任何响应体、日志或客户端。
     openmaic_access_code: str = ""
@@ -476,6 +482,24 @@ class Settings(BaseSettings):
             from .semver import parse_version_spec
 
             parse_version_spec(self.openmaic_allowed_versions)
+        if self.openmaic_fusion_enabled:
+            service = urlparse(self.openmaic_service_url)
+            if (
+                service.scheme not in {"http", "https"}
+                or not service.netloc
+                or service.username
+                or service.password
+                or service.query
+                or service.fragment
+                or service.path not in ("", "/")
+            ):
+                raise ValueError(
+                    "OPENMAIC_SERVICE_URL must be a bare HTTP(S) origin without credentials/query/fragment/path"
+                )
+            if not self.openmaic_internal_secret:
+                raise ValueError("OPENMAIC_INTERNAL_SECRET is required when OpenMAIC fusion is enabled")
+            if self.openmaic_service_timeout_seconds <= 0:
+                raise ValueError("OPENMAIC_SERVICE_TIMEOUT_SECONDS must be positive")
         # 浏览器公开 Origin：与内部地址分离，且不得指向内网/元数据地址
         if self.openmaic_embed_origin:
             embed = urlparse(self.openmaic_embed_origin)

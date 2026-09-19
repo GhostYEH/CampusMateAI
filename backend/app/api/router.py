@@ -46,6 +46,7 @@ from .routes import (
     final_review,
     course_research,
     openmaic_classroom,
+    openmaic_fusion,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -117,5 +118,6 @@ api_router.include_router(course_research.router)
 api_router.include_router(edu.router)
 # OpenMAIC 互动课堂适配层(学生侧课程智能辅导空间)
 api_router.include_router(openmaic_classroom.router)
+api_router.include_router(openmaic_fusion.router)
 
 __all__ = ["api_router"]
