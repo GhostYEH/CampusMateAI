@@ -8,10 +8,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.remote.agent.AgentRiskLevel
 import com.example.campusai.data.remote.agent.FinalReviewCampaignCreateRequest
+import com.example.campusai.data.repository.FinalReviewRepository
 import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassCard as Card
 import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
@@ -20,9 +23,16 @@ import com.example.campusai.ui.components.GlassTextButton as TextButton
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FinalReviewScreen(
-    viewModel: FinalReviewViewModel = viewModel(),
+    repository: FinalReviewRepository,
     onBack: () -> Unit,
 ) {
+    val viewModel: FinalReviewViewModel = viewModel(factory = remember(repository) {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                FinalReviewViewModel(repository) as T
+        }
+    })
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadCampaigns() }
 

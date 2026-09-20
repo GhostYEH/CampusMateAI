@@ -690,16 +690,19 @@ fun AppNavHost(
         // ── Agent Runtime：期末复习 / 课程研究 / 通知事务 ──
         composable("agent_final_review") {
             FinalReviewScreen(
+                repository = modules.finalReview,
                 onBack = { navController.popBackStack() },
             )
         }
         composable("agent_course_research") {
             CourseResearchScreen(
+                repository = modules.courseResearch,
                 onBack = { navController.popBackStack() },
             )
         }
         composable("agent_notice_workflow") {
             NoticeWorkflowScreen(
+                repository = modules.noticeWorkflow,
                 onBack = { navController.popBackStack() },
             )
         }

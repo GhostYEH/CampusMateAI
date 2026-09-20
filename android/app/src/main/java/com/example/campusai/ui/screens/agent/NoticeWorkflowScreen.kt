@@ -7,19 +7,29 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassCard as Card
 import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
 import com.example.campusai.data.remote.agent.AgentRiskLevel
+import com.example.campusai.data.repository.NoticeWorkflowRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoticeWorkflowScreen(
-    viewModel: NoticeWorkflowViewModel = viewModel(),
+    repository: NoticeWorkflowRepository,
     onBack: () -> Unit,
 ) {
+    val viewModel: NoticeWorkflowViewModel = viewModel(factory = remember(repository) {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                NoticeWorkflowViewModel(repository) as T
+        }
+    })
     val state by viewModel.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.loadSources() }
 
