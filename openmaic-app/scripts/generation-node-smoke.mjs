@@ -5,8 +5,8 @@ import {
   generateSceneActions,
   generateSceneContent,
   generateSceneOutlinesFromRequirements,
-} from '@openmaic/generation';
-import { validateScene } from '@openmaic/dsl';
+} from '@magicclass/generation';
+import { validateScene } from '@magicclass/dsl';
 
 function parseFlags(argv) {
   const values = new Map();

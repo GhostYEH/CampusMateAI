@@ -174,7 +174,7 @@ function compareVersions(left, right) {
 }
 
 function packageDirectory(name) {
-  return `packages/@openmaic/${name}`;
+  return `packages/@magicclass/${name}`;
 }
 
 /** Whether any publishable input of `name` differs between `base` and HEAD. */
@@ -222,7 +222,7 @@ function failIfAny(failures, headline) {
  * Retired paths stay until the base branch no longer reaches a revision that
  * used them.
  */
-const DSL_VERSION_SOURCES = ['packages/@openmaic/dsl/src/version.ts'];
+const DSL_VERSION_SOURCES = ['packages/@magicclass/dsl/src/version.ts'];
 
 /**
  * The two SERIALIZED-FORMAT versions the dsl owns. They are deliberately
@@ -282,7 +282,7 @@ function caretEscapeVersion(version) {
  * A change to a serialized-format version requires a dsl package version
  * increase that the dependents' caret range will NOT admit.
  *
- * The dependents declare `@openmaic/dsl` as `workspace:^`, published as a
+ * The dependents declare `@magicclass/dsl` as `workspace:^`, published as a
  * caret. That range is what stops a consumer installing two copies of the dsl,
  * but it also means any version the caret admits reaches them without a release
  * of their own — so an admitted bump is free to change what they can read.
@@ -593,7 +593,7 @@ function runReleaseMode() {
   const releases = [];
 
   for (const name of Object.keys(ignoredPackageInputs)) {
-    const packageName = `@openmaic/${name}`;
+    const packageName = `@magicclass/${name}`;
     const manifest = join(repositoryRoot, packageDirectory(name), 'package.json');
 
     let local;

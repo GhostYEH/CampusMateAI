@@ -9,8 +9,8 @@ import type {
   PPTTableElement,
   PPTTextElement,
   Slide,
-} from '@openmaic/dsl';
-import type { LatexEditorResult } from '@openmaic/editor/ui';
+} from '@magicclass/dsl';
+import type { LatexEditorResult } from '@magicclass/editor/ui';
 
 export interface ShapeSpec {
   viewBox: [number, number];

@@ -335,7 +335,7 @@ export default function OpenMAICClassroomStage({
       // 二进制搬进来要走 third_party 的 LICENSE/NOTICE/清单流程，不属于本次范围，
       // 所以用同槽位的文字字标替代：视觉角色一致（一行品牌标识），且不会破图。
       sidebarProps={{
-        headerSlot: <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">OpenMAIC</span>,
+        headerSlot: <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">{"magic'class"}</span>,
         // 侧栏缩略图走**同一份**正文：有真实画布就画真实缩略图，没有就交给移植层
         // 自带的占位分支。参考项目这里用的是 `SlideThumbnail`，本仓库没有该组件，
         // 所以复用播放画布（`MaicSlideSurface`）在缩略图尺寸下渲染——缩略图与大图

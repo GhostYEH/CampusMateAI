@@ -15,15 +15,15 @@
  * really does land early enough. Legacy rows first, provider second, and the
  * very first collector pass backfills and marks rather than refusing.
  */
-import { AssetCollector } from '@openmaic/storage/asset/collector';
-import type { Scene, Stage } from '@openmaic/dsl';
-import type { MaicDocument } from '@openmaic/storage';
-import { PgAssetStore, ensureAssetSchema } from '@openmaic/storage/asset/pg';
-import { PgDocumentStore, ensureDocumentSchema } from '@openmaic/storage/document/pg';
+import { AssetCollector } from '@magicclass/storage/asset/collector';
+import type { Scene, Stage } from '@magicclass/dsl';
+import type { MaicDocument } from '@magicclass/storage';
+import { PgAssetStore, ensureAssetSchema } from '@magicclass/storage/asset/pg';
+import { PgDocumentStore, ensureDocumentSchema } from '@magicclass/storage/document/pg';
 import {
   nodePostgresTransaction,
   type ConnectableQueryable,
-} from '@openmaic/storage/server/reference';
+} from '@magicclass/storage/server/reference';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 

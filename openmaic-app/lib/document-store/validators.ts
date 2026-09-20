@@ -4,8 +4,8 @@ import {
   validateScene,
   validateStage,
   type ValidationIssue,
-} from '@openmaic/dsl';
-import type { SceneValidator, StageValidator } from '@openmaic/storage';
+} from '@magicclass/dsl';
+import type { SceneValidator, StageValidator } from '@magicclass/storage';
 import { hasPBLProjectV2Containers } from '@/lib/pbl/v2/types';
 import { isEmptyLegacyPBLConfig, type PBLProjectConfig } from '@/lib/pbl/legacy/read';
 

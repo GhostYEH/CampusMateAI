@@ -105,7 +105,7 @@ function mockStorage(collect: () => Promise<Partial<CollectionPass>>): Harness {
     getServerPersistenceProvider: harness.getServerPersistenceProvider,
   }));
 
-  vi.doMock('@openmaic/storage/asset/collector', () => ({
+  vi.doMock('@magicclass/storage/asset/collector', () => ({
     DEFAULT_ASSET_COLLECTION_GRACE_MS: 60 * 60 * 1000,
     AssetReferenceTrackingNotEnabledError: MockReferenceTrackingNotEnabled,
     StorageLockUnavailableError: MockLockUnavailable,
@@ -116,21 +116,21 @@ function mockStorage(collect: () => Promise<Partial<CollectionPass>>): Harness {
       }
     },
   }));
-  vi.doMock('@openmaic/storage/asset/pg', () => ({
+  vi.doMock('@magicclass/storage/asset/pg', () => ({
     ensureAssetSchema: harness.ensureAssetSchema,
     PgAssetStore: class {},
   }));
-  vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+  vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
     PgAssetByteStore: class {
       constructor(queryable: unknown) {
         harness.pgByteStores.push(queryable);
       }
     },
   }));
-  vi.doMock('@openmaic/storage/asset/s3-bytes', () => ({
+  vi.doMock('@magicclass/storage/asset/s3-bytes', () => ({
     loadS3AssetByteStore: harness.loadS3AssetByteStore,
   }));
-  vi.doMock('@openmaic/storage/server/reference', () => ({
+  vi.doMock('@magicclass/storage/server/reference', () => ({
     nodePostgresTransaction: vi.fn(() => vi.fn()),
   }));
   vi.doMock('pg', () => ({

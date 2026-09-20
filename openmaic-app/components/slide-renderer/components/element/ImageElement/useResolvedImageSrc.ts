@@ -1,6 +1,6 @@
 'use client';
 
-import type { PPTImageElement } from '@openmaic/dsl';
+import type { PPTImageElement } from '@magicclass/dsl';
 import { useMediaStageId } from '@/lib/contexts/media-stage-context';
 import {
   MISSING_ASSET_LEASE,

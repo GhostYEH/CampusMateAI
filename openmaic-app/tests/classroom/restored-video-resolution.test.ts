@@ -1,4 +1,4 @@
-import type { PPTVideoElement } from '@openmaic/dsl';
+import type { PPTVideoElement } from '@magicclass/dsl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildRestoredMediaTasks } from '@/lib/classroom/load-classroom';
 import { renderableMediaUrl, resolveMediaRef } from '@/lib/media/resolve-media-ref';

@@ -1,5 +1,5 @@
-import type { RuntimeRecord, RuntimeSession } from '@openmaic/dsl';
-import { RuntimeAppendConflictError, type RuntimeStore } from '@openmaic/storage';
+import type { RuntimeRecord, RuntimeSession } from '@magicclass/dsl';
+import { RuntimeAppendConflictError, type RuntimeStore } from '@magicclass/storage';
 
 import { getLearnerKey } from '@/lib/runtime/learner-key';
 import { registerRuntimeStorageResetHook } from '@/lib/runtime/config';

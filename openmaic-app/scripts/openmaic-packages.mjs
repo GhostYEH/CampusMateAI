@@ -35,11 +35,11 @@ export const OPENMAIC_PACKAGES = ['dsl', 'generation', 'storage', 'renderer', 'e
 
 /** The packages that depend on other owned packages, and on which ones. */
 export const INTERNAL_DEPENDENTS = {
-  generation: ['@openmaic/dsl'],
-  storage: ['@openmaic/dsl'],
-  renderer: ['@openmaic/dsl'],
-  editor: ['@openmaic/dsl', '@openmaic/renderer'],
-  importer: ['@openmaic/dsl'],
+  generation: ['@magicclass/dsl'],
+  storage: ['@magicclass/dsl'],
+  renderer: ['@magicclass/dsl'],
+  editor: ['@magicclass/dsl', '@magicclass/renderer'],
+  importer: ['@magicclass/dsl'],
 };
 
 export const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,7 +47,7 @@ export const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '
 export const PACKAGES_DIRECTORY = join(repositoryRoot, 'packages/@openmaic');
 
 export function packageDirectory(name) {
-  return `packages/@openmaic/${name}`;
+  return `packages/@magicclass/${name}`;
 }
 
 export function readManifest(name) {
@@ -80,14 +80,14 @@ export function assertPackageListIsComplete() {
   for (const name of onDisk) {
     if (!listed.includes(name)) {
       problems.push(
-        `packages/@openmaic/${name} exists but is not in OPENMAIC_PACKAGES, so every check ` +
+        `packages/@magicclass/${name} exists but is not in OPENMAIC_PACKAGES, so every check ` +
           'that reads this list skips it. Add it there and to publish-packages.yml.',
       );
     }
   }
   for (const name of listed) {
     if (!onDisk.includes(name)) {
-      problems.push(`OPENMAIC_PACKAGES lists ${name}, but packages/@openmaic/${name} is gone.`);
+      problems.push(`OPENMAIC_PACKAGES lists ${name}, but packages/@magicclass/${name} is gone.`);
     }
   }
 
@@ -131,7 +131,7 @@ function describeSetDifference(expected, observed, subject) {
  *
  * WHAT IT COVERS, and therefore what it does not. Two enumerations are read as
  * exact sets: the `on.push.paths` trigger, and every `for pkg in ...;` loop
- * (the build, pack, publish and tag loops). `--filter "@openmaic/<name>"` is
+ * (the build, pack, publish and tag loops). `--filter "@magicclass/<name>"` is
  * checked more loosely — every package must appear as a filter somewhere, and
  * no filter may name an unknown package — because individual steps legitimately
  * filter subsets, as the typecheck step does by omitting importer. A textual
@@ -146,7 +146,7 @@ function crossCheckPublishWorkflow(workflow) {
     .join('\n');
 
   // Scoped to the `paths:` list itself. Matching the whole file would also pick
-  // up `packages/@openmaic/$pkg/package.json` inside the shell loops, where
+  // up `packages/@magicclass/$pkg/package.json` inside the shell loops, where
   // `$pkg` is the loop variable rather than a package name.
   const pathsBlock = /^\s*paths:\s*$((?:\n\s*-\s*.*)*)/m.exec(source);
   if (!pathsBlock) {
@@ -188,7 +188,7 @@ function crossCheckPublishWorkflow(workflow) {
   for (const name of OPENMAIC_PACKAGES) {
     if (!filtered.has(name)) {
       problems.push(
-        `${PUBLISH_WORKFLOW} never passes --filter "@openmaic/${name}", so it is never built ` +
+        `${PUBLISH_WORKFLOW} never passes --filter "@magicclass/${name}", so it is never built ` +
           'or tested on the release path.',
       );
     }
@@ -196,7 +196,7 @@ function crossCheckPublishWorkflow(workflow) {
   for (const name of filtered) {
     if (!OPENMAIC_PACKAGES.includes(name)) {
       problems.push(
-        `${PUBLISH_WORKFLOW} filters @openmaic/${name}, which is not in OPENMAIC_PACKAGES.`,
+        `${PUBLISH_WORKFLOW} filters @magicclass/${name}, which is not in OPENMAIC_PACKAGES.`,
       );
     }
   }

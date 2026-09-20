@@ -340,7 +340,7 @@ export default function OpenMAICClassroomEntryPage() {
         <div className="openmaic-entry__head">
           <span className="openmaic-entry__mark" aria-hidden="true"><Icon name="PhCube" size={26} weight="duotone" /></span>
           <div>
-            <strong>OpenMAIC 正在准备课堂</strong>
+            <strong>{"magic'class"} 正在准备课堂</strong>
             <small>{currentPhase.title}{currentPhase.description ? ` · ${currentPhase.description}` : ""}</small>
           </div>
         </div>

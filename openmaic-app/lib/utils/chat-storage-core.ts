@@ -5,8 +5,8 @@ import type {
   RuntimeRecord,
   RuntimeRecordInit,
   RuntimeSession,
-} from '@openmaic/dsl';
-import type { RuntimeSessionInit } from '@openmaic/storage';
+} from '@magicclass/dsl';
+import type { RuntimeSessionInit } from '@magicclass/storage';
 import type { UIMessage } from 'ai';
 import { isEqual } from 'lodash';
 

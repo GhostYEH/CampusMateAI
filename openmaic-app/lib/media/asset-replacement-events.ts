@@ -1,4 +1,4 @@
-import type { BrowserAssetStore } from '@openmaic/storage';
+import type { BrowserAssetStore } from '@magicclass/storage';
 
 export type AssetReplacementPool = Pick<BrowserAssetStore, 'invalidate' | 'resolve' | 'release'>;
 

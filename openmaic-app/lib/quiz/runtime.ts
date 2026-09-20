@@ -3,8 +3,8 @@ import type {
   QuizAttemptSkeleton,
   RuntimeRecord,
   RuntimeSession,
-} from '@openmaic/dsl';
-import { RuntimeAppendConflictError, type RuntimeStore } from '@openmaic/storage';
+} from '@magicclass/dsl';
+import { RuntimeAppendConflictError, type RuntimeStore } from '@magicclass/storage';
 import type { QuestionResult } from '@/lib/quiz/grading';
 import {
   clearDraftRecovery,

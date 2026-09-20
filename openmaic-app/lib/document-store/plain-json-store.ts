@@ -1,4 +1,4 @@
-import type { DocumentStore } from '@openmaic/storage';
+import type { DocumentStore } from '@magicclass/storage';
 
 import type { AppScene } from '@/lib/types/stage';
 import { omitUndefinedObjectMembers } from '@/lib/persistence/plain-json';

@@ -1,7 +1,7 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DSL_VERSION } from '@openmaic/dsl';
-import { BrowserRuntimeStore, type KVStore, type RuntimeStore } from '@openmaic/storage';
+import { DSL_VERSION } from '@magicclass/dsl';
+import { BrowserRuntimeStore, type KVStore, type RuntimeStore } from '@magicclass/storage';
 
 import type { ChatSession } from '@/lib/types/chat';
 import type { ChatStorageSnapshot } from '@/lib/utils/chat-storage';
@@ -733,7 +733,7 @@ describe('database runtime chat integration', () => {
     const { db } = await import('@/lib/utils/database');
     const { getDocumentStore } = await import('@/lib/document-store');
     const { loadStageData } = await import('@/lib/utils/stage-storage');
-    const kv = new (await import('@openmaic/storage')).BrowserKVStore();
+    const kv = new (await import('@magicclass/storage')).BrowserKVStore();
     await getDocumentStore().saveDocument({
       stage: {
         id: 'stage-divergent-snapshot',

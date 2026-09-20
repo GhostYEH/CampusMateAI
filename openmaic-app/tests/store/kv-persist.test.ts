@@ -18,7 +18,7 @@ import {
   type DeviceSafeKVStore,
   type KVScope,
   type KVStore,
-} from '@openmaic/storage';
+} from '@magicclass/storage';
 
 import { createKVPersistStorage, DEFAULT_RECOVERY_BACKOFF_MS } from '@/lib/store/kv-persist';
 import {

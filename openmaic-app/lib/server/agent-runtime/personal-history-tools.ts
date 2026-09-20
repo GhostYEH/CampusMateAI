@@ -1,5 +1,5 @@
 import { Session, type AgentTool } from '@earendil-works/pi-agent-core';
-import type { AgentSessionMeta, AgentSessionStore } from '@openmaic/storage';
+import type { AgentSessionMeta, AgentSessionStore } from '@magicclass/storage';
 import { Type, type Static } from 'typebox';
 
 import { createLogger } from '@/lib/logger';

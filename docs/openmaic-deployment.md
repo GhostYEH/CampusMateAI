@@ -14,17 +14,25 @@
 
 ### 入库的上游应用：`openmaic-app/`
 
-除受管服务外，仓库根目录 `openmaic-app/` 还**逐字入库了同一份 v1.0.3 的完整应用**，
+除受管服务外，仓库根目录 `openmaic-app/` 还**入库了同一份 v1.0.3 的完整应用**
+（再叠加一层可重放的品牌补丁，见下），
 供导航栏「学习空间」以独立进程运行（见 `docs/openmaic-migration/01-约束.md` 的
 "例外：导航栏「学习空间」"）。它与受管服务是两条独立链路，不要互相顶替：
 
 - **来源同一**：tag `v1.0.3`、commit `e693e11a81644f84c258df73dbda378643520a62`，
   与上表一致；可对照 `third_party/openmaic/source-manifest.sha256` 核对。
+- **品牌补丁**：用户可见品牌词换成 `magic'class`、npm 身份换成 `magicclass` /
+  `@magicclass/*`（含 `packages/@openmaic/` → `packages/@magicclass/` 目录改名），
+  规则只有 `scripts/magicclass-brand.mjs` 这一处。清单仍然钉住**上游**字节：
+  `node scripts/magicclass-brand.mjs verify` 会把补丁逆向还原再逐文件比哈希，
+  通过即说明这份树除了该文件定义的改动与上游一致。刻意保留的部分：`OPENMAIC_*`
+  环境变量、`X-OpenMAIC-*` 响应头、数据库/容器/MIME 等内部管道名、上游自带 Markdown、
+  上游 MIT `LICENSE`，以及 `render-service/` 那两个来自 npm 的已发布 `@openmaic/*` 依赖。
 - **入库范围**：上游源码与锁文件，**排除** `assets/`（83 MB README 动图）。
 - **不入库**：`.git`、`node_modules`、`.next`、运行时 `data/`、`server-providers.yml`、
   `.env.local` —— 上游自带的 `.gitignore` 已经覆盖这些路径。
 - **启动前必须安装依赖**：`cd openmaic-app && pnpm install`。该仓库是 pnpm workspace，
-  `postinstall` 会构建 `packages/@openmaic/*` 与 `packages/{mathml2omml,pptxgenjs}`，
+  `postinstall` 会构建 `packages/@magicclass/*` 与 `packages/{mathml2omml,pptxgenjs}`，
   缺这一步 Next 应用起不来。
 - **两个环境变量不能缺**，缺了都不会报错、只会表现为"页面不对"：
 

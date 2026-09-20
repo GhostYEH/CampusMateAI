@@ -1,12 +1,12 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
-import type { PPTCodeElement } from '@openmaic/dsl';
-import { BrowserRuntimeStore, type RuntimeStore } from '@openmaic/storage';
+import type { PPTCodeElement } from '@magicclass/dsl';
+import { BrowserRuntimeStore, type RuntimeStore } from '@magicclass/storage';
 import {
   PgRuntimeStore,
   ensureSchema,
   type Queryable,
   type WithTransaction,
-} from '@openmaic/storage/runtime/pg';
+} from '@magicclass/storage/runtime/pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pool } from 'pg';
 

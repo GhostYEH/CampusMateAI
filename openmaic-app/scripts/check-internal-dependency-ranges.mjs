@@ -11,7 +11,7 @@ import {
  *
  * WHY `workspace:^`. pnpm publishes `workspace:*` as an EXACT pin, so a
  * consumer installing two dependents that were released at different times gets
- * two copies of `@openmaic/dsl`. The dsl carries the schema, the validators and
+ * two copies of `@magicclass/dsl`. The dsl carries the schema, the validators and
  * the version constants, so two copies mean a document produced against one
  * instance can be validated by the other instance's schema revision.
  * `workspace:^` publishes as `^<version>` and lets one copy satisfy both.
@@ -42,7 +42,7 @@ import {
  * that a serialized-format change must cross the dependents' caret boundary.
  */
 
-const OWNED = new Set(OPENMAIC_PACKAGES.map((name) => `@openmaic/${name}`));
+const OWNED = new Set(OPENMAIC_PACKAGES.map((name) => `@magicclass/${name}`));
 
 /** Published constraint fields in which an owned package must never appear. */
 const FORBIDDEN_FIELDS = ['peerDependencies', 'optionalDependencies'];
@@ -72,11 +72,11 @@ for (const name of OPENMAIC_PACKAGES) {
     // owned dependency behind whichever happened to be declared last.
     seen.set(name, [...(seen.get(name) ?? []), dependency]);
     if (range === 'workspace:^') {
-      console.log(`@openmaic/${name}: dependencies.${dependency} = ${range}`);
+      console.log(`@magicclass/${name}: dependencies.${dependency} = ${range}`);
       continue;
     }
     failures.push(
-      `@openmaic/${name} declares dependencies."${dependency}" as ${JSON.stringify(range)}. ` +
+      `@magicclass/${name} declares dependencies."${dependency}" as ${JSON.stringify(range)}. ` +
         'Use "workspace:^": the "workspace:*" form publishes as an exact pin, which forces ' +
         'consumers to install a second copy of that package alongside its siblings.',
     );
@@ -86,7 +86,7 @@ for (const name of OPENMAIC_PACKAGES) {
     for (const dependency of Object.keys(manifest[field] ?? {})) {
       if (!OWNED.has(dependency)) continue;
       failures.push(
-        `@openmaic/${name} declares ${field}."${dependency}". An owned @openmaic package may ` +
+        `@magicclass/${name} declares ${field}."${dependency}". An owned @openmaic package may ` +
           'be declared exactly once, in `dependencies`. A second published constraint here ' +
           'can pin the same package exactly while `dependencies` still reads as a caret, ' +
           'which reintroduces the duplicate copy this check exists to prevent.',
@@ -105,7 +105,7 @@ for (const [name, expected] of Object.entries(INTERNAL_DEPENDENTS)) {
   const observed = seen.get(name);
   if (observed === undefined) {
     failures.push(
-      `@openmaic/${name} no longer declares any owned @openmaic dependency in \`dependencies\`; ` +
+      `@magicclass/${name} no longer declares any owned @openmaic dependency in \`dependencies\`; ` +
         `it was expected to depend on ${expectedDependencies.join(', ')}. If that is intended, update ` +
         'INTERNAL_DEPENDENTS in scripts/openmaic-packages.mjs — this check must not go quiet ' +
         'on its own.',
@@ -118,7 +118,7 @@ for (const [name, expected] of Object.entries(INTERNAL_DEPENDENTS)) {
     observedDependencies.some((dependency, index) => dependency !== expectedDependencies[index])
   ) {
     failures.push(
-      `@openmaic/${name} declares owned dependencies (${observedDependencies.join(', ')}), but ` +
+      `@magicclass/${name} declares owned dependencies (${observedDependencies.join(', ')}), but ` +
         `INTERNAL_DEPENDENTS expects (${expectedDependencies.join(', ')}).`,
     );
   }
@@ -127,7 +127,7 @@ for (const [name, expected] of Object.entries(INTERNAL_DEPENDENTS)) {
 for (const [name, observed] of seen) {
   if (name in INTERNAL_DEPENDENTS) continue;
   failures.push(
-    `@openmaic/${name} declares the owned dependency ${observed.join(', ')} but is absent from ` +
+    `@magicclass/${name} declares the owned dependency ${observed.join(', ')} but is absent from ` +
       'INTERNAL_DEPENDENTS in scripts/openmaic-packages.mjs, so nothing checks how it is ' +
       'published. Add it there.',
   );
@@ -141,7 +141,7 @@ for (const name of OPENMAIC_PACKAGES) {
   for (const dependency of Object.keys(readManifest(name).devDependencies ?? {})) {
     if (!OWNED.has(dependency)) continue;
     failures.push(
-      `@openmaic/${name} declares devDependencies."${dependency}". An owned @openmaic package ` +
+      `@magicclass/${name} declares devDependencies."${dependency}". An owned @openmaic package ` +
         'belongs in `dependencies` and nowhere else: a devDependency is not published as a ' +
         'constraint, so it would satisfy the workspace link while the tarball declared no ' +
         'dependency on it at all.',

@@ -14,7 +14,7 @@ function expectedArtifacts() {
     const manifest = readManifest(shortName);
     return {
       shortName,
-      name: `@openmaic/${shortName}`,
+      name: `@magicclass/${shortName}`,
       version: manifest.version,
       filename: `openmaic-${shortName}-${manifest.version}.tgz`,
     };

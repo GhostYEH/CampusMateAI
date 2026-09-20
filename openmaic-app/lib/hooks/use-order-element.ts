@@ -1,4 +1,4 @@
-import type { PPTElement } from '@openmaic/dsl';
+import type { PPTElement } from '@magicclass/dsl';
 
 export function useOrderElement() {
   /**

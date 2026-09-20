@@ -61,11 +61,11 @@ describe('embedded persistence route', () => {
     const failedPool = { end: vi.fn().mockResolvedValue(undefined) };
     const workingPool = { end: vi.fn().mockResolvedValue(undefined) };
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema,
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema,
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -74,17 +74,17 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -136,11 +136,11 @@ describe('embedded persistence route', () => {
   // every read, so nothing could be generated at all.
   it('resolves the asset principal server-side, so assets work without the development auth opt-in', async () => {
     const handlerOptions: unknown[] = [];
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -149,15 +149,15 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         (_runtime: unknown, _documents: unknown, options: unknown) => {
           handlerOptions.push(options);
@@ -260,7 +260,7 @@ describe('embedded persistence route', () => {
       ) => {
         const entry = entries.get(ref);
         if (!entry || entry.key !== principal.key) {
-          const { AssetNotFoundError } = await import('@openmaic/storage');
+          const { AssetNotFoundError } = await import('@magicclass/storage');
           throw new AssetNotFoundError();
         }
         entry.bytes = new Uint8Array(await data.arrayBuffer());
@@ -269,11 +269,11 @@ describe('embedded persistence route', () => {
       },
     };
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -282,7 +282,7 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor() {
@@ -290,13 +290,13 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
     // The handler itself is the subject here, so it must be the real one even
     // though earlier cases in this file stub it.
-    vi.doUnmock('@openmaic/storage/server');
+    vi.doUnmock('@magicclass/storage/server');
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('PERSISTENCE_ALLOW_INSECURE_DEV_AUTH', '');
     vi.stubEnv('DATABASE_URL', 'postgres://asset-authz-test');
@@ -401,7 +401,7 @@ describe('embedded persistence route', () => {
       ) => {
         const entry = entries.get(ref);
         if (!entry || entry.key !== principal.key) {
-          const { AssetNotFoundError } = await import('@openmaic/storage');
+          const { AssetNotFoundError } = await import('@magicclass/storage');
           throw new AssetNotFoundError();
         }
         entry.bytes = new Uint8Array(await data.arrayBuffer());
@@ -410,11 +410,11 @@ describe('embedded persistence route', () => {
       },
     };
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -423,7 +423,7 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor() {
@@ -431,11 +431,11 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doUnmock('@openmaic/storage/server');
+    vi.doUnmock('@magicclass/storage/server');
     vi.stubEnv('NODE_ENV', 'development');
     vi.stubEnv('DATABASE_URL', 'postgres://asset-authz-opt-in');
     vi.stubEnv('PERSISTENCE_DEV_TOKEN', 'test-token');
@@ -512,11 +512,11 @@ describe('embedded persistence route', () => {
       end: vi.fn().mockResolvedValue(undefined),
     };
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -526,15 +526,15 @@ describe('embedded persistence route', () => {
       },
     }));
     // The real registry, with only its schema bootstrap stubbed out.
-    vi.doMock('@openmaic/storage/asset/pg', async () => {
-      const actual = await vi.importActual<typeof import('@openmaic/storage/asset/pg')>(
-        '@openmaic/storage/asset/pg',
+    vi.doMock('@magicclass/storage/asset/pg', async () => {
+      const actual = await vi.importActual<typeof import('@magicclass/storage/asset/pg')>(
+        '@magicclass/storage/asset/pg',
       );
       return { ...actual, ensureAssetSchema: vi.fn().mockResolvedValue(undefined) };
     });
-    vi.doUnmock('@openmaic/storage/asset/pg-bytes');
-    vi.doUnmock('@openmaic/storage/server/reference');
-    vi.doUnmock('@openmaic/storage/server');
+    vi.doUnmock('@magicclass/storage/asset/pg-bytes');
+    vi.doUnmock('@magicclass/storage/server/reference');
+    vi.doUnmock('@magicclass/storage/server');
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('PERSISTENCE_ALLOW_INSECURE_DEV_AUTH', '');
     vi.stubEnv('DATABASE_URL', 'postgres://asset-quota-test');
@@ -569,16 +569,16 @@ describe('embedded persistence route', () => {
       readonly code = 'ASSET_QUOTA_EXCEEDED';
 
       constructor() {
-        super('@openmaic/storage: asset quota exceeded for this principal');
+        super('@magicclass/storage: asset quota exceeded for this principal');
         this.name = 'AssetQuotaExceededError';
       }
     }
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -587,7 +587,7 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         put(): Promise<never> {
@@ -595,11 +595,11 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({ PgAssetByteStore: class {} }));
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doUnmock('@openmaic/storage/server');
+    vi.doUnmock('@magicclass/storage/server');
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('PERSISTENCE_ALLOW_INSECURE_DEV_AUTH', '');
     vi.stubEnv('DATABASE_URL', 'postgres://asset-quota-foreign-test');
@@ -639,7 +639,7 @@ describe('embedded persistence route', () => {
       [];
     const handlerOptions: unknown[] = [];
 
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema,
       PgRuntimeStore: class {
         constructor(queryable: unknown, options: unknown) {
@@ -647,7 +647,7 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema,
       PgDocumentStore: class {
         constructor(queryable: unknown, options: unknown) {
@@ -658,7 +658,7 @@ describe('embedded persistence route', () => {
         };
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {
         constructor(queryable: unknown) {
           byteConstructions.push(queryable);
@@ -666,7 +666,7 @@ describe('embedded persistence route', () => {
         read = vi.fn().mockResolvedValue(new Uint8Array([1]));
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema,
       PgAssetStore: class {
         constructor(queryable: unknown, options: unknown) {
@@ -674,8 +674,8 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({ nodePostgresTransaction }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({ nodePostgresTransaction }));
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         (_runtime: unknown, _documents: unknown, options: unknown) => {
           handlerOptions.push(options);
@@ -773,11 +773,11 @@ describe('embedded persistence route', () => {
     const s3ModuleResolved = vi.fn();
     const s3Read = vi.fn().mockResolvedValue(new Uint8Array([1]));
     const loadS3AssetByteStore = vi.fn().mockResolvedValue({ read: s3Read });
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -786,14 +786,14 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {
         constructor(queryable: unknown) {
           pgByteStore(queryable);
         }
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -801,10 +801,10 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -816,7 +816,7 @@ describe('embedded persistence route', () => {
           },
       ),
     }));
-    vi.doMock('@openmaic/storage/asset/s3-bytes', () => {
+    vi.doMock('@magicclass/storage/asset/s3-bytes', () => {
       s3ModuleResolved();
       return { loadS3AssetByteStore };
     });
@@ -856,11 +856,11 @@ describe('embedded persistence route', () => {
   it('contains a malformed S3 bucket to asset traffic instead of failing persistence', async () => {
     const s3ModuleResolved = vi.fn();
     const assetOptions: unknown[] = [];
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -869,10 +869,10 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -880,10 +880,10 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -895,7 +895,7 @@ describe('embedded persistence route', () => {
           },
       ),
     }));
-    vi.doMock('@openmaic/storage/asset/s3-bytes', () => {
+    vi.doMock('@magicclass/storage/asset/s3-bytes', () => {
       s3ModuleResolved();
       return { loadS3AssetByteStore: vi.fn() };
     });
@@ -935,11 +935,11 @@ describe('embedded persistence route', () => {
       .fn()
       .mockRejectedValueOnce(new Error('@aws-sdk/client-s3 could not be resolved'))
       .mockResolvedValue({ read: vi.fn().mockResolvedValue(new Uint8Array([1])) });
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -948,10 +948,10 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -959,10 +959,10 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -974,7 +974,7 @@ describe('embedded persistence route', () => {
           },
       ),
     }));
-    vi.doMock('@openmaic/storage/asset/s3-bytes', () => ({ loadS3AssetByteStore }));
+    vi.doMock('@magicclass/storage/asset/s3-bytes', () => ({ loadS3AssetByteStore }));
     vi.stubEnv('DATABASE_URL', 'postgres://asset-s3-retry-test');
     vi.stubEnv('PERSISTENCE_DEV_TOKEN', 'test-token');
     vi.stubEnv('ASSET_S3_BUCKET', 'asset-bucket');
@@ -1005,7 +1005,7 @@ describe('embedded persistence route', () => {
   it('passes one complete app payload-validator table to Pg and HTTP boundaries', async () => {
     const pgOptions: unknown[] = [];
     const handlerOptions: unknown[] = [];
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -1013,7 +1013,7 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1022,17 +1022,17 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn((_runtime: unknown, _document: unknown, options: unknown) => {
         handlerOptions.push(options);
         return (
@@ -1076,11 +1076,11 @@ describe('embedded persistence route', () => {
     // back to a Response) is the most bug-prone code in the route — exercise a
     // full body round-trip, a 204, multi-value headers, and path encoding.
     const seen: Array<{ method?: string; url?: string; body: string }> = [];
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1089,17 +1089,17 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           async (
@@ -1164,11 +1164,11 @@ describe('embedded persistence route', () => {
   // cast, so the compiler checks none of that surface. These cases pin the
   // response behavior that differs materially from a plain Fetch Response.
   const mockAdapterHandler = (handler: RequestListener, connectionString: string) => {
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1177,10 +1177,10 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(() => handler),
     }));
     vi.stubEnv('DATABASE_URL', connectionString);
@@ -1355,11 +1355,11 @@ describe('embedded persistence route', () => {
   // Minimal storage mocks for the egress-wiring tests: every store and schema
   // is stubbed, and createStorageHttpHandler only records its options.
   const mockEgressWiring = (handlerOptions: unknown[], connectionString: string) => {
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1368,17 +1368,17 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn((_runtime: unknown, _document: unknown, options: unknown) => {
         handlerOptions.push(options);
         return (
@@ -1522,11 +1522,11 @@ describe('embedded persistence route', () => {
   it('forwards byte URL signing through the lazy byte store only when the layer supports it', async () => {
     const assetOptions: unknown[] = [];
     const signReadUrl = vi.fn().mockResolvedValue('https://objects.example/signed');
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1535,10 +1535,10 @@ describe('embedded persistence route', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -1546,10 +1546,10 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -1561,7 +1561,7 @@ describe('embedded persistence route', () => {
           },
       ),
     }));
-    vi.doMock('@openmaic/storage/asset/s3-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/s3-bytes', () => ({
       loadS3AssetByteStore: vi.fn().mockResolvedValue({ signReadUrl }),
     }));
     vi.stubEnv('DATABASE_URL', 'postgres://egress-signing-forward-test');
@@ -1588,11 +1588,11 @@ describe('embedded persistence route', () => {
 
   it('declines byte URL signing when the PostgreSQL byte layer has no signer', async () => {
     const assetOptions: unknown[] = [];
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1603,12 +1603,12 @@ describe('embedded persistence route', () => {
     }));
     // No signReadUrl on the PostgreSQL byte store: the wrapper must answer
     // undefined rather than fail, so the handler falls back to direct bytes.
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {
         read = vi.fn().mockResolvedValue(new Uint8Array([1]));
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, options: unknown) {
@@ -1616,10 +1616,10 @@ describe('embedded persistence route', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
-    vi.doMock('@openmaic/storage/server', () => ({
+    vi.doMock('@magicclass/storage/server', () => ({
       createStorageHttpHandler: vi.fn(
         () =>
           (
@@ -1666,12 +1666,12 @@ describe('embedded persistence route -- real handler boundary', () => {
   ) {
     // Earlier tests register a canned 204 mock for the server module; the
     // point of this test is the real handler, so un-mock it explicitly.
-    vi.doUnmock('@openmaic/storage/server');
-    vi.doMock('@openmaic/storage/runtime/pg', () => ({
+    vi.doUnmock('@magicclass/storage/server');
+    vi.doMock('@magicclass/storage/runtime/pg', () => ({
       ensureSchema: vi.fn().mockResolvedValue(undefined),
       PgRuntimeStore: class {},
     }));
-    vi.doMock('@openmaic/storage/document/pg', () => ({
+    vi.doMock('@magicclass/storage/document/pg', () => ({
       ensureDocumentSchema: vi.fn().mockResolvedValue(undefined),
       // The provider declares reference tracking as part of coming up, so a
       // stand-in document store has to answer that call the way the real one
@@ -1680,10 +1680,10 @@ describe('embedded persistence route -- real handler boundary', () => {
         declareAssetReferenceTracking = async () => undefined;
       },
     }));
-    vi.doMock('@openmaic/storage/asset/pg-bytes', () => ({
+    vi.doMock('@magicclass/storage/asset/pg-bytes', () => ({
       PgAssetByteStore: class {},
     }));
-    vi.doMock('@openmaic/storage/asset/pg', () => ({
+    vi.doMock('@magicclass/storage/asset/pg', () => ({
       ensureAssetSchema: vi.fn().mockResolvedValue(undefined),
       PgAssetStore: class {
         constructor(_queryable: unknown, _options: unknown) {
@@ -1736,7 +1736,7 @@ describe('embedded persistence route -- real handler boundary', () => {
         }
       },
     }));
-    vi.doMock('@openmaic/storage/server/reference', () => ({
+    vi.doMock('@magicclass/storage/server/reference', () => ({
       nodePostgresTransaction: vi.fn(() => vi.fn()),
     }));
     vi.stubEnv('DATABASE_URL', connectionString);

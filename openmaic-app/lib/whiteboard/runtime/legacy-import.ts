@@ -1,5 +1,5 @@
-import type { MaicDocument } from '@openmaic/storage';
-import type { Whiteboard } from '@openmaic/dsl';
+import type { MaicDocument } from '@magicclass/storage';
+import type { Whiteboard } from '@magicclass/dsl';
 
 import { isDocumentStorageConfigured } from '@/lib/document-store/config';
 import { withDocumentLock } from '@/lib/document-store/migration';

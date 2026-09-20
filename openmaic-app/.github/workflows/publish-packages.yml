@@ -1,6 +1,6 @@
 name: Publish @openmaic packages
 
-# Publishes the @openmaic/* package family (dsl, generation, storage, renderer, editor, importer) to npm.
+# Publishes the @magicclass/* package family (dsl, generation, storage, renderer, editor, importer) to npm.
 #
 # Scope is pinned to those five packages by name on purpose: the workspace also
 # contains vendored forks (mathml2omml, pptxgenjs) whose names we do NOT own, so
@@ -14,13 +14,13 @@ name: Publish @openmaic packages
 # one source of truth, puts every release through pull request review and CI,
 # and is the only shape a branch protection rule can actually guard.
 #
-# `@openmaic/<name>@<version>` tags are an OUTPUT of a release, written after a
+# `@magicclass/<name>@<version>` tags are an OUTPUT of a release, written after a
 # package lands on the registry. They are markers, not triggers: a tag cannot
 # start a publish, because tags can be created by anyone with write access on
 # any commit, including commits that never reached main.
 #
 # Triggers:
-#   - push to `main` touching one of the @openmaic/* package manifests
+#   - push to `main` touching one of the @magicclass/* package manifests
 #     (real publish; the normal path)
 #   - manual run via the Actions tab. Validation runs from any ref; unchecking
 #     `dry_run` performs a real publish and is therefore restricted to `main` by
@@ -30,7 +30,7 @@ name: Publish @openmaic packages
 #   - npm org `openmaic` created and owning the `@openmaic` scope
 #   - a GitHub Environment named `release` whose deployment branch rule allows
 #     ONLY `main`, holding NPM_TOKEN (an automation/granular token with publish
-#     rights to @openmaic/*, 2FA set to "auth only")
+#     rights to @magicclass/*, 2FA set to "auth only")
 #   - NPM_TOKEN must NOT also exist as a repository secret. A repository secret
 #     is readable by a workflow on any branch, which would let a branch-local
 #     edit of this file collect the token without the environment.
@@ -39,12 +39,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "packages/@openmaic/dsl/package.json"
-      - "packages/@openmaic/generation/package.json"
-      - "packages/@openmaic/storage/package.json"
-      - "packages/@openmaic/renderer/package.json"
-      - "packages/@openmaic/editor/package.json"
-      - "packages/@openmaic/importer/package.json"
+      - "packages/@magicclass/dsl/package.json"
+      - "packages/@magicclass/generation/package.json"
+      - "packages/@magicclass/storage/package.json"
+      - "packages/@magicclass/renderer/package.json"
+      - "packages/@magicclass/editor/package.json"
+      - "packages/@magicclass/importer/package.json"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -117,16 +117,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Build in dependency order (dsl first); generation/storage/renderer/editor/importer
-      # resolve @openmaic/dsl through the workspace link.
+      # resolve @magicclass/dsl through the workspace link.
       - name: Build @openmaic packages
         run: >-
           pnpm -r
-          --filter "@openmaic/dsl"
-          --filter "@openmaic/generation"
-          --filter "@openmaic/storage"
-          --filter "@openmaic/renderer"
-          --filter "@openmaic/editor"
-          --filter "@openmaic/importer"
+          --filter "@magicclass/dsl"
+          --filter "@magicclass/generation"
+          --filter "@magicclass/storage"
+          --filter "@magicclass/renderer"
+          --filter "@magicclass/editor"
+          --filter "@magicclass/importer"
           run build
 
       # Some packages generate tracked, publishable files as part of `build`
@@ -171,8 +171,8 @@ jobs:
           set -euo pipefail
           mkdir "$RELEASE_ARTIFACTS"
           for pkg in dsl generation storage renderer editor importer; do
-            echo "::group::@openmaic/$pkg"
-            ( cd "packages/@openmaic/$pkg" \
+            echo "::group::@magicclass/$pkg"
+            ( cd "packages/@magicclass/$pkg" \
               && pnpm pack --config.ignore-scripts=true --pack-destination "$RELEASE_ARTIFACTS" )
             echo "::endgroup::"
           done
@@ -210,19 +210,19 @@ jobs:
           STORAGE_PG_BASELINE: ${{ runner.temp }}/storage-pg-baseline.json
         run: |
           set -euo pipefail
-          pnpm --filter "@openmaic/dsl" \
-            --filter "@openmaic/generation" --filter "@openmaic/renderer" \
-            --filter "@openmaic/editor" \
-            --filter "@openmaic/importer" run test
+          pnpm --filter "@magicclass/dsl" \
+            --filter "@magicclass/generation" --filter "@magicclass/renderer" \
+            --filter "@magicclass/editor" \
+            --filter "@magicclass/importer" run test
           node scripts/assert-pg-contract-suites.mjs --capture-baseline "$STORAGE_PG_BASELINE"
-          pnpm --filter "@openmaic/storage" exec \
+          pnpm --filter "@magicclass/storage" exec \
             vitest run --reporter=default --reporter=json \
             --outputFile.json="$STORAGE_VITEST_RESULTS"
           node scripts/assert-pg-contract-suites.mjs "$STORAGE_VITEST_RESULTS" \
             --baseline "$STORAGE_PG_BASELINE"
-          pnpm --filter "@openmaic/dsl" --filter "@openmaic/generation" \
-            --filter "@openmaic/storage" --filter "@openmaic/renderer" \
-            --filter "@openmaic/editor" run typecheck
+          pnpm --filter "@magicclass/dsl" --filter "@magicclass/generation" \
+            --filter "@magicclass/storage" --filter "@magicclass/renderer" \
+            --filter "@magicclass/editor" run typecheck
 
       # KNOWN LIMITATION: this smoke test reads the writable local directory,
       # not the uploaded snapshot. Because upload already happened, a test
@@ -374,8 +374,8 @@ jobs:
 
           node scripts/check-package-version-bumps.mjs --release
           for pkg in dsl generation storage renderer editor importer; do
-            name="@openmaic/$pkg"
-            version="$(node -p "require('./packages/@openmaic/$pkg/package.json').version")"
+            name="@magicclass/$pkg"
+            version="$(node -p "require('./packages/@magicclass/$pkg/package.json').version")"
             planned="$(node -e 'const plan = require(process.env.RELEASE_PLAN_PATH);
               const [name, version] = process.argv.slice(1);
               process.stdout.write(plan.some((e) => e.package === name && e.version === version) ? "yes" : "no");' \
@@ -445,8 +445,8 @@ jobs:
         run: |
           set -euo pipefail
           for pkg in dsl generation storage renderer editor importer; do
-            name="@openmaic/$pkg"
-            version="$(node -p "require('./packages/@openmaic/$pkg/package.json').version")"
+            name="@magicclass/$pkg"
+            version="$(node -p "require('./packages/@magicclass/$pkg/package.json').version")"
             tag="$name@$version"
             if [[ ",$PUBLISHED_VERSIONS," == *",$tag,"* ]]; then
               echo "Published $tag in this run; registry propagation is not required."

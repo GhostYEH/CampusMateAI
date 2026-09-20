@@ -1,4 +1,4 @@
-import type { PPTElement } from '@openmaic/dsl';
+import type { PPTElement } from '@magicclass/dsl';
 import type { PercentageGeometry } from '@/lib/types/action';
 
 /**

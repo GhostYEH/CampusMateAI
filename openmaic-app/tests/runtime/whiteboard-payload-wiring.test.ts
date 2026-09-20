@@ -5,9 +5,9 @@ import {
   BrowserDocumentStore,
   BrowserRuntimeStore,
   RuntimeAppendConflictError,
-} from '@openmaic/storage';
-import { HttpRuntimeStore, HttpRuntimeStoreError } from '@openmaic/storage/runtime/http';
-import { createStorageHttpHandler } from '@openmaic/storage/server';
+} from '@magicclass/storage';
+import { HttpRuntimeStore, HttpRuntimeStoreError } from '@magicclass/storage/runtime/http';
+import { createStorageHttpHandler } from '@magicclass/storage/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { APP_RUNTIME_PAYLOAD_VALIDATORS } from '@/lib/runtime/payload-validators';

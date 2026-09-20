@@ -1,5 +1,5 @@
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
-import { BrowserRuntimeStore, RuntimeAppendConflictError } from '@openmaic/storage';
+import { BrowserRuntimeStore, RuntimeAppendConflictError } from '@magicclass/storage';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
 import { describe, expect, it, vi } from 'vitest';
 

@@ -152,16 +152,16 @@ jobs:
         run: pnpm test
 
       - name: Unit Tests (importer)
-        run: pnpm --filter @openmaic/importer test
+        run: pnpm --filter @magicclass/importer test
 
       - name: Unit Tests (dsl)
-        run: pnpm --filter @openmaic/dsl test
+        run: pnpm --filter @magicclass/dsl test
 
       - name: TypeScript (generation)
-        run: pnpm --filter @openmaic/generation run typecheck
+        run: pnpm --filter @magicclass/generation run typecheck
 
       - name: Unit Tests (generation)
-        run: pnpm --filter @openmaic/generation test
+        run: pnpm --filter @magicclass/generation test
 
       - name: Node consumer smoke (generation scene)
         shell: bash
@@ -196,10 +196,10 @@ jobs:
       # incidental glob. The device-scope guard is written as `@ts-expect-error`
       # probes in those tests, and a probe nothing type-checks proves nothing.
       - name: TypeScript (storage, incl. tests)
-        run: pnpm --filter @openmaic/storage run typecheck
+        run: pnpm --filter @magicclass/storage run typecheck
 
       - name: Unit Tests (storage)
-        run: pnpm --filter @openmaic/storage test
+        run: pnpm --filter @magicclass/storage test
 
   render-service:
     name: Render Service (typecheck + tests)

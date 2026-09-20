@@ -1,5 +1,5 @@
 import { chromium, type Browser, type Page } from '@playwright/test';
-import type { PPTElement } from '@openmaic/dsl';
+import type { PPTElement } from '@magicclass/dsl';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 

@@ -187,9 +187,9 @@ test("the course surface uses direct classroom entry instead of the legacy quick
   assert.match(homeSource, /进入课堂/);
 });
 
-test("the home surface carries the OpenMAIC branding and classroom tagline", () => {
+test("the home surface carries the magic'class branding and classroom tagline", () => {
   assert.match(homeSource, /openmaic-reference__brand/);
-  assert.match(homeSource, /<strong>OpenMAIC<\/strong>/);
+  assert.match(homeSource, /<strong>\{"magic'class"\}<\/strong>/);
   assert.match(homeSource, /Generative Learning in Multi-Agent Interactive Classroom/);
   assert.doesNotMatch(pageSource, /OpenMAIC \/ Courses/);
 });

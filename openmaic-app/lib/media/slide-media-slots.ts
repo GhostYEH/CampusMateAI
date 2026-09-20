@@ -6,7 +6,7 @@ import {
   type Slide,
   type SlideMediaSlotKind,
   type SlideMediaSlotProperty,
-} from '@openmaic/dsl';
+} from '@magicclass/dsl';
 
 export type SlideMediaReferenceKind = SlideMediaSlotKind;
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb';
-import { BrowserRuntimeStore, type RuntimeStore } from '@openmaic/storage';
+import { BrowserRuntimeStore, type RuntimeStore } from '@magicclass/storage';
 import {
   backfillQuizAttempt,
   createQuizAttemptWriter,

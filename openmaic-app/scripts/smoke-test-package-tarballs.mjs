@@ -36,7 +36,7 @@ function packedManifest(tarball) {
 }
 
 /**
- * The dependents declare `@openmaic/dsl` as `workspace:^`, which pnpm publishes
+ * The dependents declare `@magicclass/dsl` as `workspace:^`, which pnpm publishes
  * as `^<dsl version>`. That range is what lets a consumer installing several
  * @openmaic packages together resolve ONE copy of the dsl. An exact pin — which
  * is what the `workspace:*` form publishes — gives each dependent its own copy,
@@ -56,15 +56,15 @@ function packedManifest(tarball) {
  * which changes their public installation contract and is a separate decision.
  */
 function assertDeduplicableDslRange(name, manifest, dslVersion, ownedPackages) {
-  const range = manifest.dependencies?.['@openmaic/dsl'];
+  const range = manifest.dependencies?.['@magicclass/dsl'];
   assert(
     range !== undefined,
-    `@openmaic/${name} no longer declares @openmaic/dsl; update this check if that is intended`,
+    `@magicclass/${name} no longer declares @magicclass/dsl; update this check if that is intended`,
   );
   assert.equal(
     range,
     `^${dslVersion}`,
-    `@openmaic/${name} publishes @openmaic/dsl as ${JSON.stringify(range)} rather than ` +
+    `@magicclass/${name} publishes @magicclass/dsl as ${JSON.stringify(range)} rather than ` +
       `"^${dslVersion}". An exact pin (what "workspace:*" publishes) forces consumers to ` +
       'install a second copy of the dsl alongside its siblings.',
   );
@@ -75,17 +75,17 @@ function assertDeduplicableDslRange(name, manifest, dslVersion, ownedPackages) {
     assert.deepEqual(
       declared,
       [],
-      `@openmaic/${name} publishes ${field} entries for owned packages ` +
+      `@magicclass/${name} publishes ${field} entries for owned packages ` +
         `(${declared.join(', ')}). Those are published constraints as much as ` +
         '`dependencies` is, so an exact one there pins the dsl regardless of the caret above.',
     );
   }
-  console.log(`@openmaic/${name} publishes @openmaic/dsl as ${range}, and nowhere else.`);
+  console.log(`@magicclass/${name} publishes @magicclass/dsl as ${range}, and nowhere else.`);
 }
 
 try {
   const packageNames = OPENMAIC_PACKAGES;
-  const localPackages = new Set(packageNames.map((name) => `@openmaic/${name}`));
+  const localPackages = new Set(packageNames.map((name) => `@magicclass/${name}`));
   const tarballs = Object.fromEntries(
     packageNames.map((name) => {
       const { version } = readManifest(name);
@@ -133,7 +133,7 @@ try {
         dependencies: {
           ...peerDependencies,
           ...Object.fromEntries(
-            packageNames.map((name) => [`@openmaic/${name}`, `file:${tarballs[name]}`]),
+            packageNames.map((name) => [`@magicclass/${name}`, `file:${tarballs[name]}`]),
           ),
         },
       },
@@ -152,14 +152,14 @@ try {
 import { stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { RUNTIME_DSL_VERSION, validateRuntimeSession } from '@openmaic/dsl';
-import { PROMPT_IDS, buildPrompt } from '@openmaic/generation';
-import { DOCUMENT_PG_SCHEMA } from '@openmaic/storage';
-import { SlideCanvas } from '@openmaic/renderer';
-import { createEditorTransaction as createEditorTransactionFromRoot } from '@openmaic/editor';
-import { createEditorTransaction } from '@openmaic/editor/core';
-import { EMPTY_SELECTION } from '@openmaic/editor/react';
-import { EditableSlideCanvasWithUI } from '@openmaic/editor/ui';
+import { RUNTIME_DSL_VERSION, validateRuntimeSession } from '@magicclass/dsl';
+import { PROMPT_IDS, buildPrompt } from '@magicclass/generation';
+import { DOCUMENT_PG_SCHEMA } from '@magicclass/storage';
+import { SlideCanvas } from '@magicclass/renderer';
+import { createEditorTransaction as createEditorTransactionFromRoot } from '@magicclass/editor';
+import { createEditorTransaction } from '@magicclass/editor/core';
+import { EMPTY_SELECTION } from '@magicclass/editor/react';
+import { EditableSlideCanvasWithUI } from '@magicclass/editor/ui';
 
 assert.equal(typeof RUNTIME_DSL_VERSION, 'string');
 assert.equal(typeof validateRuntimeSession, 'function');
@@ -181,9 +181,9 @@ assert.match(generationPrompt.system, /Content Safety Guidelines for Generation 
 assert.doesNotMatch(generationPrompt.system, /\{\{snippet:/);
 assert.doesNotMatch(generationPrompt.user, /\{\{snippet:/);
 
-const importerEntry = fileURLToPath(import.meta.resolve('@openmaic/importer'));
+const importerEntry = fileURLToPath(import.meta.resolve('@magicclass/importer'));
 assert((await stat(importerEntry)).isFile());
-const importerRequireEntry = createRequire(import.meta.url).resolve('@openmaic/importer');
+const importerRequireEntry = createRequire(import.meta.url).resolve('@magicclass/importer');
 assert((await stat(importerRequireEntry)).isFile());
 
 for (const subpath of [
@@ -194,7 +194,7 @@ for (const subpath of [
   'server',
   'server/reference',
 ]) {
-  await import(\`@openmaic/storage/\${subpath}\`);
+  await import(\`@magicclass/storage/\${subpath}\`);
 }
 `,
   );

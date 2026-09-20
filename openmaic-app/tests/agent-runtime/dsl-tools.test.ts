@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Check } from 'typebox/value';
 import { PGlite } from '@electric-sql/pglite';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
-import type { PPTTextElement } from '@openmaic/dsl';
-import { ensureAssetSchema } from '@openmaic/storage/asset/pg';
-import { ensureDocumentSchema } from '@openmaic/storage/document/pg';
+import type { PPTTextElement } from '@magicclass/dsl';
+import { ensureAssetSchema } from '@magicclass/storage/asset/pg';
+import { ensureDocumentSchema } from '@magicclass/storage/document/pg';
 import {
   buildCourseAllowlist,
   buildDslCourseToolset,

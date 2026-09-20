@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ImageElementFilterKeys, ImageElementFilters } from '@openmaic/dsl';
+import type { ImageElementFilterKeys, ImageElementFilters } from '@magicclass/dsl';
 
 const FILTER_UNITS: Record<ImageElementFilterKeys, string> = {
   blur: 'px',

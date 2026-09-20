@@ -36,8 +36,8 @@ import { basename } from 'node:path';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-import { createMaterialId } from '@openmaic/storage';
-import type { ConnectableQueryable } from '@openmaic/storage/server/reference';
+import { createMaterialId } from '@magicclass/storage';
+import type { ConnectableQueryable } from '@magicclass/storage/server/reference';
 
 import { isAgentRuntimeConfigured } from '@/lib/config/feature-flags';
 import { apiError } from '@/lib/server/api-response';

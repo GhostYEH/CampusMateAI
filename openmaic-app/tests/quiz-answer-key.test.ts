@@ -5,7 +5,7 @@ import {
   gradeChoiceQuestions,
   resolveAnswerKeyToValue,
 } from '@/lib/quiz/grading';
-import { normalizeQuizAnswer } from '../packages/@openmaic/generation/src/scene-generator';
+import { normalizeQuizAnswer } from '../packages/@magicclass/generation/src/scene-generator';
 import type { QuizQuestion } from '@/lib/types/stage';
 
 const VECTOR_OPTIONS = [

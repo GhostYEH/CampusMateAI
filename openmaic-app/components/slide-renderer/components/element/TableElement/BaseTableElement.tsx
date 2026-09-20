@@ -1,6 +1,6 @@
 'use client';
 
-import type { PPTTableElement } from '@openmaic/dsl';
+import type { PPTTableElement } from '@magicclass/dsl';
 import { StaticTable } from './StaticTable';
 
 export interface BaseTableElementProps {

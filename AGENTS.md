@@ -12,7 +12,7 @@
 | `harmony/` | ArkTS / ArkUI HarmonyOS 客户端 |
 | `wx/` | TypeScript 微信小程序 |
 | `ml/` | 模型训练、评估、导出与可复现性材料 |
-| `openmaic-app/` | 上游 OpenMAIC v1.0.3 的**逐字入库**源码，供导航栏「学习空间」独立进程运行；改动它会破坏 provenance，不要修改 |
+| `openmaic-app/` | 上游 OpenMAIC v1.0.3 入库源码，供导航栏「学习空间」独立进程运行；允许的偏离只有 `scripts/magicclass-brand.mjs` 定义的品牌补丁，其余改动都会破坏 provenance（用 `node scripts/magicclass-brand.mjs verify` 逆向校验） |
 | `ios/` | iOS 客户端预留目录；当前不存在时不要自行创建 |
 | `.github/workflows/` | GitHub Actions；除 CI 专项任务外不要改动 |
 

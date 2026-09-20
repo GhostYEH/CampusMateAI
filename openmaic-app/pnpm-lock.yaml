@@ -122,24 +122,24 @@ importers:
       '@napi-rs/canvas':
         specifier: ^0.1.88
         version: 0.1.96
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:*
-        version: link:packages/@openmaic/dsl
-      '@openmaic/editor':
+        version: link:packages/@magicclass/dsl
+      '@magicclass/editor':
         specifier: workspace:*
-        version: link:packages/@openmaic/editor
-      '@openmaic/generation':
+        version: link:packages/@magicclass/editor
+      '@magicclass/generation':
         specifier: workspace:*
-        version: link:packages/@openmaic/generation
-      '@openmaic/importer':
+        version: link:packages/@magicclass/generation
+      '@magicclass/importer':
         specifier: workspace:*
-        version: link:packages/@openmaic/importer
-      '@openmaic/renderer':
+        version: link:packages/@magicclass/importer
+      '@magicclass/renderer':
         specifier: workspace:*
-        version: link:packages/@openmaic/renderer
-      '@openmaic/storage':
+        version: link:packages/@magicclass/renderer
+      '@magicclass/storage':
         specifier: workspace:*
-        version: link:packages/@openmaic/storage
+        version: link:packages/@magicclass/storage
       '@radix-ui/react-checkbox':
         specifier: ^1.3.3
         version: 1.3.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -502,7 +502,7 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
 
-  packages/@openmaic/dsl:
+  packages/@magicclass/dsl:
     devDependencies:
       ajv:
         specifier: ^8.17.1
@@ -517,12 +517,12 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(jsdom@29.1.1(@noble/hashes@1.8.0)(canvas@3.2.3))(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3))(vite@8.0.0(@emnapi/core@1.8.1)(@emnapi/runtime@1.11.3)(@types/node@22.19.15)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/@openmaic/editor:
+  packages/@magicclass/editor:
     dependencies:
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:^
         version: link:../dsl
-      '@openmaic/renderer':
+      '@magicclass/renderer':
         specifier: workspace:^
         version: link:../renderer
       immer:
@@ -617,9 +617,9 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(jsdom@29.1.1(@noble/hashes@1.8.0)(canvas@3.2.3))(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3))(vite@8.0.0(@emnapi/core@1.8.1)(@emnapi/runtime@1.11.3)(@types/node@22.19.15)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/@openmaic/generation:
+  packages/@magicclass/generation:
     dependencies:
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:^
         version: link:../dsl
       jsonrepair:
@@ -642,9 +642,9 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(jsdom@29.1.1(@noble/hashes@1.8.0)(canvas@3.2.3))(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3))(vite@8.0.0(@emnapi/core@1.8.1)(@emnapi/runtime@1.11.3)(@types/node@22.19.15)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/@openmaic/importer:
+  packages/@magicclass/importer:
     dependencies:
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:^
         version: link:../dsl
       '@xmldom/xmldom':
@@ -742,9 +742,9 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(jsdom@29.1.1(@noble/hashes@1.8.0)(canvas@3.2.3))(msw@2.12.10(@types/node@22.19.15)(typescript@5.9.3))(vite@8.0.0(@emnapi/core@1.8.1)(@emnapi/runtime@1.11.3)(@types/node@22.19.15)(esbuild@0.27.7)(jiti@2.6.1)(terser@5.48.0)(tsx@4.21.0)(yaml@2.9.0))
 
-  packages/@openmaic/renderer:
+  packages/@magicclass/renderer:
     dependencies:
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:^
         version: link:../dsl
       clsx:
@@ -830,9 +830,9 @@ importers:
         specifier: ^5
         version: 5.9.3
 
-  packages/@openmaic/storage:
+  packages/@magicclass/storage:
     dependencies:
-      '@openmaic/dsl':
+      '@magicclass/dsl':
         specifier: workspace:^
         version: link:../dsl
     devDependencies:

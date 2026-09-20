@@ -1,4 +1,4 @@
-import type { DocumentStore, SceneValidator, StageValidator } from '@openmaic/storage';
+import type { DocumentStore, SceneValidator, StageValidator } from '@magicclass/storage';
 
 import type { AppScene } from '@/lib/types/stage';
 

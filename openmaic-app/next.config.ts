@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
   typescript: {
     tsconfigPath: process.env.NODE_ENV === 'production' ? 'tsconfig.build.json' : 'tsconfig.json',
   },
-  transpilePackages: ['mathml2omml', 'pptxgenjs', '@openmaic/importer'],
+  transpilePackages: ['mathml2omml', 'pptxgenjs', '@magicclass/importer'],
   // These agent packages do a runtime `import(specifier)` with a computed
   // specifier (to lazily load node:fs/os/path without breaking browser/Vite
   // builds). webpack can't statically analyze that and bundling it throws
@@ -37,8 +37,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     '@earendil-works/pi-ai',
     '@earendil-works/pi-agent-core',
-    '@openmaic/generation',
-    // Optional peers of @openmaic/storage, reached through deliberately
+    '@magicclass/generation',
+    // Optional peers of @magicclass/storage, reached through deliberately
     // untraced dynamic imports. Externalizing keeps them out of the bundle,
     // and the static anchor in lib/persistence/asset-byte-store.ts gets them
     // traced into the standalone image -- without it, S3 mode and redirect

@@ -136,7 +136,7 @@ export default function LearningSpacePage() {
       className="learning-space-page"
       eyebrow="学习空间"
       title="学习空间"
-      description="上游 OpenMAIC 应用以独立进程运行，这里直接承载它完整的课堂、工作台与编辑器。"
+      description="magic'class 以独立进程运行，这里直接承载它完整的课堂、工作台与编辑器。"
       actions={actions}
     >
       {loading && (
