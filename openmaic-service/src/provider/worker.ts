@@ -100,7 +100,7 @@ export function createProviderJobWorker(options: {
         .map((value) => value.trim()))].slice(0, 7)
       : [];
     const raw = await generateStageDocument(options.provider, { mode, prompt });
-    const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds }));
+    const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds, mode, prompt }));
     const title = String(prepared.document.stage?.name ?? prompt).slice(0, 200);
     workspaces.createStage({
       userId: identity.userId,

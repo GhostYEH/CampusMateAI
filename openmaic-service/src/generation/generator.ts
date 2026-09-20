@@ -256,7 +256,7 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
  * content and never identities or timestamps (the prompt forbids it), so the
  * service owns the ids, ordering and clock before the validator runs.
  */
-export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[] } = {}): StageAggregate & { dslVersion: string } {
+export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[]; mode?: GenerationMode; prompt?: string } = {}): StageAggregate & { dslVersion: string } {
   const now = Date.now();
   const stageId = id('stage');
   const source = isObject(raw) ? raw : {};
@@ -273,6 +273,15 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
       updatedAt: now,
     } as unknown as Scene;
   });
+  // The provider sometimes explains an experiment as slides even when the
+  // requested runtime is simulation. Preserve those useful explanations and
+  // append a real parameterized simulation instead of silently degrading to
+  // a read-only lesson.
+  if (options.mode === 'simulation' && !scenes.some((scene) => scene.type === 'interactive')) {
+    const title = typeof stageInput.name === 'string' && stageInput.name.trim() ? stageInput.name.trim() : (options.prompt?.trim() || '交互式模拟实验');
+    const content = widgetContent('simulation', title);
+    scenes.push(authoredScene(stageId, scenes.length, `${title}：交互仿真`, content, now));
+  }
   return {
     dslVersion: DSL_VERSION,
     stage: {
