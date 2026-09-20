@@ -57,6 +57,7 @@ from .routes import (
     openmaic_provider,
     openmaic_tts,
     openmaic_narration,
+    openmaic_quiz,
     openmaic_course_context,
     openmaic_learning_space,
 )
@@ -147,6 +148,7 @@ api_router.include_router(openmaic_generation.router)
 api_router.include_router(openmaic_tts.router)
 # OpenMAIC 按场景的讲解音频(按需生成;讲稿由服务端从场景正文派生,浏览器只给 scene id)
 api_router.include_router(openmaic_narration.router)
+api_router.include_router(openmaic_quiz.router)
 api_router.include_router(openmaic_discussion.router)
 api_router.include_router(openmaic_provider.router)
 # OpenMAIC 生成前的只读课程上下文(知识点/章节/资料的真实同步状态)

@@ -753,6 +753,14 @@ export async function getOpenMAICStageScene(courseId, workspaceId, stageId, scen
   );
 }
 
+export async function getOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId) {
+  return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/quiz-attempt`));
+}
+
+export async function saveOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId, payload) {
+  return dataOf(await client.post(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/quiz-attempt`, payload));
+}
+
 export async function applyOpenMAICStageCommands(courseId, workspaceId, stageId, { commands, revision, idempotencyKey }) {
   return dataOf(
     await client.post(

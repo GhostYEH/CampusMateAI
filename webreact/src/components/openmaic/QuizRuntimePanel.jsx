@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "../Primitives.jsx";
 import { evaluateQuiz, normalizeQuizQuestions } from "../../features/openmaic/sceneRuntimeModel.js";
+import * as api from "../../data/api.js";
 
 function storageKey(sceneId) {
   return sceneId ? `campusmate:openmaic:quiz:${sceneId}` : "";
@@ -25,21 +26,55 @@ function isAnswered(question, value) {
   return Array.isArray(value) ? value.length > 0 : String(value || "").trim().length > 0;
 }
 
-export default function QuizRuntimePanel({ questions: rawQuestions, sceneId }) {
+export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
   const [answers, setAnswers] = React.useState(saved?.answers || {});
   const [review, setReview] = React.useState(saved?.review || null);
+  const [remoteAttemptId, setRemoteAttemptId] = React.useState(saved?.attempt_id || "");
+
+  const persistRemote = React.useCallback(async (nextPhase, nextAnswers, nextReview = review, startNewAttempt = false) => {
+    if (!courseId || !workspaceId || !stageId || !sceneId) return null;
+    try {
+      return await api.saveOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId, {
+        attempt_id: remoteAttemptId || `${stageId}:${sceneId}`,
+        phase: nextPhase === "answering" ? "draft" : nextPhase === "submitted" ? "submitted" : nextPhase === "review" ? "reviewed" : "draft",
+        answers: nextAnswers,
+        results: nextReview?.results || [],
+        ...(startNewAttempt ? { start_new_attempt: true } : {}),
+      });
+    } catch {
+      return null;
+    }
+  }, [courseId, workspaceId, stageId, sceneId, remoteAttemptId, review]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!courseId || !workspaceId || !stageId || !sceneId) return undefined;
+    void api.getOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId).then((remote) => {
+      if (cancelled) return;
+      setRemoteAttemptId(remote?.attempt_id || "");
+      if (!remote?.state) return;
+      const state = remote.state;
+      const nextPhase = state.phase === "reviewed" ? "review" : state.phase === "draft" && Object.keys(state.answers || {}).length ? "answering" : "intro";
+      setPhase(nextPhase);
+      setAnswers(state.answers || {});
+      setReview(state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null);
+      try { window.localStorage.setItem(storageKey(sceneId), JSON.stringify({ phase: nextPhase, answers: state.answers || {}, review: state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null, attempt_id: remote.attempt_id })); } catch {}
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [courseId, workspaceId, stageId, sceneId, questions]);
 
   function persist(nextPhase, nextAnswers, nextReview = review) {
-    saveAttempt(sceneId, { phase: nextPhase, answers: nextAnswers, review: nextReview });
+    saveAttempt(sceneId, { phase: nextPhase, answers: nextAnswers, review: nextReview, attempt_id: remoteAttemptId });
   }
 
   function updateAnswer(questionId, value) {
     const next = { ...answers, [questionId]: value };
     setAnswers(next);
     persist(phase, next);
+    void persistRemote(phase, next);
   }
 
   function submitAnswers(event) {
@@ -48,6 +83,10 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId }) {
     setReview(result);
     setPhase("review");
     persist("review", answers, result);
+    void (async () => {
+      await persistRemote("submitted", answers, null);
+      await persistRemote("review", answers, result);
+    })();
   }
 
   function retry() {
@@ -55,6 +94,9 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId }) {
     setReview(null);
     setPhase("answering");
     persist("answering", {}, null);
+    void persistRemote("answering", {}, null, true).then((remote) => {
+      if (remote?.attempt_id) setRemoteAttemptId(remote.attempt_id);
+    });
   }
 
   const allAnswered = questions.length > 0 && questions.every((question) => isAnswered(question, answers[question.id]));
@@ -65,7 +107,7 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId }) {
       <span className="openmaic-runtime-kicker">互动测验</span>
       <strong>{questions.length} 道题 · 共 {questions.reduce((sum, question) => sum + question.points, 0)} 分</strong>
       <p>完成答题后提交，系统会立即给出得分和逐题解析。</p>
-      <Button type="button" onClick={() => { setPhase("answering"); persist("answering", answers); }}>开始答题</Button>
+      <Button type="button" onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
     </div>
   </section>;
 

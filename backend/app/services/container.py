@@ -103,6 +103,7 @@ from ..services.course_research.source_fetcher import ControlledSourceFetcher
 from ..services.openmaic.client import OpenMAICClient
 from ..services.openmaic.classroom_service import OpenMAICClassroomService
 from ..services.openmaic.result_store import OpenMAICResultStore
+from ..services.openmaic.quiz_attempt_store import QuizAttemptStore
 from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
@@ -213,6 +214,7 @@ class ServiceContainer:
     course_research_pipeline: CourseResearchPipeline
     # OpenMAIC 互动课堂适配层
     openmaic_result_store: OpenMAICResultStore
+    quiz_attempt_store: QuizAttemptStore
     openmaic_classroom_service: OpenMAICClassroomService
     notice_workflow_repository: NoticeWorkflowRepository
     notice_workflow_service: NoticeWorkflowService
@@ -508,6 +510,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         _openmaic_store_dir(settings),
         max_results=settings.openmaic_max_results_per_course,
     )
+    quiz_attempt_store = QuizAttemptStore(
+        (settings.database_path.parent if settings.database_path is not None else Path(__file__).resolve().parents[2] / "data")
+        / "openmaic_quiz_attempts"
+    )
     openmaic_classroom_service = OpenMAICClassroomService(
         settings=settings,
         store=openmaic_result_store,
@@ -606,6 +612,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             retrieval_service=retrieval,
         ),
         openmaic_result_store=openmaic_result_store,
+        quiz_attempt_store=quiz_attempt_store,
         openmaic_classroom_service=openmaic_classroom_service,
         notice_workflow_repository=notice_workflow_repository,
         notice_workflow_service=NoticeWorkflowService(

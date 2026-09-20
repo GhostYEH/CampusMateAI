@@ -126,7 +126,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
             : { src: sandboxUrl })}
         /> : null}
 
-        {(currentScene.render.kind === "native" || currentScene.render.widget_type === "simulation") ? <NativeScene scene={scene} fallbackTitle={currentScene.title} /> : null}
+        {(currentScene.render.kind === "native" || currentScene.render.widget_type === "simulation") ? <NativeScene scene={scene} fallbackTitle={currentScene.title} courseId={courseId} workspaceId={workspaceId} stageId={stageId} /> : null}
 
         {currentScene.render.kind === "unsupported" ? <div className="openmaic-player__degraded" role="status">
           <Icon name="PhWarningCircle" size={22} />
@@ -157,12 +157,12 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
  * 只呈现文档里真实存在的内容：quiz 呈现真实题目，slide 呈现真实画板块数。
  * 读不到正文时只显示标题，不编造内容。
  */
-function NativeScene({ scene, fallbackTitle }) {
+function NativeScene({ scene, fallbackTitle, courseId, workspaceId, stageId }) {
   const content = scene?.content;
   if (!content) {
     return <p className="openmaic-hint">「{fallbackTitle}」的正文暂时读不到，仅显示标题。</p>;
   }
-  if (content.type === "quiz") return <QuizRuntimePanel questions={content.questions} sceneId={scene?.id || ""} />;
+  if (content.type === "quiz") return <QuizRuntimePanel questions={content.questions} sceneId={scene?.id || ""} courseId={courseId} workspaceId={workspaceId} stageId={stageId} />;
   if (content.type === "pbl") return <PblRuntimePanel content={content} sceneId={scene?.id || ""} />;
   if (content.type === "interactive" && content.widgetType === "simulation") return <SimulationRuntimePanel content={content} sceneId={scene?.id || ""} />;
   if (content.type === "slide") {
