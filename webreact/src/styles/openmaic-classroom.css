@@ -156,6 +156,26 @@
 .openmaic-stage-editor__toolbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
 .openmaic-stage-editor__type { height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; background: #fff; }
 
+/* P1-A edit studio: the rail selects a scene and the center uses the same
+   read-only canvas surface as classroom playback. */
+.openmaic-stage-editor__workspace { display: grid; grid-template-columns: minmax(170px, 0.32fr) minmax(0, 1fr); gap: 12px; flex: 1 1 auto; min-height: 0; }
+.openmaic-stage-editor__workspace > .openmaic-scene-list { min-height: 0; }
+.openmaic-scene-item__select { display: block; flex: 1 1 120px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.openmaic-scene-item__select:focus-visible { outline: 2px solid #b9c7f0; outline-offset: 2px; border-radius: 5px; }
+.maic-edit-canvas { min-width: 0; min-height: 0; overflow: hidden; border-radius: 12px; background: #f8fafc; box-shadow: inset 0 0 0 1px var(--line); }
+.maic-edit-canvas__surface { background: #f8fafc; }
+.maic-edit-canvas__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; height: 100%; padding: 20px; color: var(--muted); text-align: center; }
+.maic-edit-canvas__empty strong { color: var(--ink); font-size: 13px; }
+.maic-edit-canvas__empty p { margin: 0; font-size: 12px; }
+
+/* 工作台窄于 700px 时，横向场景栏会把 16:9 画布压到不可读的宽度。
+   课程页本身已在此断点改为单栏，因此编辑器也把场景切换收为上方短列表，
+   让当前场景的实际画布至少保留一张可阅读的卡片大小。 */
+@media (max-width: 700px) {
+  .openmaic-stage-editor__workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, auto) minmax(140px, 1fr); }
+  .openmaic-stage-editor__workspace > .openmaic-scene-list { max-height: 128px; }
+}
+
 /* 场景列表：选中态是中性 pill，不加强调色条。 */
 .openmaic-scene-list { list-style: none; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; overflow: auto; }
 .openmaic-scene-item {
