@@ -65,7 +65,7 @@
    - 前端 `webreact/tests/*.test.mjs`（node --test），大量使用源码级契约断言；
    - 服务端 `openmaic-service/tests/*.test.mjs`（node --experimental-strip-types --test），
      优先测纯函数。
-   注意：**源码级断言挡不住逻辑错误**（see 04-陷阱.md 第 6 条），关键链路必须真跑。
+   注意：**源码级断言挡不住逻辑错误**（见 04-陷阱.md 第 6 条），关键链路必须真跑。
 3) **真实浏览器验收（Playwright，不许 mock 后端）**，并给出**具体数字**：
    - 几何 / 文本的实测值（例如"面板高 192px、三列 [90, 1135, 140]"）；
    - pageerror 条数、console error 条数、>=400 的 API 响应条数（写"0 条"而不是"没发现问题"）；
