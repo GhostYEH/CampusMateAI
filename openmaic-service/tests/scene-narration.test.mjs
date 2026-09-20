@@ -116,6 +116,25 @@ test('narration is derived from the scene body, per scene type', () => {
   assert.doesNotMatch(quiz.text, /a/);
 });
 
+test('slide narration includes detailed text stored in rendered canvas elements', () => {
+  const slide = buildSceneNarration({
+    type: 'slide',
+    title: '生成的课程页',
+    content: {
+      type: 'slide',
+      slide: { title: '生成的课程页', bullets: [] },
+      canvas: {
+        elements: [
+          { type: 'shape', content: '装饰图形' },
+          { type: 'text', content: '<p>这是生成服务写入的详细正文。</p>' },
+        ],
+      },
+    },
+  });
+  assert.match(slide.text, /详细正文/);
+  assert.doesNotMatch(slide.text, /<p>|装饰图形/);
+});
+
 test('narration never reads internal widget fields or raw html', () => {
   const interactive = buildSceneNarration({
     type: 'interactive', title: '自由落体实验',

@@ -59,6 +59,7 @@ function textList(value: unknown, limit: number): string[] {
 /** 去掉会让 TTS 读错的 Markdown / 控制字符，并压平空白。 */
 function clean(value: string): string {
   return value
+    .replace(/<[^>]*>/g, ' ')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -110,6 +111,16 @@ function slideNarration(content: SceneContent, sceneTitle: string): string {
   for (const section of outline.sections) {
     if (section.heading) parts.push(section.heading);
     for (const bullet of section.bullets) parts.push(bullet);
+  }
+  // New generated slides keep the authoritative rendered copy in canvas
+  // elements. Older narration only inspected the structured outline, so a
+  // slide with detailed text elements was incorrectly reported as empty.
+  if (isObject(content) && isObject(content.canvas) && Array.isArray(content.canvas.elements)) {
+    for (const element of content.canvas.elements.slice(0, 20)) {
+      if (!isObject(element) || element.type !== 'text' || element.id === 'el_title') continue;
+      const value = text(element.text) || text(element.value) || text(element.label) || text(element.content);
+      if (value) parts.push(value);
+    }
   }
   return paragraphs(parts);
 }
