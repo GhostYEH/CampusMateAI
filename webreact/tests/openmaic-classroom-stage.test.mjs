@@ -252,3 +252,12 @@ test("presentation mode hides classroom chrome and gives the stage all available
   assert.match(shellSource, /const sceneViewerHeight = headerVisible \? "calc\(100% - 80px\)" : "100%"/,
     "隐藏头部后舞台必须占满可用高度");
 });
+
+test("the action player invokes the canvas store API rather than treating its snapshot as commands", () => {
+  assert.match(stageSource, /useCanvasStore\.resetEffects\(\)/,
+    "换场景必须调用 store 的真实 resetEffects 命令");
+  assert.match(stageSource, /useCanvasStore\.playVideo\(/,
+    "视频动作必须调用 store 的真实 playVideo 命令");
+  assert.doesNotMatch(stageSource, /useCanvasStore\.getState\(\)\.resetEffects/,
+    "getState 只返回快照，不能把它当作命令 API");
+});

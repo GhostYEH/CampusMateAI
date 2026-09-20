@@ -1,5 +1,5 @@
 import React from "react";
-import { ChevronLeft, ChevronRight, LayoutList } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutList, Pause, Play } from "lucide-react";
 import { Button } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
@@ -25,6 +25,12 @@ import { SCENE_TYPE_LABELS } from "../../features/openmaic/editorModel.js";
 import { useNarrowViewport } from "../../features/openmaic/workbenchLayoutModel.js";
 import { useSceneNarration } from "../../features/openmaic/useSceneNarration.js";
 import { canGenerateNarration, narrationLabel } from "../../features/openmaic/narrationModel.js";
+import {
+  advanceActionTimeline,
+  isPlaybackShortcutTarget,
+  startActionTimeline,
+} from "../../features/openmaic/playbackTimeline.js";
+import { useCanvasStore } from "../../maic/slide/index.js";
 
 /**
  * 学习态课堂：把参考项目（清华大学学习平台 / OpenMAIC）的播放态界面接到
@@ -141,6 +147,75 @@ export default function OpenMAICClassroomStage({
   const go = React.useCallback((next) => {
     setIndex((currentIndex) => (next < 0 || next > scenes.length - 1 ? currentIndex : next));
   }, [scenes.length]);
+
+  // 动作计划来自服务端、参数来自已授权的舞台文档；播放状态只属于当前场景。
+  // 两者分开后，播放器不会为了猜一个 `elementId` 而把效果施加到错误的画布上。
+  const [actionSession, setActionSession] = React.useState(null);
+  const [playbackNotice, setPlaybackNotice] = React.useState("");
+  const resetActionTimeline = React.useCallback(() => {
+    useCanvasStore.resetEffects();
+    useCanvasStore.pauseVideo();
+    setActionSession(null);
+    setPlaybackNotice("");
+  }, []);
+
+  React.useEffect(() => {
+    resetActionTimeline();
+    return () => {
+      useCanvasStore.resetEffects();
+      useCanvasStore.pauseVideo();
+    };
+  }, [currentId, resetActionTimeline]);
+
+  const toggleActionTimeline = React.useCallback(() => {
+    setActionSession((previous) => {
+      if (previous?.status === "playing") return { ...previous, status: "paused", clearEffects: false };
+      if (previous?.status === "paused") return { ...previous, status: "playing", clearEffects: false };
+      const next = startActionTimeline(current, scene);
+      useCanvasStore.resetEffects();
+      useCanvasStore.pauseVideo();
+      setPlaybackNotice(next.status === "completed" ? "这一页没有可执行的播放动作。" : "正在播放本页动作…");
+      return next;
+    });
+  }, [current, scene]);
+
+  React.useEffect(() => {
+    if (!actionSession || actionSession.status !== "playing") return undefined;
+    const timer = window.setTimeout(() => {
+      const result = advanceActionTimeline(actionSession);
+      if (result.effect) {
+        if (result.effect.kind === "spotlight") useCanvasStore.setSpotlight(result.effect.elementId, result.effect.options);
+        if (result.effect.kind === "laser") useCanvasStore.setLaser(result.effect.elementId, result.effect.options);
+        if (result.effect.kind === "play_video") useCanvasStore.playVideo(result.effect.elementId);
+      }
+      if (result.skipped) {
+        setPlaybackNotice(`动作「${result.skipped.type}」未执行：${result.skipped.reason === "element_not_found" ? "目标元素不存在" : "当前客户端没有对应运行时"}。`);
+      } else if (result.next?.status === "completed") {
+        setPlaybackNotice("本页动作已播放完成。");
+      }
+      setActionSession(result.next);
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [actionSession]);
+
+  React.useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (isPlaybackShortcutTarget(event.target) || isPlaybackShortcutTarget(document.activeElement)) return;
+      if (event.key === "ArrowLeft" && isPresenting) {
+        event.preventDefault();
+        go(index - 1);
+      } else if (event.key === "ArrowRight" && isPresenting) {
+        event.preventDefault();
+        go(index + 1);
+      } else if (event.key === " " || event.key === "Spacebar") {
+        event.preventDefault();
+        toggleActionTimeline();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [go, index, isPresenting, toggleActionTimeline]);
 
   // ── 讲解音频 ─────────────────────────────────────────────────────────────
   // 按**当前场景**取音频。hook 内部以 sceneId 为键并在换场景时释放 blob，
@@ -300,6 +375,9 @@ export default function OpenMAICClassroomStage({
         discussionError={discussionError}
         narration={narration}
         isPresenting={isPresenting}
+        actionSession={actionSession}
+        playbackNotice={playbackNotice}
+        onToggleActionTimeline={toggleActionTimeline}
       />
     </MaicClassroomShell>
   </div>;
@@ -327,6 +405,9 @@ function SceneStage({
   discussionError,
   narration,
   isPresenting,
+  actionSession,
+  playbackNotice,
+  onToggleActionTimeline,
 }) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
@@ -377,6 +458,9 @@ function SceneStage({
         onPrev={onPrev}
         onNext={onNext}
         narration={narration}
+        actionSession={actionSession}
+        playbackNotice={playbackNotice}
+        onToggleActionTimeline={onToggleActionTimeline}
       />}
       messages={messages}
       busy={discussing}
@@ -412,7 +496,7 @@ function SceneStage({
  * 原因并可重试。参考项目的那个静音按钮依赖 TTS 播放计划，本仓库没有该运行时，
  * 所以这里用真实的 `<audio>` 元素而不是复刻一个假按钮。
  */
-function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext, narration }) {
+function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext, narration, actionSession, playbackNotice, onToggleActionTimeline }) {
   const empty = total === 0;
   return <div className={cn(
     "shrink-0 h-9 px-2 flex items-center gap-2",
@@ -440,6 +524,22 @@ function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev,
     </div>
 
     <NarrationControl narration={narration} />
+
+    {onToggleActionTimeline ? <div className="flex items-center gap-1 min-w-0 shrink-0">
+      <button
+        type="button"
+        onClick={onToggleActionTimeline}
+        className={cn(ctrlBtn, "w-6 h-6 text-gray-500 dark:text-gray-400")}
+        aria-label={actionSession?.status === "playing" ? "Pause scene actions" : "Play scene actions"}
+        title={actionSession?.status === "playing" ? "暂停本页动作" : "播放本页动作"}
+        data-testid="openmaic-action-playback-toggle"
+      >
+        {actionSession?.status === "playing" ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+      </button>
+      {playbackNotice ? <output className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-40" data-testid="openmaic-action-playback-status">
+        {playbackNotice}
+      </output> : null}
+    </div> : null}
 
     <div className="flex-1 flex items-center justify-center min-w-0">
       <button
