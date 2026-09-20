@@ -92,7 +92,7 @@ const MODE_SCENE_GUIDE = [
   `Available generation modes: ${GENERATION_MODES.join(', ')}.`,
   'Scene objects: {"title": string, "order": number, "type": "slide"|"quiz"|"interactive"|"pbl", "content": ...}.',
   'Mode mapping: slide→slide; quiz→quiz; pbl→pbl; every other mode→"interactive" with "widgetType" set to the mode name.',
-  'slide content: {"type": "slide", "canvas": {"title": string, "body": string}} — body is plain text, up to 4000 chars.',
+  'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "bullets": [string], "sections": [{"heading": string, "bullets": [string]}]}} — 排版（坐标、字号、配色）由服务端生成，你只负责内容，绝不要给坐标或尺寸。bullets 与 sections 二选一：并列要点用 bullets（3 到 6 条，每条不超过 40 字）；需要分组时才用 sections（2 到 3 组，每组 2 到 4 条，每条不超过 24 字）。subtitle 可省略。',
   'quiz content: {"type": "quiz", "questions": [{"type": "single", "question": string, "options": [{"label": string, "value": string}], "answer": [string (one option value)], "analysis": string, "points": 1}]} — 3 to 8 questions, 3 to 6 options each.',
   'pbl content: {"type": "pbl", "phases": [{"title": string, "tasks": [{"title": string}]}]} — 2 to 5 phases, 1 to 5 tasks per phase.',
   'interactive content: {"type": "interactive", "html": string, "widgetType": string} — html is a self-contained inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',

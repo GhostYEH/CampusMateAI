@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contract.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
+import { composeSlideCanvas } from './slide-canvas.ts';
 
 export const GENERATION_MODES = [
   'slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game',
@@ -72,7 +73,19 @@ export function buildGeneratedStage(
     title,
     order: 0,
     type,
-    content: { type: 'slide', canvas: { title, body: `围绕“${title}”开始学习。` } },
+    // 本地模板（未配置 provider 时的降级路径）也走同一套画布合成：它必须和模型
+    // 产出的幻灯片**同形状**，否则"没配模型"与"配了模型"在课堂里会渲染成两种
+    // 完全不同的东西，而前者看起来就像功能坏了。
+    content: {
+      type: 'slide',
+      canvas: composeSlideCanvas({
+        slide: {
+          title,
+          subtitle: `围绕“${title}”开始学习。`,
+          bullets: [`${title}的核心问题`, `关键概念与相互关系`, `如何检验自己的理解`],
+        },
+      }),
+    },
     createdAt: now,
     updatedAt: now,
   };
@@ -122,6 +135,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function assignContentIds(scene: Record<string, unknown>): Record<string, unknown> {
   const result = { ...scene };
   const content = isObject(result.content) ? result.content : undefined;
+  if (content?.type === 'slide') {
+    // 模型只出结构化内容（title/subtitle/bullets/sections），**排版由服务端合成**：
+    // 把绝对坐标交给模型，得到的是重叠与越界，而且只有渲染出来才看得见。
+    // 这里同时兜住历史的 `canvas: { title, body }` 形态，老数据不会变成空白页。
+    result.content = { type: 'slide', canvas: composeSlideCanvas(content) };
+  }
   if (content?.type === 'quiz' && Array.isArray(content.questions)) {
     result.content = {
       ...content,
