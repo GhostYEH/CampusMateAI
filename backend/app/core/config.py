@@ -168,6 +168,10 @@ class Settings(BaseSettings):
     # 金丝雀展示的采样率与影子观测解耦：影子控制"记录多少"，金丝雀控制"展示多少"。
     # 默认 1.0 表示门禁通过即展示；置 0 可一键关闭展示而保留门禁与观测。
     campusmate_lm_canary_sample_rate: float = 1.0
+    # 候选模型的 TLS 最高版本。留空 = 沿用通用 LLM 的 LLM_TLS_MAX_VERSION
+    # （保持与历史行为一致）；显式设置则只作用于候选服务 —— 两者可能是不同的
+    # 服务、不同的中间件，对 TLS 版本的要求不一定相同。
+    campusmate_lm_tls_max_version: str = ""
 
     # ===== CampusAgentRuntime model providers (§6) =====
     # Zhipu reasoning primary; Xunfei fast structured.复用 OpenAICompatibleClient。

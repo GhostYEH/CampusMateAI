@@ -842,3 +842,75 @@ def test_sync_canary_gate_route_stays_read_only_over_http():
         assert response.json() == {"allowed": True, "reason": None}
 
     assert dict(runner.circuit_status("learning_summary_v1")) == before
+
+
+# ===== 11. 候选模型的 TLS 与通用 LLM 解耦 =====
+
+
+def _candidate_settings(**overrides) -> Settings:
+    base = dict(
+        app_env="test", database_url="sqlite:///:memory:",
+        campusmate_lm_enabled=True, campusmate_lm_base_url="http://candidate.invalid:8000",
+        campusmate_lm_api_key="k", campusmate_lm_model_name="m",
+    )
+    base.update(overrides)
+    return Settings(**base)
+
+
+def _candidate_tls_max_version(settings: Settings):
+    container = reset_container_for_tests(settings)
+    candidate = container.model_shadow_runner.candidate_llm
+    assert candidate is not None, "候选已配置时必须构造客户端"
+    return candidate._ssl_context.maximum_version
+
+
+def test_candidate_tls_inherits_general_llm_setting_by_default():
+    """留空 = 沿用 LLM_TLS_MAX_VERSION：与历史行为逐位一致，升级不会改变线上表现。
+
+    注意：`Settings` 会读取 `backend/.env`，所以这里断言的是**不变量**
+    （候选 TLS == 通用 LLM TLS），而不是某个绝对值 —— 否则测试会随开发机
+    的 `.env` 内容飘。
+    """
+    import ssl
+
+    assert Settings.model_fields["campusmate_lm_tls_max_version"].default == "", (
+        "字段默认必须是空串，才能保证「留空即沿用」的历史行为"
+    )
+
+    configured = dict(
+        llm_provider="openai_compatible", llm_base_url="http://llm.invalid:8000",
+        llm_api_key="k", llm_model="m",
+    )
+    for tls in ("1.2", "1.3", ""):
+        container = reset_container_for_tests(
+            _candidate_settings(llm_tls_max_version=tls, **configured))
+        general = container.llm
+        candidate = container.model_shadow_runner.candidate_llm
+        assert general is not None and candidate is not None
+        assert (candidate._ssl_context.maximum_version
+                == general._ssl_context.maximum_version), f"TLS={tls!r} 时候选必须沿用通用 LLM"
+
+    # 两边都没设 → 自动协商，不修改任何 TLS 边界
+    container = reset_container_for_tests(
+        _candidate_settings(llm_tls_max_version="", **configured))
+    assert container.llm._ssl_context.maximum_version == ssl.TLSVersion.MAXIMUM_SUPPORTED
+
+
+def test_candidate_tls_can_be_overridden_independently():
+    """显式设置只作用于候选服务：候选与通用 LLM 可以是不同中间件。"""
+    import ssl
+
+    assert _candidate_tls_max_version(_candidate_settings(
+        llm_tls_max_version="1.2", campusmate_lm_tls_max_version="1.3",
+    )) == ssl.TLSVersion.TLSv1_3
+
+
+def test_invalid_candidate_tls_version_fails_fast():
+    """非法 TLS 版本必须启动即失败，不能静默降级成"配了但没生效"。"""
+    import pytest
+
+    from app.services.llm.base import LLMConfigError
+
+    for bad in ("1.4", "ssl3", "TLS1.2x"):
+        with pytest.raises(LLMConfigError):
+            reset_container_for_tests(_candidate_settings(campusmate_lm_tls_max_version=bad))

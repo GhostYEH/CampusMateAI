@@ -351,9 +351,12 @@ node --test harmony/test-host/*.test.mjs
 - **熔断并发语义**：新增熔断代次（generation）门控，旧请求晚返回既不释放他人
   half-open 探测权、也不关闭熔断；并发 half-open 只产生一次真实探测。
   回归测试见 `backend/tests/test_model_shadow_runner.py` 的「并发 / 熔断状态机回归」一节。
-- **候选模型配置入口可发现**：`backend/.env.example` 补齐 15 个 `CAMPUSMATE_LM_*` 键，
+- **候选模型配置入口可发现**：`backend/.env.example` 补齐 16 个 `CAMPUSMATE_LM_*` 键，
   并有双向契约测试保证「模板 ↔ Settings 字段」完全一致、凭据键保持留空。
 - **默认关闭**：默认配置下不构造候选客户端、不发起任何真实调用（有测试钉住）。
+- **候选 TLS 与通用 LLM 解耦**：新增 `CAMPUSMATE_LM_TLS_MAX_VERSION`。留空时**沿用**
+  `LLM_TLS_MAX_VERSION`（与历史行为逐位一致，升级不改变线上表现）；显式设置时只作用于
+  候选服务；非法值启动即失败。
 
 ### 阻塞项（需要外部条件，未验证）
 
@@ -393,9 +396,35 @@ node --test harmony/test-host/*.test.mjs
 
 5. **金丝雀展示未在生产开启**：默认 `false` 且需要 promotion decision；
    默认配置下 `candidate_annotation.available` 恒为 `false`，响应携带稳定 reason。
-6. **数据源控制部分生效**：暂停状态已纳入投影 input_digest 与 warning code，
-   但事件采集链路尚未完全消费该开关。
+6. **数据源控制：`CORE_STUDY` / `PERSONAL_TASK` 的暂停语义未实现（需产品决策）**。
+   实测（`learner_event_service.py`）：
+   - `record_chaoxing_*` / `record_edu_*` / `record_campus_*` / `record_self_report_*` 等
+     入口都会调用 `_is_source_skipped`，暂停后确实不再创建派生 learner event；
+   - 但 `record_study_session_finished`（`source="study"`）与
+     `record_personal_task_completed`（`source="personal_task"`）**没有**该检查；
+   - 且 `should_skip_learner_event` 的映射表键写的是 `"core_study"`，与实际写入的
+     `"study"` **不匹配** —— 即使补上调用也命不中；
+   - 投影侧 `paused_sources` 只对 `EDU` / `CHAOXING` 做降级，`CORE_STUDY` / `PERSONAL_TASK`
+     只体现在 input digest 与通用 warning 上。
+
+   后果：界面对这两个来源同样提供「暂停」按钮，但暂停几乎不产生实际效果。
+
+   **两处契约声明互相矛盾**，因此这是产品决策而非可直接修的缺陷：
+   - `learner_model_source_policy` 模块文档写「被暂停后，不再为该来源创建新的 learner event」；
+   - `should_skip_learner_event` 的 docstring 写「核心业务事件（study session finish,
+     task complete）不受数据源控制影响，始终保存」；
+   - 界面只提供通用开关，没有任何解释性文案，不能作为判据。
+
+   两种意图各自的最小改动：
+   - 若要**生效**：把映射键 `"core_study"` 改为 `"study"`，并在
+     `record_study_session_finished` / `record_personal_task_completed` 里补
+     `_is_source_skipped` 检查（约 6 行）。
+   - 若要**保持"核心记录始终保存"**：把映射表里的 `"core_study"` / `"personal_task"`
+     两个死键删掉，并在界面与文档里写明这两个来源的暂停只影响投影权重、不停止记录。
+
+   在拿到产品决策前**不做改动**（属于用户可见的同意语义，不宜擅自变更）。
 7. **移动端反事实模拟无入口**：给出的是明确的只读降级说明，不是可点击按钮。
    如需在移动端运行模拟，属于新的产品切片。
-8. **候选模型 TLS 版本复用通用 LLM 的 `LLM_TLS_MAX_VERSION`**：若候选服务与通用 LLM
-   对 TLS 版本要求不同，需要拆出独立的 `CAMPUSMATE_LM_TLS_MAX_VERSION`（当前未拆）。
+8. **测试会读取开发机的 `backend/.env`**：`Settings` 的 `env_file=".env"` 使默认值依赖本机配置
+   （例如本机 `LLM_TLS_MAX_VERSION=1.2`）。因此断言默认值时必须写**不变量**而不是绝对值，
+   否则测试会随开发机漂移。已在候选 TLS 测试里按此写法处理。

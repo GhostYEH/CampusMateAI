@@ -255,7 +255,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             api_key=settings.campusmate_lm_api_key,
             model=settings.campusmate_lm_model_name,
             timeout=settings.campusmate_lm_timeout_ms / 1000,
-            tls_max_version=settings.llm_tls_max_version or None,
+            # 候选服务与通用 LLM 可能是不同服务、不同中间件：显式设置时只作用于候选，
+            # 留空时沿用通用 LLM 的值以保持与历史行为一致。
+            tls_max_version=(settings.campusmate_lm_tls_max_version
+                             or settings.llm_tls_max_version or None),
         )
     model_shadow_runner = ModelShadowRunner(
         registry=ModelCapabilityRegistry(), candidate_llm=candidate_llm,
