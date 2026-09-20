@@ -31,6 +31,18 @@ class _Circuit:
     failures: int = 0
     opened_at: float | None = None
     probe_in_flight: bool = False
+    # 每次熔断**状态迁移**（打开 / 关闭）自增。一次调用在放行时记下当时的代次，
+    # 返回时只有代次仍然一致，才允许改熔断状态 —— 这样"在熔断打开之前发起、
+    # 在 half-open 之后才返回"的旧请求既不能关掉熔断，也不能释放别人的探测权。
+    generation: int = 0
+
+
+@dataclass(frozen=True)
+class _Admission:
+    """一次调用的放行结果：是否放行 + 放行时的熔断代次。"""
+
+    allowed: bool
+    generation: int
 
 
 class ModelShadowRunner:
@@ -116,38 +128,46 @@ class ModelShadowRunner:
         digest = int(self.registry.digest({"request_id": request.request_id, "input": request.input_payload})[:12], 16)
         return digest / float(16 ** 12) < rate
 
-    def _circuit_allows(self, name: str) -> bool:
+    def _circuit_allows(self, name: str) -> _Admission:
         """申请放行，并在 HALF_OPEN 时**占用**探测权。
 
         这是全仓库**唯一**允许占用 `probe_in_flight` 的位置（只由 `run()` 调用）。
         网关、门禁、状态查询一律只能用 `canary_allowed()` / `circuit_status()`：
         它们只读，不占探测权，否则一次门禁查询就会把探测权吞掉，
         真实候选调用永远拿不到探测机会，熔断再也关不上。
+
+        返回值同时携带**放行时的代次**，调用方必须在结束（成功/失败/取消）时
+        原样回传，否则陈旧结果会污染熔断状态。放行与取代次必须在同一个同步
+        代码块里完成（中间不能有 `await`），否则两者可能来自不同的熔断状态。
         """
         state = self._circuits.setdefault(name, _Circuit())
         if state.opened_at is None:
-            return True
+            return _Admission(True, state.generation)
         if time.monotonic() - state.opened_at < self.circuit_breaker_cooldown_seconds:
-            return False
+            return _Admission(False, state.generation)
         if state.probe_in_flight:
-            return False
+            return _Admission(False, state.generation)
         state.probe_in_flight = True
-        return True
+        return _Admission(True, state.generation)
 
     def circuit_status(self, name: str) -> dict[str, Any]:
         """只读熔断器状态查询，无副作用，不占用 half-open probe。"""
         state = self._circuits.get(name)
         if state is None:
-            return {"state": "CLOSED", "failures": 0, "probe_in_flight": False, "cooldown_remaining_seconds": 0.0}
+            return {"state": "CLOSED", "failures": 0, "probe_in_flight": False,
+                    "cooldown_remaining_seconds": 0.0, "generation": 0}
         if state.opened_at is None:
             return {"state": "CLOSED", "failures": state.failures,
-                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0}
+                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0,
+                    "generation": state.generation}
         remaining = self.circuit_breaker_cooldown_seconds - (time.monotonic() - state.opened_at)
         if remaining > 0:
             return {"state": "OPEN", "failures": state.failures,
-                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": remaining}
+                    "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": remaining,
+                    "generation": state.generation}
         return {"state": "HALF_OPEN", "failures": state.failures,
-                "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0}
+                "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0,
+                "generation": state.generation}
 
     def canary_allowed(self, name: str) -> bool:
         """只读 canary 查询，无副作用，不占用 half-open probe。
@@ -162,18 +182,36 @@ class ModelShadowRunner:
             return False
         return not state.probe_in_flight
 
-    def _record_failure(self, name: str) -> None:
+    @staticmethod
+    def _is_current(state: _Circuit, generation: int | None) -> bool:
+        """这次调用的结果是否仍然"对得上"当前熔断状态。
+
+        `generation is None` 表示调用方没有代次信息（只用于内部/测试的显式记账），
+        按当前状态处理。生产路径由 `run()` 始终传代次。
+        """
+        return generation is None or generation == state.generation
+
+    def _record_failure(self, name: str, *, generation: int | None = None) -> None:
         state = self._circuits.setdefault(name, _Circuit())
+        if not self._is_current(state, generation):
+            # 陈旧失败：熔断状态在本次调用期间已经迁移过，这次结果不再代表当前状况。
+            return
         state.failures += 1
         state.probe_in_flight = False
         if state.failures >= self.circuit_breaker_threshold:
             state.opened_at = time.monotonic()
+            state.generation += 1
 
-    def _record_success(self, name: str) -> None:
+    def _record_success(self, name: str, *, generation: int | None = None) -> None:
         state = self._circuits.setdefault(name, _Circuit())
+        if not self._is_current(state, generation):
+            # 陈旧成功**不得关闭熔断**：它是在熔断打开之前发起的调用，
+            # 用旧观察去关断会立刻把全部流量重新打向仍在故障的下游。
+            return
         state.failures = 0
         state.opened_at = None
         state.probe_in_flight = False
+        state.generation += 1
 
     async def run(self, request: ModelCapabilityRequest, *, sample_rate: float | None = None) -> ModelCapabilityResult:
         """执行一次受控候选调用。
@@ -230,8 +268,12 @@ class ModelShadowRunner:
             {"role": "system", "content": f"能力 {spec.capability_name} 只返回严格 JSON；不得新增事实、工具或字段。"},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))},
         ]
-        if not self._circuit_allows(request.capability_name):
+        admission = self._circuit_allows(request.capability_name)
+        if not admission.allowed:
             return self._persist(request, self._fallback(request, payload, "MODEL_CIRCUIT_OPEN", started))
+        # 本次调用的熔断代次：成功/失败/取消三条路径都必须原样回传，
+        # 否则旧请求晚返回时会污染熔断状态（见 `_is_current`）。
+        generation = admission.generation
         try:
             async with self._semaphore():
                 response = await asyncio.wait_for(
@@ -248,41 +290,50 @@ class ModelShadowRunner:
                 if not isinstance(candidate_output, dict):
                     raise ValueError("not-object")
             except (ValueError, TypeError, json.JSONDecodeError):
-                self._record_failure(request.capability_name)
+                self._record_failure(request.capability_name, generation=generation)
                 return self._persist(request, self._fallback(request, payload, "MODEL_SCHEMA_INVALID", started, schema_valid=False))
             try:
                 safe_output = self.registry.validate_output(
                     request.capability_name, candidate_output, input_payload=payload,
                 )
             except CapabilityValidationError as exc:
-                self._record_failure(request.capability_name)
+                self._record_failure(request.capability_name, generation=generation)
                 # Policy violations are reported separately from malformed JSON.
                 return self._persist(request, self._fallback(request, payload, "MODEL_POLICY_VIOLATION", started, policy_valid=False))
-            self._record_success(request.capability_name)
+            self._record_success(request.capability_name, generation=generation)
             result = self._base_result(request, output=safe_output, failure=None, used_fallback=False, started=started,
                                        model_key=getattr(self.candidate_llm, "name", "campusmate-lm"), model_version="candidate-v1",
                                        inference_source="REAL_MODEL")
             return self._persist(request, result)
         except (asyncio.TimeoutError, LLMTimeoutError):
-            self._record_failure(request.capability_name)
+            self._record_failure(request.capability_name, generation=generation)
             return self._persist(request, self._fallback(request, payload, "MODEL_TIMEOUT", started))
         except (LLMError, OSError, RuntimeError):
-            self._record_failure(request.capability_name)
+            self._record_failure(request.capability_name, generation=generation)
             return self._persist(request, self._fallback(request, payload, "MODEL_UNAVAILABLE", started))
         except Exception:
-            self._record_failure(request.capability_name)
+            self._record_failure(request.capability_name, generation=generation)
             return self._persist(request, self._fallback(request, payload, "MODEL_UNAVAILABLE", started))
         finally:
             # `_record_success` / `_record_failure` 已经会释放探测权，这里是兜底：
             # 任务被取消（`CancelledError` 是 BaseException，上面几个 except 都拦不住）
             # 或出现未预期异常时，也不允许把 half-open 探测权留在手里。
-            self._release_probe(request.capability_name)
+            # 代次仍然一致才释放，因此旧请求晚结束不会放掉当前探测者的探测权。
+            self._release_probe(request.capability_name, generation=generation)
 
-    def _release_probe(self, name: str) -> None:
-        """只释放 half-open 探测权；不改变失败计数，也不改变熔断开启时刻。"""
+    def _release_probe(self, name: str, *, generation: int | None = None) -> None:
+        """释放 half-open 探测权；不改变失败计数与熔断开启时刻。
+
+        只有**放行时持有该代次**的调用才能释放：一个在熔断打开之前发起、
+        在 half-open 之后才返回的旧请求，代次已经对不上，不能把当前探测者的
+        探测权放掉 —— 否则同一 capability 会同时出现两个 half-open 探测。
+        """
         state = self._circuits.get(name)
-        if state is not None:
-            state.probe_in_flight = False
+        if state is None or not state.probe_in_flight:
+            return
+        if not self._is_current(state, generation):
+            return
+        state.probe_in_flight = False
 
 
 __all__ = ["ModelShadowRunner"]

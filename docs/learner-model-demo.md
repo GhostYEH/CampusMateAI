@@ -155,6 +155,47 @@ GET /learning-plans/{id}/summary
 - `run()` 在申请探测权之前先把请求体构造完，并用 `finally` 兜底释放，
   即使调用被取消（`CancelledError` 是 `BaseException`）也不会把探测权留在手里。
 
+### 并发语义：熔断代次（generation）
+
+熔断状态机不只是"计数 + 时间戳"。每次熔断**状态迁移**（打开 / 关闭）都会推进一个
+代次（`generation`），一次调用在放行时记下当时的代次，返回时只有代次仍然一致，
+才允许改动熔断状态：
+
+| 情形 | 行为 |
+| --- | --- |
+| 旧请求在熔断打开**之前**发起、half-open **之后**才返回（成功） | **不关闭熔断**：用旧观察去关断会把全部流量立刻重新打向仍在故障的下游 |
+| 旧请求同上但返回失败 | 不计入失败计数，也不释放当前探测者的探测权 |
+| 并发打进来多个 half-open 请求 | 只有一个拿到探测权，其余判 `MODEL_CIRCUIT_OPEN` |
+| 探测成功 / 失败 / 取消 | 三种结束路径都归还探测权；取消不写失败计数 |
+
+`_circuit_allows()` 返回 `(allowed, generation)`，`run()` 把代次原样回传给
+`_record_success` / `_record_failure` / `_release_probe`。放行与取代次必须在同一段
+**没有 `await`** 的同步代码里完成，否则两者可能来自不同的熔断状态。
+
+### 部署形态与跨进程一致性（重要）
+
+**当前部署是单服务进程，因此进程内熔断状态是一致且正确的。**
+
+证据：
+
+- 仓库内所有启动入口都是 `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+  （`start_backend.bat`、`README.md` ×3、`backend/README.md`、`docs/DEVICE_TEST_CHECKLIST.md`），
+  **没有 `--workers`**；
+- 仓库内没有 gunicorn / Dockerfile / docker-compose / K8s manifest；
+- 应用自身的后台能力（`AgentWorker`、`AdaptiveReplanningWorker`）就是**进程内 asyncio 任务**
+  + 数据库租约协调，设计上已经假设单服务进程。
+
+**触发条件**：一旦改成 `--workers N`、gunicorn 多 worker 或 K8s 多副本，
+`ModelShadowRunner._circuits` 就变成**每进程一份**，会出现：
+
+1. 失败阈值不聚合 → 熔断打开延迟最多 N 倍；
+2. `canary_gate` 的 `circuit_breaker_open` 只反映当前进程 → 同一用户在实例 A 放行、实例 B 拒绝；
+3. 探测权每进程独立 → 冷却结束后 N 个实例同时探测（探测风暴）。
+
+**这属于设计变更，不属于本次修复范围**：实现跨进程一致的熔断需要共享存储
+（Redis 或新的数据库表），本任务明确不允许擅自引入。最小可行方案与迁移影响见
+`## 当前风险与未完成项` 中的 P1 条目。
+
 ### CPM 使用边界
 
 候选模型输出与状态投影都只能作为**受控个性化上下文**（例如"该生本周截止压力偏高"），
@@ -199,10 +240,28 @@ GET /learning-plans/{id}/summary
 | 影子评测指标 | fixture 预测文件 | 当前未接入真实模型推理 |
 | 延迟/吞吐 | fixture 固定值 | latency_ms=2, throughput=unavailable |
 
-**真实模型推理状态**：当前 `real_model_inference = false`。仓库内**没有**经授权的
-CampusMate-LM 服务凭据，`CAMPUSMATE_LM_ENABLED` 默认关闭，Production 与 Canary 均保持 disabled。
-`CandidateModelClient`（OpenAI 兼容）已实现，影子与金丝雀两条路径都有单测覆盖，
-但**真实推理未验证**：单测用受控假模型驱动，不得据此声称"已接入真实模型"。
+**真实模型推理状态**：**未验证**。当前 `real_model_inference = false`。
+
+- 仓库内**没有**经授权的 CampusMate-LM 服务凭据：`backend/.env` 与 `backend/.env.example`
+  里都**不存在**任何 `CAMPUSMATE_LM_*` 键（已用键名清单核对，未读取任何值）；
+- `CAMPUSMATE_LM_ENABLED` 默认 `false`，Production 与 Canary 均保持 disabled；
+- 候选适配器就是既有的 OpenAI 兼容客户端（`OpenAICompatibleClient`），无独立重试策略，
+  超时由 `CAMPUSMATE_LM_TIMEOUT_MS` 与 `asyncio.wait_for` 双重约束；
+- 影子与金丝雀两条路径都有单测覆盖，但**全部由受控假模型驱动**，
+  不得据此声称"已接入真实模型"。
+
+**上线时用户需要提供的配置**（缺任意一项都不会产生真实调用）：
+
+| 配置项 | 说明 |
+| --- | --- |
+| `CAMPUSMATE_LM_ENABLED=true` | 总开关，默认关闭 |
+| `CAMPUSMATE_LM_BASE_URL` | 候选服务 origin，必须是安全的 HTTP(S)，不接受 URL 内嵌凭据/query/fragment |
+| `CAMPUSMATE_LM_API_KEY` | 候选服务凭据，只写入未追踪的 `backend/.env` |
+| `CAMPUSMATE_LM_MODEL_NAME` | 候选模型名 |
+| `CAMPUSMATE_LM_CANARY_ENABLED=true` | 只读金丝雀展示开关（另需 promotion decision = `ELIGIBLE_FOR_CANARY`） |
+
+外加一项**非配置**前置条件：候选能力的 `model_promotion_decisions` 记录必须为
+`ELIGIBLE_FOR_CANARY` 且无失败门控，金丝雀才会展示。
 
 ## 跨端覆盖
 
@@ -271,19 +330,56 @@ node --test harmony/test-host/*.test.mjs
 
 ## 当前风险与未完成项
 
-1. **真实模型推理未执行**：候选模型的影子与金丝雀两条路径都已接线并有单测覆盖，
-   但仓库内没有经授权的 CampusMate-LM 服务，`real_model_inference = false`。
-   **不得**把单测里用假模型跑出的绿色记为"真实推理已验证"。
-2. **金丝雀展示未在生产开启**：`CAMPUSMATE_LM_CANARY_ENABLED` 默认 `false`，
-   且需要存在 `ELIGIBLE_FOR_CANARY` 的 promotion decision 才会展示。
-   在默认配置下 `candidate_annotation.available` 恒为 `false`，响应携带稳定 reason。
-3. **数据源控制部分生效**：数据源暂停状态已纳入投影 input_digest 与 warning code，
+### 已实现并验证（本轮）
+
+- **熔断并发语义**：新增熔断代次（generation）门控，旧请求晚返回既不释放他人
+  half-open 探测权、也不关闭熔断；并发 half-open 只产生一次真实探测。
+  回归测试见 `backend/tests/test_model_shadow_runner.py` 的「并发 / 熔断状态机回归」一节。
+- **候选模型配置入口可发现**：`backend/.env.example` 补齐 15 个 `CAMPUSMATE_LM_*` 键，
+  并有双向契约测试保证「模板 ↔ Settings 字段」完全一致、凭据键保持留空。
+- **默认关闭**：默认配置下不构造候选客户端、不发起任何真实调用（有测试钉住）。
+
+### 阻塞项（需要外部条件，未验证）
+
+1. **真实模型推理未验证**：缺经授权的候选服务凭据（`CAMPUSMATE_LM_BASE_URL` /
+   `CAMPUSMATE_LM_API_KEY` / `CAMPUSMATE_LM_MODEL_NAME`）与 `ELIGIBLE_FOR_CANARY`
+   的 promotion decision。在拿到之前**不调用任何外部服务**，也不得声称真实推理已验证。
+2. **Android 运行时验证未执行**：本机没有 Android SDK platform-tools / `adb` / 模拟器
+   （`adb devices` 不可用），无法验证世界模型页面的加载、失败降级、`scope_type` 与
+   重规划结果在真实设备上的呈现。已执行的部分：538 个单测（0 失败）+ Debug APK 构建，
+   以及新增的 `LearnerWorldModelSectionContractTest` 源码级契约测试。
+3. **HarmonyOS 运行时单测与 HAP 构建未执行**：本机没有 DevEco Studio
+   （`DEVECO_HOME` 为空、`local.properties` 指向的 SDK 路径不存在）。
+   已执行的部分：`node --test harmony/test-host/*.test.mjs`（26 例）。
+   按要求**未安装或修改本机环境**。
+
+### 设计决策（需要授权才能推进）
+
+4. **跨进程熔断一致性（P1）**：当前单进程部署下无风险（证据见上文「部署形态与跨进程一致性」）。
+   一旦水平扩展就需要共享状态。**最小可行方案**（未实施，需授权）：
+
+   - 数据模型：一张 `model_circuit_state` 表，主键 `(capability_name)`，列
+     `failures INTEGER`、`opened_at REAL`、`probe_owner TEXT`、`probe_expires_at REAL`、
+     `generation INTEGER`、`updated_at TEXT`；
+   - 原子占用：用条件 UPDATE 实现 CAS，例如
+     `UPDATE model_circuit_state SET probe_owner=?, probe_expires_at=? WHERE capability_name=?
+      AND (opened_at IS NULL OR :now - opened_at >= :cooldown) AND (probe_owner IS NULL OR probe_expires_at < :now)`，
+      `rowcount=1` 才算拿到探测权；探测权带过期时间，避免实例崩溃后永久卡死；
+   - 迁移影响：新增一张表 + 一次 schema 初始化，不改任何既有表；
+     每次放行/记账多一次数据库往返（SQLite 本地约 0.1–1ms），需要在
+     `CAMPUSMATE_LM_*` 超时预算内重新评估；
+   - 需要授权：新增数据库结构、引入跨进程协调语义（以及可能的外部存储选型）。
+   - 替代方案（成本更低但语义更弱）：把阈值按 worker 数下调 `T/N`，
+     或对候选调用做 sticky 路由；两者都不解决 `canary_gate` 的跨实例决策不一致，
+     只作为过渡手段。
+
+### 其余已知风险
+
+5. **金丝雀展示未在生产开启**：默认 `false` 且需要 promotion decision；
+   默认配置下 `candidate_annotation.available` 恒为 `false`，响应携带稳定 reason。
+6. **数据源控制部分生效**：暂停状态已纳入投影 input_digest 与 warning code，
    但事件采集链路尚未完全消费该开关。
-4. **Android / HarmonyOS 未做视觉大改**：两端只在既有的目标执行页里补了一块
-   世界模型只读卡片，复用现有 repository / DTO / 页面与导航，没有新增独立页面。
-5. **HarmonyOS 运行时单测未执行**：本机没有 DevEco Studio 与 HarmonyOS SDK，
-   `hvigor test` 无法运行；已用 `harmony/test-host/learner-world-model-contract.test.mjs` 的
-   host 契约测试覆盖可离线验证的部分。
-6. **Android / HarmonyOS 未做真机验收**：只有编译与单元测试，没有设备上的端到端验收。
-7. **反事实模拟在移动端无入口**：移动端给出的是明确的只读降级说明，不是可点击按钮。
+7. **移动端反事实模拟无入口**：给出的是明确的只读降级说明，不是可点击按钮。
    如需在移动端运行模拟，属于新的产品切片。
+8. **候选模型 TLS 版本复用通用 LLM 的 `LLM_TLS_MAX_VERSION`**：若候选服务与通用 LLM
+   对 TLS 版本要求不同，需要拆出独立的 `CAMPUSMATE_LM_TLS_MAX_VERSION`（当前未拆）。

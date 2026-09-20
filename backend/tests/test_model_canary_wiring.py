@@ -15,12 +15,14 @@ import asyncio
 import json
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.models.model_capability import ModelCapabilityRequest
 from app.services.container import reset_container_for_tests
 from app.services.llm.base import LLMResponse
 
@@ -535,10 +537,10 @@ def test_canary_gate_never_consumes_the_half_open_probe():
         "门禁/状态查询不得占用探测权"
     )
     # 只有 runner 能占用；占用后其他调用必须被拒。
-    assert runner._circuit_allows("learning_summary_v1") is True
+    assert runner._circuit_allows("learning_summary_v1").allowed is True
     assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is True
     assert runner.canary_allowed("learning_summary_v1") is False
-    assert runner._circuit_allows("learning_summary_v1") is False
+    assert runner._circuit_allows("learning_summary_v1").allowed is False
     # 释放后回到可探测状态，且失败计数不被释放动作改写。
     runner._release_probe("learning_summary_v1")
     status = runner.circuit_status("learning_summary_v1")
@@ -686,3 +688,100 @@ def test_candidate_messages_carry_no_stable_internal_ids():
         f"本地关联必须仍可由 request_id 完成：{rows}"
     )
     assert annotation["input_digest"], "本地关联必须仍可由 input_digest 完成"
+
+
+# ===== 9. 上线适配：默认关闭 + 配置入口可发现 =====
+
+_ENV_EXAMPLE = Path(__file__).resolve().parents[1] / ".env.example"
+
+
+def _documented_candidate_keys() -> set[str]:
+    keys = set()
+    for line in _ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("CAMPUSMATE_LM_"):
+            keys.add(line.split("=", 1)[0])
+    return keys
+
+
+def test_env_example_documents_exactly_the_real_candidate_settings():
+    """`.env.example` 与真实 Settings 字段必须双向一致。
+
+    运维只能从模板发现配置入口：模板里写了一个不存在的键 → 配了没效果；
+    新增了配置却忘了写模板 → 没人知道要配。两个方向都要钉住。
+    """
+    documented = _documented_candidate_keys()
+    fields = {name.upper() for name in Settings.model_fields if name.startswith("campusmate_lm_")}
+    assert documented, "候选模型的配置入口必须写进 .env.example"
+    assert documented - fields == set(), f"模板里有不存在的配置项：{sorted(documented - fields)}"
+    assert fields - documented == set(), f"未写进 .env.example 的配置项：{sorted(fields - documented)}"
+
+
+def test_env_example_never_carries_a_real_credential():
+    """模板必须保持脱敏：候选模型的凭据键一律留空。"""
+    for line in _ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("CAMPUSMATE_LM_"):
+            continue
+        key, _, value = stripped.partition("=")
+        if key.endswith(("API_KEY", "SECRET", "TOKEN")):
+            assert value == "", f"模板里的凭据键必须留空：{key}"
+
+
+def test_candidate_model_defaults_to_fully_off_and_never_calls_out():
+    """默认配置下候选模型完全关闭：不构造客户端、不发起任何真实调用。"""
+    settings = Settings(app_env="test", database_url="sqlite:///:memory:")
+    assert settings.campusmate_lm_enabled is False
+    assert settings.campusmate_lm_available is False
+    assert settings.campusmate_lm_canary_enabled is False
+    assert settings.campusmate_lm_shadow_sample_rate == 0.0
+
+    container = reset_container_for_tests(settings)
+    runner = container.model_shadow_runner
+    assert runner.candidate_llm is None, "默认不得构造候选客户端"
+    assert runner.enabled is False
+
+    result = asyncio.run(runner.run(ModelCapabilityRequest(
+        capability_name="learning_summary_v1", capability_version="v1", subject_user_id="user-default",
+        input_payload={
+            "warning_codes": [], "explanation_codes": ["deadline_urgent"], "item_type": "TASK_FOCUS",
+            "estimated_minutes": 30, "data_quality": "verified", "evidence_count": 1,
+            "deadline_bucket": "TODAY", "state_band": None, "confidence_bucket": "HIGH",
+        },
+        request_id="defaults-off", id_mode=True,
+    )))
+    assert result.failure_code == "MODEL_DISABLED"
+    assert result.used_fallback is True
+    assert result.inference_source == "DETERMINISTIC_FALLBACK"
+
+
+def test_candidate_config_requires_all_three_of_url_key_and_model():
+    """三要素缺任意一个都不算"已配置"：宁可判定未配置，也不发起半配置的调用。
+
+    另外：开启开关却给了一个不合法的 base_url 会**启动即失败**（fail fast），
+    而不是静默地"以为配好了、其实从没调用过"。
+    """
+    import pytest
+
+    base = dict(app_env="test", database_url="sqlite:///:memory:", campusmate_lm_enabled=True)
+    # 开了开关却没给可用 origin → 直接拒绝启动
+    with pytest.raises(ValueError):
+        Settings(**base)
+
+    url = dict(base, campusmate_lm_base_url="http://candidate.invalid:8000")
+    assert Settings(**url).campusmate_lm_available is False, "只有 URL 不算已配置"
+    assert Settings(**url, campusmate_lm_api_key="k").campusmate_lm_available is False, "缺 model 不算已配置"
+    assert Settings(**url, campusmate_lm_model_name="m").campusmate_lm_available is False, "缺 key 不算已配置"
+    assert Settings(**url, campusmate_lm_api_key="k",
+                    campusmate_lm_model_name="m").campusmate_lm_available is True
+
+
+def test_candidate_base_url_must_be_a_safe_origin():
+    """凭据不能藏在 URL 里，也不能带 query/fragment：这些都会被拒绝。"""
+    import pytest
+
+    for bad in ("ftp://candidate.invalid", "http://user:pass@candidate.invalid",
+                "http://candidate.invalid?token=x", "http://candidate.invalid#frag", "not-a-url"):
+        with pytest.raises(ValueError):
+            Settings(app_env="test", database_url="sqlite:///:memory:", campusmate_lm_enabled=True,
+                     campusmate_lm_base_url=bad, campusmate_lm_api_key="k", campusmate_lm_model_name="m")
