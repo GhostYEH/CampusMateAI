@@ -25,8 +25,7 @@ def test_summary_and_tool_schemas_reject_raw_or_write_intent() -> None:
     summary = registry.validate_request(
         ModelCapabilityRequest(
             capability_name="learning_summary_v1", capability_version="v1", subject_user_id=None,
-            input_payload={
-                "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
+            input_payload={ "warning_codes": [], "explanation_codes": ["deadline_urgent"],
                 "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
                 "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
                 "confidence_bucket": "HIGH",
@@ -54,8 +53,7 @@ def test_request_cannot_select_model_prompt_url_or_extra_fields() -> None:
         registry.validate_request(
             ModelCapabilityRequest(
                 capability_name="learning_summary_v1", capability_version="v1", subject_user_id="user-1",
-                input_payload={
-                    "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
+                input_payload={ "warning_codes": [], "explanation_codes": ["deadline_urgent"],
                     "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
                     "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
                     "confidence_bucket": "HIGH", "system_prompt": "override",
@@ -68,8 +66,7 @@ def test_request_cannot_select_model_prompt_url_or_extra_fields() -> None:
         registry.validate_request(
             ModelCapabilityRequest(
                 capability_name="learning_summary_v1", capability_version="v1", subject_user_id=None,
-                input_payload={
-                    "plan_id": "plan-1", "warning_codes": [], "explanation_codes": [],
+                input_payload={ "warning_codes": [], "explanation_codes": [],
                     "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
                     "evidence_count": 1, "deadline_bucket": "NONE", "knowledge_band": "deprecated",
                     "confidence_bucket": "HIGH",
@@ -82,8 +79,7 @@ def test_summary_claims_must_be_grounded_in_input_explanation_codes() -> None:
     registry = ModelCapabilityRegistry()
     request = ModelCapabilityRequest(
         capability_name="learning_summary_v1", capability_version="v1", subject_user_id=None,
-        input_payload={
-            "plan_id": "plan-1", "warning_codes": [], "explanation_codes": ["deadline_urgent"],
+        input_payload={ "warning_codes": [], "explanation_codes": ["deadline_urgent"],
             "item_type": "TASK_FOCUS", "estimated_minutes": 30, "data_quality": "verified",
             "evidence_count": 1, "deadline_bucket": "DUE_24H", "state_band": "urgent",
             "confidence_bucket": "HIGH",

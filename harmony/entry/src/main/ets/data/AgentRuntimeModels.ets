@@ -266,6 +266,9 @@ export interface ModelTransparency {
 export interface AdaptiveInterventionOutcome {
   intervention_id: string;
   plan_id: string | null;
+  // GOAL：绑定真实学生目标；PLAN：普通计划未绑定目标，scope 是这份计划本身。
+  // 两种范围都进入观测/评估/重规划闭环，区别只在归因范围。
+  scope_type: string;
   observation_status: string;
   execution_signal: string;
   adoption: string;
@@ -956,6 +959,7 @@ export class AgentDtoParser {
     return {
       intervention_id: (raw.intervention_id ?? '') as string,
       plan_id: raw.plan_id === undefined || raw.plan_id === null ? null : raw.plan_id as string,
+      scope_type: (raw.scope_type ?? 'GOAL') as string,
       observation_status: (raw.observation_status ?? 'NOT_STARTED') as string,
       execution_signal: (raw.execution_signal ?? 'NOT_STARTED') as string,
       adoption: (raw.adoption ?? 'NOT_STARTED') as string,

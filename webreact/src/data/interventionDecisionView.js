@@ -222,3 +222,31 @@ export function describeObservedOutcome(observedOutcome) {
   if (!observedOutcome) return "尚未产生观测结论";
   return OBSERVED_OUTCOME_LABEL[observedOutcome] || "证据不足";
 }
+
+/**
+ * 干预的归因范围。
+ *
+ * - `GOAL`：绑定真实学生目标，按该策略的期望维度做归因；
+ * - `PLAN`：普通计划没有绑定目标，scope 是**这份计划本身**。
+ *
+ * 两者**都**进入观测 → 评估 → 重规划闭环，区别只在归因范围。
+ * 页面必须写明，否则学生会把"这份计划没有绑定目标"误读成
+ * "系统不会跟进、也不会调整"。
+ */
+export const INTERVENTION_SCOPE = { GOAL: "GOAL", PLAN: "PLAN" };
+
+const SCOPE_DETAIL = {
+  [INTERVENTION_SCOPE.PLAN]:
+    "这份计划没有绑定学习目标，系统按计划范围观测与评估；有证据时同样会安全替换计划。",
+  [INTERVENTION_SCOPE.GOAL]:
+    "这份计划绑定了一个学习目标，系统按目标范围观测与评估。",
+};
+
+export function describeInterventionScope(scopeType) {
+  const scope = scopeType === INTERVENTION_SCOPE.PLAN ? INTERVENTION_SCOPE.PLAN : INTERVENTION_SCOPE.GOAL;
+  return {
+    scope,
+    label: scope === INTERVENTION_SCOPE.PLAN ? "计划本身" : "学习目标",
+    detail: SCOPE_DETAIL[scope],
+  };
+}

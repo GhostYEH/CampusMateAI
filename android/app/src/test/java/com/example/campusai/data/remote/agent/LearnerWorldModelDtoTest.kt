@@ -121,7 +121,7 @@ class LearnerWorldModelDtoTest {
     fun `intervention outcome parses persisted decision and status`() {
         val json = """
         {"evaluation_id":"inteval_1","intervention_id":"intv_1","goal_id":"plan:plan_1",
-         "plan_id":"plan_1","as_of":"2026-09-27T00:00:00+00:00","observation_status":"COMPLETE",
+         "plan_id":"plan_1","scope_type":"PLAN","as_of":"2026-09-27T00:00:00+00:00","observation_status":"COMPLETE",
          "execution_signal":"NOT_STARTED","adoption":"NOT_STARTED","plan_fidelity":"MATCHED",
          "verdict":"INCONCLUSIVE","observed_outcome":"DECLINED","causal_claim":"NOT_ESTIMATED",
          "state_comparison":{"delta":{"consistency":-0.5}},
@@ -137,6 +137,16 @@ class LearnerWorldModelDtoTest {
         assertEquals("REPLAN", outcome.decision)
         assertEquals("APPLIED", outcome.decisionStatus)
         assertEquals(listOf("state_declined"), outcome.decisionReasonCodes)
+        // 无目标普通计划：scope 是计划本身，但仍进入完整的观测/评估/重规划闭环。
+        assertEquals("PLAN", outcome.scopeType)
+    }
+
+    @Test
+    fun `intervention outcome defaults to GOAL scope when the field is absent`() {
+        val outcome = moshi.adapter(AdaptiveInterventionOutcomeDto::class.java).fromJson(
+            """{"intervention_id":"intv_1","observed_outcome":"STABLE"}""",
+        )!!
+        assertEquals("GOAL", outcome.scopeType)
     }
 
     @Test

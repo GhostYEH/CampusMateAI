@@ -23,8 +23,11 @@
 
 数据最小化
 ----------
-送进候选模型的只有受控结构化特征（能力码、条目类型、时长桶、数据质量、证据计数、
-解释码枚举）。不送源码、答案、课程正文、任务标题、用户自由文本、内部 id 或凭据。
+送进候选模型的只有受控结构化特征（条目类型、时长、数据质量、证据计数、解释码枚举、
+截止时间桶、置信度分桶）。**不含** plan / user / task / goal / run 等任何稳定内部标识，
+也不含源码、答案、课程正文、任务标题或用户自由文本。
+本地影子记录与生产响应的关联由 `request_id` + `input_digest` 完成，
+两者都在请求信封与落库侧，不进入发给模型的 messages。
 日志只记录 capability / request_id / 异常类型，不记录模型原文或异常消息。
 """
 from __future__ import annotations
@@ -132,7 +135,8 @@ class ModelAssistService:
 
         try:
             payload = {
-                "plan_id": str(plan.plan_id),
+                # 只发受控结构化特征：枚举、分桶、计数。
+                # 不含 plan_id / user_id / task_id / goal_id / run_id 等稳定内部标识。
                 "warning_codes": [str(code) for code in (summary.get("warning_codes") or [])][:_MAX_CODES],
                 "explanation_codes": explanation_codes,
                 "item_type": str(getattr(top, "item_type", "") or "REVIEW_AND_REFLECT"),
@@ -152,6 +156,7 @@ class ModelAssistService:
             capability_version=CAPABILITY_VERSION,
             subject_user_id=user_id,
             input_payload=payload,
+            # 本地关联靠 request_id + input_digest（都不进入发给模型的 messages）：
             # 同一个计划 + 同一份输入 = 同一条影子记录，重复查看不会让影子表膨胀。
             request_id=f"plan-summary:{plan.plan_id}:{digest}"[:128],
             id_mode=True,

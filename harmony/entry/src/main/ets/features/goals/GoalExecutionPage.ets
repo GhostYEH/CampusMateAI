@@ -438,6 +438,11 @@ export struct GoalExecutionPage {
           ? `系统决定：${this.decisionLabel(this.interventionOutcome.decision)}（已调整学习计划）`
           : `系统决定：${this.decisionLabel(this.interventionOutcome.decision)}（${this.decisionStatusLabel(this.interventionOutcome.decision_status)}）`)
           .fontColor(this.palette().text).fontSize(11)
+        // 归因范围：无目标计划同样观测、同样会安全替换计划，必须写明，避免误读成"不会跟进"。
+        Text(this.interventionOutcome.scope_type === 'PLAN'
+          ? '归因范围：计划本身（未绑定学习目标）——系统按计划范围观测与评估，有证据时同样会安全替换计划。'
+          : '归因范围：学习目标——系统按目标范围观测与评估。')
+          .fontColor(this.palette().muted).fontSize(10)
         Text(`观测：${this.interventionOutcome.observed_outcome} · 执行信号 ${this.interventionOutcome.execution_signal} · 归因 ${this.interventionOutcome.causal_claim}`)
           .fontColor(this.palette().muted).fontSize(10)
         if (this.interventionOutcome.decision_reason_codes.length > 0) {

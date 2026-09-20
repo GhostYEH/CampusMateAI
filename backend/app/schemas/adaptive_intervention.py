@@ -546,6 +546,12 @@ class AdaptiveInterventionOutcomeOut(BaseModel):
     intervention_id: str
     goal_id: str
     plan_id: str | None = None
+    # 这条干预的归因范围：
+    # - `GOAL`：绑定真实学生目标，比较器按该策略的期望维度做归因；
+    # - `PLAN`：普通计划未绑定目标，scope 是**这份计划本身**（`goal_id` 为 `plan:{plan_id}`）。
+    #   它同样进入观测/评估/重规划闭环，只是归因范围按计划而非按目标。
+    # 出网是为了让三端不必去猜 `goal_id` 的字符串前缀。
+    scope_type: str = "GOAL"
     as_of: str
     window_start: str | None = None
     window_end: str | None = None
@@ -581,6 +587,8 @@ class AdaptiveInterventionOut(BaseModel):
     intervention_id: str
     goal_id: str
     plan_id: str | None = None
+    # 见 AdaptiveInterventionOutcomeOut.scope_type。
+    scope_type: str = "GOAL"
     status: str
     strategy_code: str
     strategy_version: str

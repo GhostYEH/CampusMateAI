@@ -117,6 +117,13 @@ class ModelShadowRunner:
         return digest / float(16 ** 12) < rate
 
     def _circuit_allows(self, name: str) -> bool:
+        """申请放行，并在 HALF_OPEN 时**占用**探测权。
+
+        这是全仓库**唯一**允许占用 `probe_in_flight` 的位置（只由 `run()` 调用）。
+        网关、门禁、状态查询一律只能用 `canary_allowed()` / `circuit_status()`：
+        它们只读，不占探测权，否则一次门禁查询就会把探测权吞掉，
+        真实候选调用永远拿不到探测机会，熔断再也关不上。
+        """
         state = self._circuits.setdefault(name, _Circuit())
         if state.opened_at is None:
             return True
@@ -143,7 +150,11 @@ class ModelShadowRunner:
                 "probe_in_flight": state.probe_in_flight, "cooldown_remaining_seconds": 0.0}
 
     def canary_allowed(self, name: str) -> bool:
-        """只读 canary 查询，无副作用，不占用 half-open probe。"""
+        """只读 canary 查询，无副作用，不占用 half-open probe。
+
+        门禁在真正放行前用它做**预检查**；最终放行与探测权仍由 `run()` 里的
+        `_circuit_allows` 决定。两者分离后，"门禁通过"不再等于"探测权已被消耗"。
+        """
         state = self._circuits.get(name)
         if state is None or state.opened_at is None:
             return True
@@ -210,13 +221,17 @@ class ModelShadowRunner:
                 return self._persist(request, self._fallback(request, payload, "MODEL_SHADOW_PAUSED", started))
         if not self._sampled(request, sample_rate):
             return self._persist(request, self._fallback(request, payload, "MODEL_RATE_LIMITED", started))
-        if not self._circuit_allows(request.capability_name):
-            return self._persist(request, self._fallback(request, payload, "MODEL_CIRCUIT_OPEN", started))
+        # 先把请求体构造完，再申请 half-open 探测权。
+        # `_circuit_allows` 之后到 `try` 之间不允许再有任何可能抛异常的逻辑，
+        # 否则探测权会被永久占住：熔断停在 HALF_OPEN、后续所有调用都被判
+        # MODEL_CIRCUIT_OPEN，熔断永远不会关闭。
         spec = self.registry.get(request.capability_name)
         messages = [
             {"role": "system", "content": f"能力 {spec.capability_name} 只返回严格 JSON；不得新增事实、工具或字段。"},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))},
         ]
+        if not self._circuit_allows(request.capability_name):
+            return self._persist(request, self._fallback(request, payload, "MODEL_CIRCUIT_OPEN", started))
         try:
             async with self._semaphore():
                 response = await asyncio.wait_for(
@@ -257,6 +272,17 @@ class ModelShadowRunner:
         except Exception:
             self._record_failure(request.capability_name)
             return self._persist(request, self._fallback(request, payload, "MODEL_UNAVAILABLE", started))
+        finally:
+            # `_record_success` / `_record_failure` 已经会释放探测权，这里是兜底：
+            # 任务被取消（`CancelledError` 是 BaseException，上面几个 except 都拦不住）
+            # 或出现未预期异常时，也不允许把 half-open 探测权留在手里。
+            self._release_probe(request.capability_name)
+
+    def _release_probe(self, name: str) -> None:
+        """只释放 half-open 探测权；不改变失败计数，也不改变熔断开启时刻。"""
+        state = self._circuits.get(name)
+        if state is not None:
+            state.probe_in_flight = False
 
 
 __all__ = ["ModelShadowRunner"]

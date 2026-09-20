@@ -26,6 +26,7 @@ from ...schemas.adaptive_intervention import (
     AdaptiveInterventionPage,
 )
 from ...services.container import ServiceContainer, get_container
+from ...services.adaptive_agent.intervention_service import PLAN_SCOPE_GOAL_PREFIX
 from ..deps import student_only
 
 router = APIRouter(prefix="/adaptive-interventions", tags=["adaptive-interventions"])
@@ -54,6 +55,16 @@ _DIMENSION_KEYS = (
 )
 # 内部 provenance 标识前缀：任何字符串值命中即丢弃。
 _INTERNAL_ID_PREFIXES = ("lsnap_", "lrun_", "lprun_")
+
+
+def _scope_type(goal_id: str) -> str:
+    """这条干预的归因范围：真实学生目标 vs 计划本身。
+
+    未绑定学生目标的普通计划用 `plan:{plan_id}` 作为 scope 键。它**同样**进入
+    观测/评估/重规划闭环（有可归因维度时会安全替换计划）；这里只把"归因范围"
+    显式出网，让三端不必去猜 `goal_id` 的字符串前缀。
+    """
+    return "PLAN" if goal_id.startswith(PLAN_SCOPE_GOAL_PREFIX) else "GOAL"
 
 
 def _scrub_value(value):
@@ -109,6 +120,7 @@ def _out(row: AdaptiveInterventionRow) -> AdaptiveInterventionOut:
         intervention_id=row.intervention_id,
         goal_id=row.goal_id,
         plan_id=row.plan_id,
+        scope_type=_scope_type(row.goal_id),
         status=row.status,
         strategy_code=row.strategy_code,
         strategy_version=row.strategy_version,
@@ -180,7 +192,9 @@ def get_adaptive_intervention_outcome(
         # 尚无后台观测：响应保持兼容形状，但不临时计算、更不写入任何评估。
         return AdaptiveInterventionOutcomeOut(
             evaluation_id="", intervention_id=intervention_id, goal_id=intervention.goal_id,
-            plan_id=intervention.plan_id, as_of=intervention.updated_at,
+            plan_id=intervention.plan_id,
+            scope_type=_scope_type(intervention.goal_id),
+            as_of=intervention.updated_at,
             observation_status="NOT_STARTED", execution_signal="NOT_STARTED", adoption="NOT_STARTED",
             plan_fidelity="UNVERIFIABLE", verdict="NOT_OBSERVED",
             observed_outcome="INSUFFICIENT_EVIDENCE", causal_claim="NOT_ESTIMATED",
@@ -200,6 +214,7 @@ def get_adaptive_intervention_outcome(
         intervention_id=summary["intervention_id"],
         goal_id=summary["goal_id"],
         plan_id=summary["plan_id"],
+        scope_type=_scope_type(intervention.goal_id),
         as_of=summary["as_of"],
         window_start=evaluation.window_start,
         window_end=evaluation.window_end,

@@ -125,7 +125,6 @@ def _make_shadow_request(uid, req_id="req_test_001"):
         capability_version="v1",
         subject_user_id=uid,
         input_payload={
-            "plan_id": "plan-1",
             "warning_codes": [],
             "explanation_codes": ["deadline_urgent"],
             "item_type": "TASK_FOCUS",

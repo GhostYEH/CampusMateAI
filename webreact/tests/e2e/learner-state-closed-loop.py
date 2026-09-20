@@ -359,6 +359,19 @@ def run_closed_loop(page, viewport, token: str) -> None:
     accepted = _api_post(page, f"/learning-plans/{plan_id}/decision", token, {"decision": "ACCEPT"})
     assert accepted.get("status") == "ACCEPTED", f"plan accept failed: {accepted}"
 
+    # 11b. 接受后必须产生可观测干预，且明确归因范围
+    interventions = _api_get(page, "/adaptive-interventions?page=1&page_size=10", token)
+    adopted = [
+        item for item in interventions.get("items", [])
+        if item.get("plan_id") == plan_id
+    ]
+    assert len(adopted) == 1, f"确认计划应当恰好产生一条干预记录：{interventions}"
+    assert adopted[0]["scope_type"] == "PLAN", (
+        f"无目标普通计划的归因范围必须显式为 PLAN：{adopted[0]}"
+    )
+    outcome = _api_get(page, f"/adaptive-interventions/{adopted[0]['intervention_id']}/outcome", token)
+    assert outcome.get("scope_type") == "PLAN", f"结果视图也必须带归因范围：{outcome}"
+
     # 12. 执行计划
     executed = _api_post(page, f"/learning-plans/{plan_id}/execute", token)
     assert executed.get("status") in {"EXECUTED", "PARTIALLY_EXECUTED"}, (

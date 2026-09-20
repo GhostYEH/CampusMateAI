@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -40,7 +41,7 @@ MARKER_SUMMARY = "候选模型只读注解标记串，不得进入任何业务�
 
 
 class GroundedFakeLLM:
-    """守规矩的假候选：只声明输入里有证据的结论。"""
+    """守规矩的假候选：只声明输入里有证据的结论，并记录实际收到的 messages。"""
 
     name = "campusmate-lm:test"
     available = True
@@ -50,9 +51,12 @@ class GroundedFakeLLM:
         self.delay = delay
         self.summary = summary
         self.calls = 0
+        # 发送给候选模型的实际报文：用于验证"不外发任何稳定内部 ID"。
+        self.messages_seen: list[list[dict[str, str]]] = []
 
     async def chat(self, messages, *, temperature=0.0, max_tokens=None, timeout=None):
         self.calls += 1
+        self.messages_seen.append(messages)
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.raw is not None:
@@ -63,6 +67,20 @@ class GroundedFakeLLM:
             if evidence & set(payload.get("explanation_codes") or [])
         )
         return LLMResponse(json.dumps({"summary": self.summary, "claim_codes": codes}))
+
+
+class CancellingLLM:
+    """在调用瞬间被取消的候选：验证 half-open 探测权不会因此卡死。"""
+
+    name = "campusmate-lm:cancelled"
+    available = True
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, messages, *, temperature=0.0, max_tokens=None, timeout=None):
+        self.calls += 1
+        raise asyncio.CancelledError()
 
 
 def _settings(**overrides) -> Settings:
@@ -484,3 +502,187 @@ def test_no_real_inference_is_reported_honestly_when_candidate_absent():
     assert transparency["campusmate_lm_affects_production"] is False
     assert transparency["shadow_results_modify_plans"] is False
     assert transparency["read_only_canary_active"] is False
+
+
+# ===== 7. half-open 熔断恢复：探测权只能由 runner 占用 =====
+
+
+def test_canary_gate_never_consumes_the_half_open_probe():
+    """门禁是**只读**预检查：反复查询不得占用 half-open 探测权。
+
+    回归点：门禁曾经调用会占用探测权的 `_circuit_allows`。那样一来，
+    门禁自己把探测权吃掉，真正调用候选模型的 `run()` 反而被判
+    MODEL_CIRCUIT_OPEN —— 真实候选永远收不到这次探测，熔断再也关不上。
+    """
+    candidate = GroundedFakeLLM()
+    container, student, _client, _headers = _setup(
+        candidate=candidate, campusmate_lm_circuit_breaker_cooldown_seconds=0.0,
+    )
+    # 门禁必须真的走到熔断那一项检查（前面的门禁项都要先满足）。
+    _insert_promotion_decision(container)
+    runner = container.model_shadow_runner
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+
+    for _ in range(5):
+        gate = container.learner_control_service.canary_gate(
+            capability_name="learning_summary_v1", user_id=student.id
+        )
+        assert gate == {"allowed": True, "reason": None}, gate
+        runner.circuit_status("learning_summary_v1")
+
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is False, (
+        "门禁/状态查询不得占用探测权"
+    )
+    # 只有 runner 能占用；占用后其他调用必须被拒。
+    assert runner._circuit_allows("learning_summary_v1") is True
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is True
+    assert runner.canary_allowed("learning_summary_v1") is False
+    assert runner._circuit_allows("learning_summary_v1") is False
+    # 释放后回到可探测状态，且失败计数不被释放动作改写。
+    runner._release_probe("learning_summary_v1")
+    status = runner.circuit_status("learning_summary_v1")
+    assert status["probe_in_flight"] is False
+    assert status["failures"] == runner.circuit_breaker_threshold
+    assert status["state"] == "HALF_OPEN"
+
+
+def test_half_open_probe_reaches_candidate_and_closes_the_circuit():
+    """失败熔断 → 冷却 → 探测真实候选调用成功 → 熔断关闭。
+
+    这是端到端的回归：门禁通过必须真的把这次调用送到候选模型，
+    而不是在门禁里就把探测权消耗掉、让熔断永远停在 HALF_OPEN。
+    """
+    candidate = GroundedFakeLLM()
+    container, student, client, headers = _setup(
+        candidate=candidate, campusmate_lm_circuit_breaker_cooldown_seconds=0.15,
+    )
+    _urgent_task(container, student.id)
+    _insert_promotion_decision(container)
+    plan = _generate_plan(client, headers, key="canary-half-open")
+    runner = container.model_shadow_runner
+
+    # 1. 连续失败 → 熔断打开，门禁拒绝
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+    assert runner.circuit_status("learning_summary_v1")["state"] == "OPEN"
+    gate = container.learner_control_service.canary_gate(
+        capability_name="learning_summary_v1", user_id=student.id
+    )
+    assert gate == {"allowed": False, "reason": "circuit_breaker_open"}
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is False, (
+        "被熔断拒绝的门禁查询不得占用探测权"
+    )
+
+    # 2. 冷却结束 → HALF_OPEN，且探测权仍然空闲
+    time.sleep(0.2)
+    assert runner.circuit_status("learning_summary_v1")["state"] == "HALF_OPEN"
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is False
+
+    # 3. 门禁放行，但仍然不占探测权
+    gate = container.learner_control_service.canary_gate(
+        capability_name="learning_summary_v1", user_id=student.id
+    )
+    assert gate == {"allowed": True, "reason": None}
+    assert runner.circuit_status("learning_summary_v1")["probe_in_flight"] is False
+
+    # 4. 真实调用 → 候选被真的调用一次 → 熔断关闭
+    calls_before = candidate.calls
+    annotation = _summary(client, headers, plan["plan_id"])["candidate_annotation"]
+    assert candidate.calls == calls_before + 1, "half-open 探测必须真的打到候选模型"
+    assert annotation["available"] is True, annotation
+    assert annotation["inference_source"] == "REAL_MODEL"
+    status = runner.circuit_status("learning_summary_v1")
+    assert status["state"] == "CLOSED"
+    assert status["failures"] == 0
+    assert status["probe_in_flight"] is False
+
+
+def test_cancelled_probe_is_released_and_cannot_wedge_the_circuit():
+    """调用被取消（CancelledError 是 BaseException）时，探测权也必须被释放。"""
+    from app.models.model_capability import ModelCapabilityRequest
+    from app.services.model_capability_registry import ModelCapabilityRegistry
+    from app.services.model_shadow_runner import ModelShadowRunner
+
+    runner = ModelShadowRunner(
+        registry=ModelCapabilityRegistry(), candidate_llm=CancellingLLM(),
+        enabled=True, sample_rate=1.0, circuit_breaker_threshold=1,
+        circuit_breaker_cooldown_seconds=0.0,
+    )
+    runner._record_failure("learning_summary_v1")
+    assert runner.circuit_status("learning_summary_v1")["state"] == "HALF_OPEN"
+
+    request = ModelCapabilityRequest(
+        capability_name="learning_summary_v1", capability_version="v1", subject_user_id="user-1",
+        input_payload={
+            "warning_codes": [], "explanation_codes": ["deadline_urgent"], "item_type": "TASK_FOCUS",
+            "estimated_minutes": 30, "data_quality": "verified", "evidence_count": 1,
+            "deadline_bucket": "TODAY", "state_band": None, "confidence_bucket": "HIGH",
+        },
+        request_id="cancel-probe", id_mode=True,
+    )
+    try:
+        asyncio.run(runner.run(request))
+    except asyncio.CancelledError:
+        pass
+
+    status = runner.circuit_status("learning_summary_v1")
+    assert status["probe_in_flight"] is False, "取消后探测权必须被释放，否则熔断永久卡在 HALF_OPEN"
+    assert status["state"] == "HALF_OPEN", "失败计数与开启时刻不应被释放动作改写"
+
+
+# ===== 8. 外发报文不含稳定内部 ID =====
+
+_FORBIDDEN_PAYLOAD_KEYS = (
+    "plan_id", "user_id", "task_id", "goal_id", "run_id",
+    "snapshot_id", "intervention_id", "subject_user_id", "request_id",
+)
+
+
+def test_candidate_messages_carry_no_stable_internal_ids():
+    """发给候选模型的 messages 不得含 plan / user / task / goal 等稳定内部 ID。
+
+    本地影子记录与生产响应的关联仍靠 request_id + input_digest 完成 ——
+    两者都在请求信封与落库侧，不进入 messages。
+    """
+    candidate = GroundedFakeLLM()
+    container, student, client, headers = _setup(candidate=candidate)
+    task = _urgent_task(container, student.id)
+    goal = container.student_goal_repository.create_goal(
+        user_id=student.id, name="接线验证目标", category="ACADEMIC",
+        target_date=(datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat(),
+        idempotency_key="canary-payload-goal",
+    )[0]
+    _insert_promotion_decision(container)
+    response = client.post(
+        f"{API}/learning-plans/generate",
+        json={"available_minutes": 60, "goal_id": goal.goal_id, "idempotency_key": "canary-payload"},
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    plan = response.json()
+
+    annotation = _summary(client, headers, plan["plan_id"])["candidate_annotation"]
+    assert annotation["available"] is True, annotation
+    assert candidate.messages_seen, "必须真的调用过候选模型"
+
+    for messages in candidate.messages_seen:
+        assert len(messages) == 2, messages
+        payload = json.loads(messages[-1]["content"])
+        for key in _FORBIDDEN_PAYLOAD_KEYS:
+            assert key not in payload, f"外发报文不得含字段 {key}: {payload}"
+        assert set(payload) == {
+            "warning_codes", "explanation_codes", "item_type", "estimated_minutes",
+            "data_quality", "evidence_count", "deadline_bucket", "state_band", "confidence_bucket",
+        }, f"外发字段集合必须恰好是受控结构化特征：{sorted(payload)}"
+        serialized = messages[-1]["content"]
+        for identifier in (plan["plan_id"], student.id, goal.goal_id, task.id):
+            assert identifier not in serialized, f"外发报文泄漏了内部标识 {identifier}"
+
+    # 本地关联不受影响：影子记录的 request_id 仍然指向这份计划，input_digest 可对账。
+    rows = _shadow_rows(container)
+    assert rows, "影子观测记录必须存在"
+    assert any(plan["plan_id"] in row["request_id"] for row in rows), (
+        f"本地关联必须仍可由 request_id 完成：{rows}"
+    )
+    assert annotation["input_digest"], "本地关联必须仍可由 input_digest 完成"

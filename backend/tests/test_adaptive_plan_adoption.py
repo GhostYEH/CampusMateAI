@@ -305,3 +305,106 @@ def test_adopted_plan_without_goal_stays_conservative_and_never_churns_the_plan(
             (student.id,),
         ).fetchall()
     assert [row["plan_id"] for row in official] == [plan["plan_id"]], "保守结论不得替换计划"
+
+
+# ===== 5. 无 goal 普通计划：明确支持自动重规划，且 successor 路径安全 =====
+
+
+def test_plan_scope_key_is_never_passed_to_the_planner_as_a_goal():
+    """`plan:{plan_id}` 只是干预 scope 键，不是学生目标。
+
+    回归点：它曾经被原样透传给 `LearningPlannerService.generate(goal_id=...)`，
+    规划器直接抛 `ValueError: goal 不存在、已归档或无权访问`，
+    无 goal 计划的自动重规划在 `stage=decision` 上以 FAILED 收场、计划永远换不掉。
+    """
+    from app.services.adaptive_agent.intervention_service import (
+        PLAN_SCOPE_GOAL_PREFIX, planner_goal_id,
+    )
+
+    assert planner_goal_id(None) is None
+    assert planner_goal_id(f"{PLAN_SCOPE_GOAL_PREFIX}plan_abc") is None
+    assert planner_goal_id("goal_abc") == "goal_abc"
+
+
+def test_no_goal_plan_replans_with_a_safe_successor():
+    """无目标普通计划同样进入闭环，并能安全换掉计划。
+
+    这是"支持自动重规划"分支的端到端证据：真实投影下降 → 真实 REPLAN →
+    唯一后继 + 双向血缘，且没有任何决策以 FAILED 收场。
+    """
+    container, student, client, headers = _setup("adopt_no_goal_replan")
+    _add_tasks(container, student.id, count=10, day_offset=2)
+    _add_tasks(container, student.id, count=3, completed=True, day_offset=-3)
+    plan = _generate(client, headers, key="adopt-no-goal-replan")
+    _accept(client, headers, plan["plan_id"])
+    rows = _interventions_for_plan(container, student.id, plan["plan_id"])
+    assert len(rows) == 1
+    intervention_id = rows[0]["intervention_id"]
+    assert rows[0]["goal_id"] == f"plan:{plan['plan_id']}", "无目标计划用计划自身作为 scope 键"
+    due = datetime.fromisoformat(rows[0]["observation_due_at"].replace("Z", "+00:00"))
+
+    # 干预后积压激增：真实投影下降
+    _add_tasks(container, student.id, count=35, day_offset=3)
+    report = _tick(container, clock=due + timedelta(minutes=1))
+    assert report.failed == 0, "successor 路径不得再有基础设施失败"
+    assert report.applied == 1, "REPLAN 决策必须被真正应用"
+
+    outcome = client.get(f"{API}/adaptive-interventions/{intervention_id}/outcome", headers=headers)
+    assert outcome.status_code == 200, outcome.text
+    payload = outcome.json()
+    assert payload["observed_outcome"] == "DECLINED", payload
+    assert payload["decision"] == "REPLAN"
+    assert payload["decision_status"] == "APPLIED"
+    assert payload["scope_type"] == "PLAN", "无目标计划必须显式标明归因范围是计划本身"
+
+    # 唯一后继 + 双向血缘
+    with container.db.query() as conn:
+        lineage = {
+            row["plan_id"]: dict(row) for row in conn.execute(
+                "SELECT p.plan_id, r.goal_id, p.supersedes_plan_id, p.superseded_by_plan_id "
+                "FROM learning_plans p JOIN learning_plan_runs r ON r.run_id = p.run_id "
+                "WHERE p.user_id=?", (student.id,),
+            ).fetchall()
+        }
+        decisions = [dict(r) for r in conn.execute(
+            "SELECT status, failure_code FROM adaptive_replan_decisions WHERE user_id=?", (student.id,),
+        ).fetchall()]
+    assert lineage[plan["plan_id"]]["superseded_by_plan_id"] is not None
+    official = [pid for pid, row in lineage.items() if row["superseded_by_plan_id"] is None]
+    assert len(official) == 1 and official[0] != plan["plan_id"], "任何时刻只能有一份正式计划"
+    successor_plan_id = official[0]
+    assert lineage[successor_plan_id]["supersedes_plan_id"] == plan["plan_id"]
+    assert lineage[successor_plan_id]["goal_id"] is None, "后继不得凭空造出一个目标"
+
+    successor = container.adaptive_intervention_repository.find_by_plan(
+        user_id=student.id, plan_id=successor_plan_id
+    )
+    assert successor is not None
+    assert successor.supersedes_intervention_id == intervention_id
+    assert successor.chain_depth == 1
+    assert successor.goal_id == f"plan:{plan['plan_id']}", "后继沿用同一 scope 键"
+
+    assert decisions and all(d["status"] != "FAILED" for d in decisions), decisions
+
+
+def test_goal_scoped_intervention_reports_goal_scope():
+    """绑定真实学生目标的干预，归因范围必须是 GOAL。"""
+    container, student, client, headers = _setup("adopt_goal_scope")
+    _add_tasks(container, student.id, count=2, day_offset=2)
+    goal = _goal(container, student, key="adopt-goal-scope")
+    plan = _generate(client, headers, key="adopt-goal-scope", goal_id=goal.goal_id)
+    _accept(client, headers, plan["plan_id"])
+    rows = _interventions_for_plan(container, student.id, plan["plan_id"])
+    assert len(rows) == 1
+
+    listed = client.get(f"{API}/adaptive-interventions?page=1&page_size=10", headers=headers)
+    assert listed.status_code == 200, listed.text
+    item = next(i for i in listed.json()["items"] if i["intervention_id"] == rows[0]["intervention_id"])
+    assert item["scope_type"] == "GOAL"
+    assert item["goal_id"] == goal.goal_id
+
+    outcome = client.get(
+        f"{API}/adaptive-interventions/{rows[0]['intervention_id']}/outcome", headers=headers
+    )
+    assert outcome.status_code == 200, outcome.text
+    assert outcome.json()["scope_type"] == "GOAL"

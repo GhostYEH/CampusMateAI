@@ -10,7 +10,14 @@ class _StrictModel(BaseModel):
 
 
 class LearningSummaryInput(_StrictModel):
-    plan_id: str = Field(..., max_length=128)
+    """候选模型的受控输入：只含枚举、分桶与计数。
+
+    刻意**不**包含 `plan_id` 或任何稳定的内部标识（plan / user / task / goal / run id）。
+    这些 id 一旦外发，就把内部标识变成了外部依赖，也扩大了最小化面；
+    本地影子记录与生产响应之间的关联改由 `request_id` + `input_digest` 完成
+    （两者都在请求信封/落库侧，不进入发给模型的 messages）。
+    """
+
     warning_codes: list[str] = Field(default_factory=list, max_length=20)
     explanation_codes: list[str] = Field(default_factory=list, max_length=20)
     item_type: str = Field(..., max_length=64)

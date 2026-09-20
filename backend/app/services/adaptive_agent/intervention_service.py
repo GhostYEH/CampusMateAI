@@ -61,6 +61,13 @@ REPLAN_DAILY_LIMIT = 2
 MAX_REPLAN_CHAIN_DEPTH = 3
 # 普通（非 Agent）计划的采纳幂等键前缀：一份计划最多产生一条干预记录。
 PLAN_ADOPTION_KEY_PREFIX = "plan-adoption:"
+# 无学生目标的普通计划用计划自身作为干预 scope 键的前缀。
+#
+# 这个前缀同时是**产品语义的判据**：没有绑定学生目标的计划缺少可归因的期望结果，
+# 比较器会给出 `unknown_strategy_code` → INSUFFICIENT_EVIDENCE，决策收敛到
+# WAIT_FOR_EVIDENCE。因此这类计划只做**观测 + 保守决策**，不参与自动重规划；
+# 对外通过 `replan_supported=false` + `replan_unsupported_reason="no_goal_scope"` 显式说明。
+PLAN_SCOPE_GOAL_PREFIX = "plan:"
 # 这两类结论不落库、不推进状态：没有可评估的对象，或还没有开始执行。
 _NON_PERSISTED_VERDICTS = frozenset({"NOT_OBSERVED"})
 
@@ -94,6 +101,22 @@ class InterventionOutcomeResult:
 def _digest(value: Any) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def planner_goal_id(goal_scope: str | None) -> str | None:
+    """把干预的 scope 键翻译成**规划器可接受**的 goal id。
+
+    无学生目标的普通计划，scope 键是 `plan:{plan_id}` —— 它不是一个真实的学生目标。
+    直接透传给 `LearningPlannerService.generate(goal_id=...)` 会被拒绝
+    （`ValueError: goal 不存在、已归档或无权访问`），自动重规划就会在
+    `stage=decision` 上以 FAILED 收场，计划永远换不掉。
+
+    这里统一翻译成 `None`：规划器按"无目标计划"生成后继，
+    与原始计划（同样无目标）结构可比，血缘照常由调用方在同一事务里写入。
+    """
+    if goal_scope is None or goal_scope.startswith(PLAN_SCOPE_GOAL_PREFIX):
+        return None
+    return goal_scope
 
 
 class InterventionReuseConflict(ValueError):
@@ -183,11 +206,14 @@ class AdaptiveInterventionService:
                 defer_lineage=defer_lineage,
             )
 
-        goal = self._load_goal(user_id=user_id, goal_id=goal_id)
+        # scope 键可能不是真实目标（无目标普通计划用 `plan:{plan_id}`）：
+        # 目标事实与目标范围预测都按"无目标"处理，但干预记录仍保留 scope 键。
+        bound_goal_id = planner_goal_id(goal_id)
+        goal = self._load_goal(user_id=user_id, goal_id=bound_goal_id) if bound_goal_id else None
         core = self._state_service.project_user(user_id, as_of=now, trigger="adaptive_intervention")
         academic = self._state_service.project_academic(user_id, as_of=now, trigger="adaptive_intervention")
         world = self._state_service.project_world(user_id, as_of=now, trigger="adaptive_intervention")
-        forecasts = self._collect_forecasts(user_id=user_id, as_of=now, goal_id=goal_id)
+        forecasts = self._collect_forecasts(user_id=user_id, as_of=now, goal_id=bound_goal_id)
 
         assessment = self._analyzer.analyze(
             user_id=user_id, as_of=now, core=core, academic=academic, world=world,
@@ -265,9 +291,10 @@ class AdaptiveInterventionService:
         now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
         plan_goal_id = getattr(getattr(plan, "run", None), "goal_id", None)
         # `adaptive_interventions.goal_id` 非空。普通计划可以不绑定学生目标，
-        # 这时用计划自身的稳定 scope 键占位，既能满足约束，也让重规划防抖
+        # 这时用计划自身的稳定 scope 键占位：既能满足约束，也让重规划防抖
         # 按"这份计划"而不是"某个不存在目标"分组。
-        goal_id = plan_goal_id or f"plan:{plan_id}"
+        # 该前缀同时标记"不支持自动重规划"（见 PLAN_SCOPE_GOAL_PREFIX）。
+        goal_id = plan_goal_id or f"{PLAN_SCOPE_GOAL_PREFIX}{plan_id}"
         goal = self._load_goal(user_id=user_id, goal_id=plan_goal_id) if plan_goal_id else None
 
         core = self._state_service.project_user(user_id, as_of=now, trigger="adaptive_plan_adoption")
@@ -553,7 +580,9 @@ class AdaptiveInterventionService:
                 user_id=user_id,
                 available_minutes=available_minutes,
                 course_id=course_id,
-                goal_id=goal_id,
+                # scope 键不是真实目标时必须翻译成 None，否则规划器直接拒绝，
+                # 自动重规划会以 ValueError 收场（见 planner_goal_id）。
+                goal_id=planner_goal_id(goal_id),
                 window_start=window_start,
                 window_end=window_end,
                 idempotency_key=idempotency_key,
@@ -767,4 +796,5 @@ __all__ = [
     "InterventionOutcomeResult",
     "FORECAST_TYPES",
     "PLAN_ADOPTION_KEY_PREFIX",
+    "PLAN_SCOPE_GOAL_PREFIX",
 ]

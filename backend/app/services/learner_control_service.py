@@ -311,7 +311,10 @@ class LearnerControlService:
         if failed_gates:
             return {"allowed": False, "reason": "quality_gates_failed", "failed_gates": failed_gates}
 
-        if self._shadow_runner is not None and not self._shadow_runner._circuit_allows(capability_name):
+        # 门禁只能用**只读**的熔断查询。用 `_circuit_allows` 会把 half-open 探测权
+        # 在这里就消耗掉，真正调用候选模型的 `ModelShadowRunner.run()` 反而拿不到探测权，
+        # 于是熔断永远停在 HALF_OPEN —— 探测权唯一由 runner 占用。
+        if self._shadow_runner is not None and not self._shadow_runner.canary_allowed(capability_name):
             return {"allowed": False, "reason": "circuit_breaker_open"}
 
         return {"allowed": True, "reason": None}

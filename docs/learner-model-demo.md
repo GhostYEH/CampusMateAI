@@ -66,8 +66,25 @@ GET /learning-plans/{id}/summary
 `ObservationWindowPolicy` 依据计划窗口算出。采纳失败只记警告日志，
 **不影响计划确认本身**——闭环是增强项，不是确认的前置条件。
 
-无学生目标的普通计划会使用 `plan:{plan_id}` 作为干预记录的 scope 键。
-这类计划在证据不足以归因时只产出 `WAIT_FOR_EVIDENCE`，**不会**激进替换计划。
+### 无目标普通计划的产品语义
+
+普通 `/learning-plans/generate` 可以不绑定学生目标。这类计划**同样**进入完整的
+观测 → 评估 → 重规划闭环，区别只在**归因范围**：
+
+- scope 键是 `plan:{plan_id}`（干预表 `goal_id` 非空，这里用计划自身占位）；
+- 归因范围对三端显式出网：`scope_type = "PLAN"`（绑定目标的干预是 `"GOAL"`）；
+- 策略有可归因维度时（如 `PACE_RECOVERY`、`WORKLOAD_REDUCTION`），下降会被判为
+  `DECLINED` 并**安全替换计划** —— 后继计划由规划器按"无目标计划"生成
+  （`goal_id=None`），双向血缘与干预血缘在同一事务写入；
+- 策略不可归因时（`BALANCED_PROGRESS`，证据不足）比较器给出
+  `INSUFFICIENT_EVIDENCE`，决策收敛到 `WAIT_FOR_EVIDENCE`，**计划保持不变**。
+
+实现要点：`plan:{plan_id}` 只是干预 scope 键，**不是**学生目标。
+它必须经 `planner_goal_id()` 翻译成 `None` 才能交给规划器 ——
+直接透传会被拒绝（`ValueError: goal 不存在、已归档或无权访问`），
+自动重规划就会以 `FAILED` 收场、计划永远换不掉。
+
+三端都必须写明归因范围，避免学生把"没有绑定目标"误读成"系统不会跟进"。
 
 ### 确定性生产链路
 
@@ -116,12 +133,27 @@ GET /learning-plans/{id}/summary
 
 ### 数据最小化
 
-- 候选模型仅接收受控结构化特征（KC 代码、分数、错误码），不接收源码、答案、课程正文
+- 候选模型只接收受控结构化特征：条目类型、时长、数据质量、证据计数、解释码枚举、
+  截止时间桶、置信度分桶。**不发送** `plan_id` / `user_id` / `task_id` / `goal_id` /
+  `run_id` 等任何稳定内部标识，也不发送源码、答案、课程正文、任务标题或用户自由文本。
+- 本地影子记录与生产响应之间的关联由 `request_id`（形如
+  `plan-summary:{plan_id}:{input_digest前16位}`）与 `input_digest` 完成 ——
+  两者都在请求信封与落库侧，**不进入发给模型的 messages**。
 - 日志只记录 run_id、capability、model key/version、异常类型，不记录异常消息或模型原文
 - API key、base URL、绝对路径不写入数据库、响应或日志
 - `candidate_annotation.summary` 是**通过 schema + 策略校验后的受限投影**
   （字段集合固定、≤240 字符、禁用词正则、结论必须被输入解释码支撑），
   不是候选模型的原始补全文本；校验失败时不会出现在响应里
+
+### 熔断与探测权
+
+`ModelShadowRunner` 的 half-open 探测权（`probe_in_flight`）**只能由 `run()` 占用**：
+
+- `canary_gate` 用只读的 `canary_allowed()`，`circuit_status()` 也只读；
+- 网关或状态查询一旦占用探测权，真正调用候选模型的 `run()` 就会拿不到探测权、
+  被判 `MODEL_CIRCUIT_OPEN`，熔断永远停在 HALF_OPEN、再也关不上；
+- `run()` 在申请探测权之前先把请求体构造完，并用 `finally` 兜底释放，
+  即使调用被取消（`CancelledError` 是 `BaseException`）也不会把探测权留在手里。
 
 ### CPM 使用边界
 

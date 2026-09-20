@@ -99,6 +99,14 @@ test("auto-replan is only announced when the backend persisted APPLIED", () => {
   assert.ok(!page.includes("decision_reason_codes.length > 0 ? '已调整"), "必须以后端状态为准");
 });
 
+test("intervention scope is stated explicitly and never implies the loop is skipped", () => {
+  assert.ok(models.includes("scope_type"), "模型层必须解析 scope_type");
+  assert.match(page, /this\.interventionOutcome\.scope_type === 'PLAN'/);
+  // 关键：无目标计划同样观测、同样会安全替换计划 —— 不得写成"仅观测/不参与"。
+  assert.match(page, /系统按计划范围观测与评估，有证据时同样会安全替换计划。/);
+  assert.ok(!/仅观测|不参与自动重规划|不会调整计划/.test(page), "不得暗示无目标计划被排除在闭环外");
+});
+
 test("every world-model area required by the mobile parity checklist is present", () => {
   for (const heading of [
     "学生世界模型（只读）",

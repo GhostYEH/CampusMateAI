@@ -141,12 +141,14 @@ export default function learnerWorldModelModelsTest(): void {
         'decision_reason_codes': ['state_declined'] as string[],
         'suggested_adjustments': ['reduce_workload'] as string[],
         'decision_status': 'APPLIED',
+        'scope_type': 'PLAN',
         'observation_due_at': '2026-09-27T00:00:00+00:00',
         'warning_codes': [] as string[]
       } as Record<string, Object>);
       expect(outcome.observed_outcome).assertEqual('DECLINED');
       expect(outcome.decision).assertEqual('REPLAN');
       expect(outcome.decision_status).assertEqual('APPLIED');
+      expect(outcome.scope_type).assertEqual('PLAN');
       expect(outcome.decision_reason_codes.length).assertEqual(1);
     });
 

@@ -115,6 +115,8 @@ data class AdaptiveInterventionDto(
     @Json(name = "intervention_id") val interventionId: String = "",
     @Json(name = "goal_id") val goalId: String = "",
     @Json(name = "plan_id") val planId: String? = null,
+    /** `GOAL`：绑定真实学生目标；`PLAN`：普通计划未绑定目标，scope 是这份计划本身。 */
+    @Json(name = "scope_type") val scopeType: String = "GOAL",
     val status: String = "",
     @Json(name = "strategy_code") val strategyCode: String = "",
     @Json(name = "strategy_version") val strategyVersion: String = "",
@@ -146,6 +148,8 @@ data class AdaptiveInterventionPageDto(
 data class AdaptiveInterventionOutcomeDto(
     @Json(name = "intervention_id") val interventionId: String = "",
     @Json(name = "plan_id") val planId: String? = null,
+    /** 见 [AdaptiveInterventionDto.scopeType]。两种范围都进入观测/评估/重规划闭环。 */
+    @Json(name = "scope_type") val scopeType: String = "GOAL",
     @Json(name = "observation_status") val observationStatus: String = "NOT_STARTED",
     @Json(name = "execution_signal") val executionSignal: String = "NOT_STARTED",
     val adoption: String = "NOT_STARTED",

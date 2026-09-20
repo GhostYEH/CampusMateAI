@@ -14,10 +14,12 @@ import {
   DECISION_STATE,
   DECISION_STATUS,
   DECISION_TONE,
+  INTERVENTION_SCOPE,
   OBSERVED_OUTCOME_LABEL,
   PLAN_SWITCHED_LABEL,
   describeAdoption,
   describeInterventionDecision,
+  describeInterventionScope,
   describeObservedOutcome,
 } from "../src/data/interventionDecisionView.js";
 
@@ -223,5 +225,35 @@ describe("页面接线", () => {
     assert.doesNotMatch(pageSource, /已调整学习计划/);
     assert.match(pageSource, /data-plan-switched=\{String\(decision\.applied\)\}/);
     assert.match(pageSource, /data-decision-status=\{decision\.decisionStatus \?\? ""\}/);
+  });
+});
+
+describe("干预归因范围：GOAL 与 PLAN 都进入闭环", () => {
+  it("无目标普通计划必须写明归因范围是计划本身，且明确仍会调整计划", () => {
+    const view = describeInterventionScope(INTERVENTION_SCOPE.PLAN);
+    assert.equal(view.scope, "PLAN");
+    assert.equal(view.label, "计划本身");
+    // 关键：不能让学生误读成"不会跟进"。无目标计划同样观测、同样会安全替换计划。
+    assert.match(view.detail, /同样会安全替换计划/);
+    assert.doesNotMatch(view.detail, /仅观测|不会调整|不参与/);
+  });
+
+  it("绑定目标的干预写明按目标范围归因", () => {
+    const view = describeInterventionScope(INTERVENTION_SCOPE.GOAL);
+    assert.equal(view.scope, "GOAL");
+    assert.equal(view.label, "学习目标");
+    assert.match(view.detail, /按目标范围观测与评估/);
+  });
+
+  it("缺失或未知 scope_type 保守回退为 GOAL，不臆造新范围", () => {
+    for (const value of [undefined, null, "", "SOMETHING_ELSE"]) {
+      assert.equal(describeInterventionScope(value).scope, "GOAL");
+    }
+  });
+
+  it("页面渲染归因范围，并把它挂在可断言的 data 属性上", () => {
+    assert.match(pageSource, /describeInterventionScope\(intervention\.scope_type\)/);
+    assert.match(pageSource, /data-intervention-scope=\{scope\.scope\}/);
+    assert.match(pageSource, /<strong>归因范围：<\/strong>\{scope\.label\}/);
   });
 });

@@ -170,6 +170,13 @@ fun WorldModelSection(
                     if (status == "APPLIED") "系统决定：${DECISION_LABEL[outcome.decision] ?: outcome.decision ?: "未知"}（已调整学习计划）"
                     else "系统决定：${DECISION_LABEL[outcome.decision] ?: outcome.decision ?: "尚未产生"}（${DECISION_STATUS_LABEL[status] ?: status ?: "未处理"}）",
                 )
+                // 归因范围：无目标计划同样观测、同样会安全替换计划，必须写明，避免误读成"不会跟进"。
+                Text(
+                    if (outcome.scopeType == "PLAN")
+                        "归因范围：计划本身（未绑定学习目标）——系统按计划范围观测与评估，有证据时同样会安全替换计划。"
+                    else "归因范围：学习目标——系统按目标范围观测与评估。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 Text("观测：${outcome.observedOutcome} · 执行信号 ${outcome.executionSignal} · 归因 ${outcome.causalClaim}", style = MaterialTheme.typography.bodySmall)
                 if (outcome.decisionReasonCodes.isNotEmpty()) {
                     Text("原因码：${outcome.decisionReasonCodes.joinToString("、")}", style = MaterialTheme.typography.bodySmall)

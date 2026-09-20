@@ -15,6 +15,7 @@ import {
   DECISION_STATE,
   describeAdoption,
   describeInterventionDecision,
+  describeInterventionScope,
   describeObservedOutcome,
 } from "../data/interventionDecisionView.js";
 import { useAgentRun } from "../hooks/useAgentRun.js";
@@ -152,11 +153,14 @@ function InterventionLoopSummary({ intervention, outcome, loading, error, onRetr
   const decision = describeInterventionDecision({ outcome, loading, error });
   const adoption = describeAdoption(outcome?.adoption);
   const observed = describeObservedOutcome(decision.observedOutcome);
+  const scope = describeInterventionScope(intervention.scope_type);
   return <section className="ls-section" aria-label="当前干预闭环">
     <div className="ls-section__heading"><h2>当前干预闭环</h2><span className="ls-section__hint">基于可追溯证据，不作因果断言</span></div>
     <article className="ls-state-card">
       <p><strong>当前策略：</strong>{intervention.strategy_code}</p>
       <p><strong>选择依据：</strong>{intervention.rationale_codes?.join("、") || "状态证据有限"}</p>
+      <p data-intervention-scope={scope.scope}><strong>归因范围：</strong>{scope.label}</p>
+      <p className="ls-hint">{scope.detail}</p>
       <p><strong>执行采纳：</strong>{adoption}</p>
       <p><strong>观测结果：</strong>{observed}</p>
       <p>
