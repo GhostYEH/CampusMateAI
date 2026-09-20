@@ -7,6 +7,7 @@ import { MaicClassroomShell } from "../../maic/classroom/index.js";
 import { ctrlBtn } from "../../maic/classroom/classroom-header.jsx";
 import { MaicSceneRenderer } from "../../maic/scene/index.js";
 import { MaicSlideSurface } from "../../maic/slide/index.js";
+import { MaicRoundtable } from "../../maic/roundtable/index.jsx";
 import { cn } from "../../maic/utils/cn.js";
 import {
   degradeNotice,
@@ -14,6 +15,12 @@ import {
   normalizePlayback,
   sandboxPolicyFor,
 } from "../../features/openmaic/playerModel.js";
+import {
+  describeDiscussionFailure,
+  discussionPromptFor,
+  discussionRejection,
+  normalizeDiscussionMessages,
+} from "../../features/openmaic/roundtableModel.js";
 import { SCENE_TYPE_LABELS } from "../../features/openmaic/editorModel.js";
 import { useNarrowViewport } from "../../features/openmaic/workbenchLayoutModel.js";
 
@@ -121,6 +128,62 @@ export default function OpenMAICClassroomStage({
     setIndex((currentIndex) => (next < 0 || next > scenes.length - 1 ? currentIndex : next));
   }, [scenes.length]);
 
+  // ── 圆桌讨论 ─────────────────────────────────────────────────────────────
+  // 讨论是**任务式**的（提交 → 轮询 job → 取 artifact），不是流式。所以状态只有
+  // 四态：空 / 进行中 / 有发言 / 失败。守卫与播放那套同源：换场景或重复提交时，
+  // 在飞任务的结果不得写进新上下文。
+  const [topic, setTopic] = React.useState("");
+  const [discussing, setDiscussing] = React.useState(false);
+  const [messages, setMessages] = React.useState([]);
+  const [discussionError, setDiscussionError] = React.useState("");
+  const discussionEpoch = React.useRef(0);
+
+  // 主题默认跟随当前场景。只在**换场景**时重置——跟随每次渲染会把用户正在输入的
+  // 内容冲掉。
+  React.useEffect(() => {
+    discussionEpoch.current += 1; // 作废在飞的讨论
+    setTopic(discussionPromptFor(current?.title || ""));
+    setMessages([]);
+    setDiscussionError("");
+    setDiscussing(false);
+  }, [currentId]);
+
+  const runDiscussion = React.useCallback(async () => {
+    if (discussionRejection({ prompt: topic, busy: discussing })) return;
+    const mine = (discussionEpoch.current += 1);
+    setDiscussing(true);
+    setDiscussionError("");
+    setMessages([]);
+    try {
+      const started = await api.runOpenMAICDiscussion(courseId, {
+        prompt: topic.trim(),
+        idempotencyKey: api.newIdempotencyKey(),
+      });
+      // 服务端会**同时**回 `job_id` 与一个 `job` 快照（通常是 `queued`）。
+      // 判据必须是"这个 job 还没完成就轮询"，而不是"没给 job 对象才轮询"——
+      // 后者会拿到一个 queued 快照后径直按失败处理，表现为"提交了但永远没结果"。
+      let job = started?.job ?? null;
+      if (job?.status !== "completed" && started?.job_id) {
+        job = await waitForDiscussionJob(courseId, started.job_id, () => mine === discussionEpoch.current);
+      }
+      if (mine !== discussionEpoch.current) return;
+      if (!job) throw new Error("受管服务未返回任务编号");
+      if (job.status !== "completed") throw new Error(job.error_code || "讨论任务未完成");
+
+      const artifact = await api.getOpenMAICArtifact(courseId, job.artifact_id);
+      const payload = JSON.parse(await artifact.blob.text());
+      if (mine !== discussionEpoch.current) return;
+      const normalized = normalizeDiscussionMessages(payload);
+      setMessages(normalized);
+      // "任务完成但没有发言"必须如实说，不能显示成一场已结束的讨论。
+      if (!normalized.length) setDiscussionError("讨论任务完成了，但没有返回任何发言内容。");
+    } catch (failure) {
+      if (mine === discussionEpoch.current) setDiscussionError(describeDiscussionFailure(failure));
+    } finally {
+      if (mine === discussionEpoch.current) setDiscussing(false);
+    }
+  }, [courseId, topic, discussing]);
+
   if (loading) {
     return <div className="maic-root flex-1 flex items-center justify-center bg-gray-50" aria-busy="true">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -205,6 +268,12 @@ export default function OpenMAICClassroomStage({
         onToggleSidebar={() => setCollapsed((value) => !value)}
         onPrev={index > 0 ? () => go(index - 1) : undefined}
         onNext={index < scenes.length - 1 ? () => go(index + 1) : undefined}
+        topic={topic}
+        onTopicChange={setTopic}
+        onStartDiscussion={runDiscussion}
+        discussing={discussing}
+        messages={messages}
+        discussionError={discussionError}
       />
     </MaicClassroomShell>
   </div>;
@@ -214,7 +283,23 @@ export default function OpenMAICClassroomStage({
  * 画布区。只负责**如实执行**服务端给出的渲染决定：
  * 原生交给移植来的渲染器，沙箱交给最小 sandbox 的 iframe，其余说清缺什么。
  */
-function SceneStage({ scene, outline, loading, index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
+function SceneStage({
+  scene,
+  outline,
+  loading,
+  index,
+  total,
+  sidebarCollapsed,
+  onToggleSidebar,
+  onPrev,
+  onNext,
+  topic,
+  onTopicChange,
+  onStartDiscussion,
+  discussing,
+  messages,
+  discussionError,
+}) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
   const policy = sandboxPolicyFor(outline?.render);
@@ -255,13 +340,22 @@ function SceneStage({ scene, outline, loading, index, total, sidebarCollapsed, o
     <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
       {body}
     </div>
-    <SceneToolbar
-      index={index}
-      total={total}
-      sidebarCollapsed={sidebarCollapsed}
-      onToggleSidebar={onToggleSidebar}
-      onPrev={onPrev}
-      onNext={onNext}
+    <MaicRoundtable
+      toolbar={<SceneToolbar
+        index={index}
+        total={total}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={onToggleSidebar}
+        onPrev={onPrev}
+        onNext={onNext}
+      />}
+      messages={messages}
+      busy={discussing}
+      error={discussionError}
+      prompt={topic}
+      onPromptChange={onTopicChange}
+      onStart={onStartDiscussion}
+      sceneTitle={title}
     />
   </div>;
 }
@@ -274,14 +368,15 @@ function SceneStage({ scene, outline, loading, index, total, sidebarCollapsed, o
  *
  * 左侧是侧栏开关 + 页码，中间是上一场景 / 下一场景。
  *
- * **一处必须说清楚的替代**：参考项目在播放态是 `hideToolbar={mode === 'playback'}`
- * 且底部放 192px 的圆桌面板——也就是说，它在这一位置**不显示工具栏**。圆桌依赖
- * agent runtime + SSE 流式 + 逐智能体 TTS，本仓库没有对应运行时，无法忠实移植；
- * 若照搬"隐藏工具栏"，课堂就会变成一个**没有任何翻页入口**的面板。所以这里用工具栏
- * 占住同一块位置：观感与参考一致，操作可完成。这是替代，不是移植。
+ * **它现在住在圆桌面板的顶部条里。** 参考项目的 `canvas-area.tsx` 在播放态传
+ * `hideToolbar={mode === 'playback'}`，一开始看像是"播放时没有工具栏"；但圆桌源码里
+ * 有一行注释写明了原因——"Toolbar strip — merged from CanvasArea"。工具栏是被
+ * **并进圆桌**，不是被丢弃：播放态的底部是「工具栏条（36px）+ 三栏交互区（156px）」
+ * 共 192px。所以这里由 `MaicRoundtable` 的 `toolbar` 属性接住它。
  *
- * 参考工具栏还有白板、元素拾取、演示、静音、停止讨论等控件，同样依赖 TTS / 圆桌 /
- * 画布 store，因此不渲染（不占位、也不放点了没反应的死按钮）。
+ * 参考工具栏还有白板、元素拾取、演示、静音、停止讨论等控件，它们依赖 TTS / 圆桌
+ * 流式 / 画布 store，本仓库没有对应运行时，因此不渲染（不占位、也不放点了没反应的
+ * 死按钮）。
  */
 function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
   const empty = total === 0;
@@ -344,6 +439,29 @@ function Fallback({ title, type, text }) {
     <strong className="text-base font-medium text-gray-800 dark:text-gray-200">「{title}」当前无法播放</strong>
     <p className="text-sm text-gray-500 dark:text-gray-400">{text}</p>
   </div>;
+}
+
+/**
+ * 轮询讨论任务直到终态。
+ *
+ * 三个刻意的约束：
+ * - **有上限。** 服务端若一直回 `queued`，没有上限的轮询会把用户锁在"正在组织讨论…"
+ *   上；到点返回最后一个状态，让调用方按 `status !== 'completed'` 如实报错。
+ * - **可中止。** 传进来的 `isCurrent()` 在换场景/重复提交后为假时立刻停——否则旧任务
+ *   会一直占用网络与计时器，直到撞上自己的上限。
+ * - **不用递归 setTimeout。** 循环 + `await` 天然随函数结束而停止，不需要在卸载时
+ *   逐个清理计时器。
+ */
+async function waitForDiscussionJob(courseId, jobId, isCurrent) {
+  const deadline = Date.now() + 120000;
+  let job = null;
+  while (Date.now() < deadline) {
+    job = await api.getOpenMAICJob(courseId, jobId);
+    if (!isCurrent()) return null;
+    if (!job || !["queued", "running"].includes(job.status)) return job;
+    await new Promise((resolve) => { window.setTimeout(resolve, 900); });
+  }
+  return job;
 }
 
 /**

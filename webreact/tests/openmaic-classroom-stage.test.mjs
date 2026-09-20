@@ -161,7 +161,60 @@ test("the canvas toolbar matches the reference and the canvas is not wrapped in 
   assert.doesNotMatch(stageSource, /flex flex-col bg-gray-900"/, "不得把画布区写死成深色");
 });
 
-test("the classroom header survives a 320px viewport", () => {  const headerSource = read("src/maic/classroom/classroom-header.jsx");
+test("the toolbar is merged into the roundtable, not stacked below it", () => {
+  const roundtableSource = read("src/maic/roundtable/index.jsx");
+  // 参考项目 `canvas-area.tsx` 在播放态传 hideToolbar，圆桌源码里写明是
+  // "Toolbar strip — merged from CanvasArea"：工具栏被**并进**圆桌，不是被丢弃。
+  // 播放态的底部因此是「工具栏条 36px + 三栏交互区 156px」共 192px。
+  assert.match(roundtableSource, /h-\[192px\] w-full flex flex-col/, "圆桌根节点必须是参考的 192px 外框");
+  assert.match(roundtableSource, /flex-1 flex items-stretch min-h-0/, "三栏交互区必须紧跟在工具栏条之后");
+  assert.match(roundtableSource, /w-\[90px\] shrink-0/, "左栏宽度必须与参考一致");
+  assert.match(roundtableSource, /w-\[140px\] shrink-0/, "右栏宽度必须与参考一致");
+  assert.match(roundtableSource, /bg-white\/60 dark:bg-gray-800\/60 backdrop-blur-md/, "毛玻璃底色必须与参考一致");
+  // 集成侧必须把工具栏**传进**圆桌，而不是各画一条。
+  assert.match(stageSource, /<MaicRoundtable[\s\S]{0,220}toolbar=\{<SceneToolbar/, "工具栏必须作为圆桌的顶部条传入");
+});
+
+test("the roundtable is driven by the real discussion pipeline", () => {
+  // 讨论是任务式的：提交 → 轮询 job → 取 artifact。少任何一步都会退化成"点了没反应"。
+  assert.match(stageSource, /api\.runOpenMAICDiscussion\(/, "必须走真实讨论接口");
+  assert.match(stageSource, /api\.getOpenMAICJob\(/, "必须轮询任务终态");
+  // 服务端会同时回 `job_id` 和一个 `job` 快照（通常是 `queued`）。判据必须是
+  // "这个 job 还没完成就轮询"，而不是"没给 job 对象才轮询"——后者会拿到 queued
+  // 快照后径直按失败处理，表现为"提交了但永远没结果"（真实复现过）。
+  assert.match(
+    stageSource,
+    /job\?\.status !== "completed" && started\?\.job_id/,
+    "任务未完成就必须轮询，不能因为已经回了一个 job 快照就跳过",
+  );
+  assert.doesNotMatch(
+    stageSource,
+    /if \(!job && started\?\.job_id\)/,
+    "不得退回「只有缺 job 对象时才轮询」的判据",
+  );
+  assert.match(stageSource, /api\.getOpenMAICArtifact\(/, "必须取回讨论产物");
+  assert.match(stageSource, /normalizeDiscussionMessages\(/, "产物必须经统一归一化");
+  // 有上限、可中止的轮询：没有上限会把用户锁在"正在组织讨论…"上。
+  assert.match(stageSource, /const deadline = Date\.now\(\) \+ \d+/, "轮询必须有上限");
+  assert.match(stageSource, /if \(!isCurrent\(\)\) return null/, "换场景后必须能中止轮询");
+  // 换场景要作废在飞的讨论。
+  assert.match(stageSource, /discussionEpoch\.current \+= 1/, "换场景必须作废在飞的讨论");
+  // "任务完成但没有发言"必须如实说，不能显示成一场已结束的讨论。
+  assert.match(stageSource, /但没有返回任何发言内容/, "空产物必须如实说明");
+});
+
+test("the roundtable never fakes capability it does not have", () => {
+  const roundtableSource = read("src/maic/roundtable/index.jsx");
+  // 没有逐智能体 TTS 就不放喇叭按钮，没有 ASR 就不放麦克风：点了没反应比没有更糟。
+  assert.doesNotMatch(roundtableSource, /<Mic\b/, "不得渲染麦克风按钮（本仓库没有 ASR）");
+  assert.doesNotMatch(roundtableSource, /Volume2|VolumeX/, "不得渲染音量按钮（本仓库没有逐智能体 TTS）");
+  // 没有真实头像图就不编一张，用名字首字。
+  assert.doesNotMatch(roundtableSource, /<img\b/, "不得引用不存在的头像图");
+  assert.match(roundtableSource, /speakerInitial\(/, "头像必须用名字首字兜底");
+});
+
+test("the classroom header survives a 320px viewport", () => {
+  const headerSource = read("src/maic/classroom/classroom-header.jsx");
   // 320px 下固定 px-8 会把标题块挤成 0 宽，右侧控制簇随即盖住返回按钮并吃掉点击。
   assert.match(headerSource, /px-4 sm:px-8/, "头栏内边距必须窄屏收窄");
   assert.match(headerSource, /gap-2 sm:gap-4/, "头栏间距必须窄屏收窄");

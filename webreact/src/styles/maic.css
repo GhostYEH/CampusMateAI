@@ -226,3 +226,26 @@
     transform: scale(1.08);
   }
 }
+
+/* 圆桌发言气泡的升起动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 圆桌"正在组织讨论"的三点脉冲（参考项目 think-dot-pulse） */
+@keyframes thinkDotPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
