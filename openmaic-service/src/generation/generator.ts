@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contract.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
-import { composeSlideCanvas } from './slide-canvas.ts';
+import { composeSlideCanvas } from '../dsl/slide-canvas.ts';
 
 export const GENERATION_MODES = [
   'slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game',

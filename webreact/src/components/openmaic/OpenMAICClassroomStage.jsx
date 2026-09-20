@@ -267,15 +267,21 @@ function SceneStage({ scene, outline, loading, index, total, sidebarCollapsed, o
 }
 
 /**
- * 画布底栏。逐字移植参考项目 `components/canvas/canvas-toolbar.tsx` 的容器与
- * 可用控件（`canvas-area.tsx` 里它是**文档流内**的一条，不是浮层）：
+ * 画布底栏。容器与可用控件逐字移植参考项目 `components/canvas/canvas-toolbar.tsx`
+ * （在 `canvas-area.tsx` 里它是**文档流内**的一条，不是浮层）：
  *
  *   shrink-0 h-9 px-2 bg-white/80 backdrop-blur-xl border-t border-gray-200/40
  *
- * 左侧是侧栏开关 + 页码，中间是上一场景 / 下一场景——位置与参考一致。参考工具栏
- * 还有白板、元素拾取、演示、静音、停止讨论等控件，它们依赖 TTS / 圆桌 / 画布
- * store，本仓库没有对应运行时，因此不渲染（而不是渲染一个点了没反应的死按钮）。
- * 为了不改变工具栏的高度与左右比例，缺失的控件不占位。
+ * 左侧是侧栏开关 + 页码，中间是上一场景 / 下一场景。
+ *
+ * **一处必须说清楚的替代**：参考项目在播放态是 `hideToolbar={mode === 'playback'}`
+ * 且底部放 192px 的圆桌面板——也就是说，它在这一位置**不显示工具栏**。圆桌依赖
+ * agent runtime + SSE 流式 + 逐智能体 TTS，本仓库没有对应运行时，无法忠实移植；
+ * 若照搬"隐藏工具栏"，课堂就会变成一个**没有任何翻页入口**的面板。所以这里用工具栏
+ * 占住同一块位置：观感与参考一致，操作可完成。这是替代，不是移植。
+ *
+ * 参考工具栏还有白板、元素拾取、演示、静音、停止讨论等控件，同样依赖 TTS / 圆桌 /
+ * 画布 store，因此不渲染（不占位、也不放点了没反应的死按钮）。
  */
 function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
   const empty = total === 0;

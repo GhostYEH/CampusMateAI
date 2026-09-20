@@ -22,6 +22,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ServiceDatabase } from '../db/database.ts';
 import { IdempotencyStore } from '../db/idempotencyStore.ts';
 import { folderIsOwned } from '../discovery/ownership.ts';
+import { upgradeLegacySlideCanvases } from '../dsl/slide-canvas.ts';
 import { decodeCursor, encodeCursor } from './cursor.ts';
 import { WorkspaceError, notFound } from './errors.ts';
 
@@ -345,7 +346,9 @@ export class WorkspaceRepository {
       )
       .get(input.stageId, input.workspaceId, input.userId, input.courseId) as StageRow | undefined;
     if (!row) notFound();
-    return row;
+    // 所有调用方（编辑、播放、导出、归档、渲染）都从这里取文档，所以"历史文档补成
+    // 当前形态"只需要挂在这一处。见 `dsl/slide-canvas.ts` 里读时投影的取舍说明。
+    return { ...row, document: projectStoredDocument(row.document) };
   }
 
   replaceStage(input: {
@@ -396,5 +399,27 @@ export class WorkspaceRepository {
       )
       .run(now, now, input.stageId, input.workspaceId, input.userId, input.courseId, input.expectedRevision);
     if (Number(result.changes) === 0) this.#revisionFailure(input.userId, input.courseId, input.stageId, 'stages');
+  }
+}
+
+/**
+ * 把存储的文档投影成当前形态（目前只有一件事：历史幻灯片画布补成真实画布）。
+ *
+ * 三个刻意的选择：
+ *
+ * - **解析失败时原样返回存储字节。** 这里不是校验点；把坏 JSON 变成抛错会掩盖真正
+ *   该报错的那一层（`prepareStage`），也会让一个只读请求突然 500。
+ * - **没有改动时不重新序列化。** 纯投影不该改变字节，重新序列化会白白改变键顺序
+ *   与浮点写法，让"没变"变成"看起来变了"。
+ * - **不写回数据库。** 投影只影响返回给调用方的视图；存量数据由用户下一次正常编辑
+ *   时的写入路径落库。见 `dsl/slide-canvas.ts` 的取舍说明。
+ */
+function projectStoredDocument(raw: string): string {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const projected = upgradeLegacySlideCanvases(parsed);
+    return projected === parsed ? raw : JSON.stringify(projected);
+  } catch {
+    return raw;
   }
 }

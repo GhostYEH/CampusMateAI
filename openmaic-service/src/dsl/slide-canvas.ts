@@ -1,6 +1,11 @@
 /**
  * 幻灯片画布合成器。
  *
+ * 放在 `dsl/` 而不是 `generation/`：它被两层共用——生成侧（把模型输出变成可落库的
+ * 画布）与读取侧（把历史文档里的旧版画布补成真实画布）。留在 `generation/` 会让
+ * `workspace/` 反过来依赖 `generation/`，形成分层倒挂。本模块是**纯叶子**，
+ * 不导入任何其它服务端模块。
+ *
  * ## 为什么不让模型直接产出元素布局
  *
  * 绝对坐标排版恰好是模型最不擅长的部分：位置会重叠、越界、尺寸缺失，而这些错误
@@ -431,4 +436,41 @@ export function slideLayoutOf(content: unknown): 'title' | 'bullets' | 'sections
   if (outline.sections.length) return 'sections';
   if (outline.bullets.length) return 'bullets';
   return 'title';
+}
+
+/**
+ * 读取时投影：把历史文档里"没有元素的旧版画布"补成真实画布。
+ *
+ * 为什么是**读时投影**而不是一次性改写数据库：
+ *
+ * - 改写存量文档等于静默重写用户数据；要么绕过 `revision`（破坏并发契约），要么
+ *   无端推进修订号，两种都不该由一个纯展示需求来触发。
+ * - 合成是纯函数且确定性，所以读时投影的结果与"改写后再读"**逐字节相同**——差别
+ *   只在动不动存量数据。用户第一次编辑该舞台时，合成结果会随正常写入路径自然落库。
+ *
+ * 两条必须守住的边界：
+ *
+ * 1. **只替换确实缺元素的画布。** 已经有元素的新画布原样返回，否则会把真实课件
+ *    丢掉——那比留着一张旧版画布糟得多。
+ * 2. **无改动时返回同一个引用。** 调用方据此跳过序列化；更重要的是，这让"没变"
+ *    这件事可以被断言，而不是靠比较两个内容相同的对象。
+ */
+export function upgradeLegacySlideCanvases(document: unknown): unknown {
+  if (!isObject(document)) return document;
+  const scenes = document.scenes;
+  if (!Array.isArray(scenes)) return document;
+
+  let changed = false;
+  const upgraded = scenes.map((scene) => {
+    if (!isObject(scene) || scene.type !== 'slide') return scene;
+    const content = isObject(scene.content) ? scene.content : undefined;
+    if (!content || content.type !== 'slide') return scene;
+    const canvas = isObject(content.canvas) ? content.canvas : undefined;
+    const elements = canvas?.elements;
+    if (Array.isArray(elements) && elements.length > 0) return scene;
+    changed = true;
+    return { ...scene, content: { type: 'slide', canvas: composeSlideCanvas(content) } };
+  });
+
+  return changed ? { ...document, scenes: upgraded } : document;
 }

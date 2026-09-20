@@ -14,9 +14,12 @@ import {
   composeSlideCanvas,
   readSlideOutline,
   slideLayoutOf,
-} from '../src/generation/slide-canvas.ts';
+  upgradeLegacySlideCanvases,
+} from '../src/dsl/slide-canvas.ts';
 import { buildGeneratedStage, materializeGeneratedStage } from '../src/generation/generator.ts';
 import { prepareStage } from '../src/dsl/validate.ts';
+import { ServiceDatabase } from '../src/db/database.ts';
+import { WorkspaceRepository } from '../src/workspace/repository.ts';
 
 const BASE_FIELDS = ['id', 'left', 'top', 'width', 'height', 'rotate'];
 
@@ -233,4 +236,114 @@ test('a composed canvas survives the write path (migrate -> sanitize -> validate
   assert.ok(canvas.elements.some((element) => element.type === 'shape'), '卡片形状必须留下');
   assert.ok(canvas.elements.some((element) => element.type === 'text'), '文本元素必须留下');
 });
+
+// ===== 读取时投影：历史文档里的旧版画布 =====
+
+function legacyDocument() {
+  return {
+    dslVersion: '0.3.0',
+    stage: { id: 'stage_1', name: '极限' },
+    scenes: [
+      { id: 'scene_1', stageId: 'stage_1', title: '极限', order: 0, type: 'slide', content: { type: 'slide', canvas: { title: '极限', body: '先看数列。\n再看函数。' } } },
+      { id: 'scene_2', stageId: 'stage_1', title: '练习', order: 1, type: 'quiz', content: { type: 'quiz', questions: [] } },
+    ],
+  };
+}
+
+test('the read-time projection composes legacy canvases and reports that it changed', () => {
+  const source = legacyDocument();
+  const projected = upgradeLegacySlideCanvases(source);
+  assert.notEqual(projected, source, '有改动时必须返回新对象');
+  const canvas = projected.scenes[0].content.canvas;
+  assertRenderable(canvas, 'projected legacy');
+  assertInsideCanvas(canvas, 'projected legacy');
+  assert.match(JSON.stringify(canvas.elements), /极限/, '旧版标题必须进入画布');
+  // 非 slide 场景逐字保持：投影不该顺手改动别的场景。
+  assert.equal(projected.scenes[1], source.scenes[1], '非 slide 场景必须原样保留');
+});
+
+test('the projection leaves real canvases and unrelated documents untouched', () => {
+  // 1) 已经有元素的画布：必须**同一个引用**返回，否则"没变"只能靠比内容。
+  const modern = {
+    stage: { id: 'stage_1', name: 'x' },
+    scenes: [{ id: 's1', type: 'slide', content: { type: 'slide', canvas: composeSlideCanvas(outline({ bullets: ['a'] })) } }],
+  };
+  assert.equal(upgradeLegacySlideCanvases(modern), modern, '真实画布不得被重写');
+
+  // 2) 与幻灯片无关的文档、以及畸形输入：原样返回，不抛错。
+  for (const value of [undefined, null, 7, 'text', {}, { scenes: 'nope' }, { scenes: [] }]) {
+    assert.equal(upgradeLegacySlideCanvases(value), value, `无关输入必须原样返回：${JSON.stringify(value)}`);
+  }
+});
+
+test('the projection is idempotent: projecting twice changes nothing more', () => {
+  const once = upgradeLegacySlideCanvases(legacyDocument());
+  const twice = upgradeLegacySlideCanvases(once);
+  assert.equal(twice, once, '第二次投影必须检测到"没有改动"并返回同一引用');
+});
+
+test('the repository serves composed documents without rewriting stored bytes', () => {
+  // 这条是整套投影的**中心断言**：调用方拿到的是可渲染的文档，而数据库里躺着的
+  // 仍是用户当初写入的字节。把两件事同时钉住，才排除"其实偷偷改了存量数据"。
+  const database = new ServiceDatabase(':memory:');
+  const repository = new WorkspaceRepository(database);
+  const workspace = repository.createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '极限' });
+  const legacy = JSON.stringify(legacyDocument());
+
+  const created = repository.createStage({
+    userId: 'user-1',
+    courseId: 'course-1',
+    workspaceId: workspace.id,
+    title: '极限',
+    document: JSON.parse(legacy),
+    dslVersion: '0.3.0',
+  });
+
+  const read = repository.getStage({
+    userId: 'user-1',
+    courseId: 'course-1',
+    workspaceId: workspace.id,
+    stageId: created.id,
+  });
+  const served = JSON.parse(read.document);
+  const canvas = served.scenes[0].content.canvas;
+  assert.ok(
+    Array.isArray(canvas.elements) && canvas.elements.length > 0,
+    '读取必须返回已合成的画布，否则课堂只能渲染标题兜底',
+  );
+
+  const storedRow = database.raw
+    .prepare('SELECT document FROM stages WHERE id = ?')
+    .get(created.id);
+  assert.equal(storedRow.document, legacy, '存量字节不得被读取路径改写');
+});
+
+test('the repository does not touch stages that already have real canvases', () => {
+  const database = new ServiceDatabase(':memory:');
+  const repository = new WorkspaceRepository(database);
+  const workspace = repository.createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '极限' });
+  const modern = JSON.stringify({
+    dslVersion: '0.3.0',
+    stage: { id: 'stage_1', name: '极限' },
+    scenes: [{ id: 'scene_1', stageId: 'stage_1', title: '极限', order: 0, type: 'slide', content: { type: 'slide', canvas: composeSlideCanvas(outline({ bullets: ['a'] })) } }],
+  });
+  const created = repository.createStage({
+    userId: 'user-1',
+    courseId: 'course-1',
+    workspaceId: workspace.id,
+    title: '极限',
+    document: JSON.parse(modern),
+    dslVersion: '0.3.0',
+  });
+  const read = repository.getStage({
+    userId: 'user-1',
+    courseId: 'course-1',
+    workspaceId: workspace.id,
+    stageId: created.id,
+  });
+  // 没有改动时必须逐字节返回存储原样（含键顺序与数字写法）。
+  assert.equal(read.document, modern, '已有真实画布的文档必须逐字节原样返回');
+});
+
+
 
