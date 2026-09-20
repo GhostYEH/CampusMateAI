@@ -78,7 +78,7 @@
 
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
-| P4-A | 先确认生成侧会产出 latex / code / chart 元素 | 已完成 | 7585b223 | 审计生成器与 DSL：当前只产出 text/shape，未产出 latex、code、chart；P4-B 至 P4-D 保持未开始，不安装未被真实内容使用的依赖。 |
+| P4-A | 先确认生成侧会产出 latex / code / chart 元素 | 已完成 | 4bf86107 | 审计生成器与 DSL：当前只产出 text/shape，未产出 latex、code、chart；P4-B 至 P4-D 保持未开始，不安装未被真实内容使用的依赖。 |
 | P4-B | 接 `setLatexRenderer`（katex） | 未开始 | — | |
 | P4-C | 接 `setCodeHighlighterFactory`（shiki） | 未开始 | — | |
 | P4-D | 图表换 echarts（保留外层盒与 `getChartOption`） | 未开始 | — | |
