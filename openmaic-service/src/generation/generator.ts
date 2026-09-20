@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contract.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 import { composeSlideCanvas } from '../dsl/slide-canvas.ts';
+import { composePblProject } from '../dsl/pbl-project.ts';
 
 export const GENERATION_MODES = [
   'slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game',
@@ -101,7 +102,22 @@ export function buildGeneratedStage(
     };
   } else if (mode === 'pbl') {
     type = 'pbl';
-    content = { type: 'pbl', phases: [{ id: id('phase'), title: '提出问题', tasks: [{ id: id('task'), title: `定义“${title}”要解决的问题` }] }] };
+    // 本地模板也必须产出渲染器认得的形状，理由同幻灯片：否则"没配模型"看起来
+    // 就像 PBL 功能坏了。
+    content = {
+      type: 'pbl',
+      projectV2: composePblProject({
+        project: {
+          title,
+          description: `围绕“${title}”展开的项目式学习。`,
+          milestones: [
+            { title: '提出问题', description: `明确“${title}”要解决的问题。`, tasks: [{ title: `定义“${title}”要解决的问题` }] },
+            { title: '拆解与探索', description: '找出需要的事实、资料与判断依据。', tasks: [{ title: '列出需要的资料与判断依据' }] },
+            { title: '形成方案', description: '把结论组织成可以被检验的方案。', tasks: [{ title: '给出可检验的结论' }] },
+          ],
+        },
+      }, title),
+    };
   } else if (mode !== 'slide') {
     type = 'interactive';
     content = widgetContent(mode, title);
@@ -147,17 +163,13 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
       questions: content.questions.map((question) => (isObject(question) ? { ...question, id: id('question') } : question)),
     };
   }
-  if (content?.type === 'pbl' && Array.isArray(content.phases)) {
+  if (content?.type === 'pbl') {
+    // 与幻灯片同理：模型出阶段/任务的内容，服务端合成渲染器唯一认得的
+    // `projectV2`。此前产出的 `{ phases: [...] }` 既不是 projectV2 也不是历史
+    // 的 projectConfig，渲染器只能显示"项目尚未生成"的占位面板。
     result.content = {
-      ...content,
-      phases: content.phases.map((phase) => {
-        if (!isObject(phase)) return phase;
-        const filled = { ...phase, id: id('phase') };
-        if (Array.isArray(filled.tasks)) {
-          filled.tasks = filled.tasks.map((task) => (isObject(task) ? { ...task, id: id('task') } : task));
-        }
-        return filled;
-      }),
+      type: 'pbl',
+      projectV2: composePblProject(content, typeof result.title === 'string' ? result.title : '项目式学习'),
     };
   }
   if (Array.isArray(result.actions)) {

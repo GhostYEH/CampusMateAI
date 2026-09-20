@@ -22,7 +22,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ServiceDatabase } from '../db/database.ts';
 import { IdempotencyStore } from '../db/idempotencyStore.ts';
 import { folderIsOwned } from '../discovery/ownership.ts';
-import { upgradeLegacySlideCanvases } from '../dsl/slide-canvas.ts';
+import { projectStoredDocument } from '../dsl/document-projection.ts';
 import { decodeCursor, encodeCursor } from './cursor.ts';
 import { WorkspaceError, notFound } from './errors.ts';
 
@@ -348,7 +348,7 @@ export class WorkspaceRepository {
     if (!row) notFound();
     // 所有调用方（编辑、播放、导出、归档、渲染）都从这里取文档，所以"历史文档补成
     // 当前形态"只需要挂在这一处。见 `dsl/slide-canvas.ts` 里读时投影的取舍说明。
-    return { ...row, document: projectStoredDocument(row.document) };
+    return { ...row, document: projectStoredDocumentBytes(row.document) };
   }
 
   replaceStage(input: {
@@ -403,7 +403,7 @@ export class WorkspaceRepository {
 }
 
 /**
- * 把存储的文档投影成当前形态（目前只有一件事：历史幻灯片画布补成真实画布）。
+ * 把存储的文档投影成当前形态（历史幻灯片画布、历史 PBL 项目）。
  *
  * 三个刻意的选择：
  *
@@ -412,12 +412,12 @@ export class WorkspaceRepository {
  * - **没有改动时不重新序列化。** 纯投影不该改变字节，重新序列化会白白改变键顺序
  *   与浮点写法，让"没变"变成"看起来变了"。
  * - **不写回数据库。** 投影只影响返回给调用方的视图；存量数据由用户下一次正常编辑
- *   时的写入路径落库。见 `dsl/slide-canvas.ts` 的取舍说明。
+ *   时的写入路径落库。见 `dsl/document-projection.ts` 的取舍说明。
  */
-function projectStoredDocument(raw: string): string {
+function projectStoredDocumentBytes(raw: string): string {
   try {
     const parsed: unknown = JSON.parse(raw);
-    const projected = upgradeLegacySlideCanvases(parsed);
+    const projected = projectStoredDocument(parsed);
     return projected === parsed ? raw : JSON.stringify(projected);
   } catch {
     return raw;

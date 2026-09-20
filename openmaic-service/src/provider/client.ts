@@ -94,7 +94,7 @@ const MODE_SCENE_GUIDE = [
   'Mode mapping: slide→slide; quiz→quiz; pbl→pbl; every other mode→"interactive" with "widgetType" set to the mode name.',
   'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "bullets": [string], "sections": [{"heading": string, "bullets": [string]}]}} — 排版（坐标、字号、配色）由服务端生成，你只负责内容，绝不要给坐标或尺寸。bullets 与 sections 二选一：并列要点用 bullets（3 到 6 条，每条不超过 40 字）；需要分组时才用 sections（2 到 3 组，每组 2 到 4 条，每条不超过 24 字）。subtitle 可省略。',
   'quiz content: {"type": "quiz", "questions": [{"type": "single", "question": string, "options": [{"label": string, "value": string}], "answer": [string (one option value)], "analysis": string, "points": 1}]} — 3 to 8 questions, 3 to 6 options each.',
-  'pbl content: {"type": "pbl", "phases": [{"title": string, "tasks": [{"title": string}]}]} — 2 to 5 phases, 1 to 5 tasks per phase.',
+  'pbl content: {"type": "pbl", "project": {"title": string, "description": string, "milestones": [{"title": string, "description": string, "tasks": [{"title": string, "description": string}]}]}} — 项目结构与阶段状态由服务端生成，你只给内容，绝不要给 id、状态或角色。2 到 5 个阶段，每阶段 1 到 5 个任务；描述都用一句话讲清"这一步要产出什么"。',
   'interactive content: {"type": "interactive", "html": string, "widgetType": string} — html is a self-contained inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',
   'Produce 3 to 8 scenes unless the mode is quiz/pbl, where 1 to 3 scenes are fine. All text in Chinese, academically accurate for university students.',
 ].join('\n');
