@@ -1,5 +1,6 @@
 import type { ProviderConfig, RenderConfig, TtsConfig } from '../config.ts';
-import { GENERATION_MODES } from '../generation/generator.ts';
+import { GENERATION_MODES, reviewGeneratedStage } from '../generation/generator.ts';
+import type { GenerationMode } from '../generation/generator.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 
 /**
@@ -91,12 +92,12 @@ const MODE_SCENE_GUIDE = [
   `Set "dslVersion" to exactly "${DSL_VERSION}". Do not invent scene or stage ids; the server assigns them.`,
   `Available generation modes: ${GENERATION_MODES.join(', ')}.`,
   'Scene objects: {"title": string, "order": number, "type": "slide"|"quiz"|"interactive"|"pbl", "content": ...}.',
-  'Mode mapping: slide→slide; quiz→quiz; pbl→pbl; every other mode→"interactive" with "widgetType" set to the mode name.',
-  'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "bullets": [string], "sections": [{"heading": string, "bullets": [string]}]}} — 排版（坐标、字号、配色）由服务端生成，你只负责内容，绝不要给坐标或尺寸。bullets 与 sections 二选一：并列要点用 bullets（3 到 6 条，每条不超过 40 字）；需要分组时才用 sections（2 到 3 组，每组 2 到 4 条，每条不超过 24 字）。subtitle 可省略。',
-  'quiz content: {"type": "quiz", "questions": [{"type": "single", "question": string, "options": [{"label": string, "value": string}], "answer": [string (one option value)], "analysis": string, "points": 1}]} — 3 to 8 questions, 3 to 6 options each.',
+  'Mode mapping: slide→at least two teaching slides; quiz→quiz; pbl→pbl; every other mode→"interactive" with "widgetType" set to the mode name. If the user asks for 选择题/练习/测验/答题, include a real quiz scene after the teaching slides regardless of mode.',
+  'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "sections": [{"heading": string, "bullets": [string]}]}} — 排版由服务端生成，不给坐标。第 1 页用“概念解释”小节以完整句说明定义、适用条件及意义；第 2 页用“推导步骤”或“具体例子”小节展开至少一个可核对的步骤或实例。不要只有关键词/提纲；正文会直接作为课堂讲解稿。每条小节正文应具体、有信息量，避免空泛教学指令。',
+  'quiz content: {"type": "quiz", "questions": [{"type": "single"|"multiple"|"short_answer", "question": string, "options": [{"label": string, "value": string}], "answer": [string], "analysis": string, "points": number}]} — 选择题每题 3–6 个不同选项，answer 必须是正确选项的 value（single 恰好一个，multiple 至少两个）；简答题无选项，用 analysis 给参考答案。每题题干明确、analysis 非空、points > 0；quiz 场景真正让学生作答，不能把题目写成 slide。',
   'pbl content: {"type": "pbl", "project": {"title": string, "description": string, "milestones": [{"title": string, "description": string, "tasks": [{"title": string, "description": string}]}]}} — 项目结构与阶段状态由服务端生成，你只给内容，绝不要给 id、状态或角色。2 到 5 个阶段，每阶段 1 到 5 个任务；描述都用一句话讲清"这一步要产出什么"。',
   'interactive content: {"type": "interactive", "html": string, "widgetType": string} — html is a self-contained inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',
-  'Produce 3 to 8 scenes unless the mode is quiz/pbl, where 1 to 3 scenes are fine. All text in Chinese, academically accurate for university students.',
+  'Produce 2 to 8 scenes for slide mode (plus a quiz when practice is requested); quiz/pbl may have 1 to 3 scenes. All text in Chinese, academically accurate for university students.',
 ].join('\n');
 
 /** Ask the provider for a full stage document; the caller still runs prepareStage. */
@@ -104,14 +105,21 @@ export async function generateStageDocument(
   provider: ProviderConfig,
   input: { mode: string; prompt: string },
 ): Promise<unknown> {
-  const payload = await chatCompletion(provider, {
-    messages: [
-      { role: 'system', content: MODE_SCENE_GUIDE },
-      { role: 'user', content: `生成模式：${input.mode}\n内容要求：${input.prompt}` },
-    ],
-    temperature: 0.4,
-  });
-  return parseJsonContent(firstMessageContent(payload));
+  const userRequest = `生成模式：${input.mode}\n内容要求：${input.prompt}`;
+  let issues: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const payload = await chatCompletion(provider, {
+      messages: [
+        { role: 'system', content: MODE_SCENE_GUIDE },
+        { role: 'user', content: attempt === 0 ? userRequest : `${userRequest}\n上一稿未达到以下要求，请重新生成完整 JSON 文档并补全：${issues.join('；')}` },
+      ],
+      temperature: 0.4,
+    });
+    const document = parseJsonContent(firstMessageContent(payload));
+    issues = reviewGeneratedStage(document, input.mode as GenerationMode, input.prompt);
+    if (issues.length === 0) return document;
+  }
+  throw new ProviderError('provider_invalid_response', 'provider returned incomplete learning content');
 }
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;

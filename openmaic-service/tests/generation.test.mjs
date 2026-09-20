@@ -43,7 +43,7 @@ test('generation creates a real persisted stage for every supported mode', async
       });
       assert.equal(result.status, 201, mode);
       assert.equal(result.body.job.status, 'completed', mode);
-      assert.equal(result.body.stage.document.scenes.length, 1, mode);
+      assert.equal(result.body.stage.document.scenes.length, mode === 'slide' ? 2 : 1, mode);
       assert.equal(result.body.stage.document.scenes[0].title, `关于${mode}的学习内容`, mode);
       assert.equal(result.body.stage.document.scenes[0].order, 0, mode);
       assert.equal(result.body.stage_id, result.body.stage.id, mode);

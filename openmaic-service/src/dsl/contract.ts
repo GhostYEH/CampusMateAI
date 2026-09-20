@@ -141,6 +141,8 @@ export interface QuizQuestion {
 export interface SlideContent {
   type: 'slide';
   schemaVersion?: number;
+  /** Readable source retained alongside the composed canvas for narration. */
+  slide?: unknown;
   canvas: Record<string, unknown>;
 }
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contract.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
-import { composeSlideCanvas } from '../dsl/slide-canvas.ts';
+import { composeSlideCanvas, readSlideOutline } from '../dsl/slide-canvas.ts';
 import { composePblProject } from '../dsl/pbl-project.ts';
 
 export const GENERATION_MODES = [
@@ -27,6 +27,74 @@ function clipPrompt(prompt: string): string {
 
 function escapeHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+}
+
+const PRACTICE_REQUEST = /选择题|练习|测验|答题|自测|习题/;
+
+function quizContent(title: string): Extract<Scene['content'], { type: 'quiz' }> {
+  return {
+    type: 'quiz',
+    questions: [{ id: id('question'), type: 'single', question: `学习“${title}”时，应先做哪一步？`, options: [
+      { label: '明确核心概念与适用条件', value: 'A' },
+      { label: '跳过概念，直接背结论', value: 'B' },
+      { label: '只记例题答案，不检查理由', value: 'C' },
+    ], answer: ['A'], analysis: '先弄清概念及其适用条件，再用推导和例题检验理解。', points: 1 }],
+  };
+}
+
+function authoredScene(stageId: string, order: number, title: string, content: Scene['content'], now: number): Scene {
+  return { id: id('scene'), stageId, title, order, type: content.type, content, createdAt: now, updatedAt: now };
+}
+
+/** A generation-specific quality gate; prepareStage still validates the entire DSL. */
+export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt: string): string[] {
+  const scenes = isObject(raw) && Array.isArray(raw.scenes) ? raw.scenes : [];
+  const issues: string[] = [];
+  if (mode === 'slide') {
+    for (const [index, purpose] of ['概念', '推导或例子'].entries()) {
+      const scene = scenes[index];
+      const content = isObject(scene) && isObject(scene.content) ? scene.content : {};
+      const outline = readSlideOutline(content);
+      const heading = index === 0 ? /概念|定义|原理/ : /推导|步骤|例子|示例|应用/;
+      const explained = content.type === 'slide' && outline.sections.some((section) =>
+        heading.test(section.heading) && section.bullets.some((line) => line.length >= 15));
+      if (!explained) issues.push(`slide ${index + 1} needs a ${purpose} explanation section with substantive text`);
+    }
+  }
+  const needsQuiz = mode === 'quiz' || PRACTICE_REQUEST.test(prompt);
+  const quizzes = scenes.filter((scene) => isObject(scene) && scene.type === 'quiz');
+  if (needsQuiz && quizzes.length === 0) issues.push('quiz scene is required for practice');
+  for (const scene of quizzes) {
+    const content = isObject(scene.content) ? scene.content : {};
+    const questions = content.questions;
+    if (!Array.isArray(questions) || questions.length === 0) {
+      issues.push('quiz scene needs questions');
+      continue;
+    }
+    for (const question of questions) {
+      if (!isObject(question) || !['single', 'multiple', 'short_answer'].includes(String(question.type))
+        || typeof question.question !== 'string' || !question.question.trim()
+        || typeof question.analysis !== 'string' || !question.analysis.trim()
+        || typeof question.points !== 'number' || !Number.isFinite(question.points) || question.points <= 0) {
+        issues.push('quiz question needs a stem, analysis and positive points');
+        continue;
+      }
+      if (question.type === 'short_answer') continue;
+      const options = question.options;
+      const answer = question.answer;
+      if (!Array.isArray(options) || options.length < 3 || options.length > 6
+        || !options.every((option) => isObject(option) && typeof option.label === 'string' && option.label.trim()
+          && typeof option.value === 'string' && option.value.trim())
+        || new Set(options.map((option) => option.value)).size !== options.length
+        || !Array.isArray(answer) || answer.length < (question.type === 'multiple' ? 2 : 1)
+        || (question.type === 'single' && answer.length !== 1)
+        || answer.some((value) => !options.some((option) => option.value === value))
+        || new Set(answer).size !== answer.length) {
+        issues.push('quiz choice question needs 3-6 distinct options and matching answer values');
+      }
+    }
+  }
+  return issues;
 }
 
 function widgetContent(mode: GenerationMode, title: string): { type: 'interactive'; html: string; widgetType?: WidgetType; widgetConfig?: Record<string, unknown> } {
@@ -79,11 +147,14 @@ export function buildGeneratedStage(
     // 完全不同的东西，而前者看起来就像功能坏了。
     content: {
       type: 'slide',
+      slide: {
+        title: `理解${title}`,
+        sections: [{ heading: '概念解释', bullets: [`先明确“${title}”讨论的对象、定义和适用条件，再说明它解决什么问题。`] }],
+      },
       canvas: composeSlideCanvas({
         slide: {
-          title,
-          subtitle: `围绕“${title}”开始学习。`,
-          bullets: [`${title}的核心问题`, `关键概念与相互关系`, `如何检验自己的理解`],
+          title: `理解${title}`,
+          sections: [{ heading: '概念解释', bullets: [`先明确“${title}”讨论的对象、定义和适用条件，再说明它解决什么问题。`] }],
         },
       }),
     },
@@ -93,13 +164,7 @@ export function buildGeneratedStage(
 
   if (mode === 'quiz') {
     type = 'quiz';
-    content = {
-      type: 'quiz',
-      questions: [{ id: id('question'), type: 'single', question: `关于“${title}”，最重要的第一步是什么？`, options: [
-        { label: '先梳理关键概念', value: 'concepts' },
-        { label: '跳过基础直接背答案', value: 'answers' },
-      ], answer: ['concepts'], analysis: '先建立概念结构，再进行练习。', points: 1 }],
-    };
+    content = quizContent(title);
   } else if (mode === 'pbl') {
     type = 'pbl';
     // 本地模板也必须产出渲染器认得的形状，理由同幻灯片：否则"没配模型"看起来
@@ -140,7 +205,15 @@ export function buildGeneratedStage(
       updatedAt: now,
       ...(options.agentIds?.length ? { agentIds: options.agentIds } : {}),
     },
-    scenes: [scene],
+    scenes: mode === 'slide' ? [
+      scene,
+      authoredScene(stageId, 1, `${title}：推导与例子`, {
+        type: 'slide',
+        slide: { title: `${title}：推导与例子`, sections: [{ heading: '推导步骤', bullets: ['从概念的适用条件出发，逐步写出已知量、使用的关系和得到的结论。'] }, { heading: '具体例子', bullets: ['选择一个满足条件的具体情境，代入已知量，再检查结论是否符合原概念。'] }] },
+        canvas: composeSlideCanvas({ slide: { title: `${title}：推导与例子`, sections: [{ heading: '推导步骤', bullets: ['从概念的适用条件出发，逐步写出已知量、使用的关系和得到的结论。'] }, { heading: '具体例子', bullets: ['选择一个满足条件的具体情境，代入已知量，再检查结论是否符合原概念。'] }] } }),
+      }, now),
+      ...(PRACTICE_REQUEST.test(prompt) ? [authoredScene(stageId, 2, `${title}：自测`, quizContent(title), now)] : []),
+    ] : [scene],
   };
 }
 
@@ -155,7 +228,7 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
     // 模型只出结构化内容（title/subtitle/bullets/sections），**排版由服务端合成**：
     // 把绝对坐标交给模型，得到的是重叠与越界，而且只有渲染出来才看得见。
     // 这里同时兜住历史的 `canvas: { title, body }` 形态，老数据不会变成空白页。
-    result.content = { type: 'slide', canvas: composeSlideCanvas(content) };
+    result.content = { type: 'slide', slide: readSlideOutline(content), canvas: composeSlideCanvas(content) };
   }
   if (content?.type === 'quiz' && Array.isArray(content.questions)) {
     result.content = {

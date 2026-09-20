@@ -34,7 +34,7 @@ function rawModelDoc(mode, title) {
           content: { type: 'quiz', questions: [
             {
               type: 'single', question: `关于“${title}”，下面哪个说法更接近本质？`,
-              options: [{ label: '趋势与逼近', value: 'a' }, { label: '死记公式', value: 'b' }],
+              options: [{ label: '趋势与逼近', value: 'a' }, { label: '死记公式', value: 'b' }, { label: '只看函数值', value: 'c' }],
               answer: ['a'], analysis: '极限关心趋势。', points: 1,
             },
           ] },
@@ -46,8 +46,8 @@ function rawModelDoc(mode, title) {
     dslVersion: '0.3.0',
     stage: { name: title, description: `围绕${title}的讲解` },
     scenes: [
-      { title, type: 'slide', content: { type: 'slide', canvas: { title, body: '从生活情境出发。' } } },
-      { title: `${title}·练习`, type: 'slide', content: { type: 'slide', canvas: { title: `${title}·练习`, body: '动手试一试。' } } },
+      { title, type: 'slide', content: { type: 'slide', slide: { title, sections: [{ heading: '概念解释', bullets: ['导数描述函数值相对于自变量变化的瞬时变化率。'] }] } } },
+      { title: `${title}·例子`, type: 'slide', content: { type: 'slide', slide: { title: `${title}·例子`, sections: [{ heading: '具体例子', bullets: ['对 f(x)=x²，在 x=2 处的导数等于 4，表示该点的切线斜率。'] }] } } },
     ],
   };
 }
@@ -294,7 +294,7 @@ test('generation with a provider: enqueue, worker produces a DSL-valid stage, ho
       assert.equal(failed.body.status, 'failed');
       assert.equal(failed.body.error_code, 'provider_invalid_response');
 
-      mode = 'doc';
+      mode = 'fenced';
       await post(base, `/internal/courses/course-1/jobs/${second.body.job_id}/retry`, { body: {}, scopes: ['job:write'] });
       assert.equal(await worker.tick(), true);
       const recovered = await get(base, `/internal/courses/course-1/jobs/${second.body.job_id}`, ['job:read']);
