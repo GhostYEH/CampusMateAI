@@ -367,6 +367,21 @@ node --test harmony/test-host/*.test.mjs
    （`adb devices` 不可用），无法验证世界模型页面的加载、失败降级、`scope_type` 与
    重规划结果在真实设备上的呈现。已执行的部分：538 个单测（0 失败）+ Debug APK 构建，
    以及新增的 `LearnerWorldModelSectionContractTest` 源码级契约测试。
+
+   **关于用 Robolectric 在 JVM 上做 Compose 渲染测试**：已实际尝试过，**离线不可行**，结论如下
+   （避免下次重复踩）：
+
+   - Robolectric 本身可用：`~/.m2/repository/org/robolectric/android-all-instrumented/`
+     已有 API 33/34 的运行时 jar，仓库里也已有 8 个 `@RunWith(RobolectricTestRunner::class)` 单测；
+   - 但 Compose 测试库（`androidx.compose.ui:ui-test-junit4` / `ui-test-manifest`）作为
+     `testImplementation` 引入时，依赖解析会被拉到 `ui-test-android:1.10.0`，其传递依赖
+     `androidx.test.espresso:espresso-core:3.5.0` **不在本地缓存**（缓存里只有 3.7.0），
+     `--offline` 直接失败，`processDebugUnitTestManifest` 报
+     `No cached version of androidx.test.espresso:espresso-core:3.5.0 available for offline mode`；
+   - 另外还需要 `android { testOptions { unitTests { isIncludeAndroidResources = true } } }`，
+     这是对整个模块单测运行环境的改动；
+   - 因此**已回滚**（`build.gradle.kts` 与 HEAD 一致），没有留下坏构建。
+     要做渲染级验证，需要一次**联网**的依赖解析，或直接在设备/模拟器上跑 `androidTest`。
 3. **HarmonyOS 运行时单测与 HAP 构建未执行**：本机没有 DevEco Studio
    （`DEVECO_HOME` 为空、`local.properties` 指向的 SDK 路径不存在）。
    已执行的部分：`node --test harmony/test-host/*.test.mjs`（26 例）。
