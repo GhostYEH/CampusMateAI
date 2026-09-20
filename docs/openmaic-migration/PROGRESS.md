@@ -19,10 +19,10 @@
 
 | 项 | 期望 | 实测 |
 | --- | --- | --- |
-| 前端 `webreact` `npm test` | 全绿 | ← 填写 |
-| 服务 `openmaic-service` `npm test` | 全绿 | ← 填写 |
-| 服务 `npm run typecheck` | 通过 | ← 填写 |
-| 后端 `pytest tests -k openmaic` | 全绿 | ← 填写 |
+| 前端 `webreact` `npm test` | 全绿 | 886 passed / 0 failed |
+| 服务 `openmaic-service` `npm test` | 全绿 | 294 passed / 0 failed |
+| 服务 `npm run typecheck` | 通过 | 55 TypeScript 文件检查通过 |
+| 后端 `pytest tests -k openmaic` | 全绿 | 375 passed / 1883 deselected |
 
 若实测与期望不符：**停下来问**（见 `PROMPT.md` 第 7 节）。
 
@@ -35,7 +35,31 @@
 开工时把 `git status` 的输出抄一份到这里，便于断线后判断"哪些是别人的"：
 
 ```
-（粘贴 git status 的输出）
+M .gitignore
+?? .agents/
+?? .workbuddy-ai/
+?? backend/data/app.db.bak-20260913-195158
+?? backend/data/app.db.bak-before-notice-migration-20260913-234341
+?? backend/data/banner_images/011d3dee401647179b2422b3988b9ca1.png
+?? backend/data/banner_images/05f90e81a21541c88cb1061dd97f9ce0.png
+?? backend/data/banner_images/0f72281b1624431fb99c1d65eae16350.png
+?? backend/data/banner_images/11ca2515323040ffb36c5f8ecbdebbfe.png
+?? backend/data/banner_images/160282a7d8c946e186037a78edbe83ab.png
+?? backend/data/banner_images/1e0285cb2f374b3691755ff72336cae6.png
+?? backend/data/banner_images/1f89f3e3fbc94636ace77782b5e71f94.png
+?? backend/data/banner_images/367811f7b21d44d2a2df229ab6387cd7.png
+?? backend/data/banner_images/58376cf5522f4147b740048efadb4277.png
+?? backend/data/banner_images/64fc09813ba1415a9321af64fcfd0346.png
+?? backend/data/banner_images/6af1f1b757e74dbeacaeab81dba6118b.png
+?? backend/data/banner_images/6ed680d5a65a42d98656f6fcce2550fd.png
+?? backend/data/banner_images/851106ba8a6443649b5947a4a5a4f083.png
+?? backend/data/banner_images/952c92e021a24546962b084d6b2e63cc.png
+?? backend/data/banner_images/c2cf91ff1ca84ddd859f1dd11b93e6dd.png
+?? backend/data/banner_images/ca703b5da29b46ad9d52d523619d524e.png
+?? backend/data/banner_images/d78645785b264c56b10097787e40a7e5.png
+?? backend/data/banner_images/dda226cfbebf4aedace00b5b4deba3e8.png
+?? backend/data/banner_images/e320164bc1774f159558d42a7ebbd698.png
+?? backend/data/banner_images/e913b7c4d4314e9ba0a0350db28913c8.png
 ```
 
 ---
@@ -46,7 +70,7 @@
 
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
-| P1-A | 编辑态渲染真实画布（只读） | 未开始 | — | |
+| P1-A | 编辑态渲染真实画布（只读） | 进行中 | — | |
 | P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 未开始 | — | |
 | P1-C | 文本就地编辑（ProseMirror） | 未开始 | — | |
 | P1-D | 缩放 / 旋转 / 对齐线 / 标尺 | 未开始 | — | |
@@ -83,12 +107,23 @@
 | --- | --- | --- | --- | --- |
 | P5-A | 逐个评估：有运行时才做，没有的不放死按钮 | 未开始 | — | |
 
-### 架构上做不了（保持显式占位，不要伪造）
+### 优先级 6 · 模板后台与运行时闭环
+
+| 切片 | 内容 | 状态 | 提交号 | 备注 |
+| --- | --- | --- | --- | --- |
+| P6-A | PBL 导师/任务/提交/评估/模拟器/持久化 | 未开始 | — | 按 `03-待办.md` 模板依据拆分；现有占位不算完成 |
+| P6-B | 圆桌实时流、逐角色音频与语音输入 | 未开始 | — | 保留已有场景讲解，不重复实现 |
+| P6-C | 测验判分与学习记录闭环 | 未开始 | — | 用户/课程/舞台归属与刷新恢复 |
+| P6-D | 工作台 Agent 会话与编辑闭环 | 未开始 | — | 会话、消息、事件、取消、恢复 |
+| P6-E | Provider/媒体/资料完整链路 | 未开始 | — | 缺凭据只能记未验证，不能虚报通过 |
+| P6-F | 资源、发布、导出与模板全量核对 | 未开始 | — | 逐项记录来源、适配、自动化和浏览器证据 |
+
+### 现有入口缺口（接通运行时前保持显式占位）
 
 | 项 | 原因 | 状态 |
 | --- | --- | --- |
-| PBL workspace 阶段 | 依赖 chat / submission / SSE 流式运行时 | 无法完成（架构限制） |
-| 圆桌实时流式 / 逐智能体 TTS / ASR / 真人头像图 | 同上 | 无法完成（架构限制） |
+| PBL workspace 阶段 | 依赖 chat / submission / SSE 流式运行时 | 未开始（P6-A） |
+| 圆桌实时流式 / 逐智能体 TTS / ASR / 真人头像图 | 待接运行时与资源 | 未开始（P6-B/E/F） |
 
 ---
 
@@ -109,4 +144,8 @@
 
 > 每个切片一行，倒序追加。发现的新坑也记在这里，最终会补进 `04-陷阱.md`。
 
-（还没有记录）
+- 2026-09-20：基线 HEAD `837a4928`，分支 `codex/openmaic-full-migration`；Web build 通过。服务端 4010、FastAPI 8000、Vite 5174 均空闲。
+- 任务裁定：用户要求完整模板前后端移植，旧计划中的“缺运行时”是待补依赖，不是永久排除项；P1–P5 完成仍不代表全部模板能力完成。来源只读，统一登录/课程权限/网关不变。
+- 任务裁定：用户确认其他会话已结束，tts/jobs/provider 的历史会话占用限制失效；保留开工未提交文件，不改其内容。
+- 依赖核对：P1-A 提供完整场景画布，P1-B/C/D/E 依次复用其文档、选中状态和命令保存接口；P2-A/B/D 共用课堂组件，顺序实施；P2-C/P5 共用播放动作与音频状态，先时间线后工具栏；P3/P4 共用画布合成器，先版式后元素及渲染依赖。全部切片顺序提交，禁止并行修改同一实现。
+- 下一步：P1-A 代码、前端测试、构建、真实浏览器（含 320px）及能力矩阵；同时只读核对模板后端能力缺口。
