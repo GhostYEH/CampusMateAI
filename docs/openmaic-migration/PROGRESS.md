@@ -71,7 +71,7 @@ M .gitignore
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
 | P1-A | 编辑态渲染真实画布（只读） | 已完成 | 本提交 | 完整 stage 单次读取；编辑/播放共用画布；320px 上下布局 |
-| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 未开始 | — | |
+| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 待执行 | — | 服务端先补 `slide.element.move`，仅单选 slide 元素 |
 | P1-C | 文本就地编辑（ProseMirror） | 未开始 | — | |
 | P1-D | 缩放 / 旋转 / 对齐线 / 标尺 | 未开始 | — | |
 | P1-E | 元素增删改 | 未开始 | — | |
@@ -132,8 +132,9 @@ M .gitignore
 > 每次更新本文件时把这一节写准。断线后接手方只看这一节就能继续。
 
 - 下一个切片：**P1-B**
-- 打算怎么做：读取参考 `Editor\Canvas\Operate/**`、`hooks\useSelectElement.ts` 和
-  `hooks\useDragElement.ts`，在 P1-A 的当前场景与命令缓冲上实现元素选中、拖拽和冲突重读。
+- 打算怎么做：按 `03-待办.md` 的 P1-B 契约，先让 commands 服务端支持
+  `slide.element.move`，再接单选、pointer drag 与命令缓冲；服务端/网关/Web/浏览器证据
+  齐全后才可标完成。
 - 卡住的地方：无
 
 ---
@@ -148,3 +149,6 @@ M .gitignore
 - 依赖核对：P1-A 提供完整场景画布，P1-B/C/D/E 依次复用其文档、选中状态和命令保存接口；P2-A/B/D 共用课堂组件，顺序实施；P2-C/P5 共用播放动作与音频状态，先时间线后工具栏；P3/P4 共用画布合成器，先版式后元素及渲染依赖。全部切片顺序提交，禁止并行修改同一实现。
 - 下一步：P1-A 代码、前端测试、构建、真实浏览器（含 320px）及能力矩阵；同时只读核对模板后端能力缺口。
 - P1-A：编辑器改为一次 `GET stage` 取得同 revision 的目录和完整画布，新增 `StageCanvasPreview`，复用课堂 `MaicSlideSurface`；动作数组保持完整而不以 outline 的计数覆盖。窄屏从左右栏改为上下栏，并以浏览器断言守住画布最小 250×140px。Web 单测 889 通过、build 通过；隔离全链路通过，320px 首个真实文本为 222.0×22.9px，页面无横向溢出、pageerror/console error/API ≥400 均为 0。
+- P1-B 规划：模板的 `useSelectElement`/`useDragElement` 需要元素级持久化，但现有命令层
+  只支持 stage/scene。先以受限 `slide.element.move` 补齐后端闭环；浏览器只在 pointerup
+  提交最终坐标，避免拖动过程制造请求风暴或整份文档回写。
