@@ -12,6 +12,10 @@ function messageOf(error, fallback) {
  * scoped; the browser never receives provider configuration. */
 export default function ProviderToolsPanel({ courseId, canTts = false, canDiscussion = false }) {
   const [text, setText] = React.useState("");
+  // 音色与风格指令要能真正传到上游。之前这里只发 `{ text }`，于是服务端的
+  // `voice` / `instruction` 永远是默认值，界面上也就没有可调的地方。
+  const [voice, setVoice] = React.useState("");
+  const [instruction, setInstruction] = React.useState("");
   const [prompt, setPrompt] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -66,7 +70,13 @@ export default function ProviderToolsPanel({ courseId, canTts = false, canDiscus
     setBusy(true); setError(""); setNotice(""); setMessages([]);
     try {
       const result = kind === "tts"
-        ? await api.synthesizeOpenMAICTts(courseId, { text: value, idempotencyKey: api.newIdempotencyKey() })
+        ? await api.synthesizeOpenMAICTts(courseId, {
+            text: value,
+            // 空字符串表示"用服务端默认值"，不要发一个空白的 voice 覆盖它。
+            ...(voice.trim() ? { voice: voice.trim() } : {}),
+            ...(instruction.trim() ? { instruction: instruction.trim() } : {}),
+            idempotencyKey: api.newIdempotencyKey(),
+          })
         : await api.runOpenMAICDiscussion(courseId, { prompt: value, idempotencyKey: api.newIdempotencyKey() });
       if (result?.job?.status === "completed") await readArtifact(result.job, kind, mine);
       else if (result?.job_id) await poll(result.job_id, kind, mine);
@@ -82,6 +92,9 @@ export default function ProviderToolsPanel({ courseId, canTts = false, canDiscus
     {notice ? <p className="openmaic-hint" role="status">{notice}</p> : null}
     {canTts ? <form className="openmaic-command" onSubmit={(event) => { event.preventDefault(); void submit("tts"); }}>
       <label className="openmaic-command__input"><Icon name="PhSpeakerHigh" size={18} /><input value={text} onChange={(event) => setText(event.target.value)} maxLength={20000} placeholder="输入要听的讲解文字" aria-label="语音讲解文字" /></label>
+      {/* 音色与风格留空即用服务端配置的默认值；填了才随请求发出去。 */}
+      <label className="openmaic-command__input"><input value={voice} onChange={(event) => setVoice(event.target.value)} maxLength={80} placeholder="音色（留空用默认）" aria-label="语音音色" /></label>
+      <label className="openmaic-command__input"><input value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={2000} placeholder="风格指令（留空用默认）" aria-label="语音风格指令" /></label>
       <Button type="submit" disabled={busy || !text.trim()}>生成语音</Button>
     </form> : null}
     {audioUrl ? <audio className="openmaic-provider-tools__audio" controls src={audioUrl} aria-label="语音讲解播放器" /> : null}

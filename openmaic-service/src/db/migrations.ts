@@ -198,6 +198,22 @@ export const MIGRATIONS: Migration[] = [
       `ALTER TABLE materials ADD COLUMN payload BLOB`,
     ],
   },
+  {
+    version: 7,
+    name: 'scene_narration_binding',
+    statements: [
+      // 讲解音频必须**可归属到具体场景**。没有这两列时，"这个 artifact 是哪一页的"
+      // 只能靠时间顺序猜，于是切换场景或重复生成后音频就会挂错页——这正是要修的
+      // 那个缺陷。scene_id 允许为空：圆桌讨论、视频导出等非讲解任务不绑定场景。
+      `ALTER TABLE jobs ADD COLUMN scene_id TEXT`,
+      // 讲稿指纹：同一场景、同一讲稿的重复请求可以被识别出来，避免重复计费的
+      // MiMo 调用。空值表示该任务与讲稿无关。
+      `ALTER TABLE jobs ADD COLUMN narration_hash TEXT`,
+      // 按 (用户, 课程, 场景) 查"这一页有没有现成音频"是最热的一条读路径。
+      `CREATE INDEX idx_jobs_scene_narration
+         ON jobs (user_id, course_id, scene_id, kind, status)`,
+    ],
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.reduce((max, item) => Math.max(max, item.version), 0);

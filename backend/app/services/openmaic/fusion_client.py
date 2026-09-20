@@ -71,6 +71,11 @@ ARCHIVE_WRITE_SCOPES = ("archive:write",)
 VIDEO_EXPORT_SCOPES = ("archive:read", "job:write")
 GENERATION_WRITE_SCOPES = ("generation:write", "workspace:write", "job:write")
 TTS_WRITE_SCOPES = ("tts:write",)
+# Scene narration is the same capability as TTS, addressed per scene: reading is
+# enough to ask "does this page have audio", writing additionally synthesizes.
+# They stay separate so a read-only view can poll without holding a write grant.
+NARRATION_READ_SCOPES = ("tts:read",)
+NARRATION_WRITE_SCOPES = ("tts:write",)
 DISCUSSION_WRITE_SCOPES = ("multi-agent:write",)
 # Artifacts are the finished products of jobs (stage JSON, WAV audio); reading
 # one is a job-level capability, so it reuses the job read scope.
@@ -907,6 +912,57 @@ class OpenMAICFusionClient:
             json_body={"prompt": prompt}, idempotency_key=idempotency_key,
         )
 
+    async def get_scene_narration(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        scene_id: str,
+    ) -> dict[str, Any]:
+        """Read whether one scene already has narration audio.
+
+        The scene is addressed by id, so the answer is bound to that page: the
+        service derives the script from the scene body and reports the job that
+        belongs to it (or nothing). The browser therefore never has to remember
+        a job/artifact id to keep audio attached to the right scene.
+        """
+        return await self._request(
+            "GET", self._narration_path(course_id, workspace_id, stage_id, scene_id),
+            user_id=user_id, course_id=course_id, scopes=NARRATION_READ_SCOPES,
+        )
+
+    async def synthesize_scene_narration(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        workspace_id: str,
+        stage_id: str,
+        scene_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Enqueue narration for exactly one scene.
+
+        No text crosses this boundary: the service derives the script from the
+        scene body, so the audio cannot describe something other than the page
+        it is attached to.
+        """
+        return await self._request(
+            "POST", self._narration_path(course_id, workspace_id, stage_id, scene_id),
+            user_id=user_id, course_id=course_id, scopes=NARRATION_WRITE_SCOPES,
+            json_body={"scene_id": scene_id, "stage_id": stage_id},
+            idempotency_key=idempotency_key,
+        )
+
+    @staticmethod
+    def _narration_path(course_id: str, workspace_id: str, stage_id: str, scene_id: str) -> str:
+        return (
+            f"/internal/courses/{course_id}/workspaces/{workspace_id}"
+            f"/stages/{stage_id}/scenes/{scene_id}/narration"
+        )
+
     async def get_artifact(
         self, *, user_id: str, course_id: str, artifact_id: str
     ) -> dict[str, Any]:
@@ -968,6 +1024,8 @@ __all__ = [
     "VIDEO_EXPORT_SCOPES",
     "GENERATION_WRITE_SCOPES",
     "TTS_WRITE_SCOPES",
+    "NARRATION_READ_SCOPES",
+    "NARRATION_WRITE_SCOPES",
     "DISCUSSION_WRITE_SCOPES",
     "ARTIFACT_READ_SCOPES",
     "JOB_READ_SCOPES",

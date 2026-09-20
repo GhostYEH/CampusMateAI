@@ -511,6 +511,35 @@ export async function runOpenMAICDiscussion(courseId, { prompt, idempotencyKey }
   ));
 }
 
+/**
+ * 读取某个场景的讲解音频状态。
+ *
+ * 请求里只带 scene id，不带任何文本：讲稿由服务端从这一页的正文派生，所以
+ * "这一页的音频"与"这一页的内容"不可能对不上。返回里 `job` 为 null 表示这一页
+ * 还没有音频（或讲稿为空，看 `has_script`）。
+ */
+export async function getOpenMAICSceneNarration(courseId, workspaceId, stageId, sceneId) {
+  return dataOf(await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/narration`,
+  ));
+}
+
+/**
+ * 为**一个**场景排队生成讲解音频。
+ *
+ * 显式传 sceneId 作为幂等键的一部分：同一页重复点击应复用同一个任务，而不是
+ * 再付一次 TTS。真正的去重由服务端做（已完成/在飞/幂等键三层），这里只是让
+ * 默认键对同一页稳定。
+ */
+export async function synthesizeOpenMAICSceneNarration(courseId, workspaceId, stageId, sceneId, { idempotencyKey } = {}) {
+  const key = idempotencyKey || `narration:${courseId}:${stageId}:${sceneId}`;
+  return dataOf(await client.post(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/narration`,
+    { scene_id: sceneId, stage_id: stageId },
+    { headers: { "Idempotency-Key": key } },
+  ));
+}
+
 export async function getOpenMAICArtifact(courseId, artifactId) {
   const response = await client.get(`/courses/${courseId}/artifacts/${artifactId}`, { responseType: "blob" });
   return {

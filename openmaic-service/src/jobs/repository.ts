@@ -17,6 +17,10 @@ export interface JobRow {
   attempts: number;
   error_code: string | null;
   artifact_id: string | null;
+  /** 讲解任务绑定的场景；非讲解任务为 null。 */
+  scene_id: string | null;
+  /** 生成该音频所用的讲稿指纹；非讲解任务为 null。 */
+  narration_hash: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -62,26 +66,82 @@ export class JobRepository {
     kind: string;
     mode: string;
     request: unknown;
+    sceneId?: string | null;
+    narrationHash?: string | null;
     now?: string;
   }): JobRow {
     const now = input.now ?? nowIso();
     const id = `job_${randomUUID().replaceAll('-', '')}`;
     this.#db.prepare(
-      `INSERT INTO jobs (id, user_id, course_id, kind, mode, input_json, status, progress, attempts, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 0, ?, ?)`,
-    ).run(id, input.userId, input.courseId, input.kind, input.mode, JSON.stringify(input.request), now, now);
+      `INSERT INTO jobs (id, user_id, course_id, kind, mode, input_json, status, progress, attempts, scene_id, narration_hash, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, 0, ?, ?, ?, ?)`,
+    ).run(id, input.userId, input.courseId, input.kind, input.mode, JSON.stringify(input.request),
+      input.sceneId ?? null, input.narrationHash ?? null, now, now);
     return this.get({ userId: input.userId, courseId: input.courseId, jobId: id });
   }
 
   get(input: { userId: string; courseId: string; jobId: string }): JobRow {
     const row = this.#db.prepare(
       `SELECT id, user_id, course_id, kind, mode, input_json, status, progress, attempts,
-              error_code, artifact_id, created_at, updated_at, started_at, finished_at, cancelled_at
+              error_code, artifact_id, scene_id, narration_hash, created_at, updated_at,
+              started_at, finished_at, cancelled_at
          FROM jobs
         WHERE id = ? AND user_id = ? AND course_id = ?`,
     ).get(input.jobId, input.userId, input.courseId) as JobRow | undefined;
     if (!row) notFound();
     return row;
+  }
+
+  /**
+   * 找出某个场景**已完成**的讲解任务。
+   *
+   * 这是"切换场景 / 刷新页面后仍然挂对页"的读路径：客户端只给 sceneId，
+   * 服务端按 (用户, 课程, 场景) 反查，而不是让客户端记住 job 或 artifact id。
+   * 只返回 completed：queued/running 的任务由调用方按 job 状态轮询，失败的任务
+   * 不应被当成"这一页有音频"。
+   */
+  findCompletedSceneNarration(input: {
+    userId: string;
+    courseId: string;
+    sceneId: string;
+    narrationHash?: string | null;
+  }): JobRow | null {
+    const hashFilter = input.narrationHash ? 'AND narration_hash = ?' : '';
+    const params: unknown[] = [input.userId, input.courseId, input.sceneId];
+    if (input.narrationHash) params.push(input.narrationHash);
+    const row = this.#db.prepare(
+      `SELECT id, user_id, course_id, kind, mode, input_json, status, progress, attempts,
+              error_code, artifact_id, scene_id, narration_hash, created_at, updated_at,
+              started_at, finished_at, cancelled_at
+         FROM jobs
+        WHERE user_id = ? AND course_id = ? AND scene_id = ? AND kind = 'tts'
+          AND status = 'completed' AND artifact_id IS NOT NULL ${hashFilter}
+        ORDER BY updated_at DESC, id DESC LIMIT 1`,
+    ).get(...params) as JobRow | undefined;
+    return row ?? null;
+  }
+
+  /**
+   * 找出该场景**正在进行中**的讲解任务。
+   *
+   * 用于让重复点击复用同一个任务而不是再排一个：学生连点两次"生成讲解"只应
+   * 产生一次 MiMo 调用。
+   */
+  findActiveSceneNarration(input: {
+    userId: string;
+    courseId: string;
+    sceneId: string;
+  }): JobRow | null {
+    const row = this.#db.prepare(
+      `SELECT id, user_id, course_id, kind, mode, input_json, status, progress, attempts,
+              error_code, artifact_id, scene_id, narration_hash, created_at, updated_at,
+              started_at, finished_at, cancelled_at
+         FROM jobs
+        WHERE user_id = ? AND course_id = ? AND scene_id = ? AND kind = 'tts'
+          AND status IN ('queued', 'running')
+        ORDER BY created_at DESC, id DESC LIMIT 1`,
+    ).get(input.userId, input.courseId, input.sceneId) as JobRow | undefined;
+    return row ?? null;
   }
 
   cancel(input: { userId: string; courseId: string; jobId: string; now?: string }): JobRow {

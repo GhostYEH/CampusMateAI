@@ -23,6 +23,8 @@ import {
 } from "../../features/openmaic/roundtableModel.js";
 import { SCENE_TYPE_LABELS } from "../../features/openmaic/editorModel.js";
 import { useNarrowViewport } from "../../features/openmaic/workbenchLayoutModel.js";
+import { useSceneNarration } from "../../features/openmaic/useSceneNarration.js";
+import { canGenerateNarration, narrationLabel } from "../../features/openmaic/narrationModel.js";
 
 /**
  * 学习态课堂：把参考项目（清华大学学习平台 / OpenMAIC）的播放态界面接到
@@ -127,6 +129,11 @@ export default function OpenMAICClassroomStage({
   const go = React.useCallback((next) => {
     setIndex((currentIndex) => (next < 0 || next > scenes.length - 1 ? currentIndex : next));
   }, [scenes.length]);
+
+  // ── 讲解音频 ─────────────────────────────────────────────────────────────
+  // 按**当前场景**取音频。hook 内部以 sceneId 为键并在换场景时释放 blob，
+  // 所以 A 页的音频不可能出现在 B 页上；刷新后关联由服务端反查给出。
+  const narration = useSceneNarration({ courseId, workspaceId, stageId, sceneId: currentId });
 
   // ── 圆桌讨论 ─────────────────────────────────────────────────────────────
   // 讨论是**任务式**的（提交 → 轮询 job → 取 artifact），不是流式。所以状态只有
@@ -274,6 +281,7 @@ export default function OpenMAICClassroomStage({
         discussing={discussing}
         messages={messages}
         discussionError={discussionError}
+        narration={narration}
       />
     </MaicClassroomShell>
   </div>;
@@ -299,6 +307,7 @@ function SceneStage({
   discussing,
   messages,
   discussionError,
+  narration,
 }) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
@@ -348,6 +357,7 @@ function SceneStage({
         onToggleSidebar={onToggleSidebar}
         onPrev={onPrev}
         onNext={onNext}
+        narration={narration}
       />}
       messages={messages}
       busy={discussing}
@@ -374,11 +384,16 @@ function SceneStage({
  * **并进圆桌**，不是被丢弃：播放态的底部是「工具栏条（36px）+ 三栏交互区（156px）」
  * 共 192px。所以这里由 `MaicRoundtable` 的 `toolbar` 属性接住它。
  *
- * 参考工具栏还有白板、元素拾取、演示、静音、停止讨论等控件，它们依赖 TTS / 圆桌
- * 流式 / 画布 store，本仓库没有对应运行时，因此不渲染（不占位、也不放点了没反应的
+ * 参考工具栏还有白板、元素拾取、演示、停止讨论等控件，它们依赖圆桌流式 /
+ * 画布 store，本仓库没有对应运行时，因此不渲染（不占位、也不放点了没反应的
  * 死按钮）。
+ *
+ * **讲解音频在这里。** 它不再是"输入一段文字去合成"，而是"这一页的讲解"：
+ * 有音频就直接播放，没有就给一个「生成讲解」入口，生成中显示进度，失败显示
+ * 原因并可重试。参考项目的那个静音按钮依赖 TTS 播放计划，本仓库没有该运行时，
+ * 所以这里用真实的 `<audio>` 元素而不是复刻一个假按钮。
  */
-function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
+function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext, narration }) {
   const empty = total === 0;
   return <div className={cn(
     "shrink-0 h-9 px-2 flex items-center gap-2",
@@ -405,6 +420,8 @@ function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev,
       </span>
     </div>
 
+    <NarrationControl narration={narration} />
+
     <div className="flex-1 flex items-center justify-center min-w-0">
       <button
         type="button"
@@ -427,6 +444,65 @@ function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev,
         <ChevronRight className="w-3.5 h-3.5" />
       </button>
     </div>
+  </div>;
+}
+
+/**
+ * 讲解音频控件。
+ *
+ * 五种状态各有各的界面，**没有一种会把失败伪装成"没有音频"**：
+ * - `checking`：细的加载指示，不占位成按钮；
+ * - `generating`：禁用按钮 + 说明，避免重复提交；
+ * - `ready`：真实的 `<audio controls>`，由浏览器负责播放；
+ * - `none`：说明"这一页没有可讲解的文字"，且不再给生成入口（点了也没用）；
+ * - `error`：显示原因 + 可重试的「重新生成讲解」。
+ *
+ * 音频元素只在 `ready` 时挂载，因此换场景后旧音频会随组件消失，不可能串页。
+ */
+function NarrationControl({ narration }) {
+  if (!narration) return null;
+  const { state, error, notice, audioUrl, generate } = narration;
+  if (state === "idle") return null;
+
+  return <div className="flex items-center gap-2 min-w-0 shrink-0">
+    {state === "checking" ? <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">正在检查讲解…</span> : null}
+
+    {narration.ready && audioUrl ? <audio
+      className="h-7 max-w-[240px]"
+      controls
+      preload="none"
+      src={audioUrl}
+      data-testid="narration-audio"
+      aria-label="本页讲解音频"
+    /> : null}
+
+    {state === "generating" ? <span className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 select-none" role="status">
+      <span className="loading-orb" style={{ width: 12, height: 12 }} />
+      正在生成讲解…
+    </span> : null}
+
+    {canGenerateNarration({ state }) ? <button
+      type="button"
+      onClick={() => void generate()}
+      className={cn(ctrlBtn, "h-6 px-2 gap-1 text-[11px] text-gray-600 dark:text-gray-300")}
+      data-testid="narration-generate"
+      title={state === "error" ? error || "重新生成这一页的讲解" : "为这一页生成讲解音频"}
+    >
+      <Icon name="PhSpeakerHigh" size={13} />
+      {state === "error" ? "重新生成讲解" : "生成讲解"}
+    </button> : null}
+
+    {state === "none" ? <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none truncate" role="status">
+      {notice || "这一页没有可讲解的文字"}
+    </span> : null}
+
+    {state === "error" && error ? <span className="text-[11px] text-amber-600 dark:text-amber-400 truncate" role="alert" title={error}>
+      {error}
+    </span> : null}
+
+    {narration.ready && narration.truncated ? <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none" role="status">
+      原文较长，已截断
+    </span> : null}
   </div>;
 }
 

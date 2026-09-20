@@ -14,6 +14,7 @@ import {
   type ProviderErrorCode,
   renderStageToMp4,
 } from './client.ts';
+import { narrationFilename } from '../tts/scene-narration-routes.ts';
 
 /**
  * Provider work cannot run inside a route handler: handlers are synchronous on
@@ -130,9 +131,19 @@ export function createProviderJobWorker(options: {
       instruction: typeof input.instruction === 'string' ? input.instruction : undefined,
       voice: typeof input.voice === 'string' ? input.voice : undefined,
     });
+    // 文件名如实反映这份音频是什么：
+    // - 绑定了场景的（scene_id + scene_title）是**该场景的讲解**，带页名与短 id，
+    //   在产物列表里一眼能看出归属，也不会与别页混淆；
+    // - 没绑定场景的仍是自由文本合成（既有 `/tts` 路径），如实叫"语音合成"，
+    //   不再冒充"讲解音频"。
+    const sceneId = typeof input.scene_id === 'string' ? input.scene_id : '';
+    const sceneTitle = typeof input.scene_title === 'string' ? input.scene_title : '';
+    const filename = sceneId
+      ? narrationFilename(sceneTitle, sceneId)
+      : `${safeFilename(text.slice(0, 40), '语音合成')}.wav`;
     jobs.complete({
       ...identity,
-      artifact: { filename: '讲解音频.wav', mediaType: 'audio/wav', payload: wav },
+      artifact: { filename, mediaType: 'audio/wav', payload: wav },
       now: now(),
     });
   }

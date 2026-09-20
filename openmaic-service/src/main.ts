@@ -18,6 +18,7 @@ import { createServer } from './server.ts';
 import { createWorkspaceRoutes } from './workspace/routes.ts';
 import { WorkspaceRepository } from './workspace/repository.ts';
 import { createTtsRoutes } from './tts/routes.ts';
+import { createSceneNarrationRoutes } from './tts/scene-narration-routes.ts';
 
 // Provider credentials may live in a local .env file next to the service;
 // real environment variables still win.
@@ -76,6 +77,9 @@ const server = createServer({
       external3d: Boolean(config.externalCdnUrl),
     } }),
     ...createTtsRoutes({ database, tts: config.tts }),
+    // 按场景的讲解音频。与上面的自由文本 `/tts` 并存：后者保持既有契约不动，
+    // 前者才是"讲课"的入口——讲稿由服务端从场景正文派生，音频因此与页一一对应。
+    ...createSceneNarrationRoutes({ database, workspaces, tts: config.tts }),
     ...createDiscussionRoutes({ database, provider: config.provider }),
   ],
 });

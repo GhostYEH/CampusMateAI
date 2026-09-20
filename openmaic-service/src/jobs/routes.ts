@@ -37,6 +37,9 @@ export function jobResponse(row: JobRow): Record<string, unknown> {
     attempts: Number(row.attempts),
     error_code: row.error_code,
     artifact_id: row.artifact_id,
+    // 讲解任务带场景归属，客户端据此把音频挂到**正确的那一页**，而不是按
+    // "最近生成的一个"去猜。非讲解任务为 null。
+    scene_id: row.scene_id ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     started_at: row.started_at,
