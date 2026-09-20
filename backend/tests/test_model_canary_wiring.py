@@ -785,3 +785,60 @@ def test_candidate_base_url_must_be_a_safe_origin():
         with pytest.raises(ValueError):
             Settings(app_env="test", database_url="sqlite:///:memory:", campusmate_lm_enabled=True,
                      campusmate_lm_base_url=bad, campusmate_lm_api_key="k", campusmate_lm_model_name="m")
+
+
+# ===== 10. 线程安全：同步路由跑在 threadpool 里 =====
+
+
+def test_canary_gate_is_read_only_even_when_called_from_a_worker_thread():
+    """同步路由（FastAPI 会放进 threadpool）调用门禁时，不得改动熔断状态。
+
+    `GET /learner-state/canary-gate/{capability}` 是 **`def`** 而非 `async def`，
+    所以 FastAPI 会把它丢进线程池执行。门禁曾经调用会**写入** `probe_in_flight`
+    的 `_circuit_allows` —— 也就是说那次写入来自 worker 线程，与事件循环上
+    真实进行的 half-open 探测并发。修复后门禁只用只读查询，这个跨线程写入消失。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    candidate = GroundedFakeLLM()
+    container, student, _client, _headers = _setup(
+        candidate=candidate, campusmate_lm_circuit_breaker_cooldown_seconds=0.0,
+    )
+    _insert_promotion_decision(container)
+    runner = container.model_shadow_runner
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+    before = dict(runner.circuit_status("learning_summary_v1"))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(
+            lambda _: container.learner_control_service.canary_gate(
+                capability_name="learning_summary_v1", user_id=student.id),
+            range(8),
+        ))
+
+    assert all(item == {"allowed": True, "reason": None} for item in results), results
+    after = dict(runner.circuit_status("learning_summary_v1"))
+    assert after["probe_in_flight"] is False, "多线程调用门禁也不得占用探测权"
+    assert after["failures"] == before["failures"], "只读查询不得改写失败计数"
+    assert after["generation"] == before["generation"], "只读查询不得推进熔断代次"
+
+
+def test_sync_canary_gate_route_stays_read_only_over_http():
+    """同一结论走真实 HTTP：同步路由连续调用后熔断状态逐字段不变。"""
+    candidate = GroundedFakeLLM()
+    container, _student, client, headers = _setup(
+        candidate=candidate, campusmate_lm_circuit_breaker_cooldown_seconds=0.0,
+    )
+    _insert_promotion_decision(container)
+    runner = container.model_shadow_runner
+    for _ in range(runner.circuit_breaker_threshold):
+        runner._record_failure("learning_summary_v1")
+    before = dict(runner.circuit_status("learning_summary_v1"))
+
+    for _ in range(5):
+        response = client.get(f"{API}/learner-state/canary-gate/learning_summary_v1", headers=headers)
+        assert response.status_code == 200, response.text
+        assert response.json() == {"allowed": True, "reason": None}
+
+    assert dict(runner.circuit_status("learning_summary_v1")) == before

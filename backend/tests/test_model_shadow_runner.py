@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -375,3 +376,52 @@ def test_probe_success_closes_the_circuit_and_resets_failures() -> None:
         assert status["probe_in_flight"] is False
 
     asyncio.run(scenario())
+
+
+def test_replanning_worker_thread_never_touches_the_circuit_breaker() -> None:
+    """后台 Worker 跑在 `asyncio.to_thread` 里：它的调用图不得触及熔断器。
+
+    `main.py` 与 `AdaptiveReplanningWorker` 都用 `asyncio.to_thread` 执行 tick，
+    也就是说 tick 在 **worker 线程**里跑。熔断状态目前只在事件循环上被修改，
+    这正是"不需要加锁"的前提。一旦 adaptive_agent 将来引用了熔断器，
+    这个前提就失效了 —— 所以用源码级断言把它钉住。
+    """
+    package = Path(__file__).resolve().parents[1] / "app" / "services" / "adaptive_agent"
+    assert package.is_dir(), f"找不到 adaptive_agent 包：{package}"
+    offenders: list[tuple[str, str]] = []
+    for path in sorted(package.glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        for token in ("model_shadow_runner", "ModelShadowRunner", "model_assist_service", "_circuits"):
+            if token in text:
+                offenders.append((path.name, token))
+    assert offenders == [], (
+        f"adaptive_agent 跑在 worker 线程，不得触及熔断器（否则需要加锁）：{offenders}"
+    )
+
+
+def _code_without_comments(text: str) -> str:
+    """去掉 `#` 行内注释，避免注释里提到方法名造成假阳性。"""
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
+def test_circuit_mutations_are_confined_to_run() -> None:
+    """只有 `run()` 可以改动熔断状态；其余调用点必须是只读的。
+
+    这条不变量是"熔断状态只在事件循环上被修改"的静态证据。
+    """
+    root = Path(__file__).resolve().parents[1]
+    runner_source = _code_without_comments(
+        (root / "app" / "services" / "model_shadow_runner.py").read_text(encoding="utf-8"))
+    gate_source = _code_without_comments(
+        (root / "app" / "services" / "learner_control_service.py").read_text(encoding="utf-8"))
+    # 门禁不得出现任何**调用**会写熔断状态的方法（注释里说明原因不算）。
+    for token in ("_circuit_allows(", "_record_failure(", "_record_success(", "_release_probe("):
+        assert token not in gate_source, f"门禁不得调用会写状态的 {token}"
+    assert "canary_allowed(" in gate_source, "门禁必须使用只读查询"
+    # runner 内部：申请放行只允许出现在 run() 里。
+    assert runner_source.count("self._circuit_allows(") == 1, "只允许 run() 申请放行"
+    # 三个记账/释放入口都必须带代次，漏一个等于没修。
+    for token in ("self._record_failure(", "self._record_success(", "self._release_probe("):
+        occurrences = runner_source.count(token)
+        with_generation = runner_source.count(f"{token}request.capability_name, generation=generation")
+        assert occurrences == with_generation, f"{token} 必须全部带 generation：{occurrences} vs {with_generation}"

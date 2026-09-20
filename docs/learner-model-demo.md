@@ -172,6 +172,22 @@ GET /learning-plans/{id}/summary
 `_record_success` / `_record_failure` / `_release_probe`。放行与取代次必须在同一段
 **没有 `await`** 的同步代码里完成，否则两者可能来自不同的熔断状态。
 
+### 线程模型：熔断状态只在事件循环上被修改
+
+这一点决定了"不需要加锁"，已用测试钉住：
+
+- **唯一的写入方**是 `run()`，它只被 `async def summarize_learning_plan`
+  与其 `BackgroundTasks` 异步回调 await —— 都在事件循环上；
+- `GET /learner-state/canary-gate/{capability}` 是**同步**路由（`def`），
+  FastAPI 会把它放进 **threadpool** 执行。它现在只用只读的 `canary_allowed()`，
+  多线程并发调用后熔断状态逐字段不变（有单测）；
+- 后台 Worker 通过 `asyncio.to_thread` 在 **worker 线程**里跑 `tick`，
+  但 `adaptive_agent` 包**零引用**熔断器（有源码级断言守着这条不变量）。
+
+> 顺带发现：在 `4c30001b` 之前，门禁调用的是会写入 `probe_in_flight` 的
+> `_circuit_allows`，而它所在的路由是同步路由 —— 也就是说那次写入**来自 worker 线程**，
+> 与事件循环上真实进行的 half-open 探测并发。修复门禁的同时也消除了这个跨线程写入。
+
 ### 部署形态与跨进程一致性（重要）
 
 **当前部署是单服务进程，因此进程内熔断状态是一致且正确的。**
