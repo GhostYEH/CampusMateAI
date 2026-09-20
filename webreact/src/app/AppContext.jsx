@@ -3,7 +3,12 @@ import { applyTokenPair, getChaoxingStatus, getDashboard, getTodayAgenda, login 
 import { createSessionScopedLoader, normalizeTodayAgenda, shouldProbeChaoxingAuth } from "../data/agendaModel.js";
 import { clearStoredSession, readStoredSession } from "./auth.js";
 
-const AppContext = createContext(null);
+// Fast Refresh can evaluate this module again while preserving consumers from
+// the previous module instance. Keep the context identity process-stable so an
+// old Provider and a newly evaluated useApp() still read the same context.
+const APP_CONTEXT_KEY = Symbol.for("campusmate.app-context");
+const AppContext = globalThis[APP_CONTEXT_KEY] || createContext(null);
+globalThis[APP_CONTEXT_KEY] = AppContext;
 
 function normalizeUser(user) {
   return {
