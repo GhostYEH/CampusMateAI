@@ -730,6 +730,59 @@ def check_editor_canvas(page, recorder: Recorder, report: list[str]) -> None:
             page.screenshot(path=str(SHOTS / f'ow-editor-canvas-{width}.png'), full_page=False)
 
     page.set_viewport_size({'width': 1440, 'height': 900})
+    # P1-B：只验证一个有限坐标的 slide 元素。拖动期间不能产生写请求，只有
+    # pointerup 后点击保存才会把 slide.element.move 命令送进网关；保存后刷新仍
+    # 要看到同一元素的新位置。
+    movable_id = editor.locator('[data-maic-element-id]').evaluate_all('''nodes => {
+        const target = [...nodes].find(node => {
+            const paint = node.querySelector('[class*="base-element-"]') || node;
+            const box = paint.getBoundingClientRect();
+            return box.width > 0 && box.height > 0;
+        });
+        return target?.dataset.maicElementId || null;
+    }''') if editor.locator('[data-maic-element-id]').count() else None
+    assert movable_id, '真实画布没有可见的可拖动元素'
+    movable_host = editor.locator(f'[data-maic-element-id="{movable_id}"]').first
+    movable = movable_host.locator('[class*="base-element-"]').first
+    before = movable.bounding_box()
+    assert before and before['width'] > 0 and before['height'] > 0, before
+    start_x = before['x'] + before['width'] / 2
+    start_y = before['y'] + before['height'] / 2
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    page.mouse.move(start_x + 28, start_y + 18, steps=4)
+    page.mouse.up()
+    save = editor.get_by_role('button', name='保存', exact=True)
+    expect(save).to_be_enabled(timeout=5000)
+    with page.expect_response(
+        lambda response: '/commands' in response.url and response.request.method == 'POST',
+        timeout=30000,
+    ) as save_response:
+        save.click()
+    command_response = save_response.value
+    assert command_response.ok, f'拖拽保存失败：HTTP {command_response.status}'
+    posted = command_response.request.post_data_json
+    command = (posted or {}).get('commands', [{}])[0]
+    assert command.get('type') == 'slide.element.move', command
+    assert command.get('elementId'), command
+    assert isinstance(command.get('left'), (int, float)) and isinstance(command.get('top'), (int, float)), command
+    page.wait_for_timeout(500)
+    moved = movable.bounding_box()
+    assert moved and moved['x'] > before['x'] + 5 and moved['y'] > before['y'] + 5, {
+        'before': before, 'moved': moved, 'command': command,
+    }
+    page.reload(wait_until='domcontentloaded')
+    expect(page.locator('.openmaic-stage-editor')).to_be_visible(timeout=30000)
+    expect(page.locator('.openmaic-stage-editor .base-element-text').first).to_be_visible(timeout=30000)
+    refreshed = page.locator(
+        f'.openmaic-stage-editor [data-maic-element-id="{movable_id}"] [class*="base-element-"]'
+    ).first.bounding_box()
+    assert refreshed and refreshed['x'] > before['x'] + 5 and refreshed['y'] > before['y'] + 5, {
+        'before': before, 'refreshed': refreshed,
+    }
+    _step(report, f'真实拖拽保存并刷新：{command["elementId"]} → '
+                 f'left={command["left"]:.1f}, top={command["top"]:.1f}')
+
     page.locator('[data-testid="ow-start-learning"]').click()
     learning = page.locator('[data-testid="ow-learning-classroom"]')
     expect(learning).to_be_visible(timeout=30000)

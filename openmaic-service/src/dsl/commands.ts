@@ -43,6 +43,7 @@ export const STAGE_COMMANDS = [
   'scene.duplicate',
   'scene.move',
   'scene.update',
+  'slide.element.move',
 ] as const;
 
 export type StageCommandType = (typeof STAGE_COMMANDS)[number];
@@ -331,6 +332,53 @@ function applySceneUpdate(
   return { ...aggregate, scenes };
 }
 
+function finiteCoordinate(command: Record<string, unknown>, path: string, field: 'left' | 'top'): number {
+  const value = command[field];
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new DslCommandError('command_field_invalid', `${path}.${field}`, `${path}.${field} 必须是有限数字`);
+  }
+  return value;
+}
+
+/** Move one existing slide element without touching its payload or action timeline. */
+function applySlideElementMove(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+): StageAggregate {
+  const sceneId = requireSceneId(command, path);
+  const elementId = nonEmptyString(command.elementId, `${path}.elementId`);
+  const left = finiteCoordinate(command, path, 'left');
+  const top = finiteCoordinate(command, path, 'top');
+  const sceneIndex = sceneIndexOf(aggregate.scenes, sceneId, `${path}.sceneId`);
+  const scene = aggregate.scenes[sceneIndex];
+  if (scene.type !== 'slide' || scene.content.type !== 'slide') {
+    throw new DslCommandError(
+      'slide_element_requires_slide',
+      `${path}.sceneId`,
+      'slide.element.move 只能作用于 slide 场景',
+    );
+  }
+  const canvas = scene.content.canvas;
+  const elements = isObject(canvas) && Array.isArray(canvas.elements) ? canvas.elements : [];
+  const elementIndex = elements.findIndex(
+    (element) => isObject(element) && element.id === elementId,
+  );
+  if (elementIndex === -1) {
+    throw new DslCommandError('element_not_found', `${path}.elementId`, `找不到元素 ${elementId}`);
+  }
+  const target = elements[elementIndex] as Record<string, unknown>;
+  const nextElements = elements.slice();
+  nextElements[elementIndex] = { ...target, left, top };
+  const nextScene = {
+    ...scene,
+    content: { ...scene.content, canvas: { ...canvas, elements: nextElements } },
+  };
+  const scenes = aggregate.scenes.slice();
+  scenes[sceneIndex] = nextScene;
+  return { ...aggregate, scenes };
+}
+
 export interface ApplyOptions {
   /** Injected for deterministic fixture output; defaults to `Date.now()`. */
   now?: number;
@@ -393,6 +441,9 @@ export function applyStageCommands(
         break;
       case 'scene.update':
         aggregate = applySceneUpdate(aggregate, rawCommand, path, now);
+        break;
+      case 'slide.element.move':
+        aggregate = applySlideElementMove(aggregate, rawCommand, path);
         break;
       default: {
         const exhaustive: never = rawCommand.type;

@@ -71,7 +71,7 @@ M .gitignore
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
 | P1-A | 编辑态渲染真实画布（只读） | 已完成 | 本提交 | 完整 stage 单次读取；编辑/播放共用画布；320px 上下布局 |
-| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 待执行 | — | 服务端先补 `slide.element.move`，仅单选 slide 元素 |
+| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 已完成 | 本提交 | `slide.element.move` 受限命令；单选、空白取消、pointerup 拖拽；仅有限坐标 slide 元素可操作 |
 | P1-C | 文本就地编辑（ProseMirror） | 未开始 | — | |
 | P1-D | 缩放 / 旋转 / 对齐线 / 标尺 | 未开始 | — | |
 | P1-E | 元素增删改 | 未开始 | — | |
@@ -131,10 +131,9 @@ M .gitignore
 
 > 每次更新本文件时把这一节写准。断线后接手方只看这一节就能继续。
 
-- 下一个切片：**P1-B**
-- 打算怎么做：按 `03-待办.md` 的 P1-B 契约，先让 commands 服务端支持
-  `slide.element.move`，再接单选、pointer drag 与命令缓冲；服务端/网关/Web/浏览器证据
-  齐全后才可标完成。
+- 下一个切片：**P1-C**
+- 打算怎么做：按 `03-待办.md` 的 P1-C 契约，先核对模板 ProseMirror 编辑器与当前
+  DSL 文本元素，再补文本命令、服务端净化/校验闭环和保存后回读。
 - 卡住的地方：无
 
 ---
@@ -152,3 +151,9 @@ M .gitignore
 - P1-B 规划：模板的 `useSelectElement`/`useDragElement` 需要元素级持久化，但现有命令层
   只支持 stage/scene。先以受限 `slide.element.move` 补齐后端闭环；浏览器只在 pointerup
   提交最终坐标，避免拖动过程制造请求风暴或整份文档回写。
+- P1-B：新增受限 `slide.element.move` 命令，只更新既有 slide 元素的有限 `left/top`，保留
+  actions、场景顺序与无关字段；网关继续复用 commands 的课程权限、revision、幂等闭环。
+  Web 端以 `data-maic-element-id` 实现单选、空白取消和按实际缩放换算的 pointer drag，只有
+  pointerup 进入命令缓冲；Web 891 通过、service 297 通过、FastAPI 编辑器 10 通过、隔离真实
+  浏览器验证拖动保存刷新后坐标仍在，320px 画布 304×171px，无 pageerror/console error/API
+  错误。

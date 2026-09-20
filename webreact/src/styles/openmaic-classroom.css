@@ -164,6 +164,7 @@
 .openmaic-scene-item__select:focus-visible { outline: 2px solid #b9c7f0; outline-offset: 2px; border-radius: 5px; }
 .maic-edit-canvas { min-width: 0; min-height: 0; overflow: hidden; border-radius: 12px; background: #f8fafc; box-shadow: inset 0 0 0 1px var(--line); }
 .maic-edit-canvas__surface { background: #f8fafc; }
+.maic-edit-canvas__selection { position: absolute; z-index: 20; pointer-events: none; border: 2px solid #722ed1; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.9), 0 0 0 4px rgba(114,46,209,.14); }
 .maic-edit-canvas__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; height: 100%; padding: 20px; color: var(--muted); text-align: center; }
 .maic-edit-canvas__empty strong { color: var(--ink); font-size: 13px; }
 .maic-edit-canvas__empty p { margin: 0; font-size: 12px; }

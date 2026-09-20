@@ -15,6 +15,7 @@ import {
   sceneDuplicateCommand,
   sceneMoveCommand,
   sceneUpdateCommand,
+  slideElementMoveCommand,
 } from "../../features/openmaic/editorModel.js";
 
 /**
@@ -131,6 +132,11 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
       setError(failure.message || "这条编辑无法应用。");
       return false;
     }
+  }
+
+  function moveSlideElement(elementId, left, top) {
+    if (!selectedScene?.id) return false;
+    return run(slideElementMoveCommand(selectedScene.id, elementId, left, top));
   }
 
   async function editScene(sceneId) {
@@ -277,7 +283,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
           <Button type="button" variant="quiet" onClick={() => run(sceneDeleteCommand(scene.id))}>删除</Button>
         </li>)}
         </ol>
-        <StageCanvasPreview scene={selectedScene} />
+        <StageCanvasPreview scene={selectedScene} onMoveElement={moveSlideElement} />
       </div>
       : <div className="openmaic-home__empty openmaic-home__empty--wide">
         <Icon name="PhLayout" size={26} />

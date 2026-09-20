@@ -133,6 +133,72 @@ test('a scene.update may not change the scene type', () => {
   );
 });
 
+test('slide.element.move changes only the target coordinates and keeps actions', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1',
+      stageId: 'stg_1',
+      title: '画布',
+      order: 0,
+      type: 'slide',
+      actions: [{ id: 'act_1', type: 'speech', text: '保留' }],
+      content: {
+        type: 'slide',
+        canvas: {
+          width: 1000,
+          height: 562.5,
+          elements: [
+            { id: 'el_1', type: 'text', left: 10, top: 20, width: 100, height: 40, content: 'A' },
+            { id: 'el_2', type: 'shape', left: 30, top: 40, width: 20, height: 20 },
+          ],
+        },
+      },
+    }],
+  };
+  const next = applyStageCommands(document, [{
+    type: 'slide.element.move', sceneId: 'slide_1', elementId: 'el_1', left: 110.5, top: 220.25,
+  }]);
+  assert.deepEqual(next.scenes[0].content.canvas.elements[0], {
+    id: 'el_1', type: 'text', left: 110.5, top: 220.25, width: 100, height: 40, content: 'A',
+  });
+  assert.deepEqual(next.scenes[0].content.canvas.elements[1], document.scenes[0].content.canvas.elements[1]);
+  assert.deepEqual(next.scenes[0].actions, document.scenes[0].actions);
+  assert.equal(next.scenes[0].order, document.scenes[0].order);
+});
+
+test('slide.element.move rejects unknown targets, non-slide scenes, and non-finite coordinates', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [
+      {
+        id: 'slide_1', stageId: 'stg_1', title: '幻灯片', order: 0, type: 'slide',
+        content: { type: 'slide', canvas: { elements: [{ id: 'el_1', left: 1, top: 2 }] } },
+      },
+      {
+        id: 'quiz_1', stageId: 'stg_1', title: '测验', order: 1, type: 'quiz',
+        content: { type: 'quiz', questions: [] },
+      },
+    ],
+  };
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.move', sceneId: 'missing', elementId: 'el_1', left: 1, top: 2 }]),
+    (error) => error instanceof DslCommandError && error.code === 'scene_not_found',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.move', sceneId: 'slide_1', elementId: 'missing', left: 1, top: 2 }]),
+    (error) => error instanceof DslCommandError && error.code === 'element_not_found',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.move', sceneId: 'quiz_1', elementId: 'el_1', left: 1, top: 2 }]),
+    (error) => error instanceof DslCommandError && error.code === 'slide_element_requires_slide',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.move', sceneId: 'slide_1', elementId: 'el_1', left: Number.NaN, top: 2 }]),
+    (error) => error instanceof DslCommandError && error.code === 'command_field_invalid',
+  );
+});
+
 test('an unknown command or a missing scene is refused before anything is applied', () => {
   const first = applyStageCommands(aggregate(), [{ type: 'scene.create', sceneType: 'slide' }]);
   assert.throws(
@@ -175,6 +241,37 @@ test('applying a command list stores the result and bumps the revision', async (
     assert.equal(response.body.applied_commands, 2);
     assert.equal(response.body.document.scenes.length, 2);
     assert.deepEqual(response.body.document.scenes.map((scene) => scene.order), [0, 1]);
+  });
+});
+
+test('an HTTP element move persists coordinates and leaves the scene timeline untouched', async () => {
+  const { server } = harness();
+  await withServer(server, async (base) => {
+    const { workspaceId, stageId, revision } = await seedStage(base);
+    const created = await call(base, 'POST', commandsPath(workspaceId, stageId), {
+      body: {
+        commands: [{
+          type: 'scene.create', sceneType: 'slide', title: '可拖拽',
+          content: {
+            type: 'slide',
+            canvas: { width: 1000, height: 562.5, elements: [{ id: 'el_drag', type: 'text', left: 40, top: 50, width: 200, height: 60, content: '拖动我' }] },
+          },
+          actions: [{ id: 'act_1', type: 'speech', text: '时间线不应丢失' }],
+        }],
+      },
+      headers: headers({ extra: { 'if-match': String(revision), 'idempotency-key': nextKey() } }),
+    });
+    assert.equal(created.status, 200);
+    const sceneId = created.body.document.scenes[0].id;
+    const moved = await call(base, 'POST', commandsPath(workspaceId, stageId), {
+      body: { commands: [{ type: 'slide.element.move', sceneId, elementId: 'el_drag', left: 140.25, top: 87.5 }] },
+      headers: headers({ extra: { 'if-match': String(created.body.revision), 'idempotency-key': nextKey() } }),
+    });
+    assert.equal(moved.status, 200);
+    const scene = moved.body.document.scenes[0];
+    assert.deepEqual(scene.content.canvas.elements[0].left, 140.25);
+    assert.deepEqual(scene.content.canvas.elements[0].top, 87.5);
+    assert.deepEqual(scene.actions, [{ id: 'act_1', type: 'speech', text: '时间线不应丢失' }]);
   });
 });
 
