@@ -44,10 +44,24 @@ const maicFiles = walk("src/maic");
 
 test("the classroom reads the server's render decision, not its own guess", () => {
   assert.match(stageSource, /api\.getOpenMAICStagePlayback\(/, "场景列表必须来自播放计划");
-  assert.match(stageSource, /normalizePlayback\(payload\)/, "播放计划必须经统一归一化");
-  assert.match(stageSource, /api\.getOpenMAICStageScene\(/, "正文必须来自授权的单场景端点");
+  assert.match(stageSource, /normalizePlayback\(/, "播放计划必须经统一归一化");
+  // 正文来自授权的**舞台文档**端点：一次取回全部场景，侧栏缩略图与主画布共用
+  // 同一次读取。逐场景拉正文会让 8 个场景变成 8 次请求，而且缩略图拿不到内容。
+  assert.match(stageSource, /api\.getOpenMAICStage\(/, "正文必须来自授权的舞台文档端点");
+  assert.match(stageSource, /indexScenesById\(stageDocument\)/, "舞台文档必须按场景 id 建索引");
+  assert.doesNotMatch(stageSource, /getOpenMAICStageScene\(/, "不得退回逐场景拉取正文");
   // 渲染决定只在服务端给，组件不得自己推导 kind。
   assert.doesNotMatch(stageSource, /render\s*:\s*\{\s*kind\s*:/, "组件不得自己伪造 render.kind");
+});
+
+test("the classroom shows real slide thumbnails from the same document", () => {
+  // 侧栏只拿到播放计划时 slide 缩略图永远是灰框（播放计划不含正文）。
+  assert.match(stageSource, /sidebarScenes/, "侧栏必须收到合并了正文的场景列表");
+  assert.match(stageSource, /content: contentByScene\[entry\.id\]\?\.content/, "正文必须按场景并入侧栏列表");
+  assert.match(stageSource, /renderSlideThumbnail/, "必须把 slide 缩略图渲染器交给侧栏");
+  // 缩略图复用播放画布，因此缩略图与实际内容不可能不一致。
+  assert.match(stageSource, /<MaicSlideSurface canvas=\{canvas\}/, "缩略图必须复用同一套画布渲染");
+  assert.match(stageSource, /elements\.length === 0\) return null/, "没有元素的旧画布必须交回占位分支，而不是画空白");
 });
 
 // ===== 2. 沙箱只减不增 =====
@@ -76,14 +90,15 @@ test("the classroom reuses the shared sandbox policy and never widens it", () =>
 
 // ===== 3. 迟到响应不得写进新上下文 =====
 
-test("late responses are dropped for both stage and scene switches", () => {
-  // 换舞台：epoch 守卫。
+test("late responses are dropped when the stage changes", () => {
+  // 换舞台：epoch 守卫。正文与播放计划是**并发**发出的两个请求，必须同处一道
+  // 守卫之后——只挡其中一个，另一个的迟到响应照样会写进新舞台的上下文。
   assert.match(stageSource, /epoch\.current \+= 1/, "换舞台必须递增 epoch");
+  assert.match(stageSource, /await Promise\.all\(/, "两个请求必须并发发出");
   assert.match(stageSource, /mine !== epoch\.current\) return/, "迟到的舞台响应必须被丢弃");
-  // 换场景：取消标记守卫。
-  assert.match(stageSource, /cancelled = true/, "换场景必须有取消标记");
-  assert.match(stageSource, /if \(cancelled \|\| mine !== epoch\.current\) return;/,
-    "场景正文响应必须同时过 epoch 与取消两道守卫");
+  // 状态写入必须在守卫之后：先 await 再判断再 set，缺一不可。
+  const guardedWrites = stageSource.match(/if \(mine !== epoch\.current\) return;/g) ?? [];
+  assert.ok(guardedWrites.length >= 2, "成功与失败两条路径都必须过 epoch 守卫");
 });
 
 // ===== 4. 不编造内容 =====

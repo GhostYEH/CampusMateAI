@@ -4,6 +4,7 @@ import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
 import { MaicClassroomShell } from "../../maic/classroom/index.js";
 import { MaicSceneRenderer } from "../../maic/scene/index.js";
+import { MaicSlideSurface } from "../../maic/slide/index.js";
 import {
   degradeNotice,
   describePlaybackError,
@@ -40,7 +41,10 @@ export default function OpenMAICClassroomStage({
   onExit,
 }) {
   const [plan, setPlan] = React.useState(null);
-  const [scene, setScene] = React.useState(null);
+  // 场景正文按 id 索引。整份舞台文档一次取回（`GET .../stages/{id}` 返回
+  // document.scenes），因此侧栏缩略图与主画布**共用同一次读取**——逐场景拉正文
+  // 会让 8 个场景变成 8 次请求，而且侧栏缩略图根本拿不到内容，只能显示灰框。
+  const [contentByScene, setContentByScene] = React.useState({});
   const [index, setIndex] = React.useState(0);
   // 侧栏默认宽度 220px。320px 视口下它会把主列压到 100px：头栏的返回按钮与右侧
   // 控制簇互相重叠，「返回编辑」点不到。所以窄屏（≤1023px）一进来就收起侧栏，
@@ -54,7 +58,6 @@ export default function OpenMAICClassroomStage({
     setCollapsed(narrow);
   }, [narrow]);
   const [loading, setLoading] = React.useState(true);
-  const [sceneLoading, setSceneLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const epoch = React.useRef(0);
 
@@ -63,14 +66,21 @@ export default function OpenMAICClassroomStage({
     setLoading(true);
     setError("");
     try {
-      const payload = await api.getOpenMAICStagePlayback(courseId, workspaceId, stageId);
+      // 播放计划给**渲染决定**（render.kind 是服务端的判断，前端不自己猜），
+      // 舞台文档给**正文**。两者一起取，任一失败都算这次读取失败。
+      const [playback, stageDocument] = await Promise.all([
+        api.getOpenMAICStagePlayback(courseId, workspaceId, stageId),
+        api.getOpenMAICStage(courseId, workspaceId, stageId),
+      ]);
       if (mine !== epoch.current) return; // 迟到的响应不得写进新上下文
-      const normalized = normalizePlayback(payload);
+      const normalized = normalizePlayback(playback);
       setPlan(normalized);
       setIndex(normalized.startIndex);
+      setContentByScene(indexScenesById(stageDocument));
     } catch (failure) {
       if (mine !== epoch.current) return;
       setPlan(null);
+      setContentByScene({});
       setError(describePlaybackError(failure).message);
     } finally {
       if (mine === epoch.current) setLoading(false);
@@ -84,37 +94,25 @@ export default function OpenMAICClassroomStage({
   // 换舞台必须归零：上一份正文留在屏幕上比空白更糟。
   React.useEffect(() => {
     setIndex(0);
-    setScene(null);
+    setContentByScene({});
   }, [courseId, workspaceId, stageId]);
 
   const scenes = plan?.scenes || [];
   const current = scenes[index] || null;
   const currentId = current?.id || "";
+  const scene = currentId ? contentByScene[currentId] || null : null;
+  // 正文随舞台文档一次取回，所以**没有**逐场景的加载态：只有整体还在读时才转圈。
+  // 写成 `Boolean(currentId) && scene === null` 会让"该场景不在文档里"永久转圈，
+  // 那是把"读不到"伪装成"正在读"——必须落到下面那条如实的兜底文案。
+  const sceneLoading = loading;
 
-  React.useEffect(() => {
-    if (!currentId) {
-      setScene(null);
-      return;
-    }
-    const mine = epoch.current;
-    let cancelled = false;
-    setSceneLoading(true);
-    void (async () => {
-      try {
-        const payload = await api.getOpenMAICStageScene(courseId, workspaceId, stageId, currentId);
-        if (cancelled || mine !== epoch.current) return;
-        setScene(payload);
-      } catch {
-        // 读不到正文就只显示标题，不编造内容。
-        if (!cancelled && mine === epoch.current) setScene(null);
-      } finally {
-        if (!cancelled && mine === epoch.current) setSceneLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [courseId, workspaceId, stageId, currentId]);
+  // 侧栏要的是「导航信息 + 缩略图内容」：导航信息来自播放计划（顺序与渲染决定），
+  // 缩略图内容来自舞台文档。把两者合到一份列表，`SceneThumbnailContent` 才能拿到
+  // `scene.content`；只传播放计划的话 slide 缩略图永远是灰框。
+  const sidebarScenes = React.useMemo(
+    () => scenes.map((entry) => ({ ...entry, content: contentByScene[entry.id]?.content })),
+    [scenes, contentByScene],
+  );
 
   const go = React.useCallback((next) => {
     setIndex((currentIndex) => (next < 0 || next > scenes.length - 1 ? currentIndex : next));
@@ -157,7 +155,7 @@ export default function OpenMAICClassroomStage({
   return <div className="maic-root flex-1 min-h-0 min-w-0 flex">
     <MaicClassroomShell
       title={plan?.title || fallbackTitle}
-      scenes={scenes}
+      scenes={sidebarScenes}
       currentSceneId={currentId}
       onSelectScene={(id) => {
         const next = scenes.findIndex((entry) => entry.id === id);
@@ -171,7 +169,16 @@ export default function OpenMAICClassroomStage({
       // 品牌图，直接沿用会渲染成一张破图（alt 文本裸露、占据 h-6 高度）。把上游
       // 二进制搬进来要走 third_party 的 LICENSE/NOTICE/清单流程，不属于本次范围，
       // 所以用同槽位的文字字标替代：视觉角色一致（一行品牌标识），且不会破图。
-      sidebarProps={{ headerSlot: <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">OpenMAIC</span> }}
+      sidebarProps={{
+        headerSlot: <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">OpenMAIC</span>,
+        // 侧栏缩略图走**同一份**正文：有真实画布就画真实缩略图，没有就交给移植层
+        // 自带的占位分支。参考项目这里用的是 `SlideThumbnail`，本仓库没有该组件，
+        // 所以复用播放画布（`MaicSlideSurface`）在缩略图尺寸下渲染——缩略图与大图
+        // 因此不可能不一致。
+        renderSlideThumbnail: ({ slide, sceneId }) => (
+          <SlideThumbnail canvas={slide} sceneId={sceneId} />
+        ),
+      }}
       backControl={onExit ? <Button
         type="button"
         variant="secondary"
@@ -195,7 +202,6 @@ export default function OpenMAICClassroomStage({
   </div>;
 }
 
-/** 场景类型 → 中文标签，与工作台目录用语同源（`editorModel.SCENE_TYPE_LABELS`）。 */
 /**
  * 画布区。只负责**如实执行**服务端给出的渲染决定：
  * 原生交给移植来的渲染器，沙箱交给最小 sandbox 的 iframe，其余说清缺什么。
@@ -251,5 +257,41 @@ function Fallback({ title, type, text }) {
     </small>
     <strong className="text-base font-medium">「{title}」当前无法播放</strong>
     <p className="text-sm text-gray-400">{text}</p>
+  </div>;
+}
+
+/**
+ * 舞台文档 → `{ [sceneId]: scene }`。
+ *
+ * `GET .../stages/{id}` 返回 `{ document: { scenes: [...] } }`；拿不到就返回空表，
+ * 调用方据此显示"读不到"而不是编造内容。非数组、缺 id 的条目一律跳过——半个
+ * 索引比没有索引更危险，它会让某些场景看起来"存在但没有内容"。
+ */
+function indexScenesById(stageDocument) {
+  const scenes = stageDocument?.document?.scenes;
+  if (!Array.isArray(scenes)) return {};
+  const index = {};
+  for (const entry of scenes) {
+    if (entry && typeof entry.id === "string" && entry.id) index[entry.id] = entry;
+  }
+  return index;
+}
+
+/**
+ * 侧栏里的幻灯片缩略图。
+ *
+ * 复用播放画布而不是另写一个渲染器：两者共用同一份画布 JSON 和同一套元素渲染件，
+ * 因此**缩略图与实际播放内容不可能不一致**。参考项目在这里用的是独立的
+ * `SlideThumbnail`，本仓库没有该组件；画布盒由侧栏给出（aspect-video +
+ * overflow-hidden），这里的 `h-full w-full` 让画布自行 contain 缩放并居中。
+ *
+ * 没有 `elements` 的历史画布返回 `null`：让移植层的占位分支接管，而不是画一块
+ * 空白色矩形冒充缩略图。
+ */
+function SlideThumbnail({ canvas }) {
+  const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
+  if (!elements || elements.length === 0) return null;
+  return <div className="h-full w-full">
+    <MaicSlideSurface canvas={canvas} />
   </div>;
 }
