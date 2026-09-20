@@ -62,6 +62,19 @@ export function sceneUpdateCommand(sceneId, patch = {}) {
   return { type: "scene.update", sceneId, ...patch };
 }
 
+export function slideElementMoveCommand(sceneId, elementId, left, top) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
+  }
+  if (typeof elementId !== "string" || !elementId.trim()) {
+    throw new EditorCommandError("element_id_required", "elementId", "必须指定元素");
+  }
+  if (!Number.isFinite(left) || !Number.isFinite(top)) {
+    throw new EditorCommandError("command_field_invalid", "coordinates", "元素坐标必须是有限数字");
+  }
+  return { type: "slide.element.move", sceneId, elementId, left, top };
+}
+
 export function stageUpdateCommand(patch = {}) {
   return { type: "stage.update", ...patch };
 }
@@ -156,6 +169,43 @@ export function applyCommandLocally(document, command) {
         );
       }
       scenes[at] = { ...scenes[at], ...patch };
+      return { ...document, scenes };
+    }
+    case "slide.element.move": {
+      if (!Number.isFinite(command.left) || !Number.isFinite(command.top)) {
+        throw new EditorCommandError("command_field_invalid", "coordinates", "元素坐标必须是有限数字");
+      }
+      const at = indexOf(command.sceneId);
+      const scene = scenes[at];
+      if (scene.type !== "slide" || scene.content?.type !== "slide") {
+        throw new EditorCommandError("slide_element_requires_slide", "sceneId", "只能移动 slide 场景元素");
+      }
+      const elements = Array.isArray(scene.content.canvas?.elements) ? scene.content.canvas.elements : [];
+      const elementAt = elements.findIndex((element) => element?.id === command.elementId);
+      if (elementAt === -1) {
+        throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
+      }
+      const target = elements[elementAt];
+      if (
+        typeof target?.left !== "number" || !Number.isFinite(target.left) ||
+        typeof target?.top !== "number" || !Number.isFinite(target.top)
+      ) {
+        throw new EditorCommandError(
+          "element_position_invalid",
+          "elementId",
+          "目标元素缺少有限的 left/top 坐标",
+        );
+      }
+      const nextElements = elements.slice();
+      nextElements[elementAt] = {
+        ...nextElements[elementAt],
+        left: command.left,
+        top: command.top,
+      };
+      scenes[at] = {
+        ...scene,
+        content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } },
+      };
       return { ...document, scenes };
     }
     case "stage.update": {

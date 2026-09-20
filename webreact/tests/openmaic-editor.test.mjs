@@ -28,6 +28,7 @@ import {
   sceneDuplicateCommand,
   sceneMoveCommand,
   sceneUpdateCommand,
+  slideElementMoveCommand,
 } from "../src/features/openmaic/editorModel.js";
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
@@ -78,6 +79,42 @@ test("a local move refuses an out-of-range target and reindexes on success", () 
   const moved = applyCommandLocally(document, sceneMoveCommand("s2", 0));
   assert.deepEqual(moved.scenes.map((scene) => scene.id), ["s2", "s1"]);
   assert.deepEqual(moved.scenes.map((scene) => scene.order), [0, 1]);
+});
+
+test("slide.element.move mirrors only a finite coordinate pair on an existing slide element", () => {
+  const document = documentWith([{
+    id: "s1", type: "slide", title: "A", order: 0,
+    actions: [{ id: "a1", type: "speech", text: "保留" }],
+    content: {
+      type: "slide",
+      canvas: { elements: [{ id: "e1", type: "text", left: 10, top: 20, width: 100, height: 40 }] },
+    },
+  }]);
+  const command = slideElementMoveCommand("s1", "e1", 120.5, 80.25);
+  const moved = applyCommandLocally(document, command);
+  assert.deepEqual(moved.scenes[0].content.canvas.elements[0], {
+    id: "e1", type: "text", left: 120.5, top: 80.25, width: 100, height: 40,
+  });
+  assert.deepEqual(moved.scenes[0].actions, document.scenes[0].actions);
+  assert.throws(() => slideElementMoveCommand("s1", "e1", Number.NaN, 1), (error) => error.code === "command_field_invalid");
+  assert.throws(() => applyCommandLocally(document, slideElementMoveCommand("s1", "missing", 1, 1)), (error) => error.code === "element_not_found");
+  assert.throws(() => applyCommandLocally({ ...document, scenes: [{ ...document.scenes[0], type: "quiz", content: { type: "quiz", questions: [] } }] }, slideElementMoveCommand("s1", "e1", 1, 1)), (error) => error.code === "slide_element_requires_slide");
+  const missingPosition = documentWith([{
+    id: "s2", type: "slide", title: "B", order: 0,
+    content: { type: "slide", canvas: { elements: [{ id: "e2", type: "shape" }] } },
+  }]);
+  assert.throws(
+    () => applyCommandLocally(missingPosition, slideElementMoveCommand("s2", "e2", 1, 1)),
+    (error) => error.code === "element_position_invalid" && error.path === "elementId",
+  );
+  const nonFinitePosition = documentWith([{
+    id: "s3", type: "slide", title: "C", order: 0,
+    content: { type: "slide", canvas: { elements: [{ id: "e3", type: "shape", left: 0, top: Number.POSITIVE_INFINITY }] } },
+  }]);
+  assert.throws(
+    () => applyCommandLocally(nonFinitePosition, slideElementMoveCommand("s3", "e3", 1, 1)),
+    (error) => error.code === "element_position_invalid" && error.path === "elementId",
+  );
 });
 
 test("duplicating locally deep-copies the payload", () => {
@@ -283,6 +320,18 @@ test("editor exposes a bounded scene document editor backed by scene.update", ()
   assert.match(editorSource, /api\.getOpenMAICStageScene\(/);
   assert.match(editorSource, /aria-label="场景 DSL 内容"/);
   assert.match(editorSource, /sceneUpdateCommand\(.*content/s);
+});
+
+test("editor canvas exposes single selection, blank cancellation, and pointerup-only move wiring", () => {
+  const canvasSource = read("src/maic/edit/StageCanvasPreview.jsx");
+  assert.match(canvasSource, /data-maic-element-id/);
+  assert.match(canvasSource, /onPointerDown/);
+  assert.match(canvasSource, /setPointerCapture/);
+  assert.match(canvasSource, /onMoveElement/);
+  assert.match(canvasSource, /pointerup/);
+  assert.doesNotMatch(canvasSource, /sceneElementDelete|multi|rotate|resize/);
+  assert.match(editorSource, /slideElementMoveCommand/);
+  assert.match(editorSource, /onMoveElement/);
 });
 
 test("the outline and a single scene are read from the editor endpoints", async () => {

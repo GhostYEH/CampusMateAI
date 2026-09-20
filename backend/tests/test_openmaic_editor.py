@@ -132,6 +132,29 @@ def test_applying_commands_forwards_a_command_list_not_a_document():
     assert response.json()["applied_commands"] == 1
 
 
+def test_element_move_keeps_the_stage_command_gateway_contract():
+    _, transport, http, headers, course_id = _setup([])
+    transport.script.append((200, _stage_payload(course_id, revision=3, applied_commands=1)))
+    command = {
+        "type": "slide.element.move",
+        "sceneId": "scn_slide",
+        "elementId": "el_title",
+        "left": 142.5,
+        "top": 88.25,
+    }
+    response = http.post(
+        _commands_path(course_id),
+        json={"commands": [command]},
+        headers={**headers, "If-Match": "2", "Idempotency-Key": "move-1"},
+    )
+    assert response.status_code == 200
+    assert transport.calls[0]["json"] == {"commands": [command]}
+    assert "document" not in transport.calls[0]["json"]
+    assert transport.calls[0]["headers"]["If-Match"] == "2"
+    assert transport.calls[0]["headers"]["Idempotency-Key"] == "move-1"
+    assert _claims(transport.calls[0])["scope"] == ["stage:read", "stage:write"]
+
+
 def test_the_editor_edit_requires_if_match_and_an_idempotency_key():
     _, transport, http, headers, course_id = _setup([])
 

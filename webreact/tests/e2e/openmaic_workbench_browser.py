@@ -71,10 +71,17 @@ class Recorder:
             "type": m.type, "text": m.text, "location": m.location or {},
         }))
         page.on("pageerror", lambda e: self.page_errors.append(str(e)))
-        page.on("requestfailed", lambda r: self.failed_requests.append({
-            "url": r.url, "method": r.method,
-            "failure": (r.failure or {}).get("errorText", ""),
-        }))
+        def capture_failed_request(request) -> None:
+            # Playwright Python has returned both a dict and a plain string for
+            # Request.failure across versions. Diagnostics must never crash the
+            # browser run merely because a request already failed.
+            failure = request.failure
+            error_text = failure.get("errorText", "") if isinstance(failure, dict) else str(failure or "")
+            self.failed_requests.append({
+                "url": request.url, "method": request.method, "failure": error_text,
+            })
+
+        page.on("requestfailed", capture_failed_request)
         page.on("response", lambda r: self.responses.append({"url": r.url, "status": r.status}))
         # 未处理的 Promise rejection 是"console error 之外"的另一类真实缺陷。
         page.add_init_script(
@@ -338,7 +345,9 @@ def enter_classroom_from_my_courses(page, recorder: Recorder, report: list[str])
     assert "/openmaic-preview" not in page.url, f"「进入课堂」不应走生成预览：{page.url}"
     _step(report, f"点击后进入直达页（非预览、非角色选择）：{page.url.split('/courses/')[-1]}")
 
-    page.wait_for_url("**/workspaces/**", timeout=60000)
+    # 首次进入会创建并等待真实后台任务；后续「补一个舞台」的路径已允许两分钟，
+    # 这里采用同一上限，避免慢机器在任务已正常运行时把验收误判为导航失败。
+    page.wait_for_url("**/workspaces/**", timeout=120000)
     assert "/counselor" not in page.url, "不得跳到小助手"
     expect(page.locator('[data-testid="openmaic-workbench"]')).to_be_visible(timeout=30000)
     _step(report, "直达工作台：未经过角色 / 模式 / 预览确认")
@@ -682,6 +691,118 @@ def check_stage_ratio(page, report: list[str]) -> None:
                  f"（inline {stage['inlineWidth']}×{stage['inlineHeight']}，computed aspect-ratio={stage['aspectRatio']}）")
 
 
+def check_editor_canvas(page, recorder: Recorder, report: list[str]) -> None:
+    """真实文档必须在编辑态绘制；缩小视口不能把画布变成空盒。"""
+    editor = page.locator('.openmaic-stage-editor')
+    expect(editor).to_be_visible(timeout=30000)
+    text_elements = editor.locator('.base-element-text')
+    expect(text_elements.first).to_be_visible(timeout=30000)
+    editor_ids = editor.locator('[data-maic-element-id]').evaluate_all(
+        '(nodes) => [...new Set(nodes.map(node => node.dataset.maicElementId))].sort()'
+    )
+    assert editor_ids, '编辑态未绘制真实 DSL 元素'
+    for width, height in ((1440, 900), (320, 720)):
+        page.set_viewport_size({'width': width, 'height': height})
+        if width == 320:
+            page.get_by_role('button', name='课堂', exact=True).click()
+        expect(text_elements.first).to_be_visible()
+        page.wait_for_timeout(450)
+        geometry = text_elements.first.evaluate('''node => {
+            const box = node.getBoundingClientRect();
+            return { width: box.width, height: box.height, text: node.innerText,
+                pageWidth: document.documentElement.clientWidth,
+                scrollWidth: document.documentElement.scrollWidth };
+        }''')
+        assert geometry['width'] > 0 and geometry['height'] > 0, geometry
+        assert geometry['text'].strip(), '真实文本元素没有正文'
+        assert geometry['scrollWidth'] <= geometry['pageWidth'] + 1, geometry
+        if width == 320:
+            canvas = editor.locator('[data-testid="openmaic-editor-canvas"]').evaluate('''node => {
+                const box = node.getBoundingClientRect();
+                return { width: box.width, height: box.height };
+            }''')
+            assert canvas['width'] >= 250 and canvas['height'] >= 140, canvas
+        _step(report, f"编辑画布 {width}px：{len(editor_ids)} 个真实元素，首个文本 "
+                      f"{geometry['width']:.1f}×{geometry['height']:.1f}px，"
+                      f"页面 scrollWidth={geometry['scrollWidth']}px")
+        if SHOTS:
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=str(SHOTS / f'ow-editor-canvas-{width}.png'), full_page=False)
+
+    page.set_viewport_size({'width': 1440, 'height': 900})
+    # P1-B：只验证一个有限坐标的 slide 元素。拖动期间不能产生写请求，只有
+    # pointerup 后点击保存才会把 slide.element.move 命令送进网关；保存后刷新仍
+    # 要看到同一元素的新位置。
+    movable_id = editor.locator('[data-maic-element-id]').evaluate_all('''nodes => {
+        const target = [...nodes].find(node => {
+            const paint = node.querySelector('[class*="base-element-"]') || node;
+            const box = paint.getBoundingClientRect();
+            return box.width > 0 && box.height > 0;
+        });
+        return target?.dataset.maicElementId || null;
+    }''') if editor.locator('[data-maic-element-id]').count() else None
+    assert movable_id, '真实画布没有可见的可拖动元素'
+    movable_host = editor.locator(f'[data-maic-element-id="{movable_id}"]').first
+    movable = movable_host.locator('[class*="base-element-"]').first
+    before = movable.bounding_box()
+    assert before and before['width'] > 0 and before['height'] > 0, before
+    start_x = before['x'] + before['width'] / 2
+    start_y = before['y'] + before['height'] / 2
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    page.mouse.move(start_x + 28, start_y + 18, steps=4)
+    page.mouse.up()
+    save = editor.get_by_role('button', name='保存', exact=True)
+    expect(save).to_be_enabled(timeout=5000)
+    with page.expect_response(
+        lambda response: '/commands' in response.url and response.request.method == 'POST',
+        timeout=30000,
+    ) as save_response:
+        save.click()
+    command_response = save_response.value
+    assert command_response.ok, f'拖拽保存失败：HTTP {command_response.status}'
+    posted = command_response.request.post_data_json
+    command = (posted or {}).get('commands', [{}])[0]
+    assert command.get('type') == 'slide.element.move', command
+    assert command.get('elementId'), command
+    assert isinstance(command.get('left'), (int, float)) and isinstance(command.get('top'), (int, float)), command
+    page.wait_for_timeout(500)
+    moved = movable.bounding_box()
+    assert moved and moved['x'] > before['x'] + 5 and moved['y'] > before['y'] + 5, {
+        'before': before, 'moved': moved, 'command': command,
+    }
+    page.reload(wait_until='domcontentloaded')
+    expect(page.locator('.openmaic-stage-editor')).to_be_visible(timeout=30000)
+    expect(page.locator('.openmaic-stage-editor .base-element-text').first).to_be_visible(timeout=30000)
+    refreshed = page.locator(
+        f'.openmaic-stage-editor [data-maic-element-id="{movable_id}"] [class*="base-element-"]'
+    ).first.bounding_box()
+    assert refreshed and refreshed['x'] > before['x'] + 5 and refreshed['y'] > before['y'] + 5, {
+        'before': before, 'refreshed': refreshed,
+    }
+    _step(report, f'真实拖拽保存并刷新：{command["elementId"]} → '
+                 f'left={command["left"]:.1f}, top={command["top"]:.1f}')
+
+    page.locator('[data-testid="ow-start-learning"]').click()
+    learning = page.locator('[data-testid="ow-learning-classroom"]')
+    expect(learning).to_be_visible(timeout=30000)
+    expect(learning.locator('.base-element-text').first).to_be_visible(timeout=30000)
+    playback_ids = learning.locator('[data-maic-element-id]').evaluate_all(
+        '(nodes) => [...new Set(nodes.map(node => node.dataset.maicElementId))]'
+    )
+    assert set(editor_ids).issubset(playback_ids), '编辑态与播放态没有使用同一份画布元素'
+    page.locator('[data-testid="ow-classroom-back"]').click()
+    expect(editor.locator('.base-element-text').first).to_be_visible(timeout=30000)
+    _step(report, f'编辑/播放共享同一文档：{len(editor_ids)} 个元素 ID 一致，返回编辑后画布恢复')
+    api_errors = [response for response in recorder.responses
+                  if '/api/' in response['url'] and response['status'] >= 400]
+    console_errors = [entry for entry in recorder.console if entry['type'] == 'error']
+    assert not recorder.page_errors, recorder.page_errors
+    assert not console_errors, console_errors
+    assert not api_errors, api_errors
+    _step(report, '编辑画布健康链路：pageerror 0 条、console error 0 条、API >=400 响应 0 条')
+
+
 def check_play_and_back(page, recorder: Recorder, report: list[str]) -> None:
     page.set_viewport_size({"width": 1440, "height": 900})
     page.wait_for_timeout(300)
@@ -822,7 +943,7 @@ def run_checks(service_control) -> dict:
     shots: list[Path] = []
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        browser = playwright.chromium.launch(headless=True, args=["--disable-gpu"])
         context = browser.new_context(viewport={"width": 1440, "height": 900}, locale="zh-CN")
         page = context.new_page()
         recorder.attach(page)
@@ -848,6 +969,7 @@ def run_checks(service_control) -> dict:
             check_stage_ratio(page, report)
 
             print("步骤 7：回归「开始学习 / 返回编辑 / 刷新」")
+            check_editor_canvas(page, recorder, report)
             check_play_and_back(page, recorder, report)
 
             print("步骤 8：320px 下「开始学习」真实可点")
