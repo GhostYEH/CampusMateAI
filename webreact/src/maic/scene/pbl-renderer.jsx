@@ -524,6 +524,8 @@ function PBLV2WorkspaceLayer({
             />
           ) : (
             <PBLV2WorkspaceUnavailable
+              project={project}
+              onProjectChange={onProjectChange}
               onReturnToHero={onReturnToHero}
               instructorStreaming={instructorStreaming}
               onInstructorStreamingChange={onInstructorStreamingChange}
@@ -546,6 +548,8 @@ function PBLV2WorkspaceLayer({
  * 这样 pbl-renderer 的其余部分（frame、动画、全屏、uiPhase 守卫）无需改动即可工作。
  */
 function PBLV2WorkspaceUnavailable({
+  project,
+  onProjectChange,
   onReturnToHero,
   instructorStreaming: _instructorStreaming,
   onInstructorStreamingChange,
@@ -560,16 +564,61 @@ function PBLV2WorkspaceUnavailable({
     };
   }, [onInstructorStreamingChange]);
 
+  const completed = project.milestones.reduce((total, milestone) => total + milestone.microtasks.filter((task) => task.status === 'completed').length, 0);
+  const total = project.milestones.reduce((sum, milestone) => sum + milestone.microtasks.length, 0);
+  const completeTask = (milestoneId, taskId) => {
+    const next = {
+      ...project,
+      milestones: project.milestones.map((milestone) => milestone.id !== milestoneId ? milestone : {
+        ...milestone,
+        microtasks: milestone.microtasks.map((task) => task.id === taskId ? { ...task, status: 'completed' } : task),
+      }),
+    };
+    onProjectChange(next);
+  };
+
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-background px-8 text-center">
-      <p className="text-sm font-medium text-foreground">
-        {/* 说明：工作台（chat / 提交区）在本次移植中未包含。 */}
-        工作台内容尚未移植到本客户端。
-      </p>
-      <p className="max-w-md text-xs leading-relaxed text-muted-foreground">
-        项目结构与进度状态已完整保留；在接入工作台之前，可以先回到项目主页查看阶段与任务概览。
-      </p>
-      <div className="flex items-center gap-2">
+    <div className="flex h-full w-full flex-col gap-5 overflow-auto bg-background px-6 py-6 text-left">
+      <header className="mx-auto w-full max-w-4xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">项目工作台</p>
+        <h2 className="mt-2 text-2xl font-bold text-foreground">{project.title}</h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{project.description}</p>
+        <div className="mt-4 flex items-center gap-3 text-xs text-muted-foreground" role="status">
+          <span>已完成 {completed}/{total} 个任务</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted" aria-label="项目进度">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${total ? (completed / total) * 100 : 0}%` }} />
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto grid w-full max-w-4xl gap-3">
+        {project.milestones.map((milestone, index) => (
+          <section key={milestone.id} className="rounded-2xl border border-border/70 bg-card p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-primary">阶段 {index + 1}</p>
+                <h3 className="mt-1 font-semibold text-foreground">{milestone.title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{milestone.description}</p>
+              </div>
+              <span className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{milestone.microtasks.filter((task) => task.status === 'completed').length}/{milestone.microtasks.length}</span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {milestone.microtasks.map((task) => {
+                const done = task.status === 'completed';
+                return <article key={task.id} className="flex items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className={`text-sm ${done ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{task.title}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{task.description}</p>
+                  </div>
+                  <button type="button" disabled={done} onClick={() => completeTask(milestone.id, task.id)} className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:cursor-default disabled:opacity-50">
+                    {done ? '已完成' : '提交完成'}
+                  </button>
+                </article>;
+              })}
+            </div>
+          </section>
+        ))}
+      </main>
+      <div className="mx-auto flex w-full max-w-4xl items-center gap-2">
         <button
           type="button"
           onClick={onReturnToHero}
