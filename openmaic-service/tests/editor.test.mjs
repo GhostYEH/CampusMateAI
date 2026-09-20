@@ -254,6 +254,72 @@ test('slide.element.transform changes only declared finite geometry fields', () 
   );
 });
 
+test('slide.element.add inserts a valid element without changing the action timeline', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1', stageId: 'stg_1', title: '画布', order: 0, type: 'slide',
+      actions: [{ id: 'act_1', type: 'speech', text: '保留' }],
+      content: { type: 'slide', canvas: {
+        elements: [{ id: 'el_1', type: 'shape', left: 1, top: 2, width: 20, height: 20, rotate: 0 }],
+      } },
+    }],
+  };
+  const element = { id: 'el_2', type: 'text', left: 10, top: 20, width: 100, height: 40, rotate: 0, content: '新增' };
+  const next = applyStageCommands(document, [{ type: 'slide.element.add', sceneId: 'slide_1', element, index: 0 }]);
+
+  assert.deepEqual(next.scenes[0].content.canvas.elements.map((item) => item.id), ['el_2', 'el_1']);
+  assert.deepEqual(next.scenes[0].content.canvas.elements[0], element);
+  assert.deepEqual(next.scenes[0].actions, document.scenes[0].actions);
+  assert.notEqual(next.scenes[0].content.canvas.elements[0], element);
+});
+
+test('slide.element.delete removes the element and its animation entries while preserving actions', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1', stageId: 'stg_1', title: '画布', order: 0, type: 'slide',
+      actions: [{ id: 'act_1', type: 'speech', text: '保留' }],
+      content: { type: 'slide', canvas: {
+        elements: [
+          { id: 'el_1', type: 'shape', left: 1, top: 2, width: 20, height: 20, rotate: 0 },
+          { id: 'el_2', type: 'shape', left: 3, top: 4, width: 20, height: 20, rotate: 0 },
+        ],
+        animations: [{ id: 'anim_1', elId: 'el_1' }, { id: 'anim_2', elId: 'el_2' }],
+      } },
+    }],
+  };
+  const next = applyStageCommands(document, [{ type: 'slide.element.delete', sceneId: 'slide_1', elementId: 'el_1' }]);
+
+  assert.deepEqual(next.scenes[0].content.canvas.elements.map((item) => item.id), ['el_2']);
+  assert.deepEqual(next.scenes[0].content.canvas.animations, [{ id: 'anim_2', elId: 'el_2' }]);
+  assert.deepEqual(next.scenes[0].actions, document.scenes[0].actions);
+});
+
+test('slide.element.add and delete validate atomically', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1', stageId: 'stg_1', title: '画布', order: 0, type: 'slide',
+      content: { type: 'slide', canvas: { elements: [] } },
+    }],
+  };
+  assert.throws(
+    () => applyStageCommands(document, [{
+      type: 'slide.element.add', sceneId: 'slide_1',
+      element: { id: 'el_1', type: 'shape', left: 0, top: 0, width: 10, height: 10, rotate: 0 },
+    }, { type: 'slide.element.add', sceneId: 'slide_1', element: {
+      id: 'el_1', type: 'shape', left: 1, top: 1, width: 10, height: 10, rotate: 0,
+    } }]),
+    (error) => error instanceof DslCommandError && error.code === 'element_id_conflict',
+  );
+  assert.deepEqual(document.scenes[0].content.canvas.elements, []);
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.delete', sceneId: 'slide_1', elementId: 'missing' }]),
+    (error) => error instanceof DslCommandError && error.code === 'element_not_found',
+  );
+});
+
 test('slide.element.update changes only an existing text element payload', () => {
   const document = {
     ...aggregate(),

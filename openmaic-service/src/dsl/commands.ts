@@ -46,6 +46,8 @@ export const STAGE_COMMANDS = [
   'slide.element.move',
   'slide.element.transform',
   'slide.element.update',
+  'slide.element.add',
+  'slide.element.delete',
 ] as const;
 
 export type StageCommandType = (typeof STAGE_COMMANDS)[number];
@@ -366,6 +368,78 @@ function slideElementTarget(
   return { sceneIndex, scene, canvas, elements, elementIndex, target: elements[elementIndex] as Record<string, unknown> };
 }
 
+const SLIDE_ELEMENT_TYPES = new Set(['text', 'image', 'shape', 'line', 'chart', 'table', 'latex', 'video', 'audio', 'code']);
+
+function requireSlideElement(command: Record<string, unknown>, path: string): Record<string, unknown> {
+  if (!isObject(command.element)) {
+    throw new DslCommandError('command_field_invalid', `${path}.element`, 'element 必须是对象');
+  }
+  const element = command.element;
+  const id = nonEmptyString(element.id, `${path}.element.id`);
+  if (typeof element.type !== 'string' || !SLIDE_ELEMENT_TYPES.has(element.type)) {
+    throw new DslCommandError('element_type_invalid', `${path}.element.type`, 'element.type 不是支持的 slide 元素类型');
+  }
+  const normalized = element.id === id ? element : { ...element, id };
+
+  for (const field of ['left', 'top', 'width', 'height', 'rotate'] as const) {
+    const value = normalized[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || ((field === 'width' || field === 'height') && value <= 0)) {
+      throw new DslCommandError('element_geometry_invalid', `${path}.element.${field}`, `element.${field} 必须是${field === 'width' || field === 'height' ? '正' : '有限'}数字`);
+    }
+  }
+  return normalized;
+}
+
+/** Add one valid slide element at a bounded insertion position. */
+function applySlideElementAdd(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+): StageAggregate {
+  const sceneId = requireSceneId(command, path);
+  const sceneIndex = sceneIndexOf(aggregate.scenes, sceneId, `${path}.sceneId`);
+  const scene = aggregate.scenes[sceneIndex];
+  if (scene.type !== 'slide' || scene.content.type !== 'slide') {
+    throw new DslCommandError('slide_element_requires_slide', `${path}.sceneId`, 'slide 元素命令只能作用于 slide 场景');
+  }
+  const element = requireSlideElement(command, path);
+  const canvas = scene.content.canvas;
+  const elements = isObject(canvas) && Array.isArray(canvas.elements) ? canvas.elements : [];
+  if (elements.some((candidate) => isObject(candidate) && candidate.id === element.id)) {
+    throw new DslCommandError('element_id_conflict', `${path}.element.id`, `元素 id ${element.id} 已存在`);
+  }
+  let index = elements.length;
+  if (command.index !== undefined) {
+    if (typeof command.index !== 'number' || !Number.isInteger(command.index)) {
+      throw new DslCommandError('command_field_invalid', `${path}.index`, 'index 必须是整数');
+    }
+    index = Math.max(0, Math.min(command.index, elements.length));
+  }
+  const nextElements = elements.slice();
+  nextElements.splice(index, 0, structuredClone(element));
+  const scenes = aggregate.scenes.slice();
+  scenes[sceneIndex] = { ...scene, content: { ...scene.content, canvas: { ...canvas, elements: nextElements } } };
+  return { ...aggregate, scenes };
+}
+
+/** Delete one existing slide element and its canvas animation entries. */
+function applySlideElementDelete(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+): StageAggregate {
+  const { sceneIndex, scene, canvas, elements, elementIndex, target } = slideElementTarget(aggregate, command, path);
+  const nextElements = elements.slice();
+  nextElements.splice(elementIndex, 1);
+  const nextCanvas = { ...canvas, elements: nextElements };
+  if (Array.isArray(canvas.animations)) {
+    nextCanvas.animations = canvas.animations.filter((animation) => !isObject(animation) || animation.elId !== target.id);
+  }
+  const scenes = aggregate.scenes.slice();
+  scenes[sceneIndex] = { ...scene, content: { ...scene.content, canvas: nextCanvas } };
+  return { ...aggregate, scenes };
+}
+
 /** Move one existing slide element without touching its payload or action timeline. */
 function applySlideElementMove(
   aggregate: StageAggregate,
@@ -553,6 +627,12 @@ export function applyStageCommands(
         break;
       case 'slide.element.update':
         aggregate = applySlideElementUpdate(aggregate, rawCommand, path);
+        break;
+      case 'slide.element.add':
+        aggregate = applySlideElementAdd(aggregate, rawCommand, path);
+        break;
+      case 'slide.element.delete':
+        aggregate = applySlideElementDelete(aggregate, rawCommand, path);
         break;
       default: {
         const exhaustive: never = rawCommand.type;
