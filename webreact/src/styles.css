@@ -2133,7 +2133,8 @@ html[data-theme="auto"] .courses-page .course-card {
 .openmaic-reference-glow--top { top: -270px; left: 12%; background: #dce8ff; }
 .openmaic-reference-glow--bottom { right: 7%; bottom: -340px; background: #eee4ff; }
 .openmaic-reference__brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; color: #6556c9; text-align: left; }
-.maic-edit-canvas__text-editor { overflow: auto; padding: 10px; outline: 2px solid rgba(104, 78, 214, .9); outline-offset: -2px; color: inherit; background: rgba(255, 255, 255, .96); font: inherit; line-height: inherit; white-space: normal; }
+.maic-edit-canvas__text-editor { overflow: auto; padding: 8px 10px; border: 2px solid #7657d7; border-radius: 3px; color: #243044; background: rgba(255,255,255,.98); box-shadow: 0 4px 16px rgba(45,37,96,.2); outline: none; }
+.maic-edit-canvas__text-editor .ProseMirror { min-height: 100%; outline: none; white-space: pre-wrap; }
 .openmaic-reference__mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: #6255c9; background: linear-gradient(145deg, #f0edff, #e5eaff); box-shadow: inset 0 0 0 1px rgba(107,91,210,.15); }
 .openmaic-reference__brand strong { display: block; color: #33386e; font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -.055em; line-height: 1; }
 .openmaic-reference__brand small { display: block; margin-top: 7px; color: #9da6bc; font-size: 11px; }

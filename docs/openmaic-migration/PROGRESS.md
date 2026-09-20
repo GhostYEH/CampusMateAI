@@ -46,15 +46,15 @@
 
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
-| P0-A | 参考根首页视觉与课程绑定真实生成 | 已完成 | 4ef90d92 | 双浏览器上下文实测；composer 与参考 textarea 几何接近；provider 不可用时显式禁用，禁止 local-template 回显；后端统一解析课程上下文并以稳定 workspace 幂等键抵抗并发 |
+| P0-A | 参考根首页视觉与课程绑定真实生成 | 已完成 | 2e4260b1, d7c64218 | 双浏览器上下文实测；composer 与参考 textarea 几何接近；provider 不可用时显式禁用，禁止 local-template 回显；后端统一解析课程上下文并以稳定 workspace 幂等键抵抗并发 |
 
 ### 优先级 1 · 工作台编辑器可视化
 
 | 切片 | 内容 | 状态 | 提交号 | 备注 |
 | --- | --- | --- | --- | --- |
-| P1-A | 编辑态渲染真实画布（只读） | 未开始 | — | |
-| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 未开始 | — | |
-| P1-C | 文本就地编辑（ProseMirror） | 未开始 | — | |
+| P1-A | 编辑态渲染真实画布（只读） | 已完成 | 054632e0 | 编辑态和播放态复用同一份 DSL canvas；真实浏览器确认 `.base-element-text` 可见。 |
+| P1-B | 元素选中与拖拽（命令走 `applyOpenMAICStageCommands`） | 已完成 | 054632e0 | 选中框与 pointerup 提交的 `slide.element.move` 已接入命令缓冲；服务和浏览器均已验收。 |
+| P1-C | 文本就地编辑（ProseMirror） | 进行中 | c0a036f8 + 当前工作区 | ProseMirror 已打开并可进入保存队列；运行中的 :4010 仍是旧服务，拒绝新命令 `slide.element.update`，待重启后完成端到端持久化验收。 |
 | P1-D | 缩放 / 旋转 / 对齐线 / 标尺 | 未开始 | — | |
 | P1-E | 元素增删改 | 未开始 | — | |
 
@@ -102,12 +102,10 @@
 
 > 每次更新本文件时把这一节写准。断线后接手方只看这一节就能继续。
 
-- 下一个切片：**P1-A**
-- 打算怎么做：先读参考 `<参考项目>\components\slide-renderer\Editor\index.tsx`(18 行)
-  与 `Editor\Canvas\index.tsx`(434 行) 的只读路径，以及
-  `components\edit\EditChromeRoot.tsx`(127 行)；在工作台编辑态里用移植的画布渲染
-  当前场景，替掉现在的空白 16:9 盒。
-- 卡住的地方：无
+- 下一个切片：**P1-C**
+- 打算怎么做：重启 `openmaic-service` 后，以浏览器双击文本 → ProseMirror 输入 → 保存 →
+  网关 `POST .../commands` 200 → 刷新回读的顺序完成验收，再进入 P1-D。
+- 卡住的地方：当前 :4010 进程在本次新增命令前启动；自动执行环境拒绝停止该旧进程的命令。
 
 ---
 
@@ -115,4 +113,4 @@
 
 > 每个切片一行，倒序追加。发现的新坑也记在这里，最终会补进 `04-陷阱.md`。
 
-（还没有记录）
+| 2026-09-21 | P1-C | ProseMirror 已替换裸 `contentEditable`，并修复 StrictMode 探测自动提交与编辑区指针事件冒泡；:4010 旧服务返回 422（仅缺 `slide.element.update`），端到端回读待服务重启。 |

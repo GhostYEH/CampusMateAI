@@ -366,7 +366,10 @@ test("the editor surface is reachable from the workspace panel (not dead code)",
   assert.match(workspaceSource, /listOpenMAICStages/);
 assert.match(editorSource, /applyOpenMAICStageCommands/);
 assert.match(editorSource, /slideElementUpdateCommand/);
-assert.match(read("src/maic/edit/StageCanvasPreview.jsx"), /contentEditable/);
+assert.match(read("src\/maic\/edit\/StageCanvasPreview.jsx"), /ProseMirrorTextEditor/);
+assert.match(read("src\/maic\/edit\/ProseMirrorTextEditor.jsx"), /EditorView/);
+assert.match(read("src\/maic\/edit\/ProseMirrorTextEditor.jsx"), /onPointerDown/);
+assert.doesNotMatch(read("src\/maic\/edit\/StageCanvasPreview.jsx"), /dangerouslySetInnerHTML/);
   assert.match(editorSource, /createCommandBuffer/);
 });
 

@@ -1,5 +1,6 @@
 import React from "react";
 import { MaicSlideSurface } from "../slide/MaicSlideSurface.jsx";
+import ProseMirrorTextEditor from "./ProseMirrorTextEditor.jsx";
 
 /**
  * P1-A edit surface: a read-only view of the selected scene's real canvas.
@@ -11,11 +12,12 @@ import { MaicSlideSurface } from "../slide/MaicSlideSurface.jsx";
 export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextElement }) {
   const rootRef = React.useRef(null);
   const dragRef = React.useRef(null);
+  const selectedElementIdRef = React.useRef("");
+  const textDoubleClickCandidateRef = React.useRef(null);
   const [selectedElementId, setSelectedElementId] = React.useState("");
   const [dragPosition, setDragPosition] = React.useState(null);
   const [selectionRect, setSelectionRect] = React.useState(null);
   const [editingTextId, setEditingTextId] = React.useState("");
-  const [textDraft, setTextDraft] = React.useState("");
   const content = scene?.content;
   const canvas = content?.type === "slide" ? content.canvas : null;
   const elements = Array.isArray(canvas?.elements) ? canvas.elements : [];
@@ -52,12 +54,15 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
 
   React.useEffect(() => {
     setEditingTextId("");
-    setTextDraft("");
   }, [scene?.id]);
 
   React.useEffect(() => {
     if (selectedElementId && !selectedElement) setSelectedElementId("");
   }, [selectedElement, selectedElementId]);
+
+  React.useEffect(() => {
+    selectedElementIdRef.current = selectedElementId;
+  }, [selectedElementId]);
 
   const finishDrag = React.useCallback((event, cancelled = false) => {
     const drag = dragRef.current;
@@ -74,6 +79,13 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
     if (!rootRef.current) return;
     const target = event.target?.closest?.("[data-maic-element-id]");
     if (!target || !rootRef.current.contains(target)) {
+      const candidate = textDoubleClickCandidateRef.current;
+      const continuesTextDoubleClick = candidate
+        && Date.now() - candidate.at < 500
+        && Math.abs(event.clientX - candidate.x) < 32
+        && Math.abs(event.clientY - candidate.y) < 32;
+      if (!continuesTextDoubleClick) textDoubleClickCandidateRef.current = null;
+      selectedElementIdRef.current = "";
       setSelectedElementId("");
       setSelectionRect(null);
       return;
@@ -82,11 +94,27 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
     const element = elements.find((entry) => entry?.id === elementId);
     if (!element || !Number.isFinite(element.left) || !Number.isFinite(element.top)) {
       // Non-slide content and elements without finite coordinates remain read-only.
+      selectedElementIdRef.current = "";
       setSelectedElementId("");
       setSelectionRect(null);
       return;
     }
+    const now = Date.now();
+    const previousTextClick = textDoubleClickCandidateRef.current;
+    const isTextDoublePointer = element.type === "text"
+      && previousTextClick?.id === elementId
+      && now - previousTextClick.at < 500
+      && Math.abs(event.clientX - previousTextClick.x) < 32
+      && Math.abs(event.clientY - previousTextClick.y) < 32;
     event.stopPropagation();
+    if (element.type === "text") {
+      textDoubleClickCandidateRef.current = {
+        id: elementId, at: now, x: event.clientX, y: event.clientY,
+      };
+    } else {
+      textDoubleClickCandidateRef.current = null;
+    }
+    selectedElementIdRef.current = elementId;
     setSelectedElementId(elementId);
     const rootBox = rootRef.current.getBoundingClientRect();
     const targetBox = target.getBoundingClientRect();
@@ -117,30 +145,44 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
       scaleX: Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1,
       scaleY: Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1,
     });
+    // ScreenElement's nested renderer can be replaced between click and
+    // `dblclick`, so the latter is sometimes retargeted to the canvas root.
+    // Pointerdown remains reliably targeted at the DSL element. Detect the
+    // second pointerdown on the same text item and open the real editor here.
+    if (isTextDoublePointer) {
+      dragRef.current = null;
+      setEditingTextId(elementId);
+      return;
+    }
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }, [canvas, elements]);
 
   const beginTextEdit = React.useCallback((event) => {
     const target = event.target?.closest?.("[data-maic-element-id]");
-    if (!target || !rootRef.current) return;
-    const elementId = target.getAttribute("data-maic-element-id") || "";
+    if (!rootRef.current) return;
+    // The read-only slide renderer can replace its nested DOM between the two
+    // clicks.  In that case the browser delivers `dblclick` to this canvas
+    // root even though the first click selected the text element.  Keep that
+    // selection as the event target fallback; a double click on blank canvas
+    // first clears selection in handlePointerDown, so it cannot open an old
+    // text item by accident.
+    const elementId = target?.getAttribute("data-maic-element-id")
+      || selectedElementIdRef.current
+      || textDoubleClickCandidateRef.current?.id;
     const element = elements.find((entry) => entry?.id === elementId);
     if (element?.type !== "text") return;
     event.preventDefault();
     event.stopPropagation();
     setSelectedElementId(elementId);
     setEditingTextId(elementId);
-    setTextDraft(typeof element.content === "string" ? element.content : "");
+    textDoubleClickCandidateRef.current = null;
   }, [elements]);
 
-  const finishTextEdit = React.useCallback(() => {
-    if (!editingTextId) return;
+  const commitTextEdit = React.useCallback((content) => {
     const element = elements.find((entry) => entry?.id === editingTextId);
-    if (element && textDraft !== element.content) {
-      onUpdateTextElement?.(editingTextId, textDraft);
-    }
+    if (element && content !== element.content) onUpdateTextElement?.(editingTextId, content);
     setEditingTextId("");
-  }, [editingTextId, elements, onUpdateTextElement, textDraft]);
+  }, [editingTextId, elements, onUpdateTextElement]);
 
   const handlePointerMove = React.useCallback((event) => {
     const drag = dragRef.current;
@@ -193,17 +235,10 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
         height: renderedSelection.height,
       }}
     /> : null}
-    {editingTextId && selectionRect ? <div
-      className="maic-edit-canvas__text-editor"
-      data-testid="openmaic-text-editor"
+    {editingTextId && selectionRect ? <ProseMirrorTextEditor
       data-editing-element-id={editingTextId}
-      contentEditable
-      suppressContentEditableWarning
-      role="textbox"
-      aria-label="编辑文本元素"
-      onInput={(event) => setTextDraft(event.currentTarget.innerHTML)}
-      onBlur={finishTextEdit}
-      dangerouslySetInnerHTML={{ __html: textDraft }}
+      value={String(elements.find((entry) => entry?.id === editingTextId)?.content || "")}
+      onCommit={commitTextEdit}
       style={{
         position: "absolute",
         left: selectionRect.left,
