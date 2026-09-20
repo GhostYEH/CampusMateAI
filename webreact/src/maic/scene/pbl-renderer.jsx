@@ -87,6 +87,17 @@ export function PBLRenderer({ content, mode: _mode, sceneId }) {
 }
 
 function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
+  // The classroom stage passes a document snapshot. Keep a local project copy
+  // so Hero/workspace transitions repaint immediately after a click, while
+  // still persisting every update to the stage store.
+  const [projectSnapshot, setProjectSnapshot] = useState(() => structuredClone(projectV2));
+  useEffect(() => {
+    setProjectSnapshot(structuredClone(projectV2));
+  }, [projectV2]);
+  const commitProject = useCallback((next) => {
+    setProjectSnapshot(structuredClone(next));
+    onProjectV2Change(next);
+  }, [onProjectV2Change]);
   const hostRef = useRef(null);
   // Web-fullscreen ("expanded") vs docked. The workspace renders as a
   // SINGLE persistent instance for the whole workspace phase — expand /
@@ -141,16 +152,16 @@ function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
   }, []);
 
   const { runtimeProject, changed } = useMemo(() => {
-    const next = structuredClone(projectV2);
+    const next = structuredClone(projectSnapshot);
     return {
       runtimeProject: next,
       changed: normalizeProjectRuntime(next),
     };
-  }, [projectV2]);
+  }, [projectSnapshot]);
 
   useEffect(() => {
-    if (changed) onProjectV2Change(runtimeProject);
-  }, [changed, runtimeProject, onProjectV2Change]);
+    if (changed) commitProject(runtimeProject);
+  }, [changed, runtimeProject, commitProject]);
 
   // Keep the portal host in sync with native fullscreen so the workspace
   // renders inside the fullscreened stage instead of an orphaned <body>.
@@ -173,9 +184,9 @@ function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
       // animation path instead of framer's mount `initial` (which React
       // StrictMode's mount/remount skips).
       setAutoExpand(true);
-      onProjectV2Change(ready);
+      commitProject(ready);
     },
-    [onProjectV2Change],
+    [commitProject],
   );
 
   // Return from the workspace to the Hero, keeping all progress intact (only
@@ -187,8 +198,8 @@ function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
   const handleReturnToHero = useCallback(() => {
     setExpanded(false);
     setAutoExpand(false);
-    onProjectV2Change(transitionProjectUiPhase(runtimeProject, 'hero'));
-  }, [runtimeProject, onProjectV2Change]);
+    commitProject(transitionProjectUiPhase(runtimeProject, 'hero'));
+  }, [runtimeProject, commitProject]);
 
   // Project writes coming FROM the workspace subtree (Instructor / evaluator /
   // submission streams, optimistic edits). A stream that started in the
@@ -203,12 +214,12 @@ function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
     (next) => {
       const liveContent = useStageStore.getState().scenes.find((s) => s.id === sceneId)?.content;
       if (liveContent?.projectV2?.uiPhase === 'hero' && next.uiPhase !== 'hero') {
-        onProjectV2Change({ ...next, uiPhase: 'hero' });
+        commitProject({ ...next, uiPhase: 'hero' });
         return;
       }
-      onProjectV2Change(next);
+      commitProject(next);
     },
-    [sceneId, onProjectV2Change],
+    [sceneId, commitProject],
   );
 
   const content = (() => {
@@ -227,7 +238,7 @@ function PBLV2Container({ sceneId, projectV2, onProjectV2Change }) {
           <PBLV2Hero
             sceneId={sceneId}
             project={runtimeProject}
-            onProjectChange={onProjectV2Change}
+            onProjectChange={commitProject}
             onLaunchReady={handleLaunchReady}
             instructorStreaming={instructorStreaming}
           />
