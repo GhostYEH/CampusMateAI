@@ -5,6 +5,7 @@ import * as api from "../../data/api.js";
 import { formatDateTime } from "../../utils/date.js";
 import { describeEntryFailure, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../../features/openmaic/enterClassroomModel.js";
 import { buildCourseRailItems, defaultOpenMAICCourseId } from "../../features/openmaic/homeModel.js";
+import { inferHomeGenerationMode } from "../../features/openmaic/homeGenerationModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
@@ -51,7 +52,7 @@ export default function OpenMAICHome({ courses = [], assignments = [], recentIte
     event.preventDefault(); const topic = prompt.trim(); if (!topic || !selectedCourseId || busy) return;
     setBusy(true); setError(""); setPhase(null);
     try {
-      const result = await api.generateOpenMAICHome(selectedCourseId, { mode: "slide", prompt: topic, idempotencyKey: stageGenerationIdempotencyKey(selectedCourseId, topic) });
+      const result = await api.generateOpenMAICHome(selectedCourseId, { mode: inferHomeGenerationMode(topic), prompt: topic, idempotencyKey: stageGenerationIdempotencyKey(selectedCourseId, topic) });
       const workspaceId = result?.workspace_id;
       if (!workspaceId) throw new Error("网关未返回课程工作台");
       if (result?.job?.status === "completed") navigate(`/courses/${selectedCourseId}/workspaces/${workspaceId}?mode=playback`, { replace: true });
