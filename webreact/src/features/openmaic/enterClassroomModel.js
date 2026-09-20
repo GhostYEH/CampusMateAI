@@ -86,6 +86,28 @@ function titlesOf(items) {
 }
 
 /**
+ * 课程简介进入默认 prompt 的长度上限（字符数）。
+ *
+ * 限长是必要的：简介由服务端上报，可能是一整段很长的介绍；不加限制会让默认主题
+ * 被简介淹没，反而丢掉"围绕知识点组织讲解"这个必须保留的指令。180 字足够表达
+ * 一门课的定位，且不会挤掉后面的章节/资料。
+ */
+export const DESCRIPTION_LIMIT = 180;
+
+/**
+ * 取一段用于提示词的简介：先归一化空白，再在**词/字边界**上截断。
+ *
+ * 只保留原文措辞，不改写、不补充。超长时以省略号结尾，让"这里被截断了"是可见的，
+ * 而不是悄悄丢掉后半句造成语义失真。
+ */
+function excerpt(value, limit) {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trimEnd()}…`;
+}
+
+/**
  * 这门课现在到底能拿什么去生成。
  *
  * `synced` 为 false 时界面必须显示"课程资料尚未同步"，而不是照常生成一份听起来
@@ -95,6 +117,10 @@ export function describeCourseReadiness(course = {}) {
   const name = String(course.name || course.title || "").trim();
   const code = String(course.code || "").trim();
   const semester = String(course.semester || "").trim();
+  // 课程简介同样属于"已授权的真实课程事实"。限长是因为它会进入默认 prompt，
+  // 而服务端上报的简介可能很长；截断到一句话的量级既保留课程定位，又不让提示词
+  // 被简介淹没。截断只在**保留上限内的字符**这个意义上发生，不改变原文措辞。
+  const description = excerpt(course.description, DESCRIPTION_LIMIT);
   const knowledgePoints = titlesOf(course.knowledgePoints);
   const materials = titlesOf(course.materials);
   const chapters = titlesOf(course.chapters);
@@ -103,6 +129,7 @@ export function describeCourseReadiness(course = {}) {
   // 章节也算"已同步"：后端把 chapters 与知识点/资料并列上报，三者任一存在都
   // 表示这门课确实有内容可用。只看知识点会把"仅有章节"的课程误报成未同步，
   // 界面就会给出错误的下一步（让用户去做多余的同步）。
+  // 简介**不算**已同步内容：它是课程元信息，不是可讲解的课程资料。
   const synced = knowledgePoints.length > 0 || materials.length > 0 || chapters.length > 0;
 
   if (synced) {
@@ -111,7 +138,7 @@ export function describeCourseReadiness(course = {}) {
     if (knowledgePoints.length) parts.push(`${knowledgePoints.length} 个知识点`);
     if (materials.length) parts.push(`${materials.length} 份课程资料`);
     return {
-      name, code, semester,
+      name, code, semester, description,
       synced: true,
       degraded: false,
       knowledgePoints, materials, chapters,
@@ -120,7 +147,7 @@ export function describeCourseReadiness(course = {}) {
   }
   if (warnings.length) {
     return {
-      name, code, semester,
+      name, code, semester, description,
       synced: false,
       degraded: true,
       knowledgePoints, materials, chapters,
@@ -129,7 +156,7 @@ export function describeCourseReadiness(course = {}) {
     };
   }
   return {
-    name, code, semester,
+    name, code, semester, description,
     synced: false,
     degraded: false,
     knowledgePoints, materials, chapters,
@@ -142,8 +169,9 @@ export function describeCourseReadiness(course = {}) {
 /**
  * 默认生成主题。
  *
- * 把**已授权的真实课程信息**（课程名、课程代码、学期）与**已同步的章节/资料
- * 标题**都纳入上下文，让生成主题贴着这门课的真实内容走。
+ * 把**已授权的真实课程信息**（课程名、课程代码、学期、简介）与**已同步的章节/资料
+ * 标题**都纳入上下文，让生成主题贴着这门课的真实内容走。简介是限长后的真实原文，
+ * 让模型知道这门课在讲什么，而不是只看到一个课名。
  *
  * 仍然不发明任何知识点：没有同步内容时只说"课程资料尚未同步"，退回课程基本
  * 信息的通用说法。凭据（token、内部地址等）从不进入这里——facts 只由课程事实
@@ -166,10 +194,15 @@ export function buildClassroomPrompt(course = {}) {
   if (materials.length) sections.push(`可用课程资料（${materials.join("、")}）`);
 
   const basicsText = basics.length ? `（${basics.join("，")}）` : "";
+  // 简介作为课程定位单独成句，位置在课名之后、组织方式之前。
+  const descriptionText = readiness.description
+    ? `课程简介：${readiness.description}。`
+    : "";
+  const lead = `请根据《${name}》${basicsText}的课程资料生成一节入门学习课堂`;
   if (sections.length) {
-    return `请根据《${name}》${basicsText}的课程资料生成一节入门学习课堂，围绕${sections.join("、")}组织讲解、示例、测验和练习。`;
+    return `${lead}，${descriptionText}围绕${sections.join("、")}组织讲解、示例、测验和练习。`;
   }
-  return `请根据《${name}》${basicsText}的课程资料生成一节入门学习课堂，围绕真实课程知识点组织讲解、示例、测验和练习。`;
+  return `${lead}，${descriptionText}围绕真实课程知识点组织讲解、示例、测验和练习。`;
 }
 
 /**

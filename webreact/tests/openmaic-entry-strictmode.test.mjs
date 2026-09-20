@@ -73,7 +73,11 @@ const mock = createMockClient(apiModule.client);
  */
 function installHandlers() {
   mock.onGet("/courses", {
-    items: [{ id: "crs_x", name: "计算机科学概论", code: "CS101", semester: "2026秋" }],
+    items: [
+      { id: "crs_x", name: "计算机科学概论", code: "CS101", semester: "2026秋" },
+      { id: "crs_a", name: "课程A", code: "A101", semester: "2026秋" },
+      { id: "crs_b", name: "课程B", code: "B101", semester: "2026秋" },
+    ],
   });
   mock.onGet("/courses/crs_x/openmaic-context", {
     course_id: "crs_x",
@@ -100,11 +104,53 @@ function installHandlers() {
   mock.onPost("/courses/crs_x/workspaces/ws_1/generate", {
     job: { id: "job_1", status: "completed", step: "completed" }, stage_id: "st_1",
   });
+
+  // 课程 B：用于 A→B 切换竞态测试（A 的 context 由用例单独挂起）。
+  mock.onGet("/courses/crs_b/openmaic-context", {
+    course_id: "crs_b", name: "课程B", code: "B101", semester: "2026秋",
+    description: "课程 B 的真实简介。",
+    knowledge_points: [], chapters: ["B章"], materials: [], warnings: [], synced: true,
+  });
+  mock.onGet("/openmaic/fusion/status", {
+    enabled: true, available: true, state: "ready",
+    capabilities: ["workspace", "generation"], reason: "ready",
+  });
+  mock.onGet("/courses/crs_b/workspaces", { items: [], next_cursor: null });
+  mock.onGet("/courses/crs_b/workspaces/ws_b1/stages", { items: [], next_cursor: null });
+  mock.onPost("/courses/crs_b/workspaces", {
+    id: "ws_b1", course_id: "crs_b", name: "课程B · 学习课堂", revision: 1,
+    created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  mock.onPost("/courses/crs_b/workspaces/ws_b1/generate", {
+    job: { id: "job_b1", status: "completed", step: "completed" }, stage_id: "st_b1",
+  });
+  // 课程 A 的工作台（A 一旦继续推进就会命中这些写接口，用于断言"不应发生"）。
+  mock.onGet("/courses/crs_a/workspaces", { items: [], next_cursor: null });
+  mock.onPost("/courses/crs_a/workspaces", {
+    id: "ws_a1", course_id: "crs_a", name: "课程A · 学习课堂", revision: 1,
+    created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z",
+  });
+  mock.onGet("/courses/crs_a/workspaces/ws_a1/stages", { items: [], next_cursor: null });
+  mock.onPost("/courses/crs_a/workspaces/ws_a1/generate", {
+    job: { id: "job_a1", status: "completed", step: "completed" }, stage_id: "st_a1",
+  });
 }
 
 installHandlers();
 
 const calls = mock.requests;
+
+/**
+ * 一个可手动放行的响应。
+ *
+ * 用它把"A 的响应还在途中"变成可观察、可控制的状态：这正是用户复现切换课程时为
+ * 什么 10 秒内没有任何 B 的请求——A 的在途请求一直没回来。
+ */
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
 
 const { createServer } = await import("vite");
 const { fileURLToPath } = await import("node:url");
@@ -122,7 +168,7 @@ after(async () => { await vite.close(); });
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { StrictMode, act } = React;
-const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+const { MemoryRouter, Routes, Route, useNavigate } = await import("react-router-dom");
 
 const { default: OpenMAICClassroomEntryPage } = await vite.ssrLoadModule(
   "/src/pages/OpenMAICClassroomEntryPage.jsx",
@@ -130,23 +176,48 @@ const { default: OpenMAICClassroomEntryPage } = await vite.ssrLoadModule(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** 挂载入口页（StrictMode 包裹），返回容器与卸载函数。 */
-async function mount() {
+function WorkbenchProbe() {
+  return React.createElement("div", { "data-testid": "openmaic-workbench" }, "workbench");
+}
+
+/**
+ * 挂载入口页，带一个可编程的路由跳转器。
+ *
+ * 路由同时声明工作台目标：入口页成功后会 `navigate` 到
+ * `/courses/:courseId/workspaces/:workspaceId`，若没有对应 route，React Router 会
+ * 打出 "No routes matched location" 警告，测试输出会被噪声填满，也可能掩盖真实问题。
+ */
+async function mount(initial = "/courses/crs_x/classroom") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
+  let navigate = null;
+  function Probe() {
+    navigate = useNavigate();
+    return null;
+  }
+  const routes = React.createElement(
+    Routes,
+    null,
+    React.createElement(Route, { path: "/courses/:courseId/classroom", element: React.createElement(OpenMAICClassroomEntryPage) }),
+    React.createElement(Route, { path: "/courses/:courseId/workspaces/:workspaceId", element: React.createElement(WorkbenchProbe) }),
+    React.createElement(Route, { path: "*", element: React.createElement("div", null, "not-found") }),
+  );
   await act(async () => {
     root.render(
       React.createElement(StrictMode, null,
-        React.createElement(MemoryRouter, { initialEntries: ["/courses/crs_x/classroom"] },
-          React.createElement(Routes, null,
-            React.createElement(Route, {
-              path: "/courses/:courseId/classroom",
-              element: React.createElement(OpenMAICClassroomEntryPage),
-            })))),
+        React.createElement(MemoryRouter, { initialEntries: [initial] },
+          React.createElement(React.Fragment, null,
+            React.createElement(Probe),
+            routes))),
     );
   });
-  return { host, unmount: () => act(async () => root.unmount()) };
+  return {
+    host,
+    /** 在不卸载组件的前提下切换路由（真实课程切换就是这样发生的）。 */
+    go: (to) => act(async () => { navigate(to); }),
+    unmount: () => act(async () => root.unmount()),
+  };
 }
 
 test("the entry page leaves the waiting state under StrictMode and runs the full chain", async () => {
@@ -280,4 +351,155 @@ test("the entry page shares one in-flight run instead of a one-shot flag", () =>
   );
   assert.doesNotMatch(source, /started\.current/, "不得再用布尔量挡住第二次挂载（会再次卡死）");
   assert.match(source, /inFlight\.current/, "必须共享同一个在飞 Promise");
+  // 在飞标记必须带课程归属，否则切换课程时 B 会误复用 A 的流程而永久卡住。
+  assert.match(source, /inFlight\.current\.courseId === courseId/, "只允许复用同一门课的在飞流程");
+});
+
+// ===== A → B 课程切换竞态（用户复现的阻断） =====
+
+test("switching courses mid-flight starts B immediately and never lets A continue", async () => {
+  mock.reset();
+  installHandlers();
+
+  // A 的 context 请求挂起不返回：这正是"在途请求可观察"的条件。
+  const gate = deferred();
+  let holdA = true;
+  mock.onGet("/courses/crs_a/openmaic-context", (config) => {
+    if (!holdA) {
+      return Promise.resolve({
+        status: 200, config, headers: {},
+        data: { course_id: "crs_a", name: "课程A", chapters: ["A章"], knowledge_points: [], materials: [], warnings: [], synced: true },
+      });
+    }
+    return gate.promise.then((data) => ({ status: 200, config, headers: {}, data }));
+  });
+
+  const { host, go, unmount } = await mount("/courses/crs_a/classroom");
+
+  // A 已经发出真实请求。
+  await act(async () => { await sleep(60); });
+  const aCalls = calls.map((r) => r.url).join(" | ");
+  assert.ok(aCalls.includes("/courses/crs_a/openmaic-context"), `A 应已发起 context 请求；实际：${aCalls}`);
+
+  // 不卸载组件，直接在同一 Router 内切到课程 B。
+  calls.length = 0;
+  await go("/courses/crs_b/classroom");
+  holdA = false;
+
+  // B 必须**立即**开始自己的链路，而不是等 A 的响应或另一个 effect。
+  for (let i = 0; i < 40; i += 1) await act(async () => { await sleep(25); });
+
+  const bUrls = calls.map((r) => r.url);
+  const joined = bUrls.join(" | ");
+  for (const step of ["/courses/crs_b/openmaic-context", "/openmaic/fusion/status", "/courses/crs_b/workspaces", "/generate"]) {
+    assert.ok(joined.includes(step), `B 的链路缺少 ${step}；实际：${joined}`);
+  }
+
+  // 页面不得停在等待态上。
+  assert.ok(
+    !(host.textContent || "").includes("正在确认受管服务状态"),
+    `切换到 B 后不得停在等待态；实际：${(host.textContent || "").slice(0, 200)}`,
+  );
+
+  // 释放 A 的响应后，A 不得再继续创建/生成。
+  await act(async () => {
+    gate.resolve({ course_id: "crs_a", name: "课程A", chapters: ["A章"], knowledge_points: [], materials: [], warnings: [], synced: true });
+    await sleep(60);
+  });
+  calls.length = 0;
+  await act(async () => { await sleep(300); });
+  const stale = calls.filter((r) => r.url.includes("crs_a") && (r.method === "post"));
+  assert.equal(stale.length, 0, `A 的迟到响应不得再创建/生成；实际：${stale.map((r) => r.url).join(" | ")}`);
+
+  // A 不得产生任何写操作。
+  const aWrites = mock.requests.filter(
+    (r) => r.url.includes("crs_a") && r.method === "post",
+  );
+  assert.equal(aWrites.length, 0, `课程 A 不应产生写请求；实际：${aWrites.map((r) => r.url).join(" | ")}`);
+
+  await unmount();
+});
+
+test("a real unmount stops late responses from creating, writing or re-polling", async () => {
+  mock.reset();
+  installHandlers();
+
+  // 让生成返回一个"运行中"的任务，从而进入轮询；任务查询也挂起，便于观察迟到行为。
+  const jobGate = deferred();
+  let holdJob = true;
+  mock.onPost("/courses/crs_x/workspaces/ws_1/generate", {
+    job: { id: "job_1", status: "running", step: "generating_outlines", progress: 20 },
+    stage_id: "st_1",
+  });
+  mock.onGet("/courses/crs_x/jobs/job_1", (config) => {
+    if (!holdJob) {
+      return Promise.resolve({ status: 200, config, headers: {}, data: { id: "job_1", status: "running", step: "generating_outlines", progress: 30 } });
+    }
+    return jobGate.promise.then((data) => ({ status: 200, config, headers: {}, data }));
+  });
+
+  const { unmount } = await mount("/courses/crs_x/classroom");
+  for (let i = 0; i < 20; i += 1) await act(async () => { await sleep(25); });
+
+  // 卸载（真实离开页面）。
+  await unmount();
+  calls.length = 0;
+
+  // 释放迟到的响应，并等待远超过一次轮询间隔（800ms）的时间。
+  jobGate.resolve({ id: "job_1", status: "completed", step: "completed", progress: 100 });
+  holdJob = false;
+  await act(async () => { await sleep(1500); });
+  await new Promise((r) => setTimeout(r, 600));
+
+  const after = calls.map((r) => `${r.method} ${r.url}`);
+  assert.deepEqual(after, [], `卸载后不得再产生任何请求（含轮询）；实际：${after.join(" | ")}`);
+
+  // 更重要的：不得产生任何写操作。
+  const writes = mock.requests.filter((r) => r.method === "post");
+  assert.equal(writes.length, 0, `卸载后不得再创建 workspace/stage；实际：${writes.map((r) => r.url).join(" | ")}`);
+});
+
+// ===== 课程简介进入默认 prompt =====
+
+test("the authorized course description is included, length-capped and never invented", async () => {
+  const { buildClassroomPrompt, describeCourseReadiness, DESCRIPTION_LIMIT } = await import(
+    "../src/features/openmaic/enterClassroomModel.js"
+  );
+
+  // 真实简介必须出现在 prompt 中。
+  const prompt = buildClassroomPrompt({
+    name: "计算机科学概论",
+    code: "CS101",
+    semester: "2026秋",
+    description: "面向大一新生的计算学科导论，介绍计算思维、算法与图灵机的基本概念。",
+    chapters: ["计算的历史与未来"],
+    knowledgePoints: [],
+    materials: [],
+  });
+  assert.match(prompt, /课程简介：/);
+  assert.match(prompt, /面向大一新生的计算学科导论/, "真实 description 必须进入 prompt");
+  assert.match(prompt, /课程代码 CS101/);
+  assert.match(prompt, /学期 2026秋/);
+
+  // 限长：超长简介被截断到上限内，并以省略号标记被截断。
+  const huge = "很长的课程简介。".repeat(200);
+  const capped = buildClassroomPrompt({ name: "某课", description: huge, chapters: ["x"], knowledgePoints: [], materials: [] });
+  const inside = capped.slice(capped.indexOf("课程简介：") + 5, capped.indexOf("。围绕"));
+  assert.ok(inside.length <= DESCRIPTION_LIMIT + 1, `简介必须限长到 ${DESCRIPTION_LIMIT}，实际 ${inside.length}`);
+  assert.match(capped, /…/, "被截断时必须可见地省略");
+
+  // 空白归一化，且没有简介时不编造一句。
+  const noDesc = buildClassroomPrompt({ name: "军事理论", chapters: [], knowledgePoints: [], materials: [] });
+  assert.doesNotMatch(noDesc, /课程简介：/, "没有简介时不得编造简介");
+
+  // readiness 同样暴露限长后的 description。
+  const readiness = describeCourseReadiness({ name: "某课", description: huge, chapters: ["x"], knowledgePoints: [], materials: [] });
+  assert.ok(readiness.description.length <= DESCRIPTION_LIMIT + 1);
+
+  // 简介**不**算"已同步内容"：它是元信息，不是可讲解的课程资料。
+  const descOnly = describeCourseReadiness({
+    name: "只有简介的课", description: "一段真实简介", chapters: [], knowledgePoints: [], materials: [], warnings: [],
+  });
+  assert.equal(descOnly.synced, false, "只有简介不算资料已同步");
+  assert.match(descOnly.notice, /课程资料尚未同步/);
 });

@@ -40,9 +40,16 @@ export function createMockClient(client) {
   const api = {
     requests,
 
+    /**
+     * 登记一个 GET 响应。
+     *
+     * `data` 可以是固定值，也可以是 `(config) => Promise<response>`；后者用于把
+     * "响应还在途中"做成可控状态（竞态与真实卸载测试需要它）。
+     */
     onGet(url, data, status = 200) {
-      handlers.set(`get:${url}`, (config) =>
-        Promise.resolve({ status, data, config: config || {}, headers: {} }));
+      handlers.set(`get:${url}`, typeof data === "function"
+        ? data
+        : (config) => Promise.resolve({ status, data, config: config || {}, headers: {} }));
       return api;
     },
 

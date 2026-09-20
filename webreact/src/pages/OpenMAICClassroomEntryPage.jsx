@@ -56,13 +56,21 @@ export default function OpenMAICClassroomEntryPage() {
   const epoch = useRef(0);
   const timer = useRef(null);
   /**
-   * 正在飞行的那一次进入。
+   * 正在飞行的那一次进入，**带课程归属**。
    *
-   * 这个 ref 记录的是 **Promise**，而不是"跑过没有"的布尔值。差别是决定性的：
-   * StrictMode 会"挂载 → 模拟卸载 → 再挂载"，两次 effect 都会调到这里。若用布尔
-   * 值挡住第二次，第一次的结果又已被模拟卸载作废，页面就永久停在等待态——这正是
-   * 之前真实复现的卡死。改为共享同一个在飞 Promise 之后：第二次挂载**复用它**而
-   * 不是重跑，因此既不会重复请求、也不会互相作废，真实 StrictMode 下正常工作。
+   * 记录的是 `{ courseId, promise }`，而不是"跑过没有"的布尔值，也不是裸 Promise。
+   * 三点都是必须的：
+   *
+   * 1. 存 Promise 而非布尔值：StrictMode 会"挂载 → 模拟卸载 → 再挂载"，两次
+   *    effect 都会调 enter()。用布尔值挡住第二次，第一次的结果又已被模拟卸载作废，
+   *    页面就永久停在等待态（真实复现过）。共享同一个在飞 Promise 则第二次**复用它**
+   *    而不是重跑，既不会重复请求、也不会互相作废。
+   * 2. 带 courseId 归属：切换课程时，B 的 enter() **绝不能**复用 A 的在飞 Promise。
+   *    否则 B 会直接 return，而 A 随后又被作废，于是两边都没人推进，B 永久停在
+   *    "正在确认受管服务状态…"（真实复现过）。只有同一门课程才允许复用。
+   * 3. 由单一 effect 负责"作废旧课程 → 立即启动新课程"：如果作废与启动分散在两个
+   *    effect 里，React 按声明顺序执行会让"启动"先于"作废"跑，B 看到 A 的 Promise
+   *    后 return，之后没有任何东西再启动 B。顺序依赖本身就是 bug 的来源。
    */
   const inFlight = useRef(null);
 
@@ -113,8 +121,11 @@ export default function OpenMAICClassroomEntryPage() {
    * 只有一个工作台与一个首 stage。
    */
   const enter = useCallback(async () => {
-    // 复用正在飞行的同一次进入：StrictMode 的第二次挂载因此不会重跑一遍。
-    if (inFlight.current) return inFlight.current;
+    // 只复用**同一门课程**的在飞流程：StrictMode 的第二次挂载因此不会重跑一遍，
+    // 而切换课程时 B 不会误复用 A 的 Promise（那样 B 会被直接 return 掉）。
+    if (inFlight.current && inFlight.current.courseId === courseId) {
+      return inFlight.current.promise;
+    }
 
     const mine = ++epoch.current;
     const run = (async () => {
@@ -222,47 +233,58 @@ export default function OpenMAICClassroomEntryPage() {
         setFailure(describeEntryFailure(error));
       } finally {
         // 无论成功失败都释放"在飞"标记，重试才能重新开始。
-        if (inFlight.current === run) inFlight.current = null;
+        // 只释放属于自己的那一次，避免把后来者的标记清掉。
+        if (inFlight.current && inFlight.current.promise === run) inFlight.current = null;
       }
     })();
 
-    inFlight.current = run;
+    inFlight.current = { courseId, promise: run };
     return run;
   }, [courseId, goToWorkspace, poll]);
 
+  /**
+   * 进入流程的唯一启动点，同时负责课程切换时的"作废旧课程 → 立即启动新课程"。
+   *
+   * 把两件事放进**同一个 effect** 是刻意的。此前拆成两个 effect（一个启动、一个在
+   * 课程变化时清理）时，React 按声明顺序执行会让启动先跑：B 的 enter() 看到 A 的在飞
+   * Promise 就 return，紧接着清理 effect 把它清掉，却**没有**再启动 B，于是 B 永久
+   * 停在等待态。现在顺序不再重要——先作废旧的，再无条件启动新的。
+   *
+   * StrictMode 的模拟卸载不会走到这里（依赖没变，effect 不重跑）；它以同一个
+   * courseId 重新挂载时，enter() 会复用同一门课的在飞 Promise，既不重复请求也不会
+   * 自我作废。
+   */
   useEffect(() => {
-    // 允许 StrictMode 的两次挂载都调用 enter()：第二次会复用同一个在飞 Promise，
-    // 因此既不会永久停在等待态，也不会重复发起一遍请求。
+    // 1) 先作废旧课程：递增代次让 A 的迟到响应不再写 state / 建 workspace / 排轮询，
+    //    并停掉 A 可能还挂着的轮询计时器。
+    epoch.current += 1;
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    // 只有属于别的课程的在飞标记才作废；同一门课的（StrictMode 复挂载）必须保留，
+    // 否则第二次挂载会重跑一遍整条链路。
+    if (inFlight.current && inFlight.current.courseId !== courseId) {
+      inFlight.current = null;
+    }
+    // 2) 再立即启动本课程，不依赖任何后续 effect 再次触发。
     void enter();
-  }, [enter]);
+  }, [courseId, enter]);
 
   /**
-   * 只有**切换课程**才让在飞的流程失效。
+   * 真实卸载：让在途请求与轮询的迟到结果不再产生任何副作用。
    *
-   * 这里刻意**不**在 effect 的清理函数里递增代次。原因是被真实复现过的卡死：
-   * StrictMode 会"挂载 → 模拟卸载 → 再挂载"，模拟卸载会跑一次清理函数。如果
-   * 清理里递增代次，第一次挂载发起的那次 enter() 会在第一个 await 之后发现
-   * `mine !== epoch.current` 而静默 return；第二次挂载又因为已有在飞 Promise 而
-   * 复用同一次（这正是我们想要的，避免重复请求），于是没有任何一方继续推进，
-   * 页面永久停在"正在确认受管服务状态…"。
-   *
-   * 代次因此只在**依赖真的变化**时递增，也就是真正切到了另一门课。组件真实卸载
-   * 后即使有迟到响应写进 state，也不会再渲染到任何地方，所以不需要靠清理函数来
-   * 兜这件事。
+   * 递增代次后，所有 `mine !== epoch.current` 检查都会生效——迟到的响应不会写 state、
+   * 不会创建 workspace/stage、也不会重新安排 poll。同时清掉在飞标记与计时器，使重新
+   * 挂载（或切回本课程）必须重新开始，而不是复用已经作废的流程。
    */
-  const entryCourse = useRef(courseId);
-  useEffect(() => {
-    if (entryCourse.current === courseId) return;
-    // 真的换课程了：作废旧流程、放开在飞标记，让新课程走一条全新的链路。
-    entryCourse.current = courseId;
+  useEffect(() => () => {
     epoch.current += 1;
     inFlight.current = null;
-    if (timer.current) window.clearTimeout(timer.current);
-  }, [courseId]);
-
-  // 组件真实卸载时停掉轮询计时器，避免离开页面后还有定时器在跑。
-  useEffect(() => () => {
-    if (timer.current) window.clearTimeout(timer.current);
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
   }, []);
 
   /** 重试：直接重跑整个流程，仍然复用同一个确定性键。 */
