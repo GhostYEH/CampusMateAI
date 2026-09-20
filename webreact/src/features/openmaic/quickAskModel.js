@@ -11,13 +11,23 @@
 import { describeWorkspaceError } from "./workspaceModel.js";
 
 /**
- * OpenMAIC 工作台深链。工作台 id 是服务端真实创建/复用的结果，禁止客户端猜造。
+ * 工作台地址。
+ *
+ * `mode` 与 `roles` 只在**调用方确实带了用户选择**时才写进 URL。直达入口（「进入
+ * 课堂」）没有任何用户选择，若仍然无条件拼上 `prompt=&mode=preset`，地址里会出现
+ * 一串空参数：它既不代表任何真实决定，又会让"同一个工作台"出现多个不同 URL，
+ * 刷新恢复与幂等判断都要跟着处理这些噪声。
+ *
+ * 工作台 id 是服务端真实创建/复用的结果，禁止客户端猜造。
  */
-export function workspaceHref(courseId, workspaceId, prompt, { mode = "preset", selectedRoleIds = [] } = {}) {
+export function workspaceHref(courseId, workspaceId, prompt, options) {
   if (!courseId || !workspaceId) throw new Error("打开 OpenMAIC 工作台需要真实的课程和工作台");
-  const parts = [`prompt=${encodeURIComponent(prompt || "")}`, `mode=${encodeURIComponent(mode)}`];
+  const { mode, selectedRoleIds = [] } = options || {};
+  const parts = [];
+  if (prompt) parts.push(`prompt=${encodeURIComponent(prompt)}`);
+  if (mode) parts.push(`mode=${encodeURIComponent(mode)}`);
   if (selectedRoleIds.length) parts.push(`roles=${encodeURIComponent(selectedRoleIds.join(","))}`);
-  return `/courses/${encodeURIComponent(courseId)}/workspaces/${encodeURIComponent(workspaceId)}?${parts.join("&")}`;
+  return `/courses/${encodeURIComponent(courseId)}/workspaces/${encodeURIComponent(workspaceId)}${parts.length ? `?${parts.join("&")}` : ""}`;
 }
 
 /**

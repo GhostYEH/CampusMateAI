@@ -122,10 +122,12 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask opens a native generation preview before binding a workspace", () => {
-  assert.match(pageSource, /generationPreviewHref\(/);
-  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
+test("quick ask enters the classroom directly instead of a generation preview", () => {
+  // 「进入课堂」直达：不再经过角色/模式选择，也不再进入预览页二次确认。
+  assert.match(pageSource, /enterClassroomHref\(/);
+  assert.match(pageSource, /navigate\(enterClassroomHref\(courseId\)\)/);
   assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
+  assert.doesNotMatch(pageSource, /navigate\(generationPreviewHref\(/);
   assert.doesNotMatch(pageSource, /resolveQuickAskWorkspace\(courseId/);
   assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
 });

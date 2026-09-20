@@ -15,6 +15,8 @@ import "./styles/prediction.css";
 import "./styles/agent-workspaces.css";
 import "./styles/agent-ops.css";
 import "./styles/interactive-classroom.css";
+import "./styles/openmaic-workbench.css";
+import "./styles/openmaic-classroom.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

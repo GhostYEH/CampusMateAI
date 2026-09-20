@@ -1,0 +1,201 @@
+/**
+ * 「进入课堂」直达页 + 播放器 / 编辑器补齐的样式。
+ *
+ * 后半部分是本次迁移发现的真实缺口：`.openmaic-player*` 与
+ * `.openmaic-stage-editor*` 这些类名在 JSX 里被使用，但 `styles.css` 里
+ * **一条规则都没有**，所以播放器和编辑器此前是完全没有样式的。这里把它们补上，
+ * 并沿用工作台那套墨色阶与阴影。
+ */
+
+/* ══ 进入课堂：生成过程 ═════════════════════════════════════════════════ */
+
+.openmaic-entry { display: flex; flex-direction: column; gap: 16px; max-width: 760px; }
+
+.openmaic-entry__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid rgba(227, 232, 240, .92);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.openmaic-entry__head { display: flex; align-items: center; gap: 12px; }
+.openmaic-entry__head > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.openmaic-entry__head strong { font-size: 15px; }
+.openmaic-entry__head small { font-size: 12.5px; color: var(--muted); }
+
+.openmaic-entry__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  border-radius: 13px;
+  color: #5c53be;
+  background: #f0edff;
+}
+
+/* 阶段点阵：已过 / 当前 / 未来，三态必须一眼可辨。 */
+.openmaic-entry__steps { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; }
+.openmaic-entry__step { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; transition: background-color .2s ease; }
+.openmaic-entry__step.is-current { background: #f5f3ff; }
+.openmaic-entry__step-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.openmaic-entry__step-copy strong { font-size: 13.5px; font-weight: 550; color: var(--muted); }
+.openmaic-entry__step-copy small { font-size: 11.5px; color: #93a0b5; }
+.openmaic-entry__step.is-done .openmaic-entry__step-copy strong { color: #46536b; }
+.openmaic-entry__step.is-current .openmaic-entry__step-copy strong { color: #4c3fa8; }
+.openmaic-entry__step.is-current .openmaic-entry__step-copy small { color: #6b62c4; }
+
+.openmaic-entry__dot {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  color: #fff;
+  background: #e3e8f0;
+}
+.openmaic-entry__step.is-done .openmaic-entry__dot { background: var(--green); }
+.openmaic-entry__step.is-current .openmaic-entry__dot { background: #685bd2; animation: openmaic-entry-pulse 1.6s ease-in-out infinite; }
+
+@keyframes openmaic-entry-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(104, 91, 210, .4); }
+  50% { box-shadow: 0 0 0 6px rgba(104, 91, 210, 0); }
+}
+
+.openmaic-entry__bar { height: 6px; border-radius: 999px; background: #eef1f7; overflow: hidden; }
+.openmaic-entry__bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #685bd2, #7d9fe8); transition: width .4s ease; }
+
+.openmaic-entry__hint { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* 失败：局部错误，绝不替换整页；两个可执行动作始终在。 */
+.openmaic-entry__error {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid #f3d3d5;
+  border-radius: 14px;
+  color: #8d3a3f;
+  background: #fdf4f4;
+}
+.openmaic-entry__error > div { display: flex; flex-direction: column; gap: 6px; }
+.openmaic-entry__error strong { font-size: 13.5px; }
+.openmaic-entry__error small { font-size: 12px; color: #9c5a5e; line-height: 1.6; }
+.openmaic-entry__error-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+
+.openmaic-entry__link { margin: 0; font-size: 12.5px; color: var(--muted); }
+.openmaic-entry__jump { padding: 0; border: 0; color: var(--blue); background: none; text-decoration: underline; font-size: inherit; }
+
+/* ══ 「我的课程」里的进入课堂入口 ═════════════════════════════════════ */
+
+.openmaic-course-rail__row { display: flex; flex-direction: column; gap: 4px; }
+.openmaic-course-rail__row + .openmaic-course-rail__row { margin-top: 4px; }
+
+.openmaic-course-rail__enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-left: 38px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 550;
+  color: #4c3fa8;
+  background: #f0edff;
+  transition: background-color .16s ease, box-shadow .16s ease;
+}
+.openmaic-course-rail__enter:hover { background: #e5e0ff; box-shadow: 0 6px 16px -8px rgba(92, 83, 190, .55); }
+.openmaic-course-rail__enter:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(104, 91, 210, .3); }
+
+@media (max-width: 767px) {
+  .openmaic-course-rail__enter { margin-left: 0; }
+}
+
+/* ══ 播放器（此前完全没有样式） ═════════════════════════════════════════ */
+
+.openmaic-player { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; padding: 12px; }
+.openmaic-player__toolbar { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; flex-wrap: wrap; }
+.openmaic-player__title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 13.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-player__stage { position: relative; flex: 1 1 auto; min-height: 220px; overflow: hidden; border-radius: 10px; background: #0f172a; }
+.openmaic-player__frame { width: 100%; height: 100%; border: 0; background: #fff; }
+.openmaic-player__slide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%; height: 100%;
+  padding: clamp(16px, 3vw, 34px);
+  overflow: auto;
+  color: #1f2937;
+  background: linear-gradient(160deg, #ffffff 0%, #f7f9fd 100%);
+}
+.openmaic-player__slide h3 { margin: 0; font-size: clamp(17px, 2.2vw, 25px); line-height: 1.25; letter-spacing: -.02em; }
+.openmaic-player__slide p { margin: 0; font-size: clamp(12.5px, 1.3vw, 14.5px); line-height: 1.7; color: #4b5563; }
+.openmaic-player__slide ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: clamp(12.5px, 1.3vw, 14px); line-height: 1.6; color: #4b5563; }
+.openmaic-player__bullets { display: flex; flex-direction: column; gap: 8px; }
+.openmaic-player__bullets li { list-style: none; display: flex; gap: 9px; align-items: flex-start; }
+.openmaic-player__bullets li::before { content: ''; flex: 0 0 auto; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: #7d9fe8; }
+
+.openmaic-player__timeline { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; padding: 9px 11px; border-radius: 10px; background: #f7f9fd; }
+.openmaic-player__timeline ol { list-style: none; display: flex; gap: 8px; margin: 0; padding: 0; overflow-x: auto; }
+.openmaic-player__timeline li { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; font-size: 11px; color: #5b6885; background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.openmaic-player__timeline li.is-blocking { color: #4c3fa8; box-shadow: inset 0 0 0 1px #d6d0f7; }
+
+.openmaic-player__whiteboards { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; }
+.openmaic-player__whiteboards pre { margin: 0; padding: 10px 12px; overflow: auto; border-radius: 9px; font-size: 11.5px; line-height: 1.6; background: #f4f6fb; }
+.openmaic-player__degraded { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; padding: 24px; text-align: center; color: var(--muted); }
+.openmaic-player__degraded strong { font-size: 13.5px; color: var(--ink); }
+.openmaic-player__degraded small { font-size: 12px; line-height: 1.6; }
+
+/* ══ 场景编辑器（此前完全没有样式） ════════════════════════════════════ */
+
+.openmaic-stage-editor { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; padding: 12px; }
+.openmaic-stage-editor__toolbar { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
+.openmaic-stage-editor__type { height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; font-size: 12.5px; background: #fff; }
+
+/* 场景列表：选中态是中性 pill，不加强调色条。 */
+.openmaic-scene-list { list-style: none; display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; overflow: auto; }
+.openmaic-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #fbfcfe;
+  transition: background-color .16s ease, border-color .16s ease;
+}
+.openmaic-scene-item:hover { background: #f4f6fb; }
+.openmaic-scene-item.is-selected { background: #eef2fe; border-color: #d3ddf7; }
+.openmaic-scene-item__order { flex: 0 0 auto; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; font-size: 10.5px; color: var(--muted); background: #eef1f7; }
+.openmaic-scene-item.is-selected .openmaic-scene-item__order { color: #4c3fa8; background: #e0e7fb; }
+.openmaic-scene-item__type { flex: 0 0 auto; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; color: #4c3fa8; background: #f0edff; }
+.openmaic-scene-item__title { flex: 1 1 auto; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-scene-item__actions { display: flex; gap: 2px; flex: 0 0 auto; }
+
+.openmaic-scene-content-editor { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 140px; }
+.openmaic-scene-content-editor textarea {
+  flex: 1 1 auto;
+  min-height: 140px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  resize: vertical;
+  background: #fbfcfe;
+}
+.openmaic-scene-content-editor textarea:focus-visible { outline: none; border-color: #b9c7f0; box-shadow: 0 0 0 3px var(--blue-soft); }
+
+/* 播放/编辑切换在面板里是可见性切换，两个子树都要占满。 */
+.openmaic-stage-editor > .openmaic-player,
+.openmaic-stage-editor > .openmaic-stage-editor { height: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .openmaic-entry__step.is-current .openmaic-entry__dot { animation: none; }
+  .openmaic-entry__bar span { transition: none; }
+}

@@ -32,6 +32,8 @@ const NoticeWorkflowPage = lazy(() => import("./pages/NoticeWorkflowPage.jsx"));
 const AgentRuntimeOpsPage = lazy(() => import("./pages/AgentRuntimeOpsPage.jsx"));
 const OpenMAICWorkspacePage = lazy(() => import("./pages/OpenMAICWorkspacePage.jsx"));
 const OpenMAICGenerationPreviewPage = lazy(() => import("./pages/OpenMAICGenerationPreviewPage.jsx"));
+const OpenMAICClassroomEntryPage = lazy(() => import("./pages/OpenMAICClassroomEntryPage.jsx"));
+const OpenMAICWorkbenchPage = lazy(() => import("./pages/OpenMAICWorkbenchPage.jsx"));
 const pages = {
   HomePage, CoursesPage, CourseDetailPage,
   TasksPage, TaskDetailPage, StudyPage, IslandPage,
@@ -43,6 +45,7 @@ const pages = {
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
   FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, OpenMAICWorkspacePage, OpenMAICGenerationPreviewPage,
+  OpenMAICClassroomEntryPage, OpenMAICWorkbenchPage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
 
@@ -70,8 +73,13 @@ export default function App() {
       <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/home" element={<Page name="HomePage" />} />
       <Route path="/courses" element={<Page name="CoursesPage" />} />
+      {/* 「进入课堂」直达入口：创建/复用工作台并立即开始生成，不再经过角色、模式或预览。 */}
+      <Route path="/courses/:courseId/classroom" element={<Page name="OpenMAICClassroomEntryPage" />} />
+      {/* 旧预览深链继续兼容，只是不再由课程页的默认入口抵达。 */}
       <Route path="/courses/:courseId/openmaic-preview" element={<Page name="OpenMAICGenerationPreviewPage" />} />
-      <Route path="/courses/:courseId/workspaces/:workspaceId" element={<Page name="OpenMAICWorkspacePage" />} />
+      <Route path="/courses/:courseId/workspaces/:workspaceId" element={<Page name="OpenMAICWorkbenchPage" />} />
+      {/* 旧工作台页面保留为兼容深链。 */}
+      <Route path="/courses/:courseId/workspaces/:workspaceId/legacy" element={<Page name="OpenMAICWorkspacePage" />} />
       <Route path="/courses/:courseId" element={<Page name="CourseDetailPage" />} />
       <Route path="/tasks" element={<Page name="TasksPage" />} />
       <Route path="/tasks/:kind/:id" element={<Page name="TaskDetailPage" />} />

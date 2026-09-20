@@ -13,6 +13,7 @@ import {
   filterOpenMAICHomeItems,
 } from "../../features/openmaic/homeModel.js";
 import { quickAskRejection } from "../../features/openmaic/quickAskModel.js";
+import { enterClassroomHref } from "../../features/openmaic/enterClassroomModel.js";
 import {
   DEFAULT_SELECTED_ROLE_IDS,
   OPENMAIC_AGENT_ROLES,
@@ -33,12 +34,22 @@ function CourseRail({ courses, assignments }) {
   const items = buildCourseRailItems(courses, assignments);
   return <aside className="openmaic-home__rail" aria-label="我的课程">
     <SectionHeading title="我的课程" detail={`${items.length} 门课程`} />
-    {items.length ? <div className="openmaic-course-rail">{items.map((course) => <Link className="openmaic-course-rail__item" key={course.id} to={`/courses/${course.id}`}>
-      <span className="openmaic-course-rail__icon" aria-hidden="true"><Icon name="PhBookOpenText" size={18} /></span>
-      <span className="openmaic-course-rail__copy"><strong>{course.name}</strong><small>{[course.teacher, course.term, course.code].filter(Boolean).join(" · ")}</small></span>
-      <span className="openmaic-course-rail__meta">{course.pendingCount ? <b>{course.pendingCount} 项待办</b> : <span>暂无待办</span>}{course.nextDeadline && <small>最近 {dateText(course.nextDeadline)}</small>}</span>
-      <Icon name="PhArrowUpRight" size={15} aria-hidden="true" />
-    </Link>)}</div> : <div className="openmaic-home__empty"><Icon name="PhBookOpen" size={24} /><p>暂无已选课程</p><small>课程同步后会显示在这里。</small></div>}
+    {items.length ? <div className="openmaic-course-rail">{items.map((course) => <div className="openmaic-course-rail__row" key={course.id}>
+      <Link className="openmaic-course-rail__item" to={`/courses/${course.id}`}>
+        <span className="openmaic-course-rail__icon" aria-hidden="true"><Icon name="PhBookOpenText" size={18} /></span>
+        <span className="openmaic-course-rail__copy"><strong>{course.name}</strong><small>{[course.teacher, course.term, course.code].filter(Boolean).join(" · ")}</small></span>
+        <span className="openmaic-course-rail__meta">{course.pendingCount ? <b>{course.pendingCount} 项待办</b> : <span>暂无待办</span>}{course.nextDeadline && <small>最近 {dateText(course.nextDeadline)}</small>}</span>
+        <Icon name="PhArrowUpRight" size={15} aria-hidden="true" />
+      </Link>
+      {/* 「进入课堂」直达：不经过角色选择、模式选择，也不经过生成预览。 */}
+      <Link
+        className="openmaic-course-rail__enter"
+        to={enterClassroomHref(course.id)}
+        aria-label={`进入《${course.name}》的课堂`}
+      >
+        <Icon name="PhSparkle" size={15} aria-hidden="true" />进入课堂
+      </Link>
+    </div>)}</div> : <div className="openmaic-home__empty"><Icon name="PhBookOpen" size={24} /><p>暂无已选课程</p><small>课程同步后会显示在这里。</small></div>}
   </aside>;
 }
 

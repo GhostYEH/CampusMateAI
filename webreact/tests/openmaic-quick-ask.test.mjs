@@ -20,6 +20,7 @@ import {
   quickAskRejection,
   shouldBindWorkspace,
 } from "../src/features/openmaic/quickAskModel.js";
+import { enterClassroomHref } from "../src/features/openmaic/enterClassroomModel.js";
 import { DEFAULT_SELECTED_ROLE_IDS, OPENMAIC_AGENT_ROLES } from "../src/features/openmaic/roleModel.js";
 import { describeFusionState } from "../src/features/openmaic/homeModel.js";
 import { describeWorkspaceError } from "../src/features/openmaic/workspaceModel.js";
@@ -42,18 +43,34 @@ test("the OpenMAIC deep link carries the course, prompt, mode and roles", () => 
   assert.match(href, /roles=default-1%2Cdefault-3%2Cdefault-4/);
 });
 
-test("the first click opens a generation preview with the complete launch context", () => {
-  const href = generationPreviewHref("crs_1", "讲解进程和线程", {
-    mode: "preset",
-    selectedRoleIds: DEFAULT_SELECTED_ROLE_IDS,
-    webSearch: true,
-  });
-  assert.equal(href, "/courses/crs_1/openmaic-preview?prompt=%E8%AE%B2%E8%A7%A3%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B&mode=preset&roles=default-1%2Cdefault-3%2Cdefault-4&web=1");
+test("the first click goes straight to the classroom, not to a preview", () => {
+  // 「进入课堂」不再经过角色/模式选择，也不再进入生成预览页二次确认：
+  // 入口只带课程，创建/复用与首个内容的生成都在课堂入口页内完成。
+  const href = enterClassroomHref("crs_1");
+  assert.equal(href, "/courses/crs_1/classroom");
+  assert.doesNotMatch(href, /openmaic-preview/);
+  // 旧的预览深链仍然可用，只是不再是默认落点。
+  assert.equal(
+    generationPreviewHref("crs_1", "讲解进程和线程", { mode: "preset", selectedRoleIds: DEFAULT_SELECTED_ROLE_IDS, webSearch: true }),
+    "/courses/crs_1/openmaic-preview?prompt=%E8%AE%B2%E8%A7%A3%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B&mode=preset&roles=default-1%2Cdefault-3%2Cdefault-4&web=1",
+  );
 });
 
 test("the deep link refuses to invent a workspace", () => {
   assert.throws(() => workspaceHref("crs_1", "", "q"), /工作台/);
   assert.match(workspaceHref("crs_1", "ws_9", "q"), /\/courses\/crs_1\/workspaces\/ws_9/);
+});
+
+test("a direct entry produces a clean workspace URL with no empty choice parameters", () => {
+  // 直达入口没有用户选择，地址里就不该出现 prompt=/mode= 这类空参数：
+  // 它们不代表任何真实决定，还会让同一个工作台产生多个不同 URL。
+  const href = workspaceHref("crs_1", "ws_1", "");
+  assert.equal(href, "/courses/crs_1/workspaces/ws_1");
+  assert.doesNotMatch(href, /\?/, "没有可选参数时不应出现问号");
+  assert.doesNotMatch(href, /mode=/);
+  assert.doesNotMatch(href, /prompt=/);
+  // 带真实主题时仍然带上。
+  assert.match(workspaceHref("crs_1", "ws_1", "讲解进程"), /prompt=%E8%AE%B2%E8%A7%A3%E8%BF%9B%E7%A8%8B/);
 });
 
 test("the migrated role roster matches the reference classroom controls", () => {
@@ -179,8 +196,8 @@ test("switching courses invalidates an in-flight quick ask", () => {
   assert.match(body, /setQuickAskError\(null\)/);
 });
 
-test("the preview navigation is synchronous and cannot wedge the button", () => {
-  assert.match(pageSource, /navigate\(generationPreviewHref\(/);
+test("the classroom navigation is synchronous and cannot wedge the button", () => {
+  assert.match(pageSource, /navigate\(enterClassroomHref\(/);
   assert.match(pageSource, /setQuickAskBusy\(false\)/);
 });
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -307,6 +307,38 @@ class MaterialDetailOut(MaterialOut):
 class MaterialListOut(BaseModel):
     items: List[MaterialOut] = Field(default_factory=list)
     next_cursor: Optional[str] = None
+
+
+# ===== course context (pre-generation facts) =====
+
+
+class CourseKnowledgePointOut(BaseModel):
+    """生成前展示的一个知识点。只有名字，没有掌握率——掌握率属于课程图谱页。"""
+
+    name: str
+
+
+class CourseContextOut(BaseModel):
+    """一门课在生成前可用的真实事实。
+
+    这个响应的唯一用途是让界面**如实**说明"这次能拿什么去生成"，所以它刻意
+    把"没同步"与"没读到"拆成两个字段：`synced=False` 且 `warnings` 为空，才
+    表示这门课确实还没有资料，下一步是去做同步；`warnings` 非空表示这次读不到，
+    下一步是重试。合并成一个布尔值会让界面无法给出正确的下一步。
+    """
+
+    course_id: str
+    name: str
+    code: str = ""
+    semester: str = ""
+    description: str = ""
+    knowledge_points: List[CourseKnowledgePointOut] = Field(default_factory=list)
+    chapters: List[str] = Field(default_factory=list)
+    materials: List[Dict[str, str]] = Field(default_factory=list)
+    sources: Dict[str, str] = Field(default_factory=dict)
+    warnings: List[str] = Field(default_factory=list)
+    synced: bool = False
+    updated_at: str = ""
 
 
 class MaterialReferenceOut(BaseModel):

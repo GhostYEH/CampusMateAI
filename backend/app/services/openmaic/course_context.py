@@ -604,6 +604,108 @@ def build_learning_context(
     )
 
 
+@dataclass(frozen=True)
+class CourseFacts:
+    """生成前要展示给学生的**结构化课程事实**。
+
+    与 `LearningContext` 的区别是用途：那份是喂给模型的文本，这份是给学生看的
+    摘要，用来在生成前说清"这门课现在到底有什么"。两者都只含教学事实，都不含
+    任何凭据、他人数据或附件原文。
+
+    `synced` 与 `warnings` 必须分开表达，因为它们指向**完全不同**的下一步：
+    `synced=False` 且无 warning 表示"这门课还没同步资料"（要去做同步），
+    有 warning 表示"这次没读到"（重试有用）。把它们合并成一句话会让第二种
+    情况永远等不到重试。
+    """
+
+    course_id: str
+    name: str
+    code: str
+    semester: str
+    description: str
+    knowledge_points: Tuple[str, ...] = ()
+    materials: Tuple[MaterialRef, ...] = ()
+    chapters: Tuple[str, ...] = ()
+    sources: Dict[str, str] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+    synced: bool = False
+    updated_at: str = ""
+
+
+def build_course_facts(
+    container: ServiceContainer,
+    user: UserRow,
+    course: CourseRow,
+    *,
+    limits: Optional[ContextLimits] = None,
+) -> CourseFacts:
+    """汇总一门课已同步的知识点与可用资料（只读，不触发任何同步）。
+
+    读取失败一律记进 `warnings` 而不是当作"没有"——这是本函数唯一容易写错的地方，
+    也是它存在的原因：生成前的提示必须区分"没同步"与"没读到"。
+    """
+    limits = limits or ContextLimits()
+    warnings: List[str] = []
+
+    points: List[str] = []
+    repository = getattr(container, "chaoxing_repository", None)
+    if repository is not None:
+        try:
+            rows = repository.list_knowledge_points(user_id=user.id, course_id=course.id)
+        except Exception as exc:  # noqa: BLE001 - 只读摘要失败不得影响主流程
+            warnings.append(f"知识点读取失败，已省略({type(exc).__name__})")
+            rows = []
+        for row in rows:
+            name = str(row.get("name") or "").strip()
+            if name and name not in points:
+                points.append(name)
+            if len(points) >= limits.knowledge_points:
+                break
+
+    chapters: List[str] = []
+    for item in _chapter_items(container, user, course.id, warnings)[: limits.chapters]:
+        title = _clip(getattr(item, "title", ""), limits.chapter_title_chars)
+        if title and title not in chapters:
+            chapters.append(title)
+
+    materials: List[MaterialRef] = []
+    seen: set[str] = set()
+    for item in _material_items(container, user, course.id, warnings):
+        item_id = str(getattr(item, "id", "") or "")
+        title = _clip(getattr(item, "title", ""), limits.material_title_chars)
+        if not item_id or not title or item_id in seen:
+            continue
+        seen.add(item_id)
+        materials.append(MaterialRef(id=item_id, title=title, kind=getattr(item, "kind", "") or "资料"))
+        if len(materials) >= limits.materials:
+            break
+
+    sync_at = last_chaoxing_sync_at(container, user.id) or ""
+    sources: Dict[str, str] = {"course": "本地课程库"}
+    if chapters:
+        sources["chapters"] = "学习通同步(章节)"
+    if points:
+        sources["knowledge"] = "学习通知识图谱同步"
+    if materials:
+        sources["materials"] = "学习通课程资料同步"
+
+    return CourseFacts(
+        course_id=str(course.id),
+        name=_clip(course.name, 200),
+        code=_clip(course.code, 40),
+        semester=_clip(course.semester, 40),
+        description=_clip(course.description, limits.description_chars),
+        knowledge_points=tuple(points),
+        materials=tuple(materials),
+        chapters=tuple(chapters),
+        sources=sources,
+        warnings=warnings,
+        # 只有真实拿到内容才算已同步；一个都没有时界面必须如实提示。
+        synced=bool(points or materials or chapters),
+        updated_at=sync_at,
+    )
+
+
 def build_course_context(
     container: ServiceContainer,
     user: UserRow,

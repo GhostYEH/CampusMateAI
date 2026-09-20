@@ -364,6 +364,16 @@ export async function getOpenMAICProviderStatus() {
   return dataOf(await client.get("/openmaic/fusion/providers"));
 }
 
+/**
+ * 生成前的只读课程上下文：这门课已同步的知识点、章节与可用资料。
+ *
+ * 只读且只读本地库——它不经过受管 OpenMAIC 服务，所以受管服务不可用时它依然
+ * 可用。界面据此如实说明"这次能拿什么去生成"，而不是编一份听起来合理的主题。
+ */
+export async function getOpenMAICCourseContext(courseId) {
+  return dataOf(await client.get(`/courses/${courseId}/openmaic-context`));
+}
+
 // ===== 学习工作台（workspace / stage） =====
 //
 // 两个头是**协议的一部分**，不是可选优化：
