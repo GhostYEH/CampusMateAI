@@ -24,6 +24,7 @@ import { sandboxPolicyFor } from "../src/features/openmaic/playerModel.js";
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
 
 const stageSource = read("src/components/openmaic/OpenMAICClassroomStage.jsx");
+const shellSource = read("src/maic/classroom/shell.jsx");
 const workbenchSource = read("src/pages/OpenMAICWorkbenchPage.jsx");
 const cssSource = read("src/styles/maic.css");
 const workbenchCss = read("src/styles/openmaic-workbench.css");
@@ -222,4 +223,32 @@ test("the classroom header survives a 320px viewport", () => {
   // 侧栏 220px 的默认宽度在 320px 下会把主列压到 100px，必须自动收起。
   assert.match(stageSource, /useNarrowViewport\(\)/, "课堂必须在窄屏自动收起侧栏");
   assert.match(stageSource, /setCollapsed\(narrow\)/, "跨断点时必须重算侧栏开合");
+});
+
+test("presentation mode is a real classroom state with an Escape exit", () => {
+  assert.match(stageSource, /const \[isPresenting, setIsPresenting\] = React\.useState\(false\)/,
+    "课堂必须拥有可验证的演示模式状态");
+  assert.match(stageSource, /onTogglePresentation=\{\(\) => setIsPresenting\(\(value\) => !value\)\}/,
+    "头部演示按钮必须切换课堂状态");
+  assert.match(stageSource, /event\.key !== "Escape"/,
+    "演示模式必须监听 Escape");
+  assert.match(stageSource, /if \(isPresenting\) setIsPresenting\(false\)/,
+    "Escape 必须退出演示模式");
+  assert.doesNotMatch(stageSource, /requestFullscreen|exitFullscreen|fullscreenchange/,
+    "演示模式不得伪造浏览器全屏 API");
+});
+
+test("presentation mode hides classroom chrome and gives the stage all available height", () => {
+  assert.match(stageSource, /isPresenting=\{isPresenting\}/,
+    "课堂壳必须收到演示状态");
+  assert.match(stageSource, /<SceneStage[\s\S]{0,900}isPresenting=\{isPresenting\}/,
+    "舞台必须收到演示状态");
+  assert.match(stageSource, /data-presentation-mode=\{isPresenting \? "true" : "false"\}/,
+    "演示状态必须在 DOM 中可观察");
+  assert.match(stageSource, /isPresenting \? null : <MaicRoundtable/,
+    "演示模式必须隐藏底部工具栏与课堂交互条");
+  assert.match(shellSource, /const headerVisible = !hideHeader && !isPresenting/,
+    "演示模式必须隐藏课堂头部");
+  assert.match(shellSource, /const sceneViewerHeight = headerVisible \? "calc\(100% - 80px\)" : "100%"/,
+    "隐藏头部后舞台必须占满可用高度");
 });

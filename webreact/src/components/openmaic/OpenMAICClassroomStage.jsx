@@ -71,7 +71,19 @@ export default function OpenMAICClassroomStage({
   }, [narrow]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [isPresenting, setIsPresenting] = React.useState(false);
   const epoch = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!isPresenting) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (isPresenting) setIsPresenting(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isPresenting]);
 
   const load = React.useCallback(async () => {
     const mine = (epoch.current += 1);
@@ -225,7 +237,10 @@ export default function OpenMAICClassroomStage({
     </div>;
   }
 
-  return <div className="maic-root flex-1 min-h-0 min-w-0 flex">
+  return <div
+    className="maic-root flex-1 min-h-0 min-w-0 flex"
+    data-presentation-mode={isPresenting ? "true" : "false"}
+  >
     <MaicClassroomShell
       title={plan?.title || fallbackTitle}
       scenes={sidebarScenes}
@@ -238,6 +253,8 @@ export default function OpenMAICClassroomStage({
       onNextScene={index < scenes.length - 1 ? () => go(index + 1) : undefined}
       sidebarCollapsed={collapsed}
       onToggleSidebar={() => setCollapsed((value) => !value)}
+      isPresenting={isPresenting}
+      onTogglePresentation={() => setIsPresenting((value) => !value)}
       // 参考项目侧栏顶部是 `<img src="/logo-horizontal.png">`。目标仓库没有这个
       // 品牌图，直接沿用会渲染成一张破图（alt 文本裸露、占据 h-6 高度）。把上游
       // 二进制搬进来要走 third_party 的 LICENSE/NOTICE/清单流程，不属于本次范围，
@@ -282,6 +299,7 @@ export default function OpenMAICClassroomStage({
         messages={messages}
         discussionError={discussionError}
         narration={narration}
+        isPresenting={isPresenting}
       />
     </MaicClassroomShell>
   </div>;
@@ -308,6 +326,7 @@ function SceneStage({
   messages,
   discussionError,
   narration,
+  isPresenting,
 }) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
@@ -349,7 +368,7 @@ function SceneStage({
     <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
       {body}
     </div>
-    <MaicRoundtable
+    {isPresenting ? null : <MaicRoundtable
       toolbar={<SceneToolbar
         index={index}
         total={total}
@@ -366,7 +385,7 @@ function SceneStage({
       onPromptChange={onTopicChange}
       onStart={onStartDiscussion}
       sceneTitle={title}
-    />
+    />}
   </div>;
 }
 
