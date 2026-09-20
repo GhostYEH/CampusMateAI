@@ -31,7 +31,12 @@ from playwright.sync_api import expect, sync_playwright
 BASE = os.environ.get("WEB_BASE_URL", "http://127.0.0.1:5184")
 STUDENT_USERNAME = os.environ.get("E2E_STUDENT_USERNAME", "student_demo")
 STUDENT_PASSWORD = os.environ.get("E2E_STUDENT_PASSWORD", "Demo123456")
-SHOTS = Path(os.environ.get("E2E_SHOTS_DIR", str(Path(__file__).resolve().parent / "shots")))
+
+# 截图默认**不落盘**。这个脚本属于仓库，任何默认输出目录都会变成仓库里的产物，
+# 而"靠 .gitignore 掩盖"不是清理。只有在显式给出 E2E_SHOTS_DIR 时才存图——
+# run_openmaic_workbench_e2e.py 会把它指到本次运行的临时目录里，随 finally 一起删。
+_shots_env = os.environ.get("E2E_SHOTS_DIR", "").strip()
+SHOTS = Path(_shots_env) if _shots_env else None
 
 # (宽, 高, 标签, 期望的布局)
 VIEWPORTS = [
@@ -210,9 +215,12 @@ WORKBENCH_GEOMETRY = """() => {
         }
         return false;
     };
-    const navButtons = [...document.querySelectorAll('.ow-seg--nav [role="tab"]')].map((el) => ({
+    const navButtons = [...document.querySelectorAll('.ow-seg--nav button')].map((el) => ({
         text: (el.textContent || '').trim(),
-        selected: el.getAttribute('aria-selected') === 'true',
+        // 切换控件是 aria-pressed 的普通按钮（不是一整套 tab 语义）。
+        pressed: el.getAttribute('aria-pressed') === 'true',
+        role: el.getAttribute('role'),
+        tabIndex: el.tabIndex,
     }));
     const boxes = focusables.filter(visible).map((el) => {
         const box = boxOf(el);
@@ -239,7 +247,13 @@ WORKBENCH_GEOMETRY = """() => {
         paneBoxes: panesPresent.map((sel) => ({ sel, ...boxOf(document.querySelector(sel)) })),
         nav: document.querySelector('.ow-nav') ? boxOf(document.querySelector('.ow-nav')) : null,
         navButtons,
-        switcherCount: document.querySelectorAll('.ow-seg--nav [role="tab"]').length,
+        switcherCount: document.querySelectorAll('.ow-seg--nav button').length,
+        // tablist 不得嵌套：外层 nav 里的课程标签条是页面上唯一的 tablist。
+        tablistCount: document.querySelectorAll('[role="tablist"]').length,
+        nestedTablists: [...document.querySelectorAll('[role="tablist"]')]
+            .filter((el) => el.parentElement?.closest('[role="tablist"]')).length,
+        navTag: document.querySelector('.ow-nav')?.tagName.toLowerCase() || null,
+        navRole: document.querySelector('.ow-nav')?.getAttribute('role') || null,
         start: boxOf(document.querySelector('[data-testid="ow-start-learning"]')),
         stage: boxOf(document.querySelector('[data-maic-stage-card="true"]')),
         overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -415,6 +429,15 @@ def check_breakpoint(page, recorder: Recorder, report: list[str], width: int, he
             f"{width}px 窄屏必须恰好一个内容 pane，实际 {geometry['panesPresent']}"
         )
         assert geometry["nav"], f"{width}px 窄屏缺少持久导航区"
+        # 导航区是普通 <nav>，页面上唯一的 tablist 是课程标签条，且它不嵌套。
+        assert geometry["navTag"] == "nav", f"导航区应当是 <nav>，实际 <{geometry['navTag']}>"
+        assert geometry["navRole"] is None, "导航区外层不得声明 role=tablist"
+        assert geometry["nestedTablists"] == 0, "页面上出现了嵌套的 tablist"
+        # 切换控件是普通 button + aria-pressed，不留 role=tab 的半套语义。
+        for entry in geometry["navButtons"]:
+            assert entry["role"] is None, f"切换控件「{entry['text']}」不该有 role={entry['role']}"
+        assert sum(1 for entry in geometry["navButtons"] if entry["pressed"]) == 1, \
+            "同一时刻只能有一个切换控件处于按下状态"
         assert geometry["nav"]["width"] <= width + 1, "窄屏导航区越界"
         # 导航区那一行的三个控件都必须真的在视口里。
         # 320/390 是本次缺陷最严重的两档：曾出现"开始学习"被挤到 300px 边界外。
@@ -442,7 +465,7 @@ def check_breakpoint(page, recorder: Recorder, report: list[str], width: int, he
     # 依次点击三个面板，每次 DOM 里有且只有一个内容 pane。
     if expected_layout == "narrow":
         for pane_label, selector in PANES.items():
-            button = page.locator(".ow-seg--nav [role='tab']", has_text=pane_label).first
+            button = page.locator(".ow-seg--nav button", has_text=pane_label).first
             assert button.is_visible(), f"{width}px 切换器「{pane_label}」不可见"
             box = button.bounding_box()
             assert box and -1 <= box["x"] and box["x"] + box["width"] <= width + 1, (
@@ -468,8 +491,9 @@ def check_breakpoint(page, recorder: Recorder, report: list[str], width: int, he
             assert state["switcherCount"] == 3, \
                 f"{width}px 在「{pane_label}」里切换器消失了（回不到其它面板）"
             _step(report, f"{width}×{height} 切到「{pane_label}」：DOM 面板={present}，"
-                         f"宽度={state['paneBoxes'][0]['width']}px，可见控件={state['visibleFocusables']}")        # 回到课堂，后面的断点/回归从课堂开始。
-        page.locator(".ow-seg--nav [role='tab']", has_text="课堂").first.click()
+                         f"宽度={state['paneBoxes'][0]['width']}px，可见控件={state['visibleFocusables']}")
+        # 回到课堂，后面的断点/回归从课堂开始。
+        page.locator(".ow-seg--nav button", has_text="课堂").first.click()
         page.wait_for_timeout(240)
         back = page.evaluate(WORKBENCH_GEOMETRY)
         assert back["panesPresent"] == [".ow-pane--classroom"]
@@ -499,6 +523,128 @@ def check_breakpoint(page, recorder: Recorder, report: list[str], width: int, he
         shot = SHOTS / f"ow-{label}-{width}x{height}.png"
         page.screenshot(path=str(shot), full_page=False)
         _step(report, f"截图 → {shot.name}")
+
+
+def check_switcher_keyboard(page, report: list[str]) -> None:
+    """窄屏面板切换器必须真的能用键盘操作，且焦点可见。
+
+    只验证"有 tabindex"是不够的：要求按方向键能换面板，Home/End 能跳首尾，
+    Tab 只停一个停靠点，并且被选中的那个控件在键盘操作后真的拿到了焦点。
+    """
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(300)
+
+    switcher = page.locator(".ow-seg--nav")
+    assert switcher.count() == 1, "窄屏应当有唯一的切换器"
+
+    buttons = page.locator(".ow-seg--nav button")
+    assert buttons.count() == 3, f"切换器应有 3 个控件，实际 {buttons.count()}"
+
+    def pressed_label():
+        return page.evaluate(
+            """() => {
+                const el = document.querySelector('.ow-seg--nav button[aria-pressed="true"]');
+                return el ? el.textContent.trim() : null;
+            }"""
+        )
+
+    def focused_label():
+        return page.evaluate(
+            """() => {
+                const el = document.activeElement;
+                if (!el || !el.closest || !el.closest('.ow-seg--nav')) return null;
+                return el.textContent.trim();
+            }"""
+        )
+
+    def pane_now():
+        """当前在场面板的**类名列表**（不是选择器），方便直接比 contains。"""
+        return page.evaluate(
+            """() => {
+                const el = document.querySelector('.ow-pane');
+                return el ? [...el.classList] : null;
+            }"""
+        )
+
+    # 从课堂出发，确保初始状态明确。
+    page.locator(".ow-seg--nav button", has_text="课堂").first.click()
+    page.wait_for_timeout(200)
+    assert pressed_label() == "课堂", f"初始应停在课堂，实际 {pressed_label()}"
+
+    # 键盘操作前先把焦点放到当前选中的控件上——这正是 Tab 会落到的那个。
+    page.locator('.ow-seg--nav button[aria-pressed="true"]').first.focus()
+    assert focused_label() == "课堂", f"焦点应停在当前选中的控件上，实际 {focused_label()}"
+
+    # roving focus：同一时刻只有一个控件能被 Tab 停住。
+    tab_stops = page.evaluate(
+        """() => [...document.querySelectorAll('.ow-seg--nav button')]
+            .filter((el) => el.tabIndex === 0).map((el) => el.textContent.trim())"""
+    )
+    assert tab_stops == ["课堂"], f"切换器应当只有一个 Tab 停靠点，实际 {tab_stops}"
+
+    # ArrowRight / ArrowLeft / Home / End 都要真的换面板。
+    # 每一项写成 (按键, 期望选中, 期望面板)，并且每步都从"上一项的结果"继续，
+    # 所以这里必须严格按顺序推进——顺序错了断言会立刻指出错在哪一步。
+    sequence = [
+        ("ArrowRight", "工具", "ow-pane--tools"),
+        ("ArrowRight", "目录", "ow-pane--rail"),
+        ("ArrowLeft", "工具", "ow-pane--tools"),
+        ("Home", "目录", "ow-pane--rail"),
+        ("End", "工具", "ow-pane--tools"),
+    ]
+    for key, expect_label, expect_pane in sequence:
+        assert focused_label() is not None, (
+            f"按 {key} 之前焦点已不在切换器里（实际 {focused_label()}），"
+            "roving focus 把焦点弄丢了"
+        )
+        page.keyboard.press(key)
+        page.wait_for_timeout(220)
+        assert pressed_label() == expect_label, (
+            f"按 {key} 后应选中「{expect_label}」，实际「{pressed_label()}」"
+        )
+        # `expect_pane` 是不带点的类名（如 ow-pane--tools）；pane_now() 返回类名列表。
+        assert expect_pane in (pane_now() or []), (
+            f"按 {key} 后应当只渲染 .{expect_pane} 一个面板，实际 {pane_now()}"
+        )
+        # 顺手钉住互斥本身：键盘切面板同样只能留一个 pane 在 DOM 里。
+        assert page.locator(".ow-pane").count() == 1, (
+            f"按 {key} 后 DOM 里有 {page.locator('.ow-pane').count()} 个面板，破坏了互斥"
+        )
+        # 焦点必须跟着走，否则键盘用户会丢了位置。
+        assert focused_label() == expect_label, (
+            f"按 {key} 后焦点应当在「{expect_label}」上，实际 {focused_label()}"
+        )
+
+    # 焦点必须在视口内，并且有可见的焦点样式（不是 outline: none 的隐形状）。
+    outline = page.evaluate(
+        """() => {
+            const el = document.querySelector('.ow-seg--nav button[aria-pressed="true"]');
+            if (!el) return null;
+            const s = getComputedStyle(el);
+            const r = el.getBoundingClientRect();
+            return {
+                outlineStyle: s.outlineStyle,
+                outlineWidth: s.outlineWidth,
+                boxShadow: s.boxShadow,
+                x: Math.round(r.x), right: Math.round(r.right),
+                y: Math.round(r.y), bottom: Math.round(r.bottom),
+                inViewport: r.x >= 0 && r.right <= window.innerWidth
+                    && r.y >= 0 && r.bottom <= window.innerHeight,
+            };
+        }"""
+    )
+    assert outline and outline["inViewport"], f"当前选中的切换控件不在视口内：{outline}"
+    # 焦点样式可以是 outline，也可以是 box-shadow 环——两者至少有其一。
+    has_ring = (outline["outlineStyle"] not in ("none", "") and outline["outlineWidth"] != "0px") \
+        or outline["boxShadow"] not in ("none", "")
+    assert has_ring, f"切换控件缺少可见的焦点样式：{outline}"
+
+    _step(report, "切换器键盘可用：ArrowLeft/ArrowRight/Home/End 均换面板且焦点跟随，"
+                 "单一 Tab 停靠点，焦点样式可见")
+
+    # 回到课堂，后续步骤从课堂继续。
+    page.locator(".ow-seg--nav button", has_text="课堂").first.click()
+    page.wait_for_timeout(200)
 
 
 def check_stage_ratio(page, report: list[str]) -> None:
@@ -666,22 +812,25 @@ def run_checks(service_control) -> dict:
             for width, height, label, expected in VIEWPORTS:
                 check_breakpoint(page, recorder, report, width, height, label, expected)
 
-            print("步骤 5：16:9 舞台仍是 ResizeObserver 像素盒")
+            print("步骤 5：窄屏切换器键盘可用与焦点可见")
+            check_switcher_keyboard(page, report)
+
+            print("步骤 6：16:9 舞台仍是 ResizeObserver 像素盒")
             check_stage_ratio(page, report)
 
-            print("步骤 6：回归「开始学习 / 返回编辑 / 刷新」")
+            print("步骤 7：回归「开始学习 / 返回编辑 / 刷新」")
             check_play_and_back(page, recorder, report)
 
-            print("步骤 7：320px 下「开始学习」真实可点")
+            print("步骤 8：320px 下「开始学习」真实可点")
             check_narrow_play_entry(page, report)
 
-            print("步骤 8：回归非 OpenMAIC 路由不受全局壳影响")
+            print("步骤 9：回归非 OpenMAIC 路由不受全局壳影响")
             check_mid_route_survives(page, recorder, report)
 
-            print("步骤 9：503 掉线仍然停在课堂")
+            print("步骤 10：503 掉线仍然停在课堂")
             check_503(page, recorder, report, service_control)
 
-            print("步骤 10：console / pageerror / 未处理 Promise rejection")
+            print("步骤 11：console / pageerror / 未处理 Promise rejection")
             rejections = page.evaluate("() => window.__unhandled || []")
             assert not recorder.page_errors, f"出现未捕获的页面异常：{recorder.page_errors}"
             _step(report, "pageerror：0 条")
@@ -696,15 +845,17 @@ def run_checks(service_control) -> dict:
             network_errors = recorder.network_console_errors()
             _step(report, f"浏览器资源加载失败提示：{len(network_errors)} 条（掉线场景预期内）")
 
-            shots = sorted(SHOTS.glob("ow-*.png")) if SHOTS.exists() else []
+            shots = sorted(SHOTS.glob("ow-*.png")) if SHOTS and SHOTS.exists() else []
         except Exception:
-            try:
-                SHOTS.mkdir(parents=True, exist_ok=True)
-                shot = SHOTS / "ow-FAILURE.png"
-                page.screenshot(path=str(shot), full_page=False)
-                print(f"失败截图：{shot}", file=sys.stderr)
-            except Exception:
-                pass
+            # 失败截图走和成功截图完全相同的临时目录规则，绝不落到仓库里。
+            if SHOTS:
+                try:
+                    SHOTS.mkdir(parents=True, exist_ok=True)
+                    shot = SHOTS / "ow-FAILURE.png"
+                    page.screenshot(path=str(shot), full_page=False)
+                    print(f"失败截图：{shot}", file=sys.stderr)
+                except Exception:
+                    pass
             diagnose(page, recorder, "run_checks")
             raise
         finally:

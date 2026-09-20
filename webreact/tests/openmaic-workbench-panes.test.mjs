@@ -130,12 +130,22 @@ const vite = await createServer({
   appType: "custom",
   logLevel: "silent",
 });
-after(async () => { await vite.close(); });
+after(async () => {
+  // 断言失败会留下 React 未清空的 act 队列，此时 `vite.close()` 可能永远不 resolve，
+  // 于是整个测试进程挂住、连失败报告都打不出来（看起来像"卡住了"而不是"失败了"）。
+  // 给它一个上限：超时就带着已有的报告退出，失败原因仍然可见。
+  await Promise.race([
+    vite.close(),
+    new Promise((resolve) => setTimeout(resolve, 5000).unref?.()),
+  ]);
+});
 
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { act } = React;
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+const { readFile } = await import("node:fs/promises");
+const { fileURLToPath: toPath } = await import("node:url");
 const { default: OpenMAICWorkbenchPage } = await vite.ssrLoadModule(
   "/src/pages/OpenMAICWorkbenchPage.jsx",
 );
@@ -174,9 +184,9 @@ function panesInDom(host) {
 }
 
 function paneButtons(host) {
-  // 只取切换器自己那一组：课程标签条也是一个 tablist，混进来会把"切换器还在不在"
+  // 只取切换器自己那一组：课程标签条是另一个角色组，混进来会把"切换器还在不在"
   // 这个问题问错。
-  return [...host.querySelectorAll('.ow-seg--nav [role="tab"]')];
+  return [...host.querySelectorAll(".ow-seg--nav button")];
 }
 
 async function clickPane(host, label) {
@@ -225,9 +235,14 @@ test("narrow: every pane selection leaves exactly one pane in the DOM", async ()
     // 切换器必须还在——否则切到目录就再也回不到课堂。
     assert.equal(paneButtons(host).length, 3, `「${label}」激活时切换器必须仍然完整在场`);
     assert.equal(
-      paneButtons(host).filter((node) => node.getAttribute("aria-selected") === "true").length,
+      paneButtons(host).filter((node) => node.getAttribute("aria-pressed") === "true").length,
       1,
-      "任意时刻只能有一个面板被标记为选中",
+      "任意时刻只能有一个面板被标记为按下",
+    );
+    assert.equal(
+      paneButtons(host).find((node) => node.getAttribute("aria-pressed") === "true").textContent.trim(),
+      label,
+      "标记为按下的那个必须就是当前在场的面板",
     );
   }
 
@@ -268,4 +283,156 @@ test("wide: all three panes are mounted together again", async () => {
   // 唯一的播放入口。
   assert.equal(host.querySelectorAll('[data-testid="ow-start-learning"]').length, 1);
   await unmount();
+});
+
+test("narrow: the nav never nests a tablist inside another tablist", async () => {
+  await act(async () => { setNarrow(true); });
+  const { host, unmount } = await mount();
+
+  const nav = host.querySelector(".ow-nav");
+  assert.ok(nav, "窄屏必须有工作台导航区");
+  // 外层是普通 nav，不是 tablist：它肚子里装着 WorkspaceCourseTabs，而后者自己
+  // 就是一个合法的 tablist。嵌套 tablist 的层级读出来是错的。
+  assert.equal(nav.tagName.toLowerCase(), "nav", "导航区外层应当是 <nav>");
+  assert.equal(nav.getAttribute("role"), null, "导航区外层不得声明 role=tablist");
+  assert.ok(nav.getAttribute("aria-label"), "导航区需要有可访问名称");
+
+  // 全页的 tablist 恰好只有课程标签条那一个，且它不在任何别的 tablist 里面。
+  const tablists = [...host.querySelectorAll('[role="tablist"]')];
+  assert.equal(tablists.length, 1, `全页应当只有课程标签条一个 tablist，实际 ${tablists.length} 个`);
+  assert.equal(tablists[0].className, "ow-ctabs", "唯一的 tablist 应当是课程标签条");
+  assert.equal(
+    tablists[0].parentElement.closest('[role="tablist"]'), null,
+    "课程标签条不得嵌在另一个 tablist 内",
+  );
+
+  // 切换器要么是完整 tab 语义（role=tab + tabpanel），要么老老实实是按钮组。
+  // 这里是后者：一组互斥的视图开关，用 aria-pressed 表达。
+  const switcher = host.querySelector(".ow-seg--nav");
+  assert.equal(switcher.getAttribute("role"), "group");
+  const buttons = paneButtons(host);
+  assert.equal(buttons.length, 3);
+  for (const button of buttons) {
+    assert.equal(button.tagName.toLowerCase(), "button", "切换控件应当是真正的 button");
+    assert.equal(button.getAttribute("role"), null, "普通按钮不该再挂 role=tab 的半套语义");
+    assert.ok(button.hasAttribute("aria-pressed"), "每个切换控件都要用 aria-pressed 表达状态");
+  }
+  // roving focus：同一时刻只有一个能被 Tab 停住。
+  assert.equal(
+    buttons.filter((node) => node.getAttribute("tabindex") === "0").length, 1,
+    "切换器同一时刻只能有一个 Tab 停靠点",
+  );
+
+  await unmount();
+  await act(async () => { setNarrow(false); });
+});
+
+test("narrow: the pane switcher moves selection with Arrow / Home / End", async () => {
+  await act(async () => { setNarrow(true); });
+  const { host, unmount } = await mount();
+
+  const selectedLabel = () =>
+    paneButtons(host).find((node) => node.getAttribute("aria-pressed") === "true")?.textContent.trim();
+  /**
+   * linkedom 没有 `KeyboardEvent` 构造器，所以自己造一个带 `key` 的普通 Event。
+   * 被测代码只读 `event.key` 与 `event.preventDefault()`，两者都能满足。
+   */
+  const press = async (key) => {
+    const current = paneButtons(host).find((node) => node.getAttribute("aria-pressed") === "true");
+    const event = new window.Event("keydown", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "key", { value: key });
+    await act(async () => { current.dispatchEvent(event); });
+    await act(async () => { await sleep(20); });
+  };
+
+  // 切换器按键把选中的面板真的换掉（不是只换焦点），否则"键盘可用"是假的。
+  assert.equal(selectedLabel(), "课堂");
+  await press("ArrowRight");
+  assert.equal(selectedLabel(), "工具");
+  assert.deepEqual(panesInDom(host), [".ow-pane--tools"], "方向键换选中必须真的换面板");
+
+  await press("ArrowRight");
+  assert.equal(selectedLabel(), "目录", "到尾部应当回绕");
+  assert.deepEqual(panesInDom(host), [".ow-pane--rail"]);
+
+  await press("ArrowLeft");
+  assert.equal(selectedLabel(), "工具", "到头部应当反向回绕");
+
+  await press("Home");
+  assert.equal(selectedLabel(), "目录");
+  await press("End");
+  assert.equal(selectedLabel(), "工具");
+
+  // 焦点最终必须落回切换器里那个当前选中的按钮上——键盘用户不能丢了位置。
+  await act(async () => { await sleep(30); });
+  const focused = paneButtons(host).find((node) => node === host.ownerDocument.activeElement);
+  if (focused) {
+    assert.equal(focused.getAttribute("aria-pressed"), "true", "焦点必须停在当前选中的切换控件上");
+  }
+
+  await unmount();
+  await act(async () => { setNarrow(false); });
+});
+
+/**
+ * 关闭标签的回归：`setTabsOpen` 的 updater 必须是纯函数。
+ *
+ * 此前 `navigate()` 写在 `setTabsOpen(current => { ...navigate()... })` 的 updater
+ * 里面。React 允许重放 state updater（StrictMode 下会跑两遍来暴露副作用，并发渲染
+ * 也可能重放），重放一个带副作用的 updater 就会导航两次，后退栈里多出一格。
+ *
+ * ── 为什么这里断言"源码形状"而不是"点一下数导航次数" ─────────────────────
+ *
+ * 运行时观测在这个缺陷上抓不到东西，三种做法都试过，且都在**有缺陷**的实现下全绿：
+ *
+ *   1. 数 location 变化：router 会把指向同一地址的重复导航去重，两次
+ *      `navigate("/courses")` 只留下一个 location。
+ *   2. 数 `navigator.push/replace`：`useNavigate()` 在页面渲染时就取走了方法引用，
+ *      外层再替换已经拦不住；`createMemoryRouter` 也不暴露 history。
+ *   3. 数包住后的 `router.navigate`：能拦到调用，但实测 React 18 在普通点击下
+ *      **不会**重放 updater——一次点击只跑一遍，"有副作用"与"没副作用"的调用次数
+ *      完全相同。
+ *
+ * 也就是说，这个缺陷在单测里运行时不可观测，只在 StrictMode 重放与并发渲染下显形。
+ * 那就断言真正被要求的性质：副作用必须在 updater **外面**。做法是先把函数体切出来
+ * 再查结构，而不是对整份源码做正则——后者会被注释里的引用误伤。
+ */
+test("closeTab keeps its side effect out of the state updater", async () => {
+  const source = await readFile(
+    toPath(new URL("../src/pages/OpenMAICWorkbenchPage.jsx", import.meta.url)),
+    "utf8",
+  );
+
+  const start = source.indexOf("const closeTab = useCallback(");
+  assert.ok(start > -1, "找不到 closeTab 的定义");
+  // 连依赖数组一起切进来：`}, [deps]);` 的结尾也要在片里，后面才查得到 tabsOpen。
+  const end = source.indexOf("\n\n", source.indexOf("}, [", start));
+  assert.ok(end > start, "找不到 closeTab 的依赖数组");
+  const body = source.slice(start, end);
+
+  // 1. 不允许再用函数式 updater——副作用没有安全的位置可放。
+  assert.equal(
+    body.includes("setTabsOpen((current)"),
+    false,
+    "closeTab 不应再用函数式 updater。应当基于当前 tabsOpen 先算出 rest，"
+    + "setTabsOpen(rest) 之后再在 updater 外面导航。",
+  );
+
+  // 2. 导航必须仍然发生（关掉当前课堂要回退到剩下的标签 / 课程列表）。
+  assert.match(body, /navigate\(/, "closeTab 必须仍然会导航");
+
+  // 3. 顺序：先 setTabsOpen(rest)，再 navigate。反过来会基于尚未更新的标签列表跳转。
+  const setIndex = body.indexOf("setTabsOpen(");
+  const navigateIndex = body.indexOf("navigate(");
+  assert.ok(setIndex > -1 && navigateIndex > -1, "closeTab 里应当同时有 setTabsOpen 与 navigate");
+  assert.ok(
+    setIndex < navigateIndex,
+    "必须先 setTabsOpen(rest) 再 navigate：反过来会基于还没更新的标签列表做跳转",
+  );
+
+  // 4. `rest` 由**当前** tabsOpen 在事件回调里算出，且 tabsOpen 进了依赖数组
+  //    （函数体读了它，漏掉就会永远用挂载时的旧列表）。
+  assert.match(body, /const rest = tabsOpen\.filter\(/, "rest 应当在事件回调里由当前 tabsOpen 算出");
+  const deps = body.slice(body.lastIndexOf("}, ["));
+  assert.match(deps, /\btabsOpen\b/, `closeTab 的依赖数组必须包含 tabsOpen，实际：${deps.trim()}`);
 });

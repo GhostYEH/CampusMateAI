@@ -134,13 +134,32 @@ test("the narrow switcher and the model share one pane list", () => {
   // 切换器要是自己再写一遍面板名，就会出现"能渲染但点不到"或"点了渲染不出来"。
   assert.deepEqual([...NARROW_PANES], ["rail", "classroom", "tools"]);
   assert.match(workbenchSource, /NARROW_PANES\.map\(/, "切换器必须由模型导出的列表渲染");
-  assert.match(workbenchSource, /role="tablist"/);
   for (const label of ["目录", "课堂", "工具"]) {
     assert.match(workbenchSource, new RegExp(label), `切换器缺少「${label}」`);
   }
   // 切换器必须在**工作台**上，而不是课堂面板里——否则切到目录就会把它一起带走。
   assert.match(workbenchSource, /className="ow-nav"/);
   assert.match(workbenchSource, /\{layout\.narrow \? <NarrowWorkbenchNav/);
+
+  // 导航区外层是普通 <nav>，**不是** tablist：它肚子里有 WorkspaceCourseTabs，
+  // 而后者自己就是 tablist，嵌起来层级就错了。
+  assert.match(workbenchSource, /<nav className="ow-nav" aria-label="工作台导航">/,
+    "导航区外层必须是 <nav> 而不是 role=tablist");
+  assert.doesNotMatch(workbenchSource, /className="ow-nav" role="tablist"/,
+    "导航区外层不得再声明 role=tablist");
+  // 切换控件用 aria-pressed 表达互斥状态，不留 role=tab 的半套语义。
+  // 断言的是真正的 JSX 属性（行首缩进的 `role="tab"` 后面直接换行），
+  // 而不是散文注释里引用到的那个词。
+  assert.match(workbenchSource, /aria-pressed=\{pane === key\}/,
+    "切换控件必须用 aria-pressed 表达状态");
+  assert.doesNotMatch(workbenchSource, /^\s*role="tab"\s*$/m,
+    "切换控件不应保留 role=tab：没有配套的 tabpanel 就是半套语义");
+  assert.doesNotMatch(workbenchSource, /<NarrowWorkbenchNav[\s\S]{0,600}?role="tablist"/,
+    "窄屏导航区（含切换器）里不应再出现 tablist");
+  // 键盘契约要在源码里就能看到，不能只靠鼠标。
+  for (const key of ["ArrowRight", "ArrowLeft", "Home", "End"]) {
+    assert.match(workbenchSource, new RegExp(`"${key}"`), `切换器缺少 ${key} 键盘支持`);
+  }
 });
 
 test("the workbench renders exactly the panes the layout resolves", () => {

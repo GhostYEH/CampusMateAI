@@ -116,6 +116,9 @@ def main() -> int:
         print(f"三服务就绪，浏览器验收目标：{base_url}\n")
 
         os.environ["WEB_BASE_URL"] = base_url
+        # 截图落在本次运行的临时目录里，随 finally 的 rmtree 一起消失——仓库里不留
+        # 任何产物，也就不需要靠 .gitignore 去掩盖。
+        os.environ["E2E_SHOTS_DIR"] = str(tmp_root / "shots")
         import openmaic_workbench_browser  # noqa: E402  （必须在 WEB_BASE_URL 之后导入）
 
         result = openmaic_workbench_browser.run_checks(service)

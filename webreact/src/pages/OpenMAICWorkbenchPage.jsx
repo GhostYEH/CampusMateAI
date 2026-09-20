@@ -35,15 +35,56 @@ const MODES = [["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互�
  */
 const NARROW_PANE_LABELS = { rail: "目录", classroom: "课堂", tools: "工具" };
 
-/** 窄屏工作台导航区：面板切换器 + 课程标签 + 出口。三件事挤在一行里，所以只留必要文案。 */
+/**
+ * 窄屏工作台导航区：面板切换器 + 课程标签 + 出口。
+ *
+ * 语义上刻意**不使用** tab/tablist：
+ *
+ * - 一个 `tablist` 不能嵌在另一个 `tablist` 里，而这里的 `WorkspaceCourseTabs`
+ *   自己就是一个合法的 tablist（它有真实的 tab 键盘契约）。把外层也标成 tablist
+ *   会产出嵌套 tablist，屏幕阅读器读出来的层级是错的。
+ * - 面板切换器又不是 `tabpanel` 的主人：三个面板是**互斥挂载**的，切换它们等于换
+ *   视图，而不是在同一个 tabpanel 容器里换内容。半套 tab 语义（有 role="tab" 却
+ *   没有 tabpanel、没有 roving tabindex 的完整键盘契约）比不用语义更糟。
+ *
+ * 所以外层是一个普通 `<nav>`，三个切换控件是普通 button + `aria-pressed`——这正是
+ * "一组互斥的视图开关"的准确表达。键盘上按工具栏的惯例给它们 roving focus：
+ * 方向键 / Home / End 移动并选中，Tab 只落在当前选中的那个上。
+ */
 function NarrowWorkbenchNav({ pane, onSelect, tabs, workspaceId, courseId, navigate, onCloseTab }) {
-  return <div className="ow-nav" role="tablist" aria-label="工作台面板">
-    <div className="ow-seg ow-seg--nav">
-      {NARROW_PANES.map((key) => <button
+  const buttonsRef = useRef([]);
+
+  const onSwitcherKeyDown = (event) => {
+    const index = NARROW_PANES.indexOf(pane);
+    if (index < 0) return;
+    let next = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % NARROW_PANES.length;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + NARROW_PANES.length) % NARROW_PANES.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = NARROW_PANES.length - 1;
+    if (next === null) return;
+    event.preventDefault();
+    // 先选中再聚焦：选中会重排（面板整个换掉），焦点要在新布局落定后仍然停在
+    // 同一个控件上，所以顺序是"改状态 → 下一个微任务再聚焦"。
+    onSelect(NARROW_PANES[next]);
+    const target = buttonsRef.current[next];
+    if (target) window.requestAnimationFrame(() => target.focus());
+  };
+
+  return <nav className="ow-nav" aria-label="工作台导航">
+    <div
+      className="ow-seg ow-seg--nav"
+      role="group"
+      aria-label="切换工作台面板"
+      onKeyDown={onSwitcherKeyDown}
+    >
+      {NARROW_PANES.map((key, index) => <button
         key={key}
+        ref={(node) => { buttonsRef.current[index] = node; }}
         type="button"
-        role="tab"
-        aria-selected={pane === key}
+        // `aria-pressed` 而不是 `aria-selected`：这是一组互斥的视图开关。
+        aria-pressed={pane === key}
+        // roving focus：Tab 只停当前选中的那个，方向键在组内移动。
         tabIndex={pane === key ? 0 : -1}
         className={pane === key ? "is-active" : ""}
         onClick={() => onSelect(key)}
@@ -58,7 +99,7 @@ function NarrowWorkbenchNav({ pane, onSelect, tabs, workspaceId, courseId, navig
     <button type="button" className="ow-icon-btn" aria-label="返回课程列表" title="返回课程列表" onClick={() => navigate("/courses")}>
       <Icon name="PhArrowLeft" size={15} />
     </button>
-  </div>;
+  </nav>;
 }
 
 const RAIL_STORAGE_KEY = "campus_openmaic_workbench_rail_width";
@@ -203,13 +244,22 @@ export default function OpenMAICWorkbenchPage() {
     initial: RAIL_WIDTH_DEFAULT, min: RAIL_WIDTH_MIN, max: RAIL_WIDTH_MAX, storageKey: RAIL_STORAGE_KEY,
   });
 
+  /**
+   * 关掉一个已打开的课堂标签。
+   *
+   * `setTabsOpen` 的 updater **必须是纯函数**：React 允许重放它（StrictMode 下会
+   * 故意跑两遍来暴露副作用，并发渲染也可能重放）。此前 `navigate()` 写在 updater
+   * 内部，重放时就会导航两次——用户看不出差别，但后退栈会多出一格。
+   *
+   * 所以顺序是：先在事件回调里基于当前 `tabsOpen` 算出 `rest`，再
+   * `setTabsOpen(rest)`，最后才在 updater **之外**导航。
+   */
   const closeTab = useCallback((id) => {
-    setTabsOpen((current) => {
-      const rest = current.filter((tab) => tab.id !== id);
-      if (id === workspaceId) navigate(rest.length ? `/courses/${courseId}/workspaces/${rest[rest.length - 1].id}` : "/courses");
-      return rest;
-    });
-  }, [courseId, navigate, workspaceId]);
+    const rest = tabsOpen.filter((tab) => tab.id !== id);
+    setTabsOpen(rest);
+    // 关掉的不是当前课堂时不用跳；否则回退到剩下的最后一个标签。
+    if (id === workspaceId) navigate(rest.length ? `/courses/${courseId}/workspaces/${rest[rest.length - 1].id}` : "/courses");
+  }, [courseId, navigate, tabsOpen, workspaceId]);
 
   const load = useCallback(async () => {
     const mine = ++epoch.current;
