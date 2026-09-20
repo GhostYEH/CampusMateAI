@@ -40,6 +40,7 @@ import focusHallWallpaperTest from './ets/focus/FocusHallWallpaper.test';
 import hitokotoModelsTest from './ets/data/HitokotoModels.test';
 import bingDailyWallpaperModelsTest from './ets/data/BingDailyWallpaperModels.test';
 import agentRuntimeModelsTest from './ets/agent/AgentRuntimeModels.test';
+import learnerWorldModelModelsTest from './ets/agent/LearnerWorldModelModels.test';
 import agentEventReducerTest from './ets/agent/AgentEventReducer.test';
 import finalReviewStateTest from './ets/finalreview/FinalReviewState.test';
 import courseResearchStateTest from './ets/research/CourseResearchState.test';
@@ -89,6 +90,7 @@ export default function testsuite(): void {
   hitokotoModelsTest();
   bingDailyWallpaperModelsTest();
   agentRuntimeModelsTest();
+  learnerWorldModelModelsTest();
   agentEventReducerTest();
   finalReviewStateTest();
   courseResearchStateTest();

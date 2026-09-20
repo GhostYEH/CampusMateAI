@@ -59,6 +59,8 @@ EVALUATED_STATUS = "EVALUATED"
 REPLAN_COOLDOWN_HOURS = 12
 REPLAN_DAILY_LIMIT = 2
 MAX_REPLAN_CHAIN_DEPTH = 3
+# 普通（非 Agent）计划的采纳幂等键前缀：一份计划最多产生一条干预记录。
+PLAN_ADOPTION_KEY_PREFIX = "plan-adoption:"
 # 这两类结论不落库、不推进状态：没有可评估的对象，或还没有开始执行。
 _NON_PERSISTED_VERDICTS = frozenset({"NOT_OBSERVED"})
 
@@ -233,6 +235,73 @@ class AdaptiveInterventionService:
             strategy=strategy, reused_intervention=False, deferred_activation=deferred_activation,
             strategy_adjustments=strategy_adjustments, defer_lineage=defer_lineage,
         )
+
+    def adopt_plan(
+        self, *, user_id: str, plan_id: str, as_of: datetime | None = None
+    ) -> AdaptiveInterventionRow | None:
+        """把一份**学生已采纳**的既有计划纳入可观测闭环。
+
+        与 `plan_for_goal` 的区别只有两点，正是"普通用户路径"需要的：
+
+        - **不生成第二个计划**：学生已经确认的计划就是这份，不会被替换掉；
+        - **不动计划血缘**：这里没有"新旧计划替换"，`supersedes_plan_id` 保持为空。
+
+        其余全部复用同一条链路：三域投影 -> `StudentStateAnalyzer` ->
+        `StrategyPolicy` -> 干预记录 -> 观测窗到期后由后台 Worker 评估/重规划。
+        因此 CAS、租约、冷却、日上限、链深、事务血缘、幂等与崩溃恢复语义
+        全部沿用既有实现，没有第二套规则。
+
+        幂等：`(user_id, idempotency_key=plan-adoption:{plan_id})` 唯一，
+        并且先按 `plan_id` 查一次——Agent `learning_goal` 路径已绑定的计划会直接复用。
+        中途失败（记录已建、观测窗未写）也能被重试补完，不留"无归属记录"。
+        """
+        existing = self._repository.find_by_plan(user_id=user_id, plan_id=plan_id)
+        if existing is not None:
+            return existing
+        plan = self._load_plan(user_id=user_id, plan_id=plan_id)
+        if plan is None:
+            return None
+
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        plan_goal_id = getattr(getattr(plan, "run", None), "goal_id", None)
+        # `adaptive_interventions.goal_id` 非空。普通计划可以不绑定学生目标，
+        # 这时用计划自身的稳定 scope 键占位，既能满足约束，也让重规划防抖
+        # 按"这份计划"而不是"某个不存在目标"分组。
+        goal_id = plan_goal_id or f"plan:{plan_id}"
+        goal = self._load_goal(user_id=user_id, goal_id=plan_goal_id) if plan_goal_id else None
+
+        core = self._state_service.project_user(user_id, as_of=now, trigger="adaptive_plan_adoption")
+        academic = self._state_service.project_academic(user_id, as_of=now, trigger="adaptive_plan_adoption")
+        world = self._state_service.project_world(user_id, as_of=now, trigger="adaptive_plan_adoption")
+        forecasts = self._collect_forecasts(user_id=user_id, as_of=now, goal_id=plan_goal_id)
+
+        assessment = self._analyzer.analyze(
+            user_id=user_id, as_of=now, core=core, academic=academic, world=world,
+            forecasts=forecasts, goal=goal,
+        )
+        available_minutes = int(getattr(getattr(plan, "run", None), "available_minutes", 0) or 60)
+        strategy = self._policy.select(
+            assessment=assessment, goal=goal, available_minutes=available_minutes
+        )
+        baseline_digest = _digest({
+            "assessment_id": assessment.assessment_id,
+            "core_run_id": assessment.core_run_id,
+            "academic_run_id": assessment.academic_run_id,
+            "world_run_id": assessment.world_run_id,
+        })
+        intervention = self._repository.create(
+            user_id=user_id, goal_id=goal_id, assessment=assessment, strategy=strategy,
+            baseline_state_digest=baseline_digest,
+            idempotency_key=f"{PLAN_ADOPTION_KEY_PREFIX}{plan_id}",
+            status="PLAN_GENERATED", plan_id=plan_id,
+        )
+        due_at = self._observation_window_policy.due_at(
+            planned_end=getattr(getattr(plan, "run", None), "window_end", None), generated_at=now,
+        )
+        return self._repository.bind_plan(
+            user_id=user_id, intervention_id=intervention.intervention_id, plan_id=plan_id,
+            observation_due_at=due_at.isoformat(), status="PLAN_GENERATED",
+        ) or intervention
 
     def load_intervention(self, *, user_id: str, intervention_id: str) -> AdaptiveInterventionRow | None:
         return self._repository.get(user_id=user_id, intervention_id=intervention_id)
@@ -697,4 +766,5 @@ __all__ = [
     "InterventionPlanResult",
     "InterventionOutcomeResult",
     "FORECAST_TYPES",
+    "PLAN_ADOPTION_KEY_PREFIX",
 ]

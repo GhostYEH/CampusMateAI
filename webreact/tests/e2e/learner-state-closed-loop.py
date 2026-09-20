@@ -3,6 +3,13 @@
 流程覆盖：登录、目标与进度、CORE/WORLD 状态证据、纠正与撤销、计划接受/执行/评估/反馈/撤销、
 只读模拟、数据源暂停后的降级、恢复、透明度、影子数据删除和预测页面。
 脚本使用独立后端数据库，失败时以非零状态退出，并在结束时关闭服务和清理临时数据。
+
+运行方式（不要直接调裸 `python`，见 webreact/scripts/run-python.mjs）：
+
+    cd webreact && npm run test:e2e:learner-state
+
+解释器按 `PYTHON` 环境变量 → 仓库内 `backend/.venv` → PATH 上的 `python3`/`python`
+的顺序解析，因此在 Windows 开发机与 CI 上都能跑。
 """
 from __future__ import annotations
 
@@ -358,15 +365,30 @@ def run_closed_loop(page, viewport, token: str) -> None:
         f"plan execute failed: {executed}"
     )
 
-    # 13. 查看计划评估
+    # 13. 读取计划摘要与候选模型只读注解（生产响应上的唯一候选接线点）
+    plan_summary = _api_get(page, f"/learning-plans/{plan_id}/summary", token)
+    assert plan_summary.get("plan_id") == plan_id, f"summary missing plan: {plan_summary}"
+    annotation = plan_summary.get("candidate_annotation")
+    assert annotation is not None, f"summary 必须携带 candidate_annotation 字段：{plan_summary}"
+    assert annotation.get("read_only") is True, f"注解必须是只读的：{annotation}"
+    assert annotation.get("affects_production") is False, f"注解不得影响生产：{annotation}"
+    if annotation.get("available"):
+        # 只有在配置了真实候选模型且门禁全过时才会走到这里。
+        assert annotation.get("inference_source") == "REAL_MODEL", annotation
+        assert annotation.get("shadow_run_id"), "可用的注解必须可追溯到影子记录"
+    else:
+        assert annotation.get("reason"), f"降级必须带稳定 reason：{annotation}"
+        assert annotation.get("summary") is None, "降级时不得携带候选文本"
+
+    # 14. 查看计划评估
     evaluation = _api_get(page, f"/learning-plans/{plan_id}/evaluation", token)
     assert evaluation.get("plan_id") == plan_id, f"evaluation missing: {evaluation}"
 
-    # 14. 提交计划反馈
+    # 15. 提交计划反馈
     feedback = _api_post(page, f"/learning-plans/{plan_id}/feedback", token, {"feedback": "HELPFUL"})
     assert feedback.get("plan_id") == plan_id, f"feedback failed: {feedback}"
 
-    # 15. 撤销已执行计划
+    # 16. 撤销已执行计划
     undone = _api_post(page, f"/learning-plans/{plan_id}/undo", token)
     assert undone.get("status") == "UNDONE", f"plan undo failed: {undone}"
 
@@ -396,9 +418,15 @@ def run_closed_loop(page, viewport, token: str) -> None:
         "simulation changed learner business counts"
     )
 
-    # 17. 暂停通用数据源、确认 WORLD 降级，再恢复并查看透明度
+    # 18. 暂停通用数据源、确认 WORLD 降级，再恢复并查看透明度
     page.reload(wait_until="networkidle")
     _wait_for_learning_state(page)
+    # 候选模型只读注解必须真的渲染出来（可用或降级都算），且文案声明只读。
+    candidate_note = page.locator(".ls-candidate")
+    candidate_note.first.wait_for(timeout=15000)
+    assert candidate_note.count() == 1, "计划摘要区域必须渲染候选模型只读注解"
+    candidate_text = candidate_note.first.inner_text()
+    assert "只读" in candidate_text, f"注解必须声明只读：{candidate_text}"
     source_rows = page.locator(".ls-source-row")
     assert source_rows.count() == 6, f"unexpected generic source count: {source_rows.count()}"
     chaoxing_row = source_rows.nth(2)

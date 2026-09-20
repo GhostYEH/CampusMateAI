@@ -25,6 +25,19 @@ test("LearningStatePage does not expose the retired practice source label", () =
 });
 
 test("learner-state E2E has an explicit package entry", () => {
-  assert.equal(packageJson.scripts["test:e2e:learner-state"], "python tests/e2e/learner-state-closed-loop.py");
+  const entry = packageJson.scripts["test:e2e:learner-state"];
+  // 裸 `python` 在 Windows 开发机上不成立（本机只有 backend/.venv）：
+  // 入口必须走跨平台解释器解析器，而不是赌 PATH 上恰好有 python。
+  assert.doesNotMatch(entry, /(^|\s)python3?(\s|$)/, "不得直接依赖裸 python");
+  assert.match(entry, /run-python\.mjs\s+tests\/e2e\/learner-state-closed-loop\.py/);
   assert.match(packageJson.scripts["test:all"], /test:e2e:learner-state/);
+});
+
+test("every E2E package entry resolves the Python interpreter portably", () => {
+  const entries = Object.entries(packageJson.scripts).filter(([name]) => name.startsWith("test:e2e:"));
+  assert.ok(entries.length >= 3, "E2E 入口不应只剩一个");
+  for (const [name, command] of entries) {
+    assert.doesNotMatch(command, /(^|\s)python3?(\s|$)/, `${name} 不得直接调用裸 python`);
+    assert.match(command, /^node scripts\/run-python\.mjs /, `${name} 必须走 run-python.mjs`);
+  }
 });

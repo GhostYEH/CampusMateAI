@@ -59,6 +59,13 @@
 .ls-goal-execution__summary { display: grid; gap: 4px; background: var(--blue-soft, #eaf0ff); border-radius: 10px; padding: 12px; margin-bottom: 12px; font-size: 13px; }
 .ls-goal-execution__summary strong { font-size: 15px; }
 .ls-goal-execution__summary small { color: var(--muted, #6e788b); }
+.ls-goal-execution__note { display: block; }
+/* 候选模型只读注解：可识别（来源行）、可降级（不可用时只显示回退原因）。 */
+.ls-candidate { display: grid; gap: 4px; margin-top: 6px; padding: 10px 12px; border: 1px dashed var(--line, #d7deea); border-radius: 10px; background: var(--surface, #fff); }
+.ls-candidate[data-available="false"] { border-style: dotted; opacity: .85; }
+.ls-candidate strong { font-size: 13px; }
+.ls-candidate__text { margin: 0; color: var(--ink, #182134); overflow-wrap: anywhere; }
+.ls-candidate__note { font-size: 12px; }
 .ls-goal-execution__run { border-top: 1px solid var(--line, #e3e8f0); padding: 10px 0; }
 .ls-goal-execution__run > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
 .ls-goal-execution__run > small { color: var(--muted, #6e788b); }

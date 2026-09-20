@@ -10,7 +10,9 @@ import {
   FinalReviewAdjustmentDecisionResult,
   CourseResearchRun, CourseResearchSource,
   NoticeSource, NoticeWorkflow, NoticeWorkflowAction,
-  RunStatus, StudentGoal, LearningPlanSummary
+  RunStatus, StudentGoal, LearningPlanSummary,
+  LearnerStateSnapshot, ForecastSummary, DataSourceControl,
+  ModelTransparency, AdaptiveInterventionOutcome
 } from '../data/AgentRuntimeModels';
 import { IdempotencyKey } from '../service/AgentEventReducer';
 
@@ -216,6 +218,66 @@ export class AgentRuntimeRepository {
     const raw: Record<string, Object> = await this.client.requestWithHeaders<Record<string, Object>>(
       http.RequestMethod.POST, `learning-plans/${encodeURIComponent(planId)}/replan`, headers, empty);
     return (raw.plan_id ?? planId) as string;
+  }
+
+  // ===== 学生世界模型（只读消费 + 数据源控制）=====
+  //
+  // 只读或只改"数据源开关"：干预记录的创建与自动重规划只发生在后端后台闭环里，
+  // 客户端无法触发，也不会因为读页面而改变任何学习状态。
+
+  async listLearnerStateSnapshots(projectionKind: string, pageSize: number = 20): Promise<LearnerStateSnapshot[]> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET,
+      `learner-state/snapshots?projection_kind=${encodeURIComponent(projectionKind)}&page=1&page_size=${pageSize}`);
+    return AgentDtoParser.learnerStateSnapshotPage(raw).items;
+  }
+
+  async listForecasts(pageSize: number = 10): Promise<ForecastSummary[]> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, `learner-state/forecasts?page=1&page_size=${pageSize}`);
+    const items: Object = raw.items ?? [];
+    return Array.isArray(items)
+      ? (items as Record<string, Object>[]).map((item: Record<string, Object>) => AgentDtoParser.forecastSummary(item))
+      : [];
+  }
+
+  async listDataSourceControls(): Promise<DataSourceControl[]> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, 'learner-state/data-controls');
+    const items: Object = raw.items ?? [];
+    return Array.isArray(items)
+      ? (items as Record<string, Object>[]).map((item: Record<string, Object>) => AgentDtoParser.dataSourceControl(item))
+      : [];
+  }
+
+  async setDataSourceStatus(sourceKey: string, status: string): Promise<DataSourceControl[]> {
+    const body: Record<string, string> = {
+      status: status,
+      idempotency_key: `data-source:harmony:${sourceKey}:${status}`
+    };
+    await this.client.requestWithHeaders<Record<string, Object>>(
+      http.RequestMethod.PUT, `learner-state/data-controls/${encodeURIComponent(sourceKey)}`, {}, body);
+    return this.listDataSourceControls();
+  }
+
+  async getModelTransparency(): Promise<ModelTransparency> {
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, 'learner-state/model-transparency');
+    return AgentDtoParser.modelTransparency(raw);
+  }
+
+  async getInterventionOutcome(): Promise<AdaptiveInterventionOutcome | null> {
+    const page: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET, 'adaptive-interventions?page=1&page_size=5');
+    const items: Object = page.items ?? [];
+    if (!Array.isArray(items)) return null;
+    const current: Record<string, Object> | undefined = (items as Record<string, Object>[])
+      .find((item: Record<string, Object>) => item.status !== 'SUPERSEDED');
+    if (current === undefined) return null;
+    const raw: Record<string, Object> = await this.client.request<Record<string, Object>>(
+      http.RequestMethod.GET,
+      `adaptive-interventions/${encodeURIComponent((current.intervention_id ?? '') as string)}/outcome`);
+    return AgentDtoParser.adaptiveInterventionOutcome(raw);
   }
 
   async getJob(jobId: string): Promise<AgentJob> {

@@ -204,6 +204,8 @@ data class LearningPlanSummaryDto(
     val recommendations: List<String> = emptyList(),
     @Json(name = "warning_codes") val warningCodes: List<String> = emptyList(),
     @Json(name = "generated_at") val generatedAt: String = "",
+    // 候选模型只读注解：可识别、可降级、可追溯；缺失即为"本次没有候选结果"。
+    @Json(name = "candidate_annotation") val candidateAnnotation: CandidateAnnotationDto? = null,
 )
 
 // ── Final Review DTO ──

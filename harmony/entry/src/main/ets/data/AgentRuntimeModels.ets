@@ -185,6 +185,109 @@ export interface LearningPlanSummary {
   recommendations: string[];
   warning_codes: string[];
   generated_at: string;
+  // 候选模型只读注解：可识别、可降级、可追溯；缺失即为"本次没有候选结果"。
+  candidate_annotation: CandidateAnnotation | null;
+}
+
+// ===== 学生世界模型（只读）=====
+//
+// 只建模页面真正展示的字段。`value` / `state_comparison` 这类自由结构刻意不建模，
+// 避免为一个展示摘要引入多态解析；降级标记（data_quality / warning_codes /
+// limitations）必须建模，否则页面无法区分"真的没有"和"取不到"。
+
+export interface CandidateAnnotation {
+  available: boolean;
+  capability_name: string;
+  capability_version: string;
+  reason: string | null;
+  inference_source: string;
+  model_key: string | null;
+  model_version: string | null;
+  prompt_version: string | null;
+  input_digest: string | null;
+  shadow_run_id: string | null;
+  used_fallback: boolean;
+  claim_codes: string[];
+  summary: string | null;
+  read_only: boolean;
+  affects_production: boolean;
+}
+
+export interface LearnerStateSnapshot {
+  snapshot_id: string;
+  state_type: string;
+  confidence: number;
+  data_quality: string;
+  projection_kind: string;
+  warning_codes: string[];
+  evidence_count: number;
+}
+
+export interface LearnerStateSnapshotPage {
+  items: LearnerStateSnapshot[];
+  total: number;
+}
+
+export interface ForecastSummary {
+  forecast_id: string;
+  forecast_type: string;
+  probability: number | null;
+  confidence: number;
+  data_quality: string;
+  horizon_end: string | null;
+  limitations: string[];
+}
+
+export interface DataSourceControl {
+  source_key: string;
+  status: string;
+  can_pause: boolean;
+  can_resume: boolean;
+}
+
+export interface ModelCapabilityTransparency {
+  capability_name: string;
+  campusmate_lm_status: string;
+  quality_gate_passed: boolean;
+  performance_measured: boolean;
+  uses_real_model_inference: boolean;
+}
+
+export interface ModelTransparency {
+  capabilities: ModelCapabilityTransparency[];
+  campusmate_lm_enabled: boolean;
+  campusmate_lm_affects_production: boolean;
+  shadow_results_modify_plans: boolean;
+  read_only_canary_active: boolean;
+  real_inference_observed: boolean;
+  fixture_only: boolean;
+}
+
+export interface AdaptiveInterventionOutcome {
+  intervention_id: string;
+  plan_id: string | null;
+  observation_status: string;
+  execution_signal: string;
+  adoption: string;
+  verdict: string;
+  observed_outcome: string;
+  causal_claim: string;
+  decision: string | null;
+  decision_reason_codes: string[];
+  suggested_adjustments: string[];
+  decision_status: string | null;
+  observation_due_at: string | null;
+  warning_codes: string[];
+}
+
+export interface AdaptiveIntervention {
+  intervention_id: string;
+  goal_id: string;
+  plan_id: string | null;
+  status: string;
+  strategy_code: string;
+  data_quality: string | null;
+  observation_due_at: string | null;
 }
 
 export interface AgentApproval {
@@ -746,7 +849,137 @@ export class AgentDtoParser {
       next_action: (raw.next_action ?? '') as string,
       recommendations: Array.isArray(recommendationsRaw) ? recommendationsRaw as string[] : [],
       warning_codes: Array.isArray(warningsRaw) ? warningsRaw as string[] : [],
-      generated_at: (raw.generated_at ?? '') as string
+      generated_at: (raw.generated_at ?? '') as string,
+      candidate_annotation: AgentDtoParser.candidateAnnotation(raw.candidate_annotation)
+    };
+  }
+
+  /** 候选模型只读注解：缺失或形状不符时返回 null，页面据此走"不可用"分支。 */
+  static candidateAnnotation(raw: Object | undefined | null): CandidateAnnotation | null {
+    if (raw === undefined || raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const record: Record<string, Object> = raw as Record<string, Object>;
+    const claimsRaw: Object = record.claim_codes ?? [];
+    const summaryValue: Object = record.summary ?? null;
+    return {
+      available: record.available === true,
+      capability_name: (record.capability_name ?? '') as string,
+      capability_version: (record.capability_version ?? '') as string,
+      reason: record.reason === undefined || record.reason === null ? null : record.reason as string,
+      inference_source: (record.inference_source ?? 'DETERMINISTIC_FALLBACK') as string,
+      model_key: record.model_key === undefined || record.model_key === null ? null : record.model_key as string,
+      model_version: record.model_version === undefined || record.model_version === null ? null : record.model_version as string,
+      prompt_version: record.prompt_version === undefined || record.prompt_version === null ? null : record.prompt_version as string,
+      input_digest: record.input_digest === undefined || record.input_digest === null ? null : record.input_digest as string,
+      shadow_run_id: record.shadow_run_id === undefined || record.shadow_run_id === null ? null : record.shadow_run_id as string,
+      used_fallback: record.used_fallback === true,
+      claim_codes: Array.isArray(claimsRaw) ? claimsRaw as string[] : [],
+      summary: summaryValue === null ? null : summaryValue as string,
+      read_only: record.read_only !== false,
+      affects_production: record.affects_production === true
+    };
+  }
+
+  static learnerStateSnapshot(raw: Record<string, Object>): LearnerStateSnapshot {
+    const warningsRaw: Object = raw.warning_codes ?? [];
+    return {
+      snapshot_id: (raw.snapshot_id ?? '') as string,
+      state_type: (raw.state_type ?? '') as string,
+      confidence: (raw.confidence ?? 0) as number,
+      data_quality: (raw.data_quality ?? 'unavailable') as string,
+      projection_kind: (raw.projection_kind ?? 'CORE') as string,
+      warning_codes: Array.isArray(warningsRaw) ? warningsRaw as string[] : [],
+      evidence_count: (raw.evidence_count ?? 0) as number
+    };
+  }
+
+  static learnerStateSnapshotPage(raw: Record<string, Object>): LearnerStateSnapshotPage {
+    const itemsRaw: Object = raw.items ?? [];
+    return {
+      items: Array.isArray(itemsRaw)
+        ? (itemsRaw as Record<string, Object>[]).map((item: Record<string, Object>) => AgentDtoParser.learnerStateSnapshot(item))
+        : [],
+      total: (raw.total ?? 0) as number
+    };
+  }
+
+  static forecastSummary(raw: Record<string, Object>): ForecastSummary {
+    const limitationsRaw: Object = raw.limitations ?? [];
+    const probability: Object = raw.probability ?? null;
+    return {
+      forecast_id: (raw.forecast_id ?? '') as string,
+      forecast_type: (raw.forecast_type ?? '') as string,
+      probability: probability === null ? null : probability as number,
+      confidence: (raw.confidence ?? 0) as number,
+      data_quality: (raw.data_quality ?? 'unavailable') as string,
+      horizon_end: raw.horizon_end === undefined || raw.horizon_end === null ? null : raw.horizon_end as string,
+      limitations: Array.isArray(limitationsRaw) ? limitationsRaw as string[] : []
+    };
+  }
+
+  static dataSourceControl(raw: Record<string, Object>): DataSourceControl {
+    return {
+      source_key: (raw.source_key ?? '') as string,
+      status: (raw.status ?? 'ENABLED') as string,
+      can_pause: raw.can_pause !== false,
+      can_resume: raw.can_resume !== false
+    };
+  }
+
+  static modelTransparency(raw: Record<string, Object>): ModelTransparency {
+    const capabilitiesRaw: Object = raw.capabilities ?? [];
+    const capabilities: ModelCapabilityTransparency[] = Array.isArray(capabilitiesRaw)
+      ? (capabilitiesRaw as Record<string, Object>[]).map((item: Record<string, Object>) => {
+        return {
+          capability_name: (item.capability_name ?? '') as string,
+          campusmate_lm_status: (item.campusmate_lm_status ?? 'SHADOW_ONLY') as string,
+          quality_gate_passed: item.quality_gate_passed === true,
+          performance_measured: item.performance_measured === true,
+          uses_real_model_inference: item.uses_real_model_inference === true
+        };
+      })
+      : [];
+    return {
+      capabilities: capabilities,
+      campusmate_lm_enabled: raw.campusmate_lm_enabled === true,
+      campusmate_lm_affects_production: raw.campusmate_lm_affects_production === true,
+      shadow_results_modify_plans: raw.shadow_results_modify_plans === true,
+      read_only_canary_active: raw.read_only_canary_active === true,
+      real_inference_observed: raw.real_inference_observed === true,
+      fixture_only: raw.fixture_only === true
+    };
+  }
+
+  static adaptiveInterventionOutcome(raw: Record<string, Object>): AdaptiveInterventionOutcome {
+    const reasonsRaw: Object = raw.decision_reason_codes ?? [];
+    const adjustmentsRaw: Object = raw.suggested_adjustments ?? [];
+    const warningsRaw: Object = raw.warning_codes ?? [];
+    return {
+      intervention_id: (raw.intervention_id ?? '') as string,
+      plan_id: raw.plan_id === undefined || raw.plan_id === null ? null : raw.plan_id as string,
+      observation_status: (raw.observation_status ?? 'NOT_STARTED') as string,
+      execution_signal: (raw.execution_signal ?? 'NOT_STARTED') as string,
+      adoption: (raw.adoption ?? 'NOT_STARTED') as string,
+      verdict: (raw.verdict ?? 'NOT_OBSERVED') as string,
+      observed_outcome: (raw.observed_outcome ?? 'INSUFFICIENT_EVIDENCE') as string,
+      causal_claim: (raw.causal_claim ?? 'NOT_ESTIMATED') as string,
+      decision: raw.decision === undefined || raw.decision === null ? null : raw.decision as string,
+      decision_reason_codes: Array.isArray(reasonsRaw) ? reasonsRaw as string[] : [],
+      suggested_adjustments: Array.isArray(adjustmentsRaw) ? adjustmentsRaw as string[] : [],
+      decision_status: raw.decision_status === undefined || raw.decision_status === null ? null : raw.decision_status as string,
+      observation_due_at: raw.observation_due_at === undefined || raw.observation_due_at === null ? null : raw.observation_due_at as string,
+      warning_codes: Array.isArray(warningsRaw) ? warningsRaw as string[] : []
+    };
+  }
+
+  static adaptiveIntervention(raw: Record<string, Object>): AdaptiveIntervention {
+    return {
+      intervention_id: (raw.intervention_id ?? '') as string,
+      goal_id: (raw.goal_id ?? '') as string,
+      plan_id: raw.plan_id === undefined || raw.plan_id === null ? null : raw.plan_id as string,
+      status: (raw.status ?? '') as string,
+      strategy_code: (raw.strategy_code ?? '') as string,
+      data_quality: raw.data_quality === undefined || raw.data_quality === null ? null : raw.data_quality as string,
+      observation_due_at: raw.observation_due_at === undefined || raw.observation_due_at === null ? null : raw.observation_due_at as string
     };
   }
 

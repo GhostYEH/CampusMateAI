@@ -13,6 +13,12 @@ import com.example.campusai.data.remote.agent.AgentRunDto
 import com.example.campusai.data.remote.agent.StudentGoalCreateRequest
 import com.example.campusai.data.remote.agent.StudentGoalDto
 import com.example.campusai.data.remote.agent.LearningPlanSummaryDto
+import com.example.campusai.data.remote.agent.AdaptiveInterventionDto
+import com.example.campusai.data.remote.agent.AdaptiveInterventionOutcomeDto
+import com.example.campusai.data.remote.agent.DataSourceControlDto
+import com.example.campusai.data.remote.agent.ForecastDto
+import com.example.campusai.data.remote.agent.LearnerStateSnapshotDto
+import com.example.campusai.data.remote.agent.ModelTransparencyDto
 import com.example.campusai.data.remote.agent.AgentSseClient
 import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
 import kotlinx.coroutines.flow.Flow
@@ -132,6 +138,56 @@ class AgentRuntimeRepository(
         check(response.isSuccessful) { "重新规划失败(${response.code()})" }
         val newPlanId = (response.body()?.get("plan_id") as? String) ?: planId
         planSummary(newPlanId).getOrThrow()
+    }
+
+    // ===== 学生世界模型（只读消费 + 数据源控制）=====
+    //
+    // 这些方法只读或只改"数据源开关"，不产生学习状态/计划/决策：
+    // 干预记录的创建与重规划只发生在后端后台闭环里，客户端无法触发。
+
+    suspend fun learnerStateSnapshots(projectionKind: String, pageSize: Int = 20): Result<List<LearnerStateSnapshotDto>> = runCatching {
+        val response = api.learnerStateSnapshots(projectionKind, 1, pageSize)
+        check(response.isSuccessful) { "加载状态摘要失败(${response.code()})" }
+        response.body()?.items ?: emptyList()
+    }
+
+    suspend fun forecasts(pageSize: Int = 10): Result<List<ForecastDto>> = runCatching {
+        val response = api.learnerStateForecasts(1, pageSize)
+        check(response.isSuccessful) { "加载预测失败(${response.code()})" }
+        response.body()?.items ?: emptyList()
+    }
+
+    suspend fun dataControls(): Result<List<DataSourceControlDto>> = runCatching {
+        val response = api.learnerStateDataControls()
+        check(response.isSuccessful) { "加载数据源控制失败(${response.code()})" }
+        response.body()?.items ?: emptyList()
+    }
+
+    suspend fun setDataSourceStatus(sourceKey: String, status: String): Result<List<DataSourceControlDto>> = runCatching {
+        val key = AgentIdempotency.stableKey(userIdProvider(), "data_source", sourceKey, status)
+        val response = api.updateLearnerStateDataControl(
+            sourceKey, mapOf("status" to status, "idempotency_key" to key),
+        )
+        check(response.isSuccessful) { "更新数据源状态失败(${response.code()})" }
+        dataControls().getOrThrow()
+    }
+
+    suspend fun modelTransparency(): Result<ModelTransparencyDto> = runCatching {
+        val response = api.learnerStateModelTransparency()
+        check(response.isSuccessful) { "加载模型透明度失败(${response.code()})" }
+        response.body() ?: ModelTransparencyDto()
+    }
+
+    suspend fun interventions(): Result<List<AdaptiveInterventionDto>> = runCatching {
+        val response = api.listAdaptiveInterventions(1, 5)
+        check(response.isSuccessful) { "加载干预记录失败(${response.code()})" }
+        response.body()?.items ?: emptyList()
+    }
+
+    suspend fun interventionOutcome(interventionId: String): Result<AdaptiveInterventionOutcomeDto> = runCatching {
+        val response = api.getAdaptiveInterventionOutcome(interventionId)
+        check(response.isSuccessful) { "加载干预结果失败(${response.code()})" }
+        response.body() ?: throw IllegalStateException("干预结果响应为空")
     }
 
     suspend fun listEvents(runId: String): Result<List<AgentEventDto>> = runCatching {

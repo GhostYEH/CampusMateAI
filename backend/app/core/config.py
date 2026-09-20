@@ -165,6 +165,9 @@ class Settings(BaseSettings):
     campusmate_lm_circuit_breaker_cooldown_seconds: float = 30.0
     campusmate_lm_data_retention_days: int = 30
     campusmate_lm_canary_enabled: bool = False
+    # 金丝雀展示的采样率与影子观测解耦：影子控制"记录多少"，金丝雀控制"展示多少"。
+    # 默认 1.0 表示门禁通过即展示；置 0 可一键关闭展示而保留门禁与观测。
+    campusmate_lm_canary_sample_rate: float = 1.0
 
     # ===== CampusAgentRuntime model providers (§6) =====
     # Zhipu reasoning primary; Xunfei fast structured.复用 OpenAICompatibleClient。
@@ -456,6 +459,8 @@ class Settings(BaseSettings):
             self.enable_fallback_mode = True
         if not 0.0 <= self.campusmate_lm_shadow_sample_rate <= 1.0:
             raise ValueError("CAMPUSMATE_LM_SHADOW_SAMPLE_RATE must be between 0 and 1")
+        if not 0.0 <= self.campusmate_lm_canary_sample_rate <= 1.0:
+            raise ValueError("CAMPUSMATE_LM_CANARY_SAMPLE_RATE must be between 0 and 1")
         if self.campusmate_lm_enabled:
             parsed = urlparse(self.campusmate_lm_base_url)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:

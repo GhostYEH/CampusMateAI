@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
 
 from ...core.exceptions import InvalidTransition, ValidationFailed
 from ...core.logging import logger
 from ...models.learning_plan import LearningPlanRow
 from ...models.multi_role import UserRow
 from ...schemas.learning_plan import (
+    CandidateAnnotationOut,
     LearningPlanDecisionRequest,
     LearningPlanEvaluationOut,
     LearningPlanSummaryOut,
@@ -95,13 +96,35 @@ def get_learning_plan(
     return _out(plan)
 
 
+def _adopt_plan_into_intervention(container: ServiceContainer, *, user_id: str, plan_id: str) -> None:
+    """学生**采纳**计划后，把这份计划纳入可观测闭环。
+
+    触发点是"用户确认/执行"，而不是"计划被生成"：`/generate` 只产出草案，
+    未被采纳的计划永远不会创建干预，也就永远不会被后台自动重规划。
+    对 Agent `learning_goal` 路径生成的计划，干预已由 Handler 建好并绑定，
+    `adopt_plan` 会按 `find_by_plan` 复用，不会产生第二条记录。
+
+    闭环是增强项而非前置条件：任何失败都只记警告，确认/执行计划本身必须成功。
+    """
+    try:
+        container.adaptive_intervention_service.adopt_plan(user_id=user_id, plan_id=plan_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "adaptive_plan_adoption_failed user_id={} plan_id={} exception_type={}",
+            user_id, plan_id, type(exc).__name__,
+        )
+
+
 @router.post("/{plan_id}/decision", response_model=LearningPlanOut)
 def decide_learning_plan(
     plan_id: str, req: LearningPlanDecisionRequest,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanOut:
-    return _out(container.learning_planner_service.decide(user_id=user.id, plan_id=plan_id, decision=req.decision))
+    plan = container.learning_planner_service.decide(user_id=user.id, plan_id=plan_id, decision=req.decision)
+    if req.decision == "ACCEPT":
+        _adopt_plan_into_intervention(container, user_id=user.id, plan_id=plan_id)
+    return _out(plan)
 
 
 @router.post("/{plan_id}/execute", response_model=LearningPlanOut)
@@ -109,7 +132,10 @@ def execute_learning_plan(
     plan_id: str, user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanOut:
-    return _out(container.learning_planner_service.execute(user_id=user.id, plan_id=plan_id))
+    plan = container.learning_planner_service.execute(user_id=user.id, plan_id=plan_id)
+    # 幂等兜底：在"确认"特性上线前已接受的计划，会在第一次执行时补上干预记录。
+    _adopt_plan_into_intervention(container, user_id=user.id, plan_id=plan_id)
+    return _out(plan)
 
 
 @router.post("/{plan_id}/undo", response_model=LearningPlanOut)
@@ -182,12 +208,35 @@ def evaluate_learning_plan(
 
 
 @router.get("/{plan_id}/summary", response_model=LearningPlanSummaryOut)
-def summarize_learning_plan(
+async def summarize_learning_plan(
     plan_id: str,
+    background_tasks: BackgroundTasks,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanSummaryOut:
-    return LearningPlanSummaryOut(**container.learning_planner_service.summarize(user_id=user.id, plan_id=plan_id))
+    """阶段总结 + 候选模型只读金丝雀注解。
+
+    这是候选模型在生产链路上的**唯一业务接线点**：
+
+    - 门禁全过时，`candidate_annotation` 携带可识别、可降级、可追溯的只读结果；
+    - 其余任何情形（未启用/未配置/采样未命中/熔断/超时/非法输出/策略违规），
+      注解降级为 `available=false` + 稳定 reason，并改走纯影子观测
+      （`BackgroundTasks`，结果只落影子表），本响应继续返回确定性结果。
+    """
+    data = container.learning_planner_service.summarize(user_id=user.id, plan_id=plan_id)
+    plan = container.learning_plan_repository.get_plan(plan_id, user_id=user.id)
+    annotation: CandidateAnnotationOut | None = None
+    if plan is not None:
+        raw = await container.model_assist_service.candidate_annotation(
+            user_id=user.id, plan=plan, summary=data
+        )
+        annotation = CandidateAnnotationOut(**raw)
+        if not annotation.available:
+            background_tasks.add_task(
+                container.model_assist_service.observe_plan_summary,
+                user_id=user.id, plan=plan, summary=data,
+            )
+    return LearningPlanSummaryOut(**data, candidate_annotation=annotation)
 
 
 __all__ = ["router"]

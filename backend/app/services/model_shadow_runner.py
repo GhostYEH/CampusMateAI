@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -98,7 +98,7 @@ class ModelShadowRunner:
     def _persist(self, request: ModelCapabilityRequest, result: ModelCapabilityResult) -> ModelCapabilityResult:
         if self.repository is not None:
             try:
-                self.repository.record_result(request=request, result=result)
+                record = self.repository.record_result(request=request, result=result)
             except Exception:
                 # Shadow persistence is best effort and can never affect the
                 # production or caller-visible result.
@@ -106,11 +106,15 @@ class ModelShadowRunner:
                     "model_shadow_persistence_failed capability={} request_id={} exception_type={}",
                     request.capability_name, request.request_id, "persistence_error",
                 )
+            else:
+                # 只回填可追溯的观测 id，绝不把候选输出正文带进调用方可见对象。
+                return replace(result, shadow_run_id=getattr(record, "shadow_run_id", None))
         return result
 
-    def _sampled(self, request: ModelCapabilityRequest) -> bool:
+    def _sampled(self, request: ModelCapabilityRequest, sample_rate: float | None = None) -> bool:
+        rate = self.sample_rate if sample_rate is None else max(0.0, min(1.0, float(sample_rate)))
         digest = int(self.registry.digest({"request_id": request.request_id, "input": request.input_payload})[:12], 16)
-        return digest / float(16 ** 12) < self.sample_rate
+        return digest / float(16 ** 12) < rate
 
     def _circuit_allows(self, name: str) -> bool:
         state = self._circuits.setdefault(name, _Circuit())
@@ -160,7 +164,13 @@ class ModelShadowRunner:
         state.opened_at = None
         state.probe_in_flight = False
 
-    async def run(self, request: ModelCapabilityRequest) -> ModelCapabilityResult:
+    async def run(self, request: ModelCapabilityRequest, *, sample_rate: float | None = None) -> ModelCapabilityResult:
+        """执行一次受控候选调用。
+
+        `sample_rate` 允许调用方按**用途**覆盖采样率（影子观测用实例默认值，
+        金丝雀展示用独立的展示采样率）。不传时行为与历史版本完全一致。
+        无论走哪条路径，输出都只是"候选结果"，永远不会成为业务输入。
+        """
         started = time.perf_counter()
         capability_name = getattr(request, "capability_name", None)
         if capability_name is None:
@@ -198,7 +208,7 @@ class ModelShadowRunner:
         if self._source_policy is not None and request.subject_user_id is not None:
             if self._source_policy.should_skip_shadow_run(user_id=request.subject_user_id):
                 return self._persist(request, self._fallback(request, payload, "MODEL_SHADOW_PAUSED", started))
-        if not self._sampled(request):
+        if not self._sampled(request, sample_rate):
             return self._persist(request, self._fallback(request, payload, "MODEL_RATE_LIMITED", started))
         if not self._circuit_allows(request.capability_name):
             return self._persist(request, self._fallback(request, payload, "MODEL_CIRCUIT_OPEN", started))

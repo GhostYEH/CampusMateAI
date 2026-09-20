@@ -5,6 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.campusai.data.remote.agent.AgentJobDto
 import com.example.campusai.data.remote.agent.AgentRunStatus
 import com.example.campusai.data.remote.agent.LearningPlanSummaryDto
+import com.example.campusai.data.remote.agent.AdaptiveInterventionOutcomeDto
+import com.example.campusai.data.remote.agent.DataSourceControlDto
+import com.example.campusai.data.remote.agent.ForecastDto
+import com.example.campusai.data.remote.agent.LearnerStateSnapshotDto
+import com.example.campusai.data.remote.agent.ModelTransparencyDto
 import com.example.campusai.data.remote.agent.StudentGoalDto
 import com.example.campusai.data.repository.AgentRuntimeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +19,23 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+/**
+ * 学生世界模型的只读视图状态。
+ *
+ * 刻意与 [GoalExecutionUiState.error] 分开：世界模型取不到时**不能**把整个
+ * 目标/计划区域一起替换成错误，只能在这一块里显示明确的只读降级说明。
+ */
+data class WorldModelUiState(
+    val loading: Boolean = false,
+    val snapshots: List<LearnerStateSnapshotDto> = emptyList(),
+    val forecasts: List<ForecastDto> = emptyList(),
+    val interventionOutcome: AdaptiveInterventionOutcomeDto? = null,
+    val dataControls: List<DataSourceControlDto> = emptyList(),
+    val transparency: ModelTransparencyDto? = null,
+    /** 非空即为只读降级说明；此时页面仍展示其它区域。 */
+    val degradedReason: String? = null,
+)
+
 data class GoalExecutionUiState(
     val loading: Boolean = false,
     val goals: List<StudentGoalDto> = emptyList(),
@@ -21,6 +43,7 @@ data class GoalExecutionUiState(
     val summary: LearningPlanSummaryDto? = null,
     val error: String? = null,
     val activeRunId: String? = null,
+    val worldModel: WorldModelUiState = WorldModelUiState(),
 )
 
 class GoalExecutionViewModel(private val repository: AgentRuntimeRepository) : ViewModel() {
@@ -79,6 +102,48 @@ class GoalExecutionViewModel(private val repository: AgentRuntimeRepository) : V
         }
         result.onFailure { error -> _state.update { it.copy(loading = false, error = error.message) } }
         load()
+    }
+
+    /**
+     * 加载世界模型只读视图。
+     *
+     * 任何一个子请求失败都不抛给调用方：世界模型是只读增强项，缺一块就少显示一块，
+     * 并在 `degradedReason` 里说明"已降级"，而不是把整页变成错误。
+     */
+    fun loadWorldModel() = viewModelScope.launch {
+        _state.update { it.copy(worldModel = it.worldModel.copy(loading = true, degradedReason = null)) }
+
+        val snapshots = repository.learnerStateSnapshots("CORE").getOrElse { emptyList() }
+        val worldSnapshots = repository.learnerStateSnapshots("WORLD").getOrElse { emptyList() }
+        val forecasts = repository.forecasts().getOrElse { emptyList() }
+        val controls = repository.dataControls().getOrElse { emptyList() }
+        val transparency = repository.modelTransparency().getOrNull()
+        val interventions = repository.interventions().getOrElse { emptyList() }
+        val current = interventions.firstOrNull { it.status != "SUPERSEDED" }
+        val outcome = current?.let { repository.interventionOutcome(it.interventionId).getOrNull() }
+
+        val anythingLoaded = snapshots.isNotEmpty() || worldSnapshots.isNotEmpty() ||
+            forecasts.isNotEmpty() || controls.isNotEmpty() || transparency != null
+        _state.update {
+            it.copy(
+                worldModel = WorldModelUiState(
+                    loading = false,
+                    snapshots = snapshots + worldSnapshots,
+                    forecasts = forecasts,
+                    interventionOutcome = outcome,
+                    dataControls = controls,
+                    transparency = transparency,
+                    degradedReason = if (anythingLoaded) null else "世界模型暂时不可用，已降级为只读展示",
+                ),
+            )
+        }
+    }
+
+    /** 暂停/恢复一个数据源；只影响该来源是否参与投影，不修改任何学习状态。 */
+    fun setDataSourceStatus(sourceKey: String, status: String) = viewModelScope.launch {
+        repository.setDataSourceStatus(sourceKey, status)
+            .onSuccess { controls -> _state.update { it.copy(worldModel = it.worldModel.copy(dataControls = controls)) } }
+            .onFailure { error -> _state.update { it.copy(worldModel = it.worldModel.copy(degradedReason = error.message)) } }
     }
 
     private fun loadSummary(planId: String) = viewModelScope.launch {

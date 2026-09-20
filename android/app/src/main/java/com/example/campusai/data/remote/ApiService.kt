@@ -11,6 +11,13 @@ import com.example.campusai.data.remote.agent.StudentGoalCreateRequest
 import com.example.campusai.data.remote.agent.StudentGoalCreateResultDto
 import com.example.campusai.data.remote.agent.StudentGoalPageDto
 import com.example.campusai.data.remote.agent.LearningPlanSummaryDto
+import com.example.campusai.data.remote.agent.AdaptiveInterventionOutcomeDto
+import com.example.campusai.data.remote.agent.AdaptiveInterventionPageDto
+import com.example.campusai.data.remote.agent.DataSourceControlDto
+import com.example.campusai.data.remote.agent.DataSourceControlListDto
+import com.example.campusai.data.remote.agent.ForecastPageDto
+import com.example.campusai.data.remote.agent.LearnerStateSnapshotPageDto
+import com.example.campusai.data.remote.agent.ModelTransparencyDto
 import com.example.campusai.data.remote.agent.ApprovalDecisionRequest
 import com.example.campusai.data.remote.agent.CourseResearchArtifactBundleDto
 import com.example.campusai.data.remote.agent.CourseResearchRunCreateRequest
@@ -1493,6 +1500,44 @@ interface ApiService {
 
     @POST("learning-plans/{planId}/replan")
     suspend fun replanLearningPlan(@Path("planId") planId: String, @Header("Idempotency-Key") idempotencyKey: String): Response<Map<String, Any?>>
+
+    // ===== 学生世界模型（只读消费 + 数据源控制）=====
+
+    @GET("learner-state/snapshots")
+    suspend fun learnerStateSnapshots(
+        @Query("projection_kind") projectionKind: String,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 20,
+    ): Response<LearnerStateSnapshotPageDto>
+
+    @GET("learner-state/forecasts")
+    suspend fun learnerStateForecasts(
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 10,
+    ): Response<ForecastPageDto>
+
+    @GET("learner-state/data-controls")
+    suspend fun learnerStateDataControls(): Response<DataSourceControlListDto>
+
+    @PUT("learner-state/data-controls/{sourceKey}")
+    suspend fun updateLearnerStateDataControl(
+        @Path("sourceKey") sourceKey: String,
+        @Body request: Map<String, String>,
+    ): Response<DataSourceControlDto>
+
+    @GET("learner-state/model-transparency")
+    suspend fun learnerStateModelTransparency(): Response<ModelTransparencyDto>
+
+    @GET("adaptive-interventions")
+    suspend fun listAdaptiveInterventions(
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 5,
+    ): Response<AdaptiveInterventionPageDto>
+
+    @GET("adaptive-interventions/{interventionId}/outcome")
+    suspend fun getAdaptiveInterventionOutcome(
+        @Path("interventionId") interventionId: String,
+    ): Response<AdaptiveInterventionOutcomeDto>
 
     // ===== Final Review =====
     @POST("final-review/campaigns")

@@ -32,6 +32,9 @@ class ModelCapabilityResult:
     output_digest: str | None = None
     resource_metrics: dict[str, Any] = field(default_factory=dict)
     inference_source: str = "DETERMINISTIC_FALLBACK"
+    # 影子观测记录的 id，仅用于可追溯（客户端/日志只看到 id，不看到模型原文）。
+    # 由 `ModelShadowRunner._persist` 回填；未接线持久化时保持 None。
+    shadow_run_id: str | None = None
 
 
 __all__ = ["ModelCapabilityRequest", "ModelCapabilityResult"]

@@ -115,6 +115,7 @@ from ..repositories.adaptive_intervention_repository import AdaptiveIntervention
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
 from ..services.model_shadow_runner import ModelShadowRunner
+from ..services.model_assist_service import ModelAssistService
 from ..services.llm.base import LLMClient
 from ..services.llm.fallback import build_llm_client
 from ..services.llm.openai_compatible import OpenAICompatibleClient
@@ -138,6 +139,7 @@ class ServiceContainer:
     rag: RagService
     llm: Optional[LLMClient]
     model_shadow_runner: ModelShadowRunner
+    model_assist_service: ModelAssistService
     tts: Optional[MiMoTtsClient]
     # 多角色仓库
     user_repository: UserRepository
@@ -333,6 +335,15 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         settings=settings,
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
+    )
+    # CampusMate-LM 的唯一业务接线：影子观测 + 只读金丝雀展示。
+    # 复用同一个 registry 与同一个 runner 实例（同一套熔断器/并发闸门），
+    # 因此不存在"第二套模型系统"。
+    model_assist_service = ModelAssistService(
+        registry=model_shadow_runner.registry,
+        runner=model_shadow_runner,
+        control_service=learner_control_service,
+        settings=settings,
     )
     agent_event_notifier = EventNotifier()
     agent_runtime_repository = AgentRuntimeRepository(db, agent_event_notifier)
@@ -554,6 +565,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learning_agent_tools=LearningAgentToolRegistry(None),
         learner_control_repository=learner_control_repository,
         learner_control_service=learner_control_service,
+        model_assist_service=model_assist_service,
         learner_model_source_policy=learner_model_source_policy,
         agent_runtime_repository=agent_runtime_repository,
         agent_artifact_repository=agent_artifact_repository,

@@ -44,7 +44,7 @@ fun GoalExecutionScreen(
         }
     })
     val state by vm.state.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(Unit) { vm.load(); vm.loadWorldModel() }
     var newGoalName by remember { mutableStateOf("") }
     var minutes by remember { mutableStateOf("60") }
 
@@ -104,6 +104,11 @@ fun GoalExecutionScreen(
                             Text(summary.headline)
                             Text("完成度 ${summary.completionPercent}% · ${summary.executedItemCount}/${summary.plannedItemCount} 项")
                             Text("下一步：${summary.nextAction}")
+                            if (summary.warningCodes.isNotEmpty()) {
+                                Text("数据质量警告：${summary.warningCodes.joinToString("、")}")
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            CandidateAnnotationRow(summary.candidateAnnotation)
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (summary.stage == "AWAITING_CONFIRMATION") Button(onClick = { vm.confirmPlan() }, enabled = !state.loading) { Text("确认计划") }
@@ -113,6 +118,13 @@ fun GoalExecutionScreen(
                         }
                     }
                 }
+            }
+            item {
+                WorldModelSection(
+                    state = state.worldModel,
+                    onToggleSource = { sourceKey, status -> vm.setDataSourceStatus(sourceKey, status) },
+                    enabled = !state.loading,
+                )
             }
             item { Text("执行记录") }
             items(state.jobs.filter { it.kind().name == "learning_goal" }) { job ->

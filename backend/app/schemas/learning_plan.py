@@ -64,6 +64,39 @@ class LearningPlanEvaluationOut(BaseModel):
     evaluator_version: str
 
 
+class CandidateAnnotationOut(BaseModel):
+    """CampusMate-LM 只读金丝雀注解。
+
+    三个必须成立的性质：
+
+    - **可识别**：`capability_name` / `model_key` / `prompt_version` / `inference_source`
+      明确标出"这段文字来自候选模型"，绝不与确定性结果混为一谈。
+    - **可降级**：门禁未过、未配置、采样未命中、熔断、超时、非法 JSON、策略违规
+      一律 `available=False` + 稳定 `reason`，生产响应继续使用确定性结果。
+    - **可追溯**：`shadow_run_id` + `input_digest` 指向影子表里的那一次观测。
+
+    `read_only` / `affects_production` 恒为 `True` / `False`：它是展示字段，
+    不参与任何状态、计划、任务或决策的写入。
+    """
+
+    available: bool
+    capability_name: str
+    capability_version: str
+    reason: str | None = None
+    inference_source: str = "DETERMINISTIC_FALLBACK"
+    model_key: str | None = None
+    model_version: str | None = None
+    prompt_version: str | None = None
+    input_digest: str | None = None
+    shadow_run_id: str | None = None
+    used_fallback: bool = False
+    # 已通过 schema + 策略校验的受限投影，不是候选模型的原始补全文本。
+    claim_codes: list[str] = Field(default_factory=list)
+    summary: str | None = None
+    read_only: bool = True
+    affects_production: bool = False
+
+
 class LearningPlanSummaryOut(BaseModel):
     """面向三端的阶段总结；内容是可解释的观测，不宣称因果效果。"""
 
@@ -80,6 +113,7 @@ class LearningPlanSummaryOut(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
     warning_codes: list[str] = Field(default_factory=list)
     generated_at: str
+    candidate_annotation: CandidateAnnotationOut | None = None
 
 
 class LearningPlanEvidenceOut(BaseModel):
