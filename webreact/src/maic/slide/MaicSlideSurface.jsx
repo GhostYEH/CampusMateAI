@@ -59,6 +59,7 @@ export function MaicSlideSurface({
   sceneId = '',
   sceneData = null,
   style,
+  effectsEnabled = true,
 }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
   const theme = useMemo(() => normalizeTheme(canvas?.theme), [canvas?.theme]);
@@ -106,7 +107,7 @@ export function MaicSlideSurface({
         <SceneProvider value={sceneValue}>
           <div className={`h-full w-full ${className || ''}`} style={style}>
             <style dangerouslySetInnerHTML={{ __html: SLIDE_RENDERER_STYLES }} />
-            <RendererScreenCanvas canvas={resolvedCanvas} assetResolver={assetResolver} />
+            <RendererScreenCanvas canvas={resolvedCanvas} assetResolver={assetResolver} effectsEnabled={effectsEnabled} />
           </div>
         </SceneProvider>
       </MediaStringsProvider>

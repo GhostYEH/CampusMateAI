@@ -691,6 +691,6 @@ function SlideThumbnail({ canvas }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
   if (!elements || elements.length === 0) return null;
   return <div className="h-full w-full">
-    <MaicSlideSurface canvas={canvas} />
+    <MaicSlideSurface canvas={canvas} effectsEnabled={false} />
   </div>;
 }

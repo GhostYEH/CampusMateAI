@@ -54,10 +54,12 @@ function useCanvasGeometry(canvas) {
   return { viewportSize, viewportRatio };
 }
 
-export function ScreenCanvas({ canvas }) {
+export function ScreenCanvas({ canvas, effectsEnabled = true }) {
   const canvasScale = useCanvasStore.use.canvasScale();
   const highlightedElementIds = useCanvasStore.use.highlightedElementIds();
   const highlightOptions = useCanvasStore.use.highlightOptions();
+  const spotlightElementId = useCanvasStore.use.spotlightElementId();
+  const spotlightOptions = useCanvasStore.use.spotlightOptions();
   const laserElementId = useCanvasStore.use.laserElementId();
   const laserOptions = useCanvasStore.use.laserOptions();
   const zoomTarget = useCanvasStore.use.zoomTarget();
@@ -149,14 +151,20 @@ export function ScreenCanvas({ canvas }) {
         </div>
 
         {/* Spotlight overlay - covers the entire slide, positioned via DOM measurement */}
-        <SpotlightOverlay />
+        <SpotlightOverlay
+          elementIdPrefix="screen-element-"
+          options={{
+            elementId: effectsEnabled ? spotlightElementId : '',
+            ...spotlightOptions,
+          }}
+        />
 
         {/* Visual effects layer - outside the scale layer, using percentage coordinates */}
         <div className="absolute inset-0 pointer-events-none" style={{ padding: '5%' }}>
           <div className="relative w-full h-full">
             {/* Laser pointer overlay */}
             <AnimatePresence>
-              {laserElementId && laserGeometry && (
+              {effectsEnabled && laserElementId && laserGeometry && (
                 <LaserOverlay
                   key={`laser-${laserElementId}`}
                   geometry={laserGeometry}
@@ -176,9 +184,9 @@ export function ScreenCanvas({ canvas }) {
  * 参考的 `PlaybackScreenCanvas` 入口。目标项目没有 feature flag，因此默认走
  * `RendererScreenCanvas`（它内部会按需要回退到 `ScreenCanvas`）。
  */
-export function PlaybackScreenCanvas({ canvas, className, assetResolver, children }) {
+export function PlaybackScreenCanvas({ canvas, className, assetResolver, children, effectsEnabled = true }) {
   return (
-    <RendererScreenCanvas canvas={canvas} className={className} assetResolver={assetResolver}>
+    <RendererScreenCanvas canvas={canvas} className={className} assetResolver={assetResolver} effectsEnabled={effectsEnabled}>
       {children}
     </RendererScreenCanvas>
   );

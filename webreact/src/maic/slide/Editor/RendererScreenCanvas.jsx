@@ -308,11 +308,11 @@ export function PlaybackImageContent({ element, defaultContent, media, sceneId, 
  *     可以自己作为 `renderImage` / `renderVideo` 接进去；默认路径不注入，
  *     因为注入会给每个元素多包一层 DOM，参考的 `ScreenCanvas` 路径本来也没有。
  */
-export function RendererScreenCanvas({ canvas, className, assetResolver, children }) {
+export function RendererScreenCanvas({ canvas, className, assetResolver, children, effectsEnabled = true }) {
   const resolved = useResolvedSlideMedia(canvas, { assetResolver });
 
   return (
-    <ScreenCanvas canvas={resolved.slide} className={className}>
+    <ScreenCanvas canvas={resolved.slide} className={className} effectsEnabled={effectsEnabled}>
       {children}
     </ScreenCanvas>
   );
