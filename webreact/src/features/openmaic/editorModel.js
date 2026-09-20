@@ -82,11 +82,59 @@ export function slideElementTransformCommand(sceneId, elementId, geometry = {}) 
   if (typeof elementId !== "string" || !elementId.trim()) {
     throw new EditorCommandError("element_id_required", "elementId", "必须指定元素");
   }
-  const { left, top, width, height, rotate } = geometry;
-  if (![left, top, width, height, rotate].every(Number.isFinite) || width <= 0 || height <= 0) {
-    throw new EditorCommandError("command_field_invalid", "geometry", "元素几何属性必须是有限数字且尺寸大于零");
+  const patch = {};
+  for (const field of ["left", "top", "width", "height", "rotate"]) {
+    if (geometry[field] === undefined) continue;
+    const value = geometry[field];
+    if (!Number.isFinite(value) || ((field === "width" || field === "height") && value <= 0)) {
+      throw new EditorCommandError("command_field_invalid", field, "元素几何属性必须是有限数字且尺寸大于零");
+    }
+    patch[field] = value;
   }
-  return { type: "slide.element.transform", sceneId, elementId, left, top, width, height, rotate };
+  if (Object.keys(patch).length === 0) {
+    throw new EditorCommandError("command_no_effect", "geometry", "至少要修改一个元素几何属性");
+  }
+  return { type: "slide.element.transform", sceneId, elementId, ...patch };
+}
+
+const SLIDE_ELEMENT_TYPES = new Set(["text", "image", "shape", "line", "chart", "table", "latex", "video", "audio", "code"]);
+
+function validateSlideElement(sceneId, element) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
+  }
+  if (!element || typeof element !== "object") {
+    throw new EditorCommandError("command_field_invalid", "element", "元素必须是对象");
+  }
+  if (typeof element.id !== "string" || !element.id.trim()) {
+    throw new EditorCommandError("element_id_required", "element.id", "必须指定元素");
+  }
+  if (!SLIDE_ELEMENT_TYPES.has(element.type)) {
+    throw new EditorCommandError("element_type_invalid", "element.type", "不支持的 slide 元素类型");
+  }
+  for (const field of ["left", "top", "width", "height", "rotate"]) {
+    if (!Number.isFinite(element[field]) || ((field === "width" || field === "height") && element[field] <= 0)) {
+      throw new EditorCommandError("element_geometry_invalid", `element.${field}`, `element.${field} 必须是有效几何属性`);
+    }
+  }
+}
+
+export function slideElementAddCommand(sceneId, element, index) {
+  validateSlideElement(sceneId, element);
+  if (index !== undefined && (!Number.isInteger(index) || index < 0)) {
+    throw new EditorCommandError("command_field_invalid", "index", "index 必须是非负整数");
+  }
+  return { type: "slide.element.add", sceneId, element: structuredClone(element), ...(index === undefined ? {} : { index }) };
+}
+
+export function slideElementDeleteCommand(sceneId, elementId) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
+  }
+  if (typeof elementId !== "string" || !elementId.trim()) {
+    throw new EditorCommandError("element_id_required", "elementId", "必须指定元素");
+  }
+  return { type: "slide.element.delete", sceneId, elementId };
 }
 
 export function slideElementUpdateCommand(sceneId, elementId, content) {
@@ -236,9 +284,17 @@ export function applyCommandLocally(document, command) {
       return { ...document, scenes };
     }
     case "slide.element.transform": {
-      if (![command.left, command.top, command.width, command.height, command.rotate].every(Number.isFinite)
-        || command.width <= 0 || command.height <= 0) {
-        throw new EditorCommandError("command_field_invalid", "geometry", "元素几何属性必须是有限数字且尺寸大于零");
+      const patch = {};
+      for (const field of ["left", "top", "width", "height", "rotate"]) {
+        if (command[field] === undefined) continue;
+        const value = command[field];
+        if (!Number.isFinite(value) || ((field === "width" || field === "height") && value <= 0)) {
+          throw new EditorCommandError("command_field_invalid", field, "元素几何属性必须是有限数字且尺寸大于零");
+        }
+        patch[field] = value;
+      }
+      if (Object.keys(patch).length === 0) {
+        throw new EditorCommandError("command_no_effect", "geometry", "至少要修改一个元素几何属性");
       }
       const at = indexOf(command.sceneId);
       const scene = scenes[at];
@@ -249,15 +305,53 @@ export function applyCommandLocally(document, command) {
       const elementAt = elements.findIndex((element) => element?.id === command.elementId);
       if (elementAt === -1) throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
       const target = elements[elementAt];
-      if (![target?.left, target?.top, target?.width, target?.height].every(Number.isFinite)) {
-        throw new EditorCommandError("element_geometry_invalid", "elementId", "目标元素缺少有限的几何属性");
+      for (const field of Object.keys(patch)) {
+        if (field !== "rotate" && !Number.isFinite(target?.[field])) {
+          throw new EditorCommandError("element_geometry_invalid", "elementId", "目标元素缺少有限的几何属性");
+        }
       }
       const nextElements = elements.slice();
       nextElements[elementAt] = {
-        ...target, left: command.left, top: command.top,
-        width: command.width, height: command.height, rotate: command.rotate,
+        ...target, ...patch,
       };
       scenes[at] = { ...scene, content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } } };
+      return { ...document, scenes };
+    }
+    case "slide.element.add": {
+      validateSlideElement(command.sceneId, command.element);
+      const at = indexOf(command.sceneId);
+      const scene = scenes[at];
+      if (scene.type !== "slide" || scene.content?.type !== "slide") {
+        throw new EditorCommandError("slide_element_requires_slide", "sceneId", "只能添加 slide 场景元素");
+      }
+      const canvas = scene.content.canvas || {};
+      const elements = Array.isArray(canvas.elements) ? canvas.elements : [];
+      if (elements.some((element) => element?.id === command.element.id)) {
+        throw new EditorCommandError("element_id_conflict", "element.id", "元素 id 已存在");
+      }
+      const insertAt = command.index === undefined ? elements.length : Math.min(command.index, elements.length);
+      const nextElements = elements.slice();
+      nextElements.splice(insertAt, 0, structuredClone(command.element));
+      scenes[at] = { ...scene, content: { ...scene.content, canvas: { ...canvas, elements: nextElements } } };
+      return { ...document, scenes };
+    }
+    case "slide.element.delete": {
+      const at = indexOf(command.sceneId);
+      const scene = scenes[at];
+      if (scene.type !== "slide" || scene.content?.type !== "slide") {
+        throw new EditorCommandError("slide_element_requires_slide", "sceneId", "只能删除 slide 场景元素");
+      }
+      const canvas = scene.content.canvas || {};
+      const elements = Array.isArray(canvas.elements) ? canvas.elements : [];
+      const elementAt = elements.findIndex((element) => element?.id === command.elementId);
+      if (elementAt === -1) throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
+      const nextElements = elements.slice();
+      nextElements.splice(elementAt, 1);
+      const nextCanvas = { ...canvas, elements: nextElements };
+      if (Array.isArray(canvas.animations)) {
+        nextCanvas.animations = canvas.animations.filter((animation) => animation?.elId !== command.elementId);
+      }
+      scenes[at] = { ...scene, content: { ...scene.content, canvas: nextCanvas } };
       return { ...document, scenes };
     }
     case "slide.element.update": {

@@ -16,6 +16,8 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementAddCommand,
+  slideElementDeleteCommand,
   slideElementTransformCommand,
   slideElementUpdateCommand,
 } from "../../features/openmaic/editorModel.js";
@@ -48,6 +50,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   const [addType, setAddType] = React.useState("slide");
   // 正在播放的场景：播放器自己按 scene_id 恢复位置，编辑器只负责记下这一个 id。
   const [playingSceneId, setPlayingSceneId] = React.useState("");
+  const [selectedElementId, setSelectedElementId] = React.useState("");
 
   const scopeKey = `${courseId}:${workspaceId}:${stageId}`;
 
@@ -149,6 +152,28 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   function updateTextElement(elementId, content) {
     if (!selectedScene?.id) return false;
     return run(slideElementUpdateCommand(selectedScene.id, elementId, content));
+  }
+
+  function addSlideElement(type) {
+    if (!selectedScene?.id) return false;
+    const id = `local_element_${Date.now()}_${type}`;
+    const element = type === "text"
+      ? { id, type, left: 120, top: 96, width: 260, height: 72, rotate: 0, content: "<p>双击编辑文本</p>" }
+      : { id, type: "shape", left: 160, top: 140, width: 220, height: 120, rotate: 0, viewBox: [100, 100], path: "M 0 0 H 100 V 100 H 0 Z", fill: "#dbeafe" };
+    if (run(slideElementAddCommand(selectedScene.id, element))) {
+      setSelectedElementId(id);
+      return true;
+    }
+    return false;
+  }
+
+  function deleteSelectedElement() {
+    if (!selectedScene?.id || !selectedElementId) return false;
+    if (run(slideElementDeleteCommand(selectedScene.id, selectedElementId))) {
+      setSelectedElementId("");
+      return true;
+    }
+    return false;
   }
 
   async function editScene(sceneId) {
@@ -269,6 +294,9 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
       <Button type="button" onClick={() => run(sceneCreateCommand(addType, { title: `新${SCENE_TYPE_LABELS[addType] || addType}` }))}>
         添加场景
       </Button>
+      <Button type="button" variant="secondary" disabled={!selectedScene} onClick={() => addSlideElement("text")}>添加文本</Button>
+      <Button type="button" variant="secondary" disabled={!selectedScene} onClick={() => addSlideElement("shape")}>添加矩形</Button>
+      <Button type="button" variant="quiet" disabled={!selectedElementId || busy} onClick={deleteSelectedElement}>删除元素</Button>
       <Button type="button" variant="secondary" disabled={!buffer.current.canUndo()} onClick={undo}>撤销</Button>
       <Button type="button" variant="secondary" disabled={!buffer.current.canRedo()} onClick={redo}>重做</Button>
       <Button type="button" disabled={!dirty || busy} onClick={save}>{busy ? "保存中…" : "保存"}</Button>
@@ -300,6 +328,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
           onMoveElement={moveSlideElement}
           onTransformElement={transformSlideElement}
           onUpdateTextElement={updateTextElement}
+          onSelectElement={setSelectedElementId}
         />
       </div>
       : <div className="openmaic-home__empty openmaic-home__empty--wide">

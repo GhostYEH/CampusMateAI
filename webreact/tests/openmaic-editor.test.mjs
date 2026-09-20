@@ -29,6 +29,8 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementAddCommand,
+  slideElementDeleteCommand,
   slideElementTransformCommand,
   slideElementUpdateCommand,
 } from "../src/features/openmaic/editorModel.js";
@@ -140,6 +142,38 @@ test("slide.element.transform mirrors all finite geometry fields on an existing 
   assert.throws(() => slideElementTransformCommand("s1", "e1", {
     left: 30, top: 40, width: 0, height: 60, rotate: 15,
   }), (error) => error.code === "command_field_invalid");
+});
+
+test("slide.element.transform accepts a bounded partial patch and initializes legacy rotation", () => {
+  const command = slideElementTransformCommand("s1", "e1", { rotate: 30 });
+  assert.deepEqual(command, { type: "slide.element.transform", sceneId: "s1", elementId: "e1", rotate: 30 });
+  const document = documentWith([{
+    id: "s1", type: "slide", title: "A", order: 0,
+    content: { type: "slide", canvas: { elements: [{ id: "e1", type: "text", left: 1, top: 2, width: 3, height: 4 }] } },
+  }]);
+  assert.equal(applyCommandLocally(document, command).scenes[0].content.canvas.elements[0].rotate, 30);
+  assert.throws(() => slideElementTransformCommand("s1", "e1", {}), (error) => error.code === "command_no_effect");
+});
+
+test("slide.element.add and delete mirror the service element payload contract", () => {
+  const document = documentWith([{
+    id: "s1", type: "slide", title: "A", order: 0,
+    actions: [{ id: "a1" }],
+    content: { type: "slide", canvas: {
+      elements: [{ id: "e1", type: "shape", left: 10, top: 20, width: 100, height: 40, rotate: 0 }],
+      animations: [{ id: "anim", elId: "e1" }],
+    } },
+  }]);
+  const element = { id: "e2", type: "text", left: 30, top: 40, width: 160, height: 52, rotate: 0, content: "<p>新增文本</p>" };
+  const added = applyCommandLocally(document, slideElementAddCommand("s1", element, 0));
+  assert.deepEqual(added.scenes[0].content.canvas.elements.map((entry) => entry.id), ["e2", "e1"]);
+  assert.notEqual(added.scenes[0].content.canvas.elements[0], element);
+  assert.deepEqual(added.scenes[0].actions, document.scenes[0].actions);
+  const deleted = applyCommandLocally(added, slideElementDeleteCommand("s1", "e1"));
+  assert.deepEqual(deleted.scenes[0].content.canvas.elements.map((entry) => entry.id), ["e2"]);
+  assert.deepEqual(deleted.scenes[0].content.canvas.animations, []);
+  assert.throws(() => slideElementAddCommand("s1", { ...element, width: 0 }), (error) => error.code === "element_geometry_invalid");
+  assert.throws(() => applyCommandLocally(document, slideElementDeleteCommand("s1", "missing")), (error) => error.code === "element_not_found");
 });
 
 test("slide.element.update changes only an existing text element payload", () => {

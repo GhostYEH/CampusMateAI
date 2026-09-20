@@ -43,3 +43,12 @@ test("the editor canvas exposes geometry handles, ruler, and alignment guide wir
   assert.match(canvasSource, /onTransformElement/);
   assert.match(editorSource, /slideElementTransformCommand/);
 });
+
+test("the stage editor exposes add text, add rectangle, and selected element delete actions", () => {
+  assert.match(editorSource, /添加文本/);
+  assert.match(editorSource, /添加矩形/);
+  assert.match(editorSource, /删除元素/);
+  assert.match(editorSource, /slideElementAddCommand/);
+  assert.match(editorSource, /slideElementDeleteCommand/);
+  assert.match(canvasSource, /onSelectElement/);
+});

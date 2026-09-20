@@ -9,7 +9,7 @@ import ProseMirrorTextEditor from "./ProseMirrorTextEditor.jsx";
  * Keeping this boundary read-only leaves selection, drag, and command wiring
  * for the following editor slices while making the workbench preview truthful.
  */
-export default function StageCanvasPreview({ scene, onMoveElement, onTransformElement, onUpdateTextElement }) {
+export default function StageCanvasPreview({ scene, onMoveElement, onTransformElement, onUpdateTextElement, onSelectElement }) {
   const rootRef = React.useRef(null);
   const dragRef = React.useRef(null);
   const transformRef = React.useRef(null);
@@ -115,6 +115,7 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
       selectedElementIdRef.current = "";
       setSelectedElementId("");
       setSelectionRect(null);
+      onSelectElement?.("");
       return;
     }
     const elementId = target.getAttribute("data-maic-element-id") || "";
@@ -143,6 +144,7 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
     }
     selectedElementIdRef.current = elementId;
     setSelectedElementId(elementId);
+    onSelectElement?.(elementId);
     const rootBox = rootRef.current.getBoundingClientRect();
     const targetBox = target.getBoundingClientRect();
     const scaleX = Number.isFinite(element.width) && element.width > 0
@@ -182,7 +184,7 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
       return;
     }
     event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, [canvas, elements, selectedElement, selectionRect]);
+  }, [canvas, elements, onSelectElement, selectedElement, selectionRect]);
 
   const handleTransformMove = React.useCallback((event) => {
     const transform = transformRef.current;
