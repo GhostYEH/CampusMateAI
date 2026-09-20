@@ -29,6 +29,7 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementTransformCommand,
   slideElementUpdateCommand,
 } from "../src/features/openmaic/editorModel.js";
 
@@ -116,6 +117,29 @@ test("slide.element.move mirrors only a finite coordinate pair on an existing sl
     () => applyCommandLocally(nonFinitePosition, slideElementMoveCommand("s3", "e3", 1, 1)),
     (error) => error.code === "element_position_invalid" && error.path === "elementId",
   );
+});
+
+test("slide.element.transform mirrors all finite geometry fields on an existing slide element", () => {
+  const document = documentWith([{
+    id: "s1", type: "slide", title: "A", order: 0,
+    content: { type: "slide", canvas: { elements: [
+      { id: "e1", type: "shape", left: 10, top: 20, width: 100, height: 40, rotate: 0 },
+    ] } },
+  }]);
+  const command = slideElementTransformCommand("s1", "e1", {
+    left: 30, top: 40, width: 120, height: 60, rotate: 15,
+  });
+  assert.deepEqual(command, {
+    type: "slide.element.transform", sceneId: "s1", elementId: "e1",
+    left: 30, top: 40, width: 120, height: 60, rotate: 15,
+  });
+  const transformed = applyCommandLocally(document, command);
+  assert.deepEqual(transformed.scenes[0].content.canvas.elements[0], {
+    id: "e1", type: "shape", left: 30, top: 40, width: 120, height: 60, rotate: 15,
+  });
+  assert.throws(() => slideElementTransformCommand("s1", "e1", {
+    left: 30, top: 40, width: 0, height: 60, rotate: 15,
+  }), (error) => error.code === "command_field_invalid");
 });
 
 test("slide.element.update changes only an existing text element payload", () => {
@@ -346,7 +370,7 @@ test("editor canvas exposes single selection, blank cancellation, and pointerup-
   assert.match(canvasSource, /setPointerCapture/);
   assert.match(canvasSource, /onMoveElement/);
   assert.match(canvasSource, /pointerup/);
-  assert.doesNotMatch(canvasSource, /sceneElementDelete|multi|rotate|resize/);
+  assert.doesNotMatch(canvasSource, /sceneElementDelete|multi/);
   assert.match(editorSource, /slideElementMoveCommand/);
   assert.match(editorSource, /onMoveElement/);
 });

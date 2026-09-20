@@ -16,6 +16,7 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementTransformCommand,
   slideElementUpdateCommand,
 } from "../../features/openmaic/editorModel.js";
 
@@ -138,6 +139,11 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   function moveSlideElement(elementId, left, top) {
     if (!selectedScene?.id) return false;
     return run(slideElementMoveCommand(selectedScene.id, elementId, left, top));
+  }
+
+  function transformSlideElement(elementId, geometry) {
+    if (!selectedScene?.id) return false;
+    return run(slideElementTransformCommand(selectedScene.id, elementId, geometry));
   }
 
   function updateTextElement(elementId, content) {
@@ -292,6 +298,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
         <StageCanvasPreview
           scene={selectedScene}
           onMoveElement={moveSlideElement}
+          onTransformElement={transformSlideElement}
           onUpdateTextElement={updateTextElement}
         />
       </div>

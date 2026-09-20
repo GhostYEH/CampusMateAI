@@ -75,6 +75,20 @@ export function slideElementMoveCommand(sceneId, elementId, left, top) {
   return { type: "slide.element.move", sceneId, elementId, left, top };
 }
 
+export function slideElementTransformCommand(sceneId, elementId, geometry = {}) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
+  }
+  if (typeof elementId !== "string" || !elementId.trim()) {
+    throw new EditorCommandError("element_id_required", "elementId", "必须指定元素");
+  }
+  const { left, top, width, height, rotate } = geometry;
+  if (![left, top, width, height, rotate].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new EditorCommandError("command_field_invalid", "geometry", "元素几何属性必须是有限数字且尺寸大于零");
+  }
+  return { type: "slide.element.transform", sceneId, elementId, left, top, width, height, rotate };
+}
+
 export function slideElementUpdateCommand(sceneId, elementId, content) {
   if (typeof sceneId !== "string" || !sceneId.trim()) {
     throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
@@ -219,6 +233,31 @@ export function applyCommandLocally(document, command) {
         ...scene,
         content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } },
       };
+      return { ...document, scenes };
+    }
+    case "slide.element.transform": {
+      if (![command.left, command.top, command.width, command.height, command.rotate].every(Number.isFinite)
+        || command.width <= 0 || command.height <= 0) {
+        throw new EditorCommandError("command_field_invalid", "geometry", "元素几何属性必须是有限数字且尺寸大于零");
+      }
+      const at = indexOf(command.sceneId);
+      const scene = scenes[at];
+      if (scene.type !== "slide" || scene.content?.type !== "slide") {
+        throw new EditorCommandError("slide_element_requires_slide", "sceneId", "只能变换 slide 场景元素");
+      }
+      const elements = Array.isArray(scene.content.canvas?.elements) ? scene.content.canvas.elements : [];
+      const elementAt = elements.findIndex((element) => element?.id === command.elementId);
+      if (elementAt === -1) throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
+      const target = elements[elementAt];
+      if (![target?.left, target?.top, target?.width, target?.height].every(Number.isFinite)) {
+        throw new EditorCommandError("element_geometry_invalid", "elementId", "目标元素缺少有限的几何属性");
+      }
+      const nextElements = elements.slice();
+      nextElements[elementAt] = {
+        ...target, left: command.left, top: command.top,
+        width: command.width, height: command.height, rotate: command.rotate,
+      };
+      scenes[at] = { ...scene, content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } } };
       return { ...document, scenes };
     }
     case "slide.element.update": {

@@ -9,15 +9,17 @@ import ProseMirrorTextEditor from "./ProseMirrorTextEditor.jsx";
  * Keeping this boundary read-only leaves selection, drag, and command wiring
  * for the following editor slices while making the workbench preview truthful.
  */
-export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextElement }) {
+export default function StageCanvasPreview({ scene, onMoveElement, onTransformElement, onUpdateTextElement }) {
   const rootRef = React.useRef(null);
   const dragRef = React.useRef(null);
+  const transformRef = React.useRef(null);
   const selectedElementIdRef = React.useRef("");
   const textDoubleClickCandidateRef = React.useRef(null);
   const [selectedElementId, setSelectedElementId] = React.useState("");
   const [dragPosition, setDragPosition] = React.useState(null);
   const [selectionRect, setSelectionRect] = React.useState(null);
   const [editingTextId, setEditingTextId] = React.useState("");
+  const [transformPreview, setTransformPreview] = React.useState(null);
   const content = scene?.content;
   const canvas = content?.type === "slide" ? content.canvas : null;
   const elements = Array.isArray(canvas?.elements) ? canvas.elements : [];
@@ -65,6 +67,13 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
   }, [selectedElementId]);
 
   const finishDrag = React.useCallback((event, cancelled = false) => {
+    const transform = transformRef.current;
+    if (transform && (!event || event.pointerId === transform.pointerId)) {
+      transformRef.current = null;
+      setTransformPreview(null);
+      if (!cancelled && transform.moved) onTransformElement?.(transform.elementId, transform.geometry);
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || (event && event.pointerId !== drag.pointerId)) return;
     dragRef.current = null;
@@ -73,10 +82,28 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
       // The command enters the parent buffer only here, after pointerup.
       onMoveElement?.(drag.elementId, drag.left, drag.top);
     }
-  }, [onMoveElement]);
+  }, [onMoveElement, onTransformElement]);
 
   const handlePointerDown = React.useCallback((event) => {
     if (!rootRef.current) return;
+    const handle = event.target?.closest?.("[data-maic-resize-handle], [data-maic-rotate-handle]");
+    if (handle && selectedElement && selectionRect) {
+      event.preventDefault();
+      event.stopPropagation();
+      transformRef.current = {
+        pointerId: event.pointerId,
+        elementId: selectedElement.id,
+        kind: handle.hasAttribute("data-maic-rotate-handle") ? "rotate" : "resize",
+        corner: handle.getAttribute("data-maic-resize-handle") || "se",
+        startX: event.clientX, startY: event.clientY,
+        rootBox: rootRef.current.getBoundingClientRect(),
+        origin: { left: selectedElement.left, top: selectedElement.top, width: selectedElement.width, height: selectedElement.height, rotate: Number(selectedElement.rotate) || 0 },
+        geometry: { left: selectedElement.left, top: selectedElement.top, width: selectedElement.width, height: selectedElement.height, rotate: Number(selectedElement.rotate) || 0 },
+        moved: false,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      return;
+    }
     const target = event.target?.closest?.("[data-maic-element-id]");
     if (!target || !rootRef.current.contains(target)) {
       const candidate = textDoubleClickCandidateRef.current;
@@ -155,7 +182,32 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
       return;
     }
     event.currentTarget.setPointerCapture?.(event.pointerId);
-  }, [canvas, elements]);
+  }, [canvas, elements, selectedElement, selectionRect]);
+
+  const handleTransformMove = React.useCallback((event) => {
+    const transform = transformRef.current;
+    if (!transform || event.pointerId !== transform.pointerId) return;
+    const dx = (event.clientX - transform.startX) / (selectionRect?.scaleX || 1);
+    const dy = (event.clientY - transform.startY) / (selectionRect?.scaleY || 1);
+    const geometry = { ...transform.origin };
+    if (transform.kind === "rotate") {
+      const centerX = transform.rootBox.left + (selectionRect?.left || 0) + (selectionRect?.width || 0) / 2;
+      const centerY = transform.rootBox.top + (selectionRect?.top || 0) + (selectionRect?.height || 0) / 2;
+      const startAngle = Math.atan2(transform.startY - centerY, transform.startX - centerX);
+      const currentAngle = Math.atan2(event.clientY - centerY, event.clientX - centerX);
+      geometry.rotate = Math.round((transform.origin.rotate + (currentAngle - startAngle) * 180 / Math.PI) * 10) / 10;
+    } else {
+      const signX = transform.corner.includes("w") ? -1 : 1;
+      const signY = transform.corner.includes("n") ? -1 : 1;
+      geometry.width = Math.max(10, transform.origin.width + signX * dx);
+      geometry.height = Math.max(10, transform.origin.height + signY * dy);
+      if (transform.corner.includes("w")) geometry.left = transform.origin.left + transform.origin.width - geometry.width;
+      if (transform.corner.includes("n")) geometry.top = transform.origin.top + transform.origin.height - geometry.height;
+    }
+    transform.geometry = geometry;
+    transform.moved = true;
+    setTransformPreview(geometry);
+  }, [selectionRect]);
 
   const beginTextEdit = React.useCallback((event) => {
     const target = event.target?.closest?.("[data-maic-element-id]");
@@ -198,8 +250,11 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
   const renderedSelection = selectedElement && selectionRect
     ? {
       ...selectionRect,
-      left: selectionRect.left + ((dragPosition?.left ?? selectedElement.left) - selectedElement.left) * selectionRect.scaleX,
-      top: selectionRect.top + ((dragPosition?.top ?? selectedElement.top) - selectedElement.top) * selectionRect.scaleY,
+      left: selectionRect.left + ((transformPreview?.left ?? dragPosition?.left ?? selectedElement.left) - selectedElement.left) * selectionRect.scaleX,
+      top: selectionRect.top + ((transformPreview?.top ?? dragPosition?.top ?? selectedElement.top) - selectedElement.top) * selectionRect.scaleY,
+      width: transformPreview?.width ? transformPreview.width * selectionRect.scaleX : selectionRect.width,
+      height: transformPreview?.height ? transformPreview.height * selectionRect.scaleY : selectionRect.height,
+      rotate: transformPreview?.rotate ?? (Number(selectedElement.rotate) || 0),
     }
     : null;
 
@@ -212,6 +267,7 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
     aria-label={scene ? `编辑预览：${scene.title || "未命名场景"}` : "编辑预览"}
     onPointerDown={handlePointerDown}
     onPointerMove={handlePointerMove}
+    onPointerMoveCapture={handleTransformMove}
     onPointerUp={finishDrag}
     onPointerCancel={(event) => finishDrag(event, true)}
     onDoubleClick={beginTextEdit}
@@ -233,8 +289,28 @@ export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextE
         top: renderedSelection.top,
         width: renderedSelection.width,
         height: renderedSelection.height,
+        transform: `rotate(${renderedSelection.rotate}deg)`,
+        transformOrigin: "center",
       }}
-    /> : null}
+    >
+      <span className="maic-edit-canvas__rotate-handle" data-maic-rotate-handle="true" aria-label="旋转元素" />
+      {["nw", "ne", "sw", "se"].map((corner) => <span
+        key={corner}
+        className={`maic-edit-canvas__resize-handle maic-edit-canvas__resize-handle--${corner}`}
+        data-maic-resize-handle={corner}
+        aria-label={`调整大小：${corner}`}
+      />)}
+    </div> : null}
+    {renderedSelection ? <>
+      <div className="maic-edit-canvas__ruler maic-edit-canvas__ruler--x" data-maic-ruler="x" aria-hidden="true">
+        {[0, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((mark) => <span key={mark} style={{ left: `${(mark / (Number(canvas?.width) || 1000)) * 100}%` }}>{mark}</span>)}
+      </div>
+      <div className="maic-edit-canvas__ruler maic-edit-canvas__ruler--y" data-maic-ruler="y" aria-hidden="true">
+        {[0, 100, 200, 300, 400, 500].map((mark) => <span key={mark} style={{ top: `${(mark / (Number(canvas?.height) || 562.5)) * 100}%` }}>{mark}</span>)}
+      </div>
+      <i className="maic-edit-canvas__alignment-guide maic-edit-canvas__alignment-guide--x" data-maic-alignment-guide="x" aria-hidden="true" />
+      <i className="maic-edit-canvas__alignment-guide maic-edit-canvas__alignment-guide--y" data-maic-alignment-guide="y" aria-hidden="true" />
+    </> : null}
     {editingTextId && selectionRect ? <ProseMirrorTextEditor
       data-editing-element-id={editingTextId}
       value={String(elements.find((entry) => entry?.id === editingTextId)?.content || "")}

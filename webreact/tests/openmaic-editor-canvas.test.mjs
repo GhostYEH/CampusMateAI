@@ -34,3 +34,12 @@ test("the editor preview reuses the playback slide surface", () => {
   assert.match(canvasSource, /data-maic-edit-canvas="true"/);
   assert.match(canvasSource, /flex flex-col h-full/);
 });
+
+test("the editor canvas exposes geometry handles, ruler, and alignment guide wiring", () => {
+  assert.match(canvasSource, /data-maic-resize-handle/);
+  assert.match(canvasSource, /data-maic-rotate-handle/);
+  assert.match(canvasSource, /data-maic-ruler/);
+  assert.match(canvasSource, /data-maic-alignment-guide/);
+  assert.match(canvasSource, /onTransformElement/);
+  assert.match(editorSource, /slideElementTransformCommand/);
+});
