@@ -93,10 +93,11 @@ export function useSceneNarration({ courseId, workspaceId, stageId, sceneId }) {
     try {
       const status = await api.getOpenMAICSceneNarration(courseId, workspaceId, stageId, sceneId);
       if (mine !== epoch.current) return;
-      setHasScript(status?.has_script !== false);
+      const scriptAvailable = status?.has_script !== false;
+      setHasScript(scriptAvailable);
       setTruncated(Boolean(status?.truncated));
       const job = status?.job;
-      if (!job) { setState("none"); return; }
+      if (!job) { setState(scriptAvailable ? "available" : "none"); return; }
       if (job.status === "completed" && job.artifact_id) { await loadArtifact(job, mine); return; }
       if (["queued", "running"].includes(job.status)) { setState("generating"); await poll(job.id, mine); return; }
       // 上一轮失败留下的任务：如实显示为可重试，而不是"没有音频"。

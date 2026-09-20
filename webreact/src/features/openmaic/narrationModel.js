@@ -51,6 +51,7 @@ export function narrationLabel({ state, truncated = false } = {}) {
     case "checking": return "正在检查这一页的讲解…";
     case "generating": return "正在生成这一页的讲解，请稍候…";
     case "ready": return truncated ? "讲解音频已生成（因原文较长已截断）。" : "讲解音频已生成。";
+    case "available": return "这一页有可讲解的文字，点击生成讲解。";
     case "none": return "这一页没有可讲解的文字。";
     case "error": return "讲解音频暂时不可用。";
     default: return "";
@@ -60,10 +61,9 @@ export function narrationLabel({ state, truncated = false } = {}) {
 /**
  * 是否展示"生成讲解"按钮。
  *
- * **只有失败才给重试入口。** `none`（这一页没有可讲解的文字）不给——再点一次
- * 只会得到同样的答案，一个点不出结果的按钮比没有按钮更糟。
+ * 有讲稿但尚无音频时给生成入口；`none`（这一页没有可讲解的文字）不给。
  * `ready` / `generating` 也不给，避免诱导重复提交（服务端虽能去重，界面不该鼓励）。
  */
 export function canGenerateNarration({ state } = {}) {
-  return state === "error";
+  return state === "available" || state === "error";
 }

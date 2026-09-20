@@ -27,6 +27,12 @@ test("a scene with no script is not reported as a failure", () => {
   assert.notEqual(narrationLabel({ state: "error" }), narrationLabel({ state: "none" }));
 });
 
+test("a scene with a script but no audio exposes the generate action", () => {
+  assert.equal(canGenerateNarration({ state: "available" }), true);
+  assert.match(narrationLabel({ state: "available" }), /生成讲解/);
+  assert.equal(canGenerateNarration({ state: "none" }), false);
+});
+
 test("an in-flight generation cannot be started again from the UI", () => {
   assert.equal(canGenerateNarration({ state: "generating" }), false);
   assert.equal(canGenerateNarration({ state: "ready" }), false, "已经有音频就不该再出现生成入口");
@@ -34,10 +40,16 @@ test("an in-flight generation cannot be started again from the UI", () => {
 });
 
 test("every state has its own copy so nothing renders as a blank panel", () => {
-  for (const state of ["checking", "generating", "ready", "none", "error"]) {
+  for (const state of ["checking", "generating", "ready", "available", "none", "error"]) {
     assert.ok(narrationLabel({ state }).length > 0, `${state} 必须有文案`);
   }
   assert.match(narrationLabel({ state: "ready", truncated: true }), /截断/);
+});
+
+test("the narration hook keeps a script-bearing scene actionable before its first job", () => {
+  const hook = read("src/features/openmaic/useSceneNarration.js");
+  assert.match(hook, /status\?\.has_script !== false/);
+  assert.match(hook, /setState\(scriptAvailable \? "available" : "none"\)/);
 });
 
 test("failure copy distinguishes an unconfigured provider from a transient fault", () => {
