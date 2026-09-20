@@ -21,7 +21,7 @@ def test_generation_route_forwards_course_bound_prompt_and_returns_stage():
             "document": {"dslVersion": "0.3.0", "stage": {"id": "s"}, "scenes": []},
         },
         "job": {"id": "job_1", "status": "completed", "progress": 100, "artifact_id": "artifact_1", "mode": "slide"},
-        "source": "local-template",
+        "source": "provider",
     }
     container, transport, http, headers, course_id = _setup([(201, payload)])
     client = OpenMAICFusionClient(
@@ -61,6 +61,27 @@ def test_generation_requires_idempotency_before_contacting_service():
     assert transport.calls == []
 
 
+def test_generation_route_does_not_report_a_local_template_as_a_real_classroom():
+    _, _, http, headers, course_id = _setup([
+        (201, {
+            "stage_id": "stg_local",
+            "stage": {
+                "id": "stg_local", "workspace_id": "ws_1", "course_id": "course-1",
+                "title": "本地模板", "revision": 1, "dsl_version": "0.3.0", "created_at": "", "updated_at": "",
+                "document": {"dslVersion": "0.3.0", "stage": {"id": "s"}, "scenes": []},
+            },
+            "job": {"id": "job_local", "status": "completed", "progress": 100, "artifact_id": None, "mode": "slide"},
+            "source": "local-template",
+        }),
+    ])
+    response = http.post(
+        f"/api/v1/courses/{course_id}/workspaces/ws_1/generate",
+        json={"mode": "slide", "prompt": "不要回显输入"},
+        headers={**headers, "Idempotency-Key": "direct-local-template"},
+    )
+    assert response.status_code == 503
+
+
 def test_home_generation_gateway_resolves_workspace_and_reuses_one_request_key():
     container, transport, http, headers, course_id = _setup([
         (200, {"llm": True}),
@@ -84,6 +105,13 @@ def test_home_generation_gateway_resolves_workspace_and_reuses_one_request_key()
     assert transport.calls[2]["headers"]["Idempotency-Key"].startswith("home-workspace:")
     assert transport.calls[3]["headers"]["Idempotency-Key"] == "home-1:generation"
     assert "[课程]" in transport.calls[3]["json"]["prompt"]
+
+
+def test_home_workspace_key_is_bounded_and_distinguishes_long_course_identifiers():
+    first = openmaic_generation._home_workspace_key("user-" + "x" * 400, "course-a" + "y" * 400)
+    second = openmaic_generation._home_workspace_key("user-" + "x" * 400, "course-b" + "y" * 400)
+    assert len(first) <= 200
+    assert first != second
 
 
 def test_home_generation_rejects_local_template_echo_as_provider_success():
@@ -165,3 +193,19 @@ def test_home_generation_bounds_provider_prompt_after_adding_long_course_context
     generation_call = [call for call in transport.calls if call["url"].endswith("/generate")][0]
     assert len(generation_call["json"]["prompt"]) <= 2000
     assert generation_call["json"]["prompt"].startswith("请讲解极限")
+
+
+def test_course_prompt_obeys_the_provider_utf16_limit_for_astral_characters():
+    prompt = openmaic_generation._course_prompt("😀" * 750, "🚀" * 5000)
+    assert openmaic_generation._utf16_length(prompt) <= 2000
+
+
+def test_home_generation_rejects_a_topic_that_would_leave_no_room_for_course_context():
+    _, transport, http, headers, course_id = _setup()
+    response = http.post(
+        f"/api/v1/courses/{course_id}/home-generate",
+        json={"prompt": "x" * 751, "mode": "slide"},
+        headers={**headers, "Idempotency-Key": "long-topic"},
+    )
+    assert response.status_code == 422
+    assert transport.calls == []

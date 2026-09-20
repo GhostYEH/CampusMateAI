@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, Response
@@ -43,7 +44,9 @@ class HomeGenerationIn(BaseModel):
     """
 
     mode: str = Field("slide", min_length=1, max_length=80)
-    prompt: str = Field(..., min_length=1, max_length=2000)
+    # Reserve enough of the provider's 2,000-character payload for the
+    # gateway instruction and authorized course context.
+    prompt: str = Field(..., min_length=1, max_length=750)
 
 
 def _container() -> ServiceContainer:
@@ -69,10 +72,35 @@ def _key(value: Optional[str]) -> str:
     return text
 
 
+def _home_workspace_key(user_id: object, course_id: str) -> str:
+    """Return a bounded stable key without truncation collisions."""
+    digest = hashlib.sha256(f"{user_id}\0{course_id}".encode("utf-8")).hexdigest()
+    return f"home-workspace:{digest}"
+
+
+def _utf16_length(value: str) -> int:
+    """Match JavaScript/Zod string length used by the managed service."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def _truncate_utf16(value: str, budget: int) -> str:
+    if budget <= 0:
+        return ""
+    used = 0
+    result: list[str] = []
+    for char in value:
+        units = 2 if ord(char) > 0xFFFF else 1
+        if used + units > budget:
+            break
+        result.append(char)
+        used += units
+    return "".join(result)
+
+
 def _course_prompt(topic: str, context: str, budget: int = 2000) -> str:
     prefix = f"{topic.strip()}\n\n请结合以下已授权课程上下文生成内容：\n"
-    remaining = max(0, budget - len(prefix))
-    return prefix + context[:remaining]
+    remaining = max(0, budget - _utf16_length(prefix))
+    return prefix + _truncate_utf16(context, remaining)
 
 
 @router.post("/{course_id}/workspaces/{workspace_id}/generate", status_code=201)
@@ -87,12 +115,15 @@ async def generate_stage(
 ) -> Dict[str, Any]:
     _require(container)
     assert_course_access(container, user, course_id)
-    return await client.generate_stage(
+    generated = await client.generate_stage(
         user_id=str(user.id), course_id=course_id, workspace_id=workspace_id,
         mode=body.mode, prompt=body.prompt, role_mode=body.role_mode,
         selected_role_ids=body.selected_role_ids,
         idempotency_key=_key(idempotency_key),
     )
+    if generated.get("source") == "local-template":
+        raise FusionUnavailable("课程生成模型当前不可用", details={"reason": "provider_unavailable"})
+    return generated
 
 
 @router.post("/{course_id}/home-generate", status_code=201)
@@ -124,7 +155,7 @@ async def generate_home(
             # Workspace identity is stable per learner/course. A different
             # topic must create a new stage, while concurrent first submits
             # must converge on one homepage workspace.
-            idempotency_key=f"home-workspace:{user.id}:{course_id}"[:180],
+            idempotency_key=_home_workspace_key(user.id, course_id),
         )
     workspace_id = str(workspace.get("id") or "")
     if not workspace_id:
