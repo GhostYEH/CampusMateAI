@@ -86,6 +86,13 @@ test('the layout follows the content shape, deterministically', () => {
     slideLayoutOf(outline({ bullets: ['a'], sections: [{ heading: '甲', bullets: ['b'] }] })),
     'sections',
   );
+  assert.equal(slideLayoutOf(outline({ layout: 'cover', subtitle: '课程导览' })), 'cover');
+  assert.equal(slideLayoutOf(outline({ layout: 'toc', toc: ['第一章', '第二章'] })), 'toc');
+  assert.equal(
+    slideLayoutOf(outline({ layout: 'comparison', comparison: { left: { heading: '旧', bullets: ['a'] }, right: { heading: '新', bullets: ['b'] } } })),
+    'comparison',
+  );
+  assert.equal(slideLayoutOf(outline({ layout: 'conclusion', bullets: ['a'], conclusion: '记住这一点' })), 'conclusion');
 });
 
 test('every layout produces renderable elements inside the canvas', () => {
@@ -106,6 +113,13 @@ test('every layout produces renderable elements inside the canvas', () => {
         { heading: '丙', bullets: ['d'] },
       ],
     })],
+    ['cover', outline({ layout: 'cover', subtitle: '课程副标题' })],
+    ['toc', outline({ layout: 'toc', toc: ['概念', '推导', '练习'] })],
+    ['comparison', outline({ layout: 'comparison', comparison: {
+      left: { heading: '进程', bullets: ['独立地址空间', '切换开销大'] },
+      right: { heading: '线程', bullets: ['共享地址空间', '切换开销小'] },
+    } })],
+    ['conclusion', outline({ layout: 'conclusion', bullets: ['先理解概念'], conclusion: '能用自己的话解释' })],
   ];
   for (const [label, content] of cases) {
     const canvas = composeSlideCanvas(content);
@@ -113,6 +127,22 @@ test('every layout produces renderable elements inside the canvas', () => {
     assert.equal(canvas.height, SLIDE_CANVAS_HEIGHT, label);
     assertRenderable(canvas, label);
     assertInsideCanvas(canvas, label);
+  }
+});
+
+test('new layouts expose their defining content with unique ids and bounded geometry', () => {
+  const cases = [
+    outline({ layout: 'toc', toc: ['第一章', '第二章'] }),
+    outline({ layout: 'comparison', comparison: { left: { heading: 'A', bullets: ['左侧'] }, right: { heading: 'B', bullets: ['右侧'] } } }),
+    outline({ layout: 'conclusion', bullets: ['要点'], conclusion: '结论条' }),
+  ];
+  for (const content of cases) {
+    const canvas = composeSlideCanvas(content);
+    assertRenderable(canvas, slideLayoutOf(content));
+    assertInsideCanvas(canvas, slideLayoutOf(content));
+    const ids = canvas.elements.map((element) => element.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.match(JSON.stringify(canvas.elements), /第一章|左侧|结论条/);
   }
 });
 
@@ -344,6 +374,5 @@ test('the repository does not touch stages that already have real canvases', () 
   // 没有改动时必须逐字节返回存储原样（含键顺序与数字写法）。
   assert.equal(read.document, modern, '已有真实画布的文档必须逐字节原样返回');
 });
-
 
 

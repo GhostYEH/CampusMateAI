@@ -61,11 +61,22 @@ export interface SlideSection {
   bullets: string[];
 }
 
+export interface SlideComparison {
+  left: SlideSection;
+  right: SlideSection;
+}
+
+export type SlideLayout = 'title' | 'cover' | 'bullets' | 'sections' | 'toc' | 'comparison' | 'conclusion';
+
 export interface SlideOutline {
   title: string;
   subtitle: string;
   bullets: string[];
   sections: SlideSection[];
+  layout: SlideLayout | '';
+  toc: string[];
+  comparison: SlideComparison | null;
+  conclusion: string;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -88,6 +99,18 @@ function escapeHtml(value: string): string {
 function stringList(value: unknown, limit: number): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(text).filter(Boolean).slice(0, limit);
+}
+
+function sectionValue(value: unknown): SlideSection {
+  if (Array.isArray(value)) return { heading: '', bullets: stringList(value, 6) };
+  if (!isObject(value)) return { heading: '', bullets: [] };
+  return { heading: text(value.heading) || text(value.title), bullets: stringList(value.bullets ?? value.items, 6) };
+}
+
+function explicitLayout(value: unknown): SlideLayout | '' {
+  return ['title', 'cover', 'bullets', 'sections', 'toc', 'comparison', 'conclusion'].includes(value as string)
+    ? value as SlideLayout
+    : '';
 }
 
 /**
@@ -120,11 +143,25 @@ export function readSlideOutline(content: unknown): SlideOutline {
           .filter((section): section is SlideSection => section !== null)
           .slice(0, 3)
       : [];
+    const comparisonSource = isObject(slide.comparison)
+      ? slide.comparison
+      : isObject(slide.columns)
+        ? slide.columns
+        : undefined;
+    const comparison = comparisonSource
+      ? { left: sectionValue(comparisonSource.left ?? comparisonSource[0]), right: sectionValue(comparisonSource.right ?? comparisonSource[1]) }
+      : null;
+    const toc = stringList(slide.toc ?? slide.agenda ?? slide.items, 8);
+    const conclusion = text(slide.conclusion ?? slide.takeaway ?? slide.summary);
     return {
       title,
       subtitle: text(slide.subtitle),
       bullets: stringList(slide.bullets, 8),
       sections,
+      layout: explicitLayout(slide.layout),
+      toc,
+      comparison,
+      conclusion,
     };
   }
 
@@ -140,6 +177,10 @@ export function readSlideOutline(content: unknown): SlideOutline {
           .slice(0, 8)
       : [],
     sections: [],
+    layout: '',
+    toc: [],
+    comparison: null,
+    conclusion: '',
   };
 }
 
@@ -316,6 +357,32 @@ function composeTitleSlide(outline: SlideOutline): Record<string, unknown>[] {
   return elements;
 }
 
+/** 封面页：明确的 cover 版式沿用标题页几何，便于生成侧稳定选择。 */
+function composeCoverSlide(outline: SlideOutline): Record<string, unknown>[] {
+  return composeTitleSlide(outline);
+}
+
+/** 目录页：编号列表让章节顺序在课堂开始时一眼可见。 */
+function composeTocSlide(outline: SlideOutline): Record<string, unknown>[] {
+  const elements = headerElements(outline.title, 56);
+  const items = outline.toc.length ? outline.toc : outline.sections.map((section) => section.heading).filter(Boolean);
+  const rows = (items.length ? items : [outline.subtitle || '本课内容导览']).slice(0, 6);
+  elements.push(
+    textElement({
+      id: 'el_body',
+      left: MARGIN - TEXT_PAD,
+      top: 190 - TEXT_PAD,
+      width: CONTENT_WIDTH + TEXT_PAD * 2,
+      height: SLIDE_CANVAS_HEIGHT - 190 - MARGIN + TEXT_PAD,
+      html: `<ol style="margin:0;padding-inline-start:34px;">${rows.map((item) => `<li style="font-size:22px;line-height:1.65;margin-bottom:10px;color:${PALETTE.inkSoft};">${escapeHtml(item)}</li>`).join('')}</ol>`,
+      fontSize: 22,
+      color: PALETTE.inkSoft,
+      lineHeight: 1.65,
+    }),
+  );
+  return elements;
+}
+
 /** 要点页：页眉 + 一条纵向要点列表。 */
 function composeBulletsSlide(outline: SlideOutline): Record<string, unknown>[] {
   const elements = headerElements(outline.title, 56);
@@ -408,10 +475,49 @@ function composeSectionsSlide(outline: SlideOutline): Record<string, unknown>[] 
   return elements;
 }
 
+/** 双栏对比：左右两张等宽卡片，共用同一页眉和垂直基线。 */
+function composeComparisonSlide(outline: SlideOutline): Record<string, unknown>[] {
+  const comparison = outline.comparison ?? { left: { heading: '一方面', bullets: outline.bullets }, right: { heading: '另一方面', bullets: [] } };
+  return composeSectionsSlide({ ...outline, sections: [comparison.left, comparison.right] });
+}
+
+/** 要点+结论：正文要点与底部结论条分离，结论永远不会压住正文。 */
+function composeConclusionSlide(outline: SlideOutline): Record<string, unknown>[] {
+  const elements = composeBulletsSlide({ ...outline, bullets: outline.bullets.slice(0, 5) });
+  const conclusionTop = 448;
+  const body = elements.find((element) => element.id === 'el_body');
+  if (body) body.height = conclusionTop - Number(body.top) - 8;
+  elements.push(
+    shapeElement({ id: 'el_conclusion_bar', left: MARGIN, top: conclusionTop, width: CONTENT_WIDTH, height: 62, fill: PALETTE.accentSoft, radius: 12 }),
+    textElement({
+      id: 'el_conclusion',
+      left: MARGIN + 18 - TEXT_PAD,
+      top: conclusionTop + 10 - TEXT_PAD,
+      width: CONTENT_WIDTH - 36 + TEXT_PAD * 2,
+      height: 42,
+      html: paragraph(outline.conclusion || '结论：把本页要点联系起来。', `font-size:18px;line-height:1.35;font-weight:700;margin:0;color:${PALETTE.accent};`),
+      fontSize: 18,
+      color: PALETTE.accent,
+      bold: true,
+      vAlign: 'middle',
+    }),
+  );
+  return elements;
+}
+
 /** 版式选择是**确定性**的：内容形状决定版式，同一份内容永远同一张画布。 */
 export function composeSlideCanvas(content: unknown): Record<string, unknown> {
   const outline = readSlideOutline(content);
-  const elements = outline.sections.length
+  const layout = slideLayoutOfOutline(outline);
+  const elements = layout === 'cover'
+    ? composeCoverSlide(outline)
+    : layout === 'toc'
+      ? composeTocSlide(outline)
+      : layout === 'comparison'
+        ? composeComparisonSlide(outline)
+        : layout === 'conclusion'
+          ? composeConclusionSlide(outline)
+          : layout === 'sections'
     ? composeSectionsSlide(outline)
     : outline.bullets.length
       ? composeBulletsSlide(outline)
@@ -431,11 +537,18 @@ export function composeSlideCanvas(content: unknown): Record<string, unknown> {
 }
 
 /** 版式名。仅用于测试与日志，不进入画布。 */
-export function slideLayoutOf(content: unknown): 'title' | 'bullets' | 'sections' {
-  const outline = readSlideOutline(content);
+function slideLayoutOfOutline(outline: SlideOutline): SlideLayout {
+  if (outline.layout) return outline.layout;
+  if (outline.comparison) return 'comparison';
+  if (outline.toc.length) return 'toc';
+  if (outline.conclusion) return 'conclusion';
   if (outline.sections.length) return 'sections';
   if (outline.bullets.length) return 'bullets';
   return 'title';
+}
+
+export function slideLayoutOf(content: unknown): SlideLayout {
+  return slideLayoutOfOutline(readSlideOutline(content));
 }
 
 /**
