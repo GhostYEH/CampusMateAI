@@ -47,7 +47,9 @@ def _snapshot_out(snapshot, *, run=None, evidence_count: int = 0) -> LearnerStat
         projection_scope=getattr(snapshot, "projection_scope", "__user__") or "__user__",
         input_digest=getattr(run, "input_digest", "") if run is not None else "",
         as_of=datetime.fromisoformat(run.as_of) if run is not None else None,
-        warning_codes=list(getattr(run, "warning_codes", []) or []) if run is not None else [],
+        warning_codes=list(
+            getattr(run, "warnings", getattr(run, "warning_codes", [])) or []
+        ) if run is not None else [],
         evidence_count=evidence_count,
     )
 

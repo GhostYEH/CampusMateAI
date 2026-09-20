@@ -430,63 +430,67 @@ function SimulationResult({ result }) {
       {changedForecasts.length > 0 && (
         <>
           <h3 className="pred-sim-subtitle">变化的预测</h3>
-          <table className="pred-sim-table">
-            <thead>
-              <tr>
-                <th>预测类型</th>
-                <th>范围</th>
-                <th>基线概率</th>
-                <th>模拟后概率</th>
-                <th>方向</th>
-                <th>幅度</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changedForecasts.map((d, i) => (
-                <>
-                <tr key={`${d.forecast_type}-${d.scope_type}-${d.scope_id}-${i}`}>
-                  <td>{FORECAST_TYPE_LABEL[d.forecast_type] || d.forecast_type}</td>
-                  <td>{d.scope_type}/{d.scope_id}</td>
-                  <td>{d.baseline_probability != null ? pct(d.baseline_probability) : "—"}</td>
-                  <td>{d.intervention_probability != null ? pct(d.intervention_probability) : "—"}</td>
-                  <td>{DIRECTION_LABEL[d.direction] || d.direction}</td>
-                  <td className={d.magnitude > 0 ? "pos" : d.magnitude < 0 ? "neg" : ""}>
-                    {d.magnitude > 0 ? "+" : ""}{pct(d.magnitude)}
-                  </td>
+          <div className="pred-sim-table-wrap">
+            <table className="pred-sim-table">
+              <thead>
+                <tr>
+                  <th>预测类型</th>
+                  <th>范围</th>
+                  <th>基线概率</th>
+                  <th>模拟后概率</th>
+                  <th>方向</th>
+                  <th>幅度</th>
                 </tr>
-                <tr key={`${d.forecast_type}-${d.scope_id}-${i}-detail`} className="pred-sim-table__detail"><td colSpan="6">基线：{JSON.stringify(d.baseline_value || {})} · 模拟：{JSON.stringify(d.intervention_value || {})} · 差值：{JSON.stringify(d.delta || {})}</td></tr>
-                </>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {changedForecasts.map((d, i) => (
+                  <>
+                  <tr key={`${d.forecast_type}-${d.scope_type}-${d.scope_id}-${i}`}>
+                    <td>{FORECAST_TYPE_LABEL[d.forecast_type] || d.forecast_type}</td>
+                    <td>{d.scope_type}/{d.scope_id}</td>
+                    <td>{d.baseline_probability != null ? pct(d.baseline_probability) : "—"}</td>
+                    <td>{d.intervention_probability != null ? pct(d.intervention_probability) : "—"}</td>
+                    <td>{DIRECTION_LABEL[d.direction] || d.direction}</td>
+                    <td className={d.magnitude > 0 ? "pos" : d.magnitude < 0 ? "neg" : ""}>
+                      {d.magnitude > 0 ? "+" : ""}{pct(d.magnitude)}
+                    </td>
+                  </tr>
+                  <tr key={`${d.forecast_type}-${d.scope_id}-${i}-detail`} className="pred-sim-table__detail"><td colSpan="6">基线：{JSON.stringify(d.baseline_value || {})} · 模拟：{JSON.stringify(d.intervention_value || {})} · 差值：{JSON.stringify(d.delta || {})}</td></tr>
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
       {changedStates.length > 0 && (
         <>
           <h3 className="pred-sim-subtitle">变化的状态估计</h3>
-          <table className="pred-sim-table">
-            <thead>
-              <tr>
-                <th>状态类型</th>
-                <th>范围</th>
-                <th>变化类型</th>
-                <th>基线质量</th>
-                <th>模拟后质量</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changedStates.map((d, i) => (
-                <tr key={`${d.state_type}-${d.scope_type}-${d.scope_id}-${i}`}>
-                  <td>{d.state_type}</td>
-                  <td>{d.scope_type}/{d.scope_id}</td>
-                  <td>{CHANGE_TYPE_LABEL[d.change_type] || d.change_type}</td>
-                  <td>{d.baseline_data_quality || "—"}</td>
-                  <td>{d.intervention_data_quality || "—"}</td>
+          <div className="pred-sim-table-wrap">
+            <table className="pred-sim-table">
+              <thead>
+                <tr>
+                  <th>状态类型</th>
+                  <th>范围</th>
+                  <th>变化类型</th>
+                  <th>基线质量</th>
+                  <th>模拟后质量</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {changedStates.map((d, i) => (
+                  <tr key={`${d.state_type}-${d.scope_type}-${d.scope_id}-${i}`}>
+                    <td>{d.state_type}</td>
+                    <td>{d.scope_type}/{d.scope_id}</td>
+                    <td>{CHANGE_TYPE_LABEL[d.change_type] || d.change_type}</td>
+                    <td>{d.baseline_data_quality || "—"}</td>
+                    <td>{d.intervention_data_quality || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 

@@ -46,6 +46,22 @@ def test_projection_includes_warning_when_source_paused():
     assert "learner_data_source_paused" in result.warnings
 
 
+def test_world_snapshot_exposes_paused_source_warning_at_top_level():
+    client, container, auth, uid = _setup()
+    _pause(container, uid, "CHAOXING")
+
+    response = client.get(
+        "/api/v1/learner-state/snapshots?projection_kind=WORLD&projection_scope=__user__",
+        headers=auth,
+    )
+
+    assert response.status_code == 200
+    assert any(
+        "learner_data_source_paused" in snapshot["warning_codes"]
+        for snapshot in response.json()["items"]
+    )
+
+
 def test_projection_no_warning_when_all_enabled():
     client, container, auth, uid = _setup()
     now = datetime.now(timezone.utc)

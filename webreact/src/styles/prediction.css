@@ -202,8 +202,15 @@
 
 .pred-sim-table {
   width: 100%;
+  min-width: 620px;
   border-collapse: collapse;
   font-size: 0.85rem;
+}
+
+.pred-sim-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .pred-sim-table th,
