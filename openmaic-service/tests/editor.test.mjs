@@ -252,6 +252,13 @@ test('slide.element.transform changes only declared finite geometry fields', () 
     () => applyStageCommands(document, [{ type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1', rotate: Number.NaN }]),
     (error) => error instanceof DslCommandError && error.code === 'command_field_invalid' && error.path === 'commands[0].rotate',
   );
+  const legacy = structuredClone(document);
+  delete legacy.scenes[0].content.canvas.elements[0].rotate;
+  assert.equal(
+    applyStageCommands(legacy, [{ type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1', rotate: 15 }])
+      .scenes[0].content.canvas.elements[0].rotate,
+    15,
+  );
 });
 
 test('slide.element.add inserts a valid element without changing the action timeline', () => {
@@ -317,6 +324,12 @@ test('slide.element.add and delete validate atomically', () => {
   assert.throws(
     () => applyStageCommands(document, [{ type: 'slide.element.delete', sceneId: 'slide_1', elementId: 'missing' }]),
     (error) => error instanceof DslCommandError && error.code === 'element_not_found',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.add', sceneId: 'slide_1', element: {
+      id: 'audio_1', type: 'audio', left: 0, top: 0, width: 10, height: 10, rotate: 0,
+    } }]),
+    (error) => error instanceof DslCommandError && error.code === 'element_type_invalid',
   );
 });
 

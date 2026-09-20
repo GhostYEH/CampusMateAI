@@ -368,7 +368,10 @@ function slideElementTarget(
   return { sceneIndex, scene, canvas, elements, elementIndex, target: elements[elementIndex] as Record<string, unknown> };
 }
 
-const SLIDE_ELEMENT_TYPES = new Set(['text', 'image', 'shape', 'line', 'chart', 'table', 'latex', 'video', 'audio', 'code']);
+// Every type listed here must have a renderer in the Web slide surface.  Audio
+// is deliberately excluded until that renderer exists; accepting it here would
+// persist an invisible element.
+const SLIDE_ELEMENT_TYPES = new Set(['text', 'image', 'shape', 'line', 'chart', 'table', 'latex', 'video', 'code']);
 
 function requireSlideElement(command: Record<string, unknown>, path: string): Record<string, unknown> {
   if (!isObject(command.element)) {
@@ -503,7 +506,9 @@ function applySlideElementTransform(
     if (typeof value !== 'number' || !Number.isFinite(value) || ((field === 'width' || field === 'height') && value <= 0)) {
       throw new DslCommandError('command_field_invalid', `${path}.${field}`, `${path}.${field} 必须是${field === 'width' || field === 'height' ? '正' : '有限'}数字`);
     }
-    if (typeof target[field] !== 'number' || !Number.isFinite(target[field])) {
+    // Legacy documents may not carry a rotate value. Rotation has a stable
+    // default of zero, so it is safe to introduce it with this bounded command.
+    if (field !== 'rotate' && (typeof target[field] !== 'number' || !Number.isFinite(target[field]))) {
       throw new DslCommandError('element_geometry_invalid', `${path}.elementId`, `元素 ${String(target.id)} 缺少有限的 ${field}`);
     }
     patch[field] = value;
