@@ -579,3 +579,48 @@ def test_interleaved_closed_success_and_failure_follow_a_defined_rule() -> None:
         assert status["failures"] >= 2, status
 
     asyncio.run(scenario())
+
+
+def test_generation_advances_once_per_real_state_transition() -> None:
+    """代次 = **状态迁移计数**：三次真实迁移之后 generation 恰好为 3。
+
+    前面两个用例只钉住了 CLOSED 阶段与 CLOSED → OPEN；这里把"其他明确状态迁移"
+    也逐一钉住数值（HALF_OPEN → OPEN、OPEN/HALF_OPEN → CLOSED），
+    否则"代次只在迁移时推进"这句话在第三种迁移上仍然只是注释里的承诺。
+    顺带证明陈旧代次既不能推进代次，也不能改动状态。
+    """
+
+    async def scenario() -> None:
+        name = "learning_summary_v1"
+        candidate = FakeLLM("not-json")
+        # threshold=1、cooldown=0：打开后立刻进入半开，迁移序列完全确定，无需 sleep。
+        runner = _gated_runner(candidate)
+
+        assert runner.circuit_status(name)["generation"] == 0
+
+        # 迁移 1：CLOSED → OPEN（失败数达到阈值）
+        await runner.run(_summary_request("migration-open"))
+        assert runner.circuit_status(name)["generation"] == 1, "CLOSED → OPEN 必须推进一次代次"
+        assert runner.circuit_status(name)["state"] == "HALF_OPEN", "cooldown=0 时冷却已过，应为 HALF_OPEN"
+
+        # 迁移 2：HALF_OPEN → OPEN（探测失败后重新打开）
+        await runner.run(_summary_request("migration-reopen"))
+        assert runner.circuit_status(name)["generation"] == 2, "HALF_OPEN → OPEN 必须推进一次代次"
+
+        # 迁移 3：OPEN/HALF_OPEN → CLOSED（探测成功）
+        candidate.content = '{"summary":"按已提供的优先级安排。","claim_codes":[]}'
+        result = await runner.run(_summary_request("migration-close"))
+        assert result.inference_source == "REAL_MODEL"
+        status = runner.circuit_status(name)
+        assert status["state"] == "CLOSED"
+        assert status["failures"] == 0
+        assert status["generation"] == 3, "OPEN/HALF_OPEN → CLOSED 必须推进一次代次"
+
+        # 陈旧代次：既不能推进代次，也不能关闭熔断 / 改写失败计数
+        runner._record_success(name, generation=0)
+        runner._record_failure(name, generation=1)
+        after = runner.circuit_status(name)
+        assert after["generation"] == 3, f"陈旧代次必须被丢弃：{after}"
+        assert after["state"] == "CLOSED" and after["failures"] == 0, after
+
+    asyncio.run(scenario())
