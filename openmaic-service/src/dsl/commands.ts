@@ -44,6 +44,7 @@ export const STAGE_COMMANDS = [
   'scene.move',
   'scene.update',
   'slide.element.move',
+  'slide.element.transform',
   'slide.element.update',
 ] as const;
 
@@ -341,6 +342,30 @@ function finiteCoordinate(command: Record<string, unknown>, path: string, field:
   return value;
 }
 
+type TransformField = 'left' | 'top' | 'width' | 'height' | 'rotate';
+const TRANSFORM_FIELDS: readonly TransformField[] = ['left', 'top', 'width', 'height', 'rotate'];
+
+function slideElementTarget(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+) {
+  const sceneId = requireSceneId(command, path);
+  const elementId = nonEmptyString(command.elementId, `${path}.elementId`);
+  const sceneIndex = sceneIndexOf(aggregate.scenes, sceneId, `${path}.sceneId`);
+  const scene = aggregate.scenes[sceneIndex];
+  if (scene.type !== 'slide' || scene.content.type !== 'slide') {
+    throw new DslCommandError('slide_element_requires_slide', `${path}.sceneId`, 'slide 元素命令只能作用于 slide 场景');
+  }
+  const canvas = scene.content.canvas;
+  const elements = isObject(canvas) && Array.isArray(canvas.elements) ? canvas.elements : [];
+  const elementIndex = elements.findIndex((element) => isObject(element) && element.id === elementId);
+  if (elementIndex === -1) {
+    throw new DslCommandError('element_not_found', `${path}.elementId`, `找不到元素 ${elementId}`);
+  }
+  return { sceneIndex, scene, canvas, elements, elementIndex, target: elements[elementIndex] as Record<string, unknown> };
+}
+
 /** Move one existing slide element without touching its payload or action timeline. */
 function applySlideElementMove(
   aggregate: StageAggregate,
@@ -387,6 +412,35 @@ function applySlideElementMove(
   };
   const scenes = aggregate.scenes.slice();
   scenes[sceneIndex] = nextScene;
+  return { ...aggregate, scenes };
+}
+
+/** Update a bounded geometry subset of one existing slide element. */
+function applySlideElementTransform(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+): StageAggregate {
+  const { sceneIndex, scene, canvas, elements, elementIndex, target } = slideElementTarget(aggregate, command, path);
+  const patch: Record<string, number> = {};
+  for (const field of TRANSFORM_FIELDS) {
+    if (command[field] === undefined) continue;
+    const value = command[field];
+    if (typeof value !== 'number' || !Number.isFinite(value) || ((field === 'width' || field === 'height') && value <= 0)) {
+      throw new DslCommandError('command_field_invalid', `${path}.${field}`, `${path}.${field} 必须是${field === 'width' || field === 'height' ? '正' : '有限'}数字`);
+    }
+    if (typeof target[field] !== 'number' || !Number.isFinite(target[field])) {
+      throw new DslCommandError('element_geometry_invalid', `${path}.elementId`, `元素 ${String(target.id)} 缺少有限的 ${field}`);
+    }
+    patch[field] = value;
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new DslCommandError('command_no_effect', path, 'slide.element.transform 必须提供至少一个几何字段');
+  }
+  const nextElements = elements.slice();
+  nextElements[elementIndex] = { ...target, ...patch };
+  const scenes = aggregate.scenes.slice();
+  scenes[sceneIndex] = { ...scene, content: { ...scene.content, canvas: { ...canvas, elements: nextElements } } };
   return { ...aggregate, scenes };
 }
 
@@ -493,6 +547,9 @@ export function applyStageCommands(
         break;
       case 'slide.element.move':
         aggregate = applySlideElementMove(aggregate, rawCommand, path);
+        break;
+      case 'slide.element.transform':
+        aggregate = applySlideElementTransform(aggregate, rawCommand, path);
         break;
       case 'slide.element.update':
         aggregate = applySlideElementUpdate(aggregate, rawCommand, path);

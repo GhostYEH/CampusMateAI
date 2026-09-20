@@ -219,6 +219,41 @@ test('slide.element.move rejects unknown targets, non-slide scenes, and non-fini
   );
 });
 
+test('slide.element.transform changes only declared finite geometry fields', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1', stageId: 'stg_1', title: '画布', order: 0, type: 'slide',
+      actions: [{ id: 'act_1', type: 'speech', text: '保留' }],
+      content: { type: 'slide', canvas: { elements: [
+        { id: 'el_1', type: 'text', left: 10, top: 20, width: 100, height: 40, rotate: 0, content: 'A' },
+        { id: 'el_2', type: 'shape', left: 30, top: 40, width: 20, height: 20 },
+      ] } },
+    }],
+  };
+  const next = applyStageCommands(document, [{
+    type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1',
+    left: 12.5, width: 220, height: 55, rotate: 37.5,
+  }]);
+  assert.deepEqual(next.scenes[0].content.canvas.elements[0], {
+    id: 'el_1', type: 'text', left: 12.5, top: 20, width: 220, height: 55, rotate: 37.5, content: 'A',
+  });
+  assert.deepEqual(next.scenes[0].content.canvas.elements[1], document.scenes[0].content.canvas.elements[1]);
+  assert.deepEqual(next.scenes[0].actions, document.scenes[0].actions);
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1' }]),
+    (error) => error instanceof DslCommandError && error.code === 'command_no_effect',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1', width: 0 }]),
+    (error) => error instanceof DslCommandError && error.code === 'command_field_invalid' && error.path === 'commands[0].width',
+  );
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.transform', sceneId: 'slide_1', elementId: 'el_1', rotate: Number.NaN }]),
+    (error) => error instanceof DslCommandError && error.code === 'command_field_invalid' && error.path === 'commands[0].rotate',
+  );
+});
+
 test('slide.element.update changes only an existing text element payload', () => {
   const document = {
     ...aggregate(),
