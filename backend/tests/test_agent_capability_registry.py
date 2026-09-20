@@ -212,6 +212,7 @@ class TestStartupIntegration:
         with pytest.raises(CapabilityManifestError):
             reset_container_for_tests(
                 Settings(
+                    _env_file=None,
                     app_env="production",
                     database_url="sqlite:///:memory:",
                     jwt_secret="x" * 40,

@@ -59,6 +59,7 @@ def test_clear_does_not_affect_other_scenarios():
 
 def test_production_env_refused():
     s = Settings(
+        _env_file=None,
         app_env="production",
         database_url="sqlite:///prod.db",
         jwt_secret="a" * 32,

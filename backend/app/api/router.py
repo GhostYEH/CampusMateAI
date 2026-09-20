@@ -58,6 +58,7 @@ from .routes import (
     openmaic_tts,
     openmaic_narration,
     openmaic_course_context,
+    openmaic_learning_space,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -150,5 +151,7 @@ api_router.include_router(openmaic_discussion.router)
 api_router.include_router(openmaic_provider.router)
 # OpenMAIC 生成前的只读课程上下文(知识点/章节/资料的真实同步状态)
 api_router.include_router(openmaic_course_context.router)
+# 导航栏「学习空间」的服务可见性与可信公开 Origin(不绑定课程)
+api_router.include_router(openmaic_learning_space.router)
 
 __all__ = ["api_router"]

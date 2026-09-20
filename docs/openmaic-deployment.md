@@ -12,9 +12,36 @@
 
 受管服务只接入经过审计的必要 DSL、renderer、editor、importer/exporter 和服务端能力；不复制 `.git`、`node_modules`、`.next`、运行时数据、日志、密钥或本机配置。
 
+### 入库的上游应用：`openmaic-app/`
+
+除受管服务外，仓库根目录 `openmaic-app/` 还**逐字入库了同一份 v1.0.3 的完整应用**，
+供导航栏「学习空间」以独立进程运行（见 `docs/openmaic-migration/01-约束.md` 的
+"例外：导航栏「学习空间」"）。它与受管服务是两条独立链路，不要互相顶替：
+
+- **来源同一**：tag `v1.0.3`、commit `e693e11a81644f84c258df73dbda378643520a62`，
+  与上表一致；可对照 `third_party/openmaic/source-manifest.sha256` 核对。
+- **入库范围**：上游源码与锁文件，**排除** `assets/`（83 MB README 动图）。
+- **不入库**：`.git`、`node_modules`、`.next`、运行时 `data/`、`server-providers.yml`、
+  `.env.local` —— 上游自带的 `.gitignore` 已经覆盖这些路径。
+- **启动前必须安装依赖**：`cd openmaic-app && pnpm install`。该仓库是 pnpm workspace，
+  `postinstall` 会构建 `packages/@openmaic/*` 与 `packages/{mathml2omml,pptxgenjs}`，
+  缺这一步 Next 应用起不来。
+- **两个环境变量不能缺**，缺了都不会报错、只会表现为"页面不对"：
+
+  | 变量 | 缺了会怎样 | 谁给 |
+  | --- | --- | --- |
+  | `ALLOWED_FRAME_ANCESTORS` | 应用发 `X-Frame-Options: SAMEORIGIN` + `frame-ancestors 'self'`，**跨源内嵌被浏览器拒掉，「学习空间」一片空白**（无控制台报错） | 本地由 `scripts/openmaic-local.mjs` 注入本站两个 Origin |
+  | `npm_package_version` | `/api/health` 自报 `0.1.0`，落在后端 `OPENMAIC_ALLOWED_VERSIONS`（默认 `>=1.0.0 <2.0.0`）之外，「学习空间」以"版本不一致"拒绝加载 | 同上，取入库 `openmaic-app/package.json` 的版本 |
+
+  `ALLOWED_FRAME_ANCESTORS` 是上游自带的配置项（`next.config.ts` 的 `headers()`），
+  **不是**我们对上游的改动。生产部署既要在构建时带上它（上游注明是构建期变量，
+  Docker/Compose 构建也接受同名 build arg），也要在运行时保持同一个值；只做其一
+  在 `next build` 产物上不生效。`npm_package_version` 只有经 npm/pnpm 启动才存在，
+  直接用 node 调 `next` 二进制时必须自己补。
+
 ### 本机运行副本（不是来源）
 
-开发机上另有一份 OpenMAIC 运行副本。它**不是**上述来源，也不能作为 provenance：
+开发机上另有一份 OpenMAIC 运行副本（1.0.1）。它**不是**上述来源，也不能作为 provenance：
 
 - `package.json` 版本为 `1.0.1`，比固定的 `v1.0.3` 旧；
 - 没有 `.git` 元数据，无法证明 commit；
@@ -22,16 +49,17 @@
 
 逐文件比对（`third_party/openmaic/source-manifest.sha256`，2976 条）：2760 条一致、166 条不同、50 条缺失。
 其中 `packages/@openmaic/dsl/src/**` 全部 16 个文件与 v1.0.3 **逐字节一致**，因此 DSL 契约的移植结论对该运行副本同样成立。
-它可以被当作只读的“实际运行行为”参考，但任何提交产物、清单或 NOTICE 都不得引用它，也不得把它的路径写进仓库文件。
+它可以被当作只读的"实际运行行为"参考，但任何提交产物、清单或 NOTICE 都不得引用它，也不得把它的路径写进仓库文件。
+入库的 `openmaic-app/` 不是这一份：前者有确定的 tag 与 commit，后者没有。
 
 ## 拓扑和边界
 
 ```text
 CampusMate Web (React 18)
-        │ CampusMate JWT / same-origin API
-        ▼
-CampusMate FastAPI
-  身份、课程、作业、资料、权限、上下文、审批、审计
+        │ CampusMate JWT / same-origin API          │ 跨源 iframe（仅 /learning-space）
+        ▼                                            ▼
+CampusMate FastAPI                          上游 OpenMAIC 应用
+  身份、课程、作业、资料、权限、上下文、审批、审计      openmaic-app，独立进程、独立 Origin
         │ 短时 user/course/scope 断言
         ▼
 openmaic-service (private Node runtime)
@@ -39,6 +67,10 @@ openmaic-service (private Node runtime)
 ```
 
 浏览器不直接调用受管服务；服务不提供公开首页或第二登录。互动 HTML、3D、模拟和游戏内容可以在净化后的 `srcDoc`/URL iframe 中运行，但必须使用 `sandbox`，不能把产品外壳放进 iframe。
+
+「学习空间」是唯一让浏览器直接加载上游应用的入口，边界与理由见
+`docs/openmaic-migration/01-约束.md`；要点是它不并入本站身份、不反向代理、
+公开 Origin 未配置时不渲染内嵌。
 
 ## 配置
 
@@ -49,6 +81,23 @@ FastAPI 的脱敏模板位于 `backend/.env.example`：
 - `OPENMAIC_INTERNAL_SECRET`：短时断言共享密钥，只通过 secret provider 注入。
 - `OPENMAIC_SERVICE_TIMEOUT_SECONDS`：内部调用超时。
 - 既有 `OPENMAIC_*` 课堂适配配置继续由 `backend/app/services/openmaic/**` 使用。
+
+### 三套地址，不要互相顶替
+
+| 变量 | 本地默认 | 谁看得见 | 指向 |
+| --- | --- | --- | --- |
+| `OPENMAIC_SERVICE_URL` | `http://127.0.0.1:4010` | 仅服务端 | 仓库内自研受管服务（融合链路只看它） |
+| `OPENMAIC_BASE_URL` | `http://127.0.0.1:3000` | 仅服务端 | 上游应用 `openmaic-app` 的内部地址 |
+| `OPENMAIC_EMBED_ORIGIN` | `http://127.0.0.1:3000` | **浏览器可见** | 同一个上游应用的公开 Origin，经 `/learning-space` 跨源内嵌 |
+
+本地开发三者同机，所以后两者取值相同；**生产部署下这两者必须拆开**——
+内部走容器网络名（如 `http://openmaic:3000`），公开走对外子域
+（如 `https://classroom.example.edu`，且必须 HTTPS）。
+
+`OPENMAIC_ENABLED` + `OPENMAIC_BASE_URL` + `OPENMAIC_EMBED_ORIGIN` 三个键齐备时，
+导航栏「学习空间」才可用；`OPENMAIC_EMBED_ORIGIN` 缺失时后端不下发任何公开地址，
+页面 fail-closed 不渲染内嵌。`OPENMAIC_BASE_URL` 同时是**课程级互动课堂适配层**的
+上游地址，因此开启「学习空间」也会一并点亮课程详情页里既有的互动课堂入口。
 
 服务模板位于 `openmaic-service/.env.example`。除地址/密钥/数据库外，服务还接受可选的
 上游 provider 配置；两组变量必须成对出现，缺一在启动即报错（fail-closed）：
@@ -74,34 +123,46 @@ pwsh -NoProfile -File openmaic-service/scripts/start.ps1
 
 运行时要求 Node.js `>=22.19.0`。如果 npm 不可用，可以直接运行仓库提供的 Node 测试和检查脚本；不能把本机绝对路径写入配置或提交。
 
-## 本地三服务启动
+## 本地四服务启动
 
-本地要跑通完整链路需要三个进程，缺一不可：
+本地要跑通完整链路需要四个进程，缺一不可：
 
 | 进程 | 默认端口 | 作用 |
 | --- | --- | --- |
 | `openmaic-service` | 4010 | 受管 Node 运行时（DSL、编辑器、播放器、导入导出、受限 Provider） |
 | FastAPI | 8000 | 网关：身份、课程权限、断言签发 |
+| `openmaic-app` | 3000 | 上游 OpenMAIC 应用，承载导航栏「学习空间」（独立 Origin） |
 | Vite | 5174 | Web 客户端；`/api` 反代到 FastAPI |
 
 仓库根目录提供了一条可执行的启动与诊断路径（`scripts/openmaic-local.mjs`）：
 
 ```bash
-node scripts/openmaic-local.mjs env      # 幂等补齐 backend/.env 与 openmaic-service/.env
-node scripts/openmaic-local.mjs doctor   # 只读诊断：Node 版本、依赖、密钥一致性、端口与健康
-node scripts/openmaic-local.mjs start    # 按序拉起三个进程
+cd openmaic-app && pnpm install            # 只需一次；含 postinstall 构建 workspace 包
+node scripts/openmaic-local.mjs env        # 幂等补齐 backend/.env 与 openmaic-service/.env
+node scripts/openmaic-local.mjs doctor     # 只读诊断：Node 版本、依赖、密钥一致性、端口与健康
+node scripts/openmaic-local.mjs start      # 按序拉起四个进程
 ```
 
-三个容易混淆、也最容易造成"服务都起来了却仍然 503"的点：
+四个容易混淆、也最容易造成"服务都起来了却仍然 503"的点：
 
-1. **两套地址不能混用。** `OPENMAIC_BASE_URL` 是既有课堂适配层用的上游地址（历史上指向
-   3000 端口的 Next 应用）；`OPENMAIC_SERVICE_URL` 是融合网关用的受管服务地址（默认
-   4010）。两者互不相干，把 3000 填进 `OPENMAIC_SERVICE_URL` 只会得到一个连不上的网关。
+1. **三套地址不能混用。** 见上节表格：`OPENMAIC_SERVICE_URL` 是融合网关用的受管服务
+   （默认 4010）；`OPENMAIC_BASE_URL` 是上游应用的服务端内部地址（默认 3000）；
+   `OPENMAIC_EMBED_ORIGIN` 是下发给浏览器的公开 Origin。把 3000 填进
+   `OPENMAIC_SERVICE_URL` 只会得到一个连不上的网关。
 2. **两侧密钥必须一致。** `backend/.env` 的 `OPENMAIC_INTERNAL_SECRET` 与
    `openmaic-service/.env` 的同名变量必须是同一个值，否则每次调用都会被断言拒绝
    （表现为 `state=unavailable`、`reason=assertion_rejected`）。
 3. **开关与地址/密钥要一起给。** 只开 `OPENMAIC_FUSION_ENABLED=true` 而不配地址/密钥时，
    `Settings` 在校验期就拒绝启动（fail-closed），不会等到请求时才失败。
+4. **「学习空间」不反向代理，所以它必须有自己的 Origin。** `OPENMAIC_EMBED_ORIGIN`
+   不能等于 Web 站点自身的地址（同源内嵌会被前端硬拒），也不能只配内部地址而指望
+   浏览器够得着。上游应用用 `next dev` 起（不预构建），首次打开该页要现编译，慢是正常的。
+5. **3000 端口上必须是我们入库的这一份。** 同一台机器很容易还开着另一份 OpenMAIC
+   开发服务器（例如上面那份 1.0.1 运行副本）。此时 `next dev` 绑不上 3000，
+   而健康检查仍会从"别人"那里拿到 200 —— `start` 于是报告一切正常，
+   「学习空间」内嵌的却是另一个应用。因此 `doctor` 与 `start` 都比对 `/api/health`
+   自报的版本：不一致就按阻塞项处理，并提示改端口后同步更新
+   `OPENMAIC_BASE_URL` 与 `OPENMAIC_EMBED_ORIGIN`。
 
 密钥只写进被 git 忽略的 `.env`；`doctor` 只报告"是否配置、两侧是否一致"，不回显密钥值。
 

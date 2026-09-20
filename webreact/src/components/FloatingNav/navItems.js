@@ -1,6 +1,7 @@
 export const navItems = Object.freeze([
   { key: "home", label: "首页", icon: "PhHouse" },
   { key: "courses", label: "我的课程", icon: "PhBookOpen" },
+  { key: "learning-space", label: "学习空间", icon: "PhChalkboardTeacher" },
   { key: "community", label: "校园社区", icon: "PhChatsCircle" },
   { key: "tasks", label: "待办与作业", icon: "PhCheckSquare" },
   { key: "counselor", label: "AI 校园助手", icon: "PhRobot" },

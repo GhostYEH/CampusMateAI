@@ -34,6 +34,7 @@ const OpenMAICWorkspacePage = lazy(() => import("./pages/OpenMAICWorkspacePage.j
 const OpenMAICGenerationPreviewPage = lazy(() => import("./pages/OpenMAICGenerationPreviewPage.jsx"));
 const OpenMAICClassroomEntryPage = lazy(() => import("./pages/OpenMAICClassroomEntryPage.jsx"));
 const OpenMAICWorkbenchPage = lazy(() => import("./pages/OpenMAICWorkbenchPage.jsx"));
+const LearningSpacePage = lazy(() => import("./pages/LearningSpacePage.jsx"));
 const pages = {
   HomePage, CoursesPage, CourseDetailPage,
   TasksPage, TaskDetailPage, StudyPage, IslandPage,
@@ -45,7 +46,7 @@ const pages = {
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
   FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, OpenMAICWorkspacePage, OpenMAICGenerationPreviewPage,
-  OpenMAICClassroomEntryPage, OpenMAICWorkbenchPage,
+  OpenMAICClassroomEntryPage, OpenMAICWorkbenchPage, LearningSpacePage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
 
@@ -81,6 +82,8 @@ export default function App() {
       {/* 旧工作台页面保留为兼容深链。 */}
       <Route path="/courses/:courseId/workspaces/:workspaceId/legacy" element={<Page name="OpenMAICWorkspacePage" />} />
       <Route path="/courses/:courseId" element={<Page name="CourseDetailPage" />} />
+      {/* 导航栏「学习空间」：承载以独立进程、独立 Origin 运行的上游 OpenMAIC 应用。 */}
+      <Route path="/learning-space" element={<Page name="LearningSpacePage" />} />
       <Route path="/tasks" element={<Page name="TasksPage" />} />
       <Route path="/tasks/:kind/:id" element={<Page name="TaskDetailPage" />} />
       <Route path="/community" element={<Page name="CommunityPage" />} />

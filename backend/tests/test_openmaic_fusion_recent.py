@@ -34,6 +34,10 @@ def _test_settings(**overrides) -> Settings:
         # 融合开关刻意保持关闭：/recent 聚合的是**已经存在**的课堂内容，
         # 关掉受管服务不该让学生的历史内容消失。
         openmaic_fusion_enabled=False,
+        # 公开 Origin 也显式清空：本文件有"未配置公开地址时不下发课堂地址"的断言，
+        # 而 Settings 会读开发机上的 backend/.env —— 配了「学习空间」的机器
+        # 会让这条断言随环境变化。契约必须由用例自己钉住，不由本机配置决定。
+        openmaic_embed_origin="",
     )
     kwargs.update(overrides)
     return Settings(**kwargs)

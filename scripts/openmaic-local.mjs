@@ -4,15 +4,18 @@
  *
  *   node scripts/openmaic-local.mjs env      生成/补齐本地 .env（幂等，不改你已有的项）
  *   node scripts/openmaic-local.mjs doctor   体检：依赖、配置、端口、健康端点
- *   node scripts/openmaic-local.mjs start    依次拉起三服务，全部就绪后才打印入口
+ *   node scripts/openmaic-local.mjs start    依次拉起四服务，全部就绪后才打印入口
  *
- * 三个进程的边界必须分清，混用会得到"看起来在跑但永远 503"：
+ * 四个进程的边界必须分清，混用会得到"看起来在跑但永远 503"：
  *
  *   Vite 5174  →  FastAPI 8000  →  openmaic-service 4010
+ *   openmaic-app 3000（导航栏「学习空间」承载的上游应用，独立 Origin）
  *
- * 注意 `OPENMAIC_BASE_URL`（旧互动课堂适配层，本机运行副本常在 3000）与
- * `OPENMAIC_SERVICE_URL`（仓库内受管服务，默认 4010）是**两套东西**，
- * 融合链路只看后者。
+ * 注意三套地址是**三套东西**，不要互相顶替：
+ * - `OPENMAIC_SERVICE_URL`（默认 4010）是仓库内自研受管服务，融合链路只看它；
+ * - `OPENMAIC_BASE_URL`（默认 3000）是上游应用的**内部**地址，只有服务端可见；
+ * - `OPENMAIC_EMBED_ORIGIN`（默认 3000）是同一个上游应用的**浏览器公开**地址，
+ *   经「学习空间」页做跨源内嵌。生产部署下后两者必然不同。
  *
  * 本脚本不写入任何密钥到版本库：密钥只落在被 .gitignore 忽略的 .env 里。
  */
@@ -26,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 const REPO = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const BACKEND_DIR = path.join(REPO, 'backend');
 const SERVICE_DIR = path.join(REPO, 'openmaic-service');
+const APP_DIR = path.join(REPO, 'openmaic-app');
 const WEB_DIR = path.join(REPO, 'webreact');
 
 const BACKEND_ENV = path.join(BACKEND_DIR, '.env');
@@ -34,14 +38,47 @@ const SERVICE_ENV_EXAMPLE = path.join(SERVICE_DIR, '.env.example');
 
 const BACKEND_PORT = Number(process.env.CAMPUSMATE_BACKEND_PORT || 8000);
 const SERVICE_PORT = Number(process.env.CAMPUSMATE_OPENMAIC_PORT || 4010);
+const APP_PORT = Number(process.env.CAMPUSMATE_LEARNING_SPACE_PORT || 3000);
 const WEB_PORT = Number(process.env.CAMPUSMATE_WEB_PORT || 5174);
 const MIN_NODE = [22, 19, 0];
 
-/** 融合链路必需的四个键。缺任何一个，workspaces 路由都会诚实地回 503。 */
+/**
+ * 允许把上游应用放进 iframe 的父页面 Origin，喂给上游的 ALLOWED_FRAME_ANCESTORS。
+ *
+ * 上游默认发 `X-Frame-Options: SAMEORIGIN` + `frame-ancestors 'self'`，而「学习空间」
+ * 恰恰是**跨源**内嵌：不放行的话浏览器会直接拒掉 iframe，页面一片空白且没有报错。
+ * 列两个 Origin，是因为 Vite 只绑 127.0.0.1，而用户完全可能用 localhost 打开本站
+ * ——`http://127.0.0.1:5174` 与 `http://localhost:5174` 在浏览器眼里是两个 Origin。
+ */
+const APP_FRAME_ANCESTORS = `http://127.0.0.1:${WEB_PORT} http://localhost:${WEB_PORT}`;
+
+/**
+ * 入库应用的版本号，来自它自己的 package.json。
+ *
+ * 上游 `/api/health` 用 `process.env.npm_package_version || '0.1.0'` 自报版本，
+ * 而 `npm_package_version` 只有经 npm/pnpm 启动才存在。我们直接用 node 调 next
+ * 二进制，所以必须自己补上：否则健康端点回 `0.1.0`，落在后端
+ * `openmaic_allowed_versions`（默认 `>=1.0.0 <2.0.0`）之外，「学习空间」会以
+ * "版本不一致"为由拒绝加载——页面报错，但原因和真实问题（少了一个环境变量）无关。
+ */
+function appVersion() {
+  const manifest = path.join(APP_DIR, 'package.json');
+  if (!existsSync(manifest)) return '';
+  return JSON.parse(readFileSync(manifest, 'utf8')).version || '';
+}
+
+/** 融合链路必需的三个键。缺任何一个，workspaces 路由都会诚实地回 503。 */
 const REQUIRED_BACKEND_KEYS = [
   'OPENMAIC_FUSION_ENABLED',
   'OPENMAIC_SERVICE_URL',
   'OPENMAIC_INTERNAL_SECRET',
+];
+
+/** 「学习空间」必需的三个键。缺任何一个，导航栏入口只会显示"尚未启用"。 */
+const REQUIRED_LEARNING_SPACE_KEYS = [
+  'OPENMAIC_ENABLED',
+  'OPENMAIC_BASE_URL',
+  'OPENMAIC_EMBED_ORIGIN',
 ];
 
 const log = (message) => console.log(message);
@@ -108,6 +145,7 @@ function existingSecret() {
 
 function commandEnv() {
   const backendSecret = existingSecret() || randomBytes(36).toString('base64url');
+  const appOrigin = `http://127.0.0.1:${APP_PORT}`;
   return {
     backendSecret,
     backend: {
@@ -115,6 +153,12 @@ function commandEnv() {
       OPENMAIC_SERVICE_URL: `http://127.0.0.1:${SERVICE_PORT}`,
       OPENMAIC_INTERNAL_SECRET: backendSecret,
       OPENMAIC_SERVICE_TIMEOUT_SECONDS: '5',
+      // 「学习空间」：openmaic-app 既是服务端内部地址，也是浏览器公开 Origin。
+      // 本地开发同机同端口，所以两者取同一个值；生产部署下必须拆开
+      // （内部走容器网络名，公开走对外子域），届时手工改这两个键即可。
+      OPENMAIC_ENABLED: 'true',
+      OPENMAIC_BASE_URL: appOrigin,
+      OPENMAIC_EMBED_ORIGIN: appOrigin,
     },
   };
 }
@@ -126,10 +170,10 @@ function cmdEnv() {
   const addedBackend = upsertEnv(
     BACKEND_ENV,
     Object.entries(backend),
-    '本地受管 OpenMAIC 融合服务',
+    '本地受管 OpenMAIC（融合链路与「学习空间」）',
   );
   if (addedBackend.length) ok(`backend/.env 补充了 ${addedBackend.join(', ')}`);
-  else ok('backend/.env 已包含融合配置，未改动');
+  else ok('backend/.env 已包含本地 OpenMAIC 配置，未改动');
 
   if (!existsSync(SERVICE_ENV)) {
     if (!existsSync(SERVICE_ENV_EXAMPLE)) {
@@ -175,6 +219,45 @@ async function probe(url) {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
     return response.status;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 上游 /api/health 自报的版本号；拿不到（没起、超时、不是 OpenMAIC）回 null。
+ *
+ * 它比"HTTP 200"更能说明端口上到底是谁：同一台机器上很容易有另一份 OpenMAIC
+ * 正在别的目录里开发（本仓库自己也留过一份运行副本）。只看状态码的话，
+ * `start` 会把别人的 200 当成自己的第四个进程，"学习空间"内嵌的也就成了别人的界面。
+ */
+async function appHealthVersion() {
+  try {
+    const response = await fetch(`http://127.0.0.1:${APP_PORT}/api/health`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return typeof body.version === 'string' ? body.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 上游首页响应里的 `frame-ancestors` 指令；读不到回 null。
+ *
+ * 这条头是"能不能嵌"的唯一权威判据：站点能访问、健康检查通过，都不代表浏览器
+ * 肯把 iframe 画出来。dev 模式下取首页要先现编译，慢是正常的。
+ */
+async function frameAncestorsDirective() {
+  try {
+    const response = await fetch(`http://127.0.0.1:${APP_PORT}/`, {
+      signal: AbortSignal.timeout(120000),
+    });
+    const policy = response.headers.get('content-security-policy') || '';
+    const match = policy.match(/frame-ancestors([^;]*)/i);
+    return match ? match[1].trim() : null;
   } catch {
     return null;
   }
@@ -236,8 +319,28 @@ async function cmdDoctor() {
   } else {
     warn(`OPENMAIC_SERVICE_URL=${backendValues.get('OPENMAIC_SERVICE_URL') || '(未设置)'}，与 :${SERVICE_PORT} 不同`);
   }
-  if (backendValues.get('OPENMAIC_BASE_URL')) {
-    warn(`OPENMAIC_BASE_URL=${backendValues.get('OPENMAIC_BASE_URL')} 是旧互动课堂适配层，融合链路不使用它`);
+  log('\n学习空间（导航栏入口）');
+  // 依赖没装不会让 doctor 之外的任何东西"看起来正常"——Next 二进制缺失时
+  // start 只能报出一句无信息量的 spawn 错误，所以在这里就拦下来。
+  if (existsSync(path.join(APP_DIR, 'node_modules', 'next'))) ok('openmaic-app 依赖已安装');
+  else { bad('缺少 openmaic-app/node_modules，先在 openmaic-app 执行 pnpm install'); problems += 1; }
+
+  for (const key of REQUIRED_LEARNING_SPACE_KEYS) {
+    const value = backendValues.get(key);
+    if (value) ok(`backend/.env ${key}=${value}`);
+    else { bad(`backend/.env 缺少 ${key} —— 导航栏「学习空间」只会显示"尚未启用"`); problems += 1; }
+  }
+  const expectedOrigin = `http://127.0.0.1:${APP_PORT}`;
+  const embedOrigin = backendValues.get('OPENMAIC_EMBED_ORIGIN');
+  if (embedOrigin && embedOrigin !== expectedOrigin) {
+    warn(`OPENMAIC_EMBED_ORIGIN 指向 ${embedOrigin}，与本机 :${APP_PORT} 不同`);
+  }
+  // 跨源内嵌要求两端 Origin 严格不等：同源时前端会 fail-closed 拒绝渲染，
+  // 表现为导航栏点进去是空白页而不是报错。
+  const webOrigin = `http://127.0.0.1:${WEB_PORT}`;
+  if (embedOrigin === webOrigin) {
+    bad(`OPENMAIC_EMBED_ORIGIN 不能等于站点自身的 ${webOrigin}（跨源内嵌要求两端不同）`);
+    problems += 1;
   }
 
   log('\n进程与健康');
@@ -266,8 +369,33 @@ async function cmdDoctor() {
   if (web === 200) ok(`Vite :${WEB_PORT} 可访问`);
   else warn(`Vite :${WEB_PORT} 未就绪（status=${web ?? 'unreachable'}）`);
 
+  // 上游应用的健康路由；dev 模式下首次请求要现编译，慢是正常的。
+  // 比对自报版本，是因为这个端口上完全可能是**另一份** OpenMAIC：那样 start 会
+  // 以为自己的第四个进程起来了，而「学习空间」内嵌的是别人的界面。
+  const appHealth = await appHealthVersion();
+  const expectedAppVersion = appVersion();
+  if (appHealth === null) warn(`openmaic-app :${APP_PORT} 未就绪（没在跑，或不是 OpenMAIC）`);
+  else if (appHealth === expectedAppVersion) ok(`openmaic-app :${APP_PORT} 健康（v${appHealth}）`);
+  else {
+    bad(`:${APP_PORT} 自报版本是 v${appHealth}，不是入库的 v${expectedAppVersion} —— 端口被另一份 OpenMAIC 占用`);
+    problems += 1;
+  }
+
+  // 只有应用在跑时才看得到这条头；它决定浏览器肯不肯把 iframe 画出来。
+  if (appHealth === expectedAppVersion) {
+    const ancestors = await frameAncestorsDirective();
+    if (ancestors === null) {
+      warn('读不到应用的 frame-ancestors 头，无法确认是否放行本站内嵌');
+    } else if (!ancestors.includes(`http://127.0.0.1:${WEB_PORT}`)) {
+      bad(`应用 frame-ancestors 是「${ancestors}」，没放行 http://127.0.0.1:${WEB_PORT} —— 「学习空间」会一片空白`);
+      problems += 1;
+    } else {
+      ok('应用已放行本站 Origin 内嵌');
+    }
+  }
+
   log('\n端口占用');
-  for (const [label, port] of [['openmaic-service', SERVICE_PORT], ['FastAPI', BACKEND_PORT], ['Vite', WEB_PORT]]) {
+  for (const [label, port] of [['openmaic-service', SERVICE_PORT], ['FastAPI', BACKEND_PORT], ['Vite', WEB_PORT], ['openmaic-app', APP_PORT]]) {
     const state = await portState(port);
     log(`  ${label.padEnd(16)} :${port} ${state === 'listening' ? '已被占用（服务在跑）' : '空闲'}`);
   }
@@ -313,14 +441,22 @@ async function cmdStart() {
     bad('缺少 openmaic-service/.env，先跑 `node scripts/openmaic-local.mjs env`');
     return 2;
   }
+  const nextBin = path.join(APP_DIR, 'node_modules', 'next', 'dist', 'bin', 'next');
+  if (!existsSync(nextBin)) {
+    bad('缺少 openmaic-app/node_modules，先在 openmaic-app 执行 pnpm install');
+    return 2;
+  }
 
-  log('按顺序启动：openmaic-service → FastAPI → Vite\n');
+  log('按顺序启动：openmaic-service → FastAPI → openmaic-app → Vite\n');
   const service = spawnService(
     [process.execPath, '--experimental-strip-types', 'src/main.ts'],
     SERVICE_DIR,
     { OPENMAIC_PORT: String(SERVICE_PORT) },
   );
   const children = [service];
+  // 提到 try 外面，是因为失败路径也要用它：next dev 在端口被占时会自己换一个
+  // 端口活下去，只抛错不杀进程的话，脚本会抱着四个进程一直等在那里。
+  const shutdown = () => children.forEach((child) => child.kill());
   try {
     await waitFor(`http://127.0.0.1:${SERVICE_PORT}/internal/health/live`, 'openmaic-service', 45000);
     ok(`openmaic-service :${SERVICE_PORT}`);
@@ -334,6 +470,27 @@ async function cmdStart() {
     await waitFor(`http://127.0.0.1:${BACKEND_PORT}/api/v1/health`, 'FastAPI', 90000);
     ok(`FastAPI :${BACKEND_PORT}`);
 
+    // next dev：直接用 node 调 node_modules 里的二进制，不依赖 pnpm / next 在 PATH 上。
+    // npm_package_version 见 appVersion()：缺了它健康端点会自报 0.1.0。
+    // ALLOWED_FRAME_ANCESTORS 见 APP_FRAME_ANCESTORS：缺了它 iframe 会被浏览器拒掉。
+    const app = spawnService(
+      [process.execPath, nextBin, 'dev', '--port', String(APP_PORT), '--hostname', '127.0.0.1'],
+      APP_DIR,
+      { npm_package_version: appVersion(), ALLOWED_FRAME_ANCESTORS: APP_FRAME_ANCESTORS },
+    );
+    children.push(app);
+    // dev 模式首请求要现编译整条路由链，冷启动一分钟以上属正常。
+    await waitFor(`http://127.0.0.1:${APP_PORT}/api/health`, 'openmaic-app', 180000);
+    // 200 不等于"我们自己的那份起来了"：端口上可能是别人正在开发的另一份
+    // OpenMAIC，此时 next dev 根本没绑上，而健康检查照样通过。
+    const servedVersion = await appHealthVersion();
+    if (servedVersion !== appVersion()) {
+      bad(`:${APP_PORT} 上响应的是另一份 OpenMAIC（自报 v${servedVersion ?? '未知'}，期望 v${appVersion()}），入库应用并没有起来`);
+      bad(`请先停掉占用 :${APP_PORT} 的那个开发服务器；或换 CAMPUSMATE_LEARNING_SPACE_PORT 并同步 backend/.env 里 OPENMAIC_BASE_URL / OPENMAIC_EMBED_ORIGIN`);
+      throw new Error('端口被另一份 OpenMAIC 占用');
+    }
+    ok(`openmaic-app :${APP_PORT}（v${servedVersion}）`);
+
     const vite = spawnService(
       [process.execPath, path.join(WEB_DIR, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', String(WEB_PORT), '--strictPort'],
       WEB_DIR,
@@ -344,12 +501,13 @@ async function cmdStart() {
     ok(`Vite :${WEB_PORT}`);
 
     log(`\n全部就绪。入口：http://127.0.0.1:${WEB_PORT}/courses`);
-    log('按 Ctrl+C 停止（三个进程一起退出）。');
+    log(`学习空间：http://127.0.0.1:${WEB_PORT}/learning-space（内嵌 :${APP_PORT}，首次打开较慢）`);
+    log('按 Ctrl+C 停止（四个进程一起退出）。');
   } catch (error) {
     console.error(`\n启动失败：${error.message}`);
+    shutdown();
     return 1;
   } finally {
-    const shutdown = () => children.forEach((child) => child.kill());
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     await new Promise((resolve) => {

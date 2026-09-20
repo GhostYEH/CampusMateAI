@@ -59,8 +59,8 @@ test("global navigation renders every route as a standalone primary liquid-metal
   }
 
   assert.match(markup, /^<div class="floating-nav floating-nav--primary"/);
-  assert.equal((markup.match(/sylva-liquid-stage--nav/g) || []).length, 9);
-  assert.equal((markup.match(/class="sylva-liquid-plate"/g) || []).length, 9);
+  assert.equal((markup.match(/sylva-liquid-stage--nav/g) || []).length, 10);
+  assert.equal((markup.match(/class="sylva-liquid-plate"/g) || []).length, 10);
   assert.match(markup, /data-static-controls="true"/);
   assert.doesNotMatch(markup, /<canvas/);
   assert.doesNotMatch(markup, /data-ogui-/);

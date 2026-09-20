@@ -89,6 +89,7 @@ def test_real_adapters_are_not_mock() -> None:
 def test_production_does_not_fallback_to_mock() -> None:
     """production 环境下，EduConnectorService._is_mock_allowed() 应返回 False。"""
     settings = Settings(
+        _env_file=None,
         app_env="production",
         database_url="sqlite:///:memory:",
         auto_seed_demo_users=False,
@@ -103,6 +104,7 @@ def test_production_does_not_fallback_to_mock() -> None:
 def test_production_rejects_default_jwt_secret() -> None:
     with pytest.raises(ValueError, match="JWT_SECRET"):
         Settings(
+            _env_file=None,
             app_env="production",
             database_url="sqlite:///:memory:",
             auto_seed_demo_users=False,

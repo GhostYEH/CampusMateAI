@@ -56,18 +56,21 @@
 # 1) 先体检（只读，不改任何配置）
 node scripts/openmaic-local.mjs doctor
 
-# 2) 一键起三服务（按依赖顺序拉起 openmaic-service → FastAPI → Vite；Ctrl+C 三个一起停）
+# 2) 一键起四服务（按依赖顺序拉起 openmaic-service → FastAPI → openmaic-app → Vite；Ctrl+C 四个一起停）
 node scripts/openmaic-local.mjs start
 
 # 浏览器打开，用 student_demo / Demo123456 登录
 # http://127.0.0.1:5174/courses  →  点「进入课堂」
 ```
 
-端口固定为：Vite `5174` / FastAPI `8000` / openmaic-service `4010`。
+端口固定为：Vite `5174` / FastAPI `8000` / openmaic-service `4010` / openmaic-app `3000`。
+
+`openmaic-app` 是导航栏「学习空间」承载的上游应用（独立进程、独立 Origin），
+首次使用前要先在 `openmaic-app/` 里执行一次 `pnpm install`。
 
 ### ⚠️ 如果 `start` 起不来：先看端口是不是被占了
 
-`start` 是**全有或全无**的：任一端口被占，对应子进程会退出，启动器随即把另外两个也一起关掉
+`start` 是**全有或全无**的：任一端口被占，对应子进程会退出，启动器随即把另外三个也一起关掉
 （表现为"跑了一下就退出"，而日志里只有 Vite 的 HMR 输出，看不到明显报错）。
 
 先跑 `doctor` 看「端口占用」一节。**最容易被占的是 `:4010`**——

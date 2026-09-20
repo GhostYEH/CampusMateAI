@@ -1,0 +1,60 @@
+/* 导航栏「学习空间」页：承载上游 OpenMAIC 独立应用（跨源 iframe）。 */
+
+.learning-space-page {
+  display: grid;
+  gap: 16px;
+}
+
+/* 容器刻意用深色：ClassroomEmbed 的降级文案是深底浅字，而本站其余页面是浅色主题；
+   深底让"iframe 被浏览器拦住"时的提示仍然可读，也更接近应用自身的外观。 */
+.learning-space-stage {
+  height: min(78vh, 900px);
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #12161f;
+  box-shadow: var(--shadow);
+}
+
+.learning-space-blocker__title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.learning-space-blocker__hint {
+  color: #5a677d;
+  font-size: 12px;
+}
+
+.learning-space-blocker__hint code,
+.learning-space-note code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #eef2f9;
+  font-size: 12px;
+}
+
+.learning-space-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.learning-space-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .learning-space-stage {
+    height: 70vh;
+    min-height: 380px;
+  }
+}
