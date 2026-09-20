@@ -197,6 +197,26 @@ test('slide.element.move rejects unknown targets, non-slide scenes, and non-fini
     () => applyStageCommands(document, [{ type: 'slide.element.move', sceneId: 'slide_1', elementId: 'el_1', left: Number.NaN, top: 2 }]),
     (error) => error instanceof DslCommandError && error.code === 'command_field_invalid',
   );
+  const missingPosition = structuredClone(document);
+  missingPosition.scenes[0].content.canvas.elements[0] = { id: 'el_missing_position', type: 'shape' };
+  assert.throws(
+    () => applyStageCommands(missingPosition, [{
+      type: 'slide.element.move', sceneId: 'slide_1', elementId: 'el_missing_position', left: 1, top: 2,
+    }]),
+    (error) => error instanceof DslCommandError
+      && error.code === 'element_position_invalid'
+      && error.path === 'commands[0].elementId',
+  );
+  const nonFinitePosition = structuredClone(document);
+  nonFinitePosition.scenes[0].content.canvas.elements[0].top = Number.POSITIVE_INFINITY;
+  assert.throws(
+    () => applyStageCommands(nonFinitePosition, [{
+      type: 'slide.element.move', sceneId: 'slide_1', elementId: 'el_1', left: 1, top: 2,
+    }]),
+    (error) => error instanceof DslCommandError
+      && error.code === 'element_position_invalid'
+      && error.path === 'commands[0].elementId',
+  );
 });
 
 test('an unknown command or a missing scene is refused before anything is applied', () => {

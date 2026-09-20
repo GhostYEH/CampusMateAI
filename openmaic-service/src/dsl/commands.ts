@@ -368,6 +368,16 @@ function applySlideElementMove(
     throw new DslCommandError('element_not_found', `${path}.elementId`, `找不到元素 ${elementId}`);
   }
   const target = elements[elementIndex] as Record<string, unknown>;
+  if (
+    typeof target.left !== 'number' || !Number.isFinite(target.left) ||
+    typeof target.top !== 'number' || !Number.isFinite(target.top)
+  ) {
+    throw new DslCommandError(
+      'element_position_invalid',
+      `${path}.elementId`,
+      `元素 ${elementId} 缺少有限的 left/top 坐标`,
+    );
+  }
   const nextElements = elements.slice();
   nextElements[elementIndex] = { ...target, left, top };
   const nextScene = {

@@ -99,6 +99,22 @@ test("slide.element.move mirrors only a finite coordinate pair on an existing sl
   assert.throws(() => slideElementMoveCommand("s1", "e1", Number.NaN, 1), (error) => error.code === "command_field_invalid");
   assert.throws(() => applyCommandLocally(document, slideElementMoveCommand("s1", "missing", 1, 1)), (error) => error.code === "element_not_found");
   assert.throws(() => applyCommandLocally({ ...document, scenes: [{ ...document.scenes[0], type: "quiz", content: { type: "quiz", questions: [] } }] }, slideElementMoveCommand("s1", "e1", 1, 1)), (error) => error.code === "slide_element_requires_slide");
+  const missingPosition = documentWith([{
+    id: "s2", type: "slide", title: "B", order: 0,
+    content: { type: "slide", canvas: { elements: [{ id: "e2", type: "shape" }] } },
+  }]);
+  assert.throws(
+    () => applyCommandLocally(missingPosition, slideElementMoveCommand("s2", "e2", 1, 1)),
+    (error) => error.code === "element_position_invalid" && error.path === "elementId",
+  );
+  const nonFinitePosition = documentWith([{
+    id: "s3", type: "slide", title: "C", order: 0,
+    content: { type: "slide", canvas: { elements: [{ id: "e3", type: "shape", left: 0, top: Number.POSITIVE_INFINITY }] } },
+  }]);
+  assert.throws(
+    () => applyCommandLocally(nonFinitePosition, slideElementMoveCommand("s3", "e3", 1, 1)),
+    (error) => error.code === "element_position_invalid" && error.path === "elementId",
+  );
 });
 
 test("duplicating locally deep-copies the payload", () => {

@@ -185,6 +185,17 @@ export function applyCommandLocally(document, command) {
       if (elementAt === -1) {
         throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
       }
+      const target = elements[elementAt];
+      if (
+        typeof target?.left !== "number" || !Number.isFinite(target.left) ||
+        typeof target?.top !== "number" || !Number.isFinite(target.top)
+      ) {
+        throw new EditorCommandError(
+          "element_position_invalid",
+          "elementId",
+          "目标元素缺少有限的 left/top 坐标",
+        );
+      }
       const nextElements = elements.slice();
       nextElements[elementAt] = {
         ...nextElements[elementAt],
