@@ -93,39 +93,46 @@ function titlesOf(items) {
  */
 export function describeCourseReadiness(course = {}) {
   const name = String(course.name || course.title || "").trim();
+  const code = String(course.code || "").trim();
+  const semester = String(course.semester || "").trim();
   const knowledgePoints = titlesOf(course.knowledgePoints);
   const materials = titlesOf(course.materials);
+  const chapters = titlesOf(course.chapters);
   const warnings = (Array.isArray(course.warnings) ? course.warnings : []).filter(Boolean);
   const hasTopic = Boolean(name);
-  const synced = knowledgePoints.length > 0 || materials.length > 0;
+  // 章节也算"已同步"：后端把 chapters 与知识点/资料并列上报，三者任一存在都
+  // 表示这门课确实有内容可用。只看知识点会把"仅有章节"的课程误报成未同步，
+  // 界面就会给出错误的下一步（让用户去做多余的同步）。
+  const synced = knowledgePoints.length > 0 || materials.length > 0 || chapters.length > 0;
 
   if (synced) {
+    const parts = [];
+    if (chapters.length) parts.push(`${chapters.length} 个章节`);
+    if (knowledgePoints.length) parts.push(`${knowledgePoints.length} 个知识点`);
+    if (materials.length) parts.push(`${materials.length} 份课程资料`);
     return {
-      name,
+      name, code, semester,
       synced: true,
       degraded: false,
-      knowledgePoints,
-      materials,
-      notice: `已同步 ${knowledgePoints.length} 个知识点、${materials.length} 份课程资料。`,
+      knowledgePoints, materials, chapters,
+      notice: `已同步 ${parts.join("、")}。`,
     };
   }
   if (warnings.length) {
     return {
-      name,
+      name, code, semester,
       synced: false,
       degraded: true,
-      knowledgePoints,
-      materials,
+      knowledgePoints, materials, chapters,
       // 读取失败与"确实没有"是两回事：前者重试有用。
       notice: `课程知识点与资料本次未能读取，生成内容可能不完整；可稍后重试。`,
     };
   }
   return {
-    name,
+    name, code, semester,
     synced: false,
     degraded: false,
-    knowledgePoints,
-    materials,
+    knowledgePoints, materials, chapters,
     notice: hasTopic
       ? "课程资料尚未同步，本次将依据课程基本信息生成入门课堂。"
       : "课程资料尚未同步。",
@@ -135,17 +142,34 @@ export function describeCourseReadiness(course = {}) {
 /**
  * 默认生成主题。
  *
- * 有真实知识点就围绕它们组织；没有就退回课程基本信息的通用说法，**绝不**自己
- * 发明知识点。返回值可直接作为 `prompt` 提交。
+ * 把**已授权的真实课程信息**（课程名、课程代码、学期）与**已同步的章节/资料
+ * 标题**都纳入上下文，让生成主题贴着这门课的真实内容走。
+ *
+ * 仍然不发明任何知识点：没有同步内容时只说"课程资料尚未同步"，退回课程基本
+ * 信息的通用说法。凭据（token、内部地址等）从不进入这里——facts 只由课程事实
+ * 字段构成。
  */
 export function buildClassroomPrompt(course = {}) {
   const readiness = describeCourseReadiness(course);
   const name = readiness.name || "本课程";
+  const basics = [
+    readiness.code ? `课程代码 ${readiness.code}` : "",
+    readiness.semester ? `学期 ${readiness.semester}` : "",
+  ].filter(Boolean);
+
+  const sections = [];
   const points = readiness.knowledgePoints.slice(0, 8);
-  if (points.length) {
-    return `请根据《${name}》的课程资料生成一节入门学习课堂，围绕真实课程知识点（${points.join("、")}）组织讲解、示例、测验和练习。`;
+  const chapters = readiness.chapters.slice(0, 8);
+  const materials = readiness.materials.slice(0, 6);
+  if (points.length) sections.push(`真实课程知识点（${points.join("、")}）`);
+  if (chapters.length) sections.push(`已同步章节（${chapters.join("、")}）`);
+  if (materials.length) sections.push(`可用课程资料（${materials.join("、")}）`);
+
+  const basicsText = basics.length ? `（${basics.join("，")}）` : "";
+  if (sections.length) {
+    return `请根据《${name}》${basicsText}的课程资料生成一节入门学习课堂，围绕${sections.join("、")}组织讲解、示例、测验和练习。`;
   }
-  return `请根据《${name}》的课程资料生成一节入门学习课堂，围绕真实课程知识点组织讲解、示例、测验和练习。`;
+  return `请根据《${name}》${basicsText}的课程资料生成一节入门学习课堂，围绕真实课程知识点组织讲解、示例、测验和练习。`;
 }
 
 /**

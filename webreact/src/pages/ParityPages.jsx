@@ -8,10 +8,10 @@ import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
 import { describeFusionState, normalizeRecentItems } from "../features/openmaic/homeModel.js";
 import {
+  generationPreviewHref,
   quickAskRejection,
   shouldBindWorkspace,
 } from "../features/openmaic/quickAskModel.js";
-import { enterClassroomHref } from "../features/openmaic/enterClassroomModel.js";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
@@ -108,10 +108,21 @@ export function CoursesParityPage() {
       return;
     }
 
-    // 直达：创建工作台并立即开始生成首个课堂内容，不再经过角色/模式/预览确认。
-    // 具体主题由课堂入口页依据课程真实知识点构造，这里只负责把用户交出去。
+    // 快速提问保留原有的生成预览路径：用户输入的 query、模式、角色、联网检索与
+    // 附件都要带过去。它是"我带着一个问题/一份材料进来"，与课程卡片的
+    // 「进入课堂」直达不是同一件事——直达由 CourseRail 提供，不能吞掉这里的输入。
     setQuickAskBusy(false);
-    navigate(enterClassroomHref(courseId));
+    navigate(generationPreviewHref(courseId, query, {
+      mode: extras.mode,
+      selectedRoleIds: extras.selectedRoleIds,
+      webSearch: extras.webSearch,
+    }), {
+      // File 对象不能写入 URL，保留在本次 SPA 导航状态里，确认生成时继续传给工作台。
+      state: {
+        openmaicWebSearch: Boolean(extras.webSearch),
+        openmaicAttachment: extras.attachment || null,
+      },
+    });
   }
 
   return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接提问，或创建一份可以继续编辑的学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>

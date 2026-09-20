@@ -43,13 +43,12 @@ test("the OpenMAIC deep link carries the course, prompt, mode and roles", () => 
   assert.match(href, /roles=default-1%2Cdefault-3%2Cdefault-4/);
 });
 
-test("the first click goes straight to the classroom, not to a preview", () => {
-  // 「进入课堂」不再经过角色/模式选择，也不再进入生成预览页二次确认：
-  // 入口只带课程，创建/复用与首个内容的生成都在课堂入口页内完成。
+test("the classroom deep link carries only the course, and quick ask keeps the preview", () => {
+  // 「进入课堂」直达只带课程：角色、模式、提示词都不由它提供。
   const href = enterClassroomHref("crs_1");
   assert.equal(href, "/courses/crs_1/classroom");
   assert.doesNotMatch(href, /openmaic-preview/);
-  // 旧的预览深链仍然可用，只是不再是默认落点。
+  // 快速提问仍然走生成预览，并把用户输入完整带过去。
   assert.equal(
     generationPreviewHref("crs_1", "讲解进程和线程", { mode: "preset", selectedRoleIds: DEFAULT_SELECTED_ROLE_IDS, webSearch: true }),
     "/courses/crs_1/openmaic-preview?prompt=%E8%AE%B2%E8%A7%A3%E8%BF%9B%E7%A8%8B%E5%92%8C%E7%BA%BF%E7%A8%8B&mode=preset&roles=default-1%2Cdefault-3%2Cdefault-4&web=1",
@@ -196,8 +195,9 @@ test("switching courses invalidates an in-flight quick ask", () => {
   assert.match(body, /setQuickAskError\(null\)/);
 });
 
-test("the classroom navigation is synchronous and cannot wedge the button", () => {
-  assert.match(pageSource, /navigate\(enterClassroomHref\(/);
+test("quick ask navigation is synchronous, keeps the input, and cannot wedge the button", () => {
+  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
+  assert.match(pageSource, /openmaicAttachment: extras\.attachment/);
   assert.match(pageSource, /setQuickAskBusy\(false\)/);
 });
 

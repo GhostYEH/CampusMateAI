@@ -122,12 +122,14 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask enters the classroom directly instead of a generation preview", () => {
-  // 「进入课堂」直达：不再经过角色/模式选择，也不再进入预览页二次确认。
-  assert.match(pageSource, /enterClassroomHref\(/);
-  assert.match(pageSource, /navigate\(enterClassroomHref\(courseId\)\)/);
+test("quick ask keeps its generation-preview path and its user input", () => {
+  // 快速提问是"我带着一个问题/一份材料进来"，必须把 query 与 extras 带过去。
+  // 「进入课堂」的直达在 CourseRail 上，是另一条入口，不能吞掉这里的输入。
+  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
+  assert.match(pageSource, /selectedRoleIds: extras\.selectedRoleIds/);
+  assert.match(pageSource, /webSearch: extras\.webSearch/);
+  assert.match(pageSource, /openmaicAttachment: extras\.attachment/);
   assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
-  assert.doesNotMatch(pageSource, /navigate\(generationPreviewHref\(/);
   assert.doesNotMatch(pageSource, /resolveQuickAskWorkspace\(courseId/);
   assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
 });

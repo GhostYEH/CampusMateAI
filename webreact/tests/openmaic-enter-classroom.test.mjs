@@ -35,6 +35,7 @@ const read = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), "utf8"
 const appSource = read("src/App.jsx");
 const paritySource = read("src/pages/ParityPages.jsx");
 const entryPageSource = read("src/pages/OpenMAICClassroomEntryPage.jsx");
+const homeSource = read("src/components/openmaic/OpenMAICHome.jsx");
 
 // ===== 1. 直达入口：没有角色、没有模式、没有预览 =====
 
@@ -54,11 +55,18 @@ test("the entry refuses to invent a course", () => {
   assert.throws(() => enterClassroomHref(null), /课程/);
 });
 
-test("the classroom entry is a real route and the courses page links to it", () => {
+test("the classroom entry is a real route and the course rail links to it", () => {
   assert.match(appSource, /path="\/courses\/:courseId\/classroom"/);
-  assert.match(paritySource, /enterClassroomHref/);
-  // 默认入口绝不能再跳到预览页。
-  assert.doesNotMatch(paritySource, /navigate\(generationPreviewHref\(/);
+  // 直达入口挂在 CourseRail 的「进入课堂」上，与快速提问是两条独立入口。
+  assert.match(homeSource, /enterClassroomHref/);
+  assert.match(homeSource, /进入课堂/);
+});
+
+test("quick ask keeps its own generation-preview entry with the user's input", () => {
+  // 快速提问不能被课堂直达吞掉：它必须继续携带 query 与 extras 进入预览。
+  assert.match(paritySource, /navigate\(generationPreviewHref\(courseId, query/);
+  assert.match(paritySource, /selectedRoleIds: extras\.selectedRoleIds/);
+  assert.match(paritySource, /webSearch: extras\.webSearch/);
 });
 
 test("the legacy preview deep link stays reachable", () => {

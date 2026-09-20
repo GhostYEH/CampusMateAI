@@ -51,17 +51,24 @@ export default function OpenMAICClassroomEntryPage() {
   const [busy, setBusy] = useState(true);
   const [entered, setEntered] = useState(false);
 
-  // 代次与轮询句柄。切课程必须把它 +1，否则旧课程的响应会写进新课程页面。
+  // 代次与轮询句柄。切课程或**真实卸载**必须把它 +1，否则旧课程的响应会写进新
+  // 课程的页面。
   const epoch = useRef(0);
   const timer = useRef(null);
-  // 同一次进入只跑一次。React 18 的 StrictMode 会"挂载→卸载→再挂载"，用 ref 而非
-  // state 保证第二次挂载不会重新发起一次生成。
-  const started = useRef(false);
+  /**
+   * 正在飞行的那一次进入。
+   *
+   * 这个 ref 记录的是 **Promise**，而不是"跑过没有"的布尔值。差别是决定性的：
+   * StrictMode 会"挂载 → 模拟卸载 → 再挂载"，两次 effect 都会调到这里。若用布尔
+   * 值挡住第二次，第一次的结果又已被模拟卸载作废，页面就永久停在等待态——这正是
+   * 之前真实复现的卡死。改为共享同一个在飞 Promise 之后：第二次挂载**复用它**而
+   * 不是重跑，因此既不会重复请求、也不会互相作废，真实 StrictMode 下正常工作。
+   */
+  const inFlight = useRef(null);
 
   const goToWorkspace = useCallback((workspaceId, prompt) => {
     navigate(workspaceHref(courseId, workspaceId, prompt), { replace: true });
   }, [courseId, navigate]);
-
   /**
    * 轮询一次生成任务。
    *
@@ -99,126 +106,164 @@ export default function OpenMAICClassroomEntryPage() {
    *
    * 关键在于**每一步都先问服务端"已经有了吗"**，而不是先建再看。这正是双击与
    * 刷新不产生重复内容的实现方式——幂等键是第二道保险，先查是第一道。
+   *
+   * 之所以要在"先查后建"之外再加确定性幂等键：StrictMode 下这一次流程可能被
+   * 并发触发两次（两个标签页、双击、或开发期的双挂载）。先查在两次请求交错时
+   * 会双双查空，于是双双走到创建；此时**只有**服务端的确定性键能保证最终仍然
+   * 只有一个工作台与一个首 stage。
    */
   const enter = useCallback(async () => {
+    // 复用正在飞行的同一次进入：StrictMode 的第二次挂载因此不会重跑一遍。
+    if (inFlight.current) return inFlight.current;
+
     const mine = ++epoch.current;
-    setBusy(true);
-    setFailure(null);
-    setNotice("");
+    const run = (async () => {
+      setBusy(true);
+      setFailure(null);
+      setNotice("");
 
-    let prompt = "";
-    try {
-      // 1) 真实课程事实（只读，不走受管服务）
-      const [coursePayload, contextPayload] = await Promise.all([
-        api.getCourses(),
-        api.getOpenMAICCourseContext(courseId).catch(() => null),
-      ]);
-      if (mine !== epoch.current) return;
-      const found = itemsOf(coursePayload).find((item) => String(item.id) === String(courseId)) || null;
-      const readiness = describeCourseReadiness({
-        name: found?.name || found?.title || contextPayload?.name || "",
-        knowledgePoints: contextPayload?.knowledge_points || [],
-        materials: contextPayload?.materials || [],
-        warnings: contextPayload?.warnings || [],
-      });
-      setCourse(found);
-      prompt = buildClassroomPrompt({
-        name: readiness.name,
-        knowledgePoints: readiness.knowledgePoints,
-        materials: readiness.materials,
-      });
-      if (!readiness.synced) setNotice(readiness.notice);
-
-      // 2) 受管服务是否可用。不可用就**不进入**，并说清原因。
-      const fusion = await api.getOpenMAICFusionStatus().catch(() => null);
-      if (mine !== epoch.current) return;
-      const fusionView = describeFusionState(fusion);
-      const canEnter = fusionView.state === "ready" && fusionView.canCreateWorkspace;
-      setOnline(canEnter);
-      if (!canEnter) {
-        throw {
-          response: {
-            status: 503,
-            data: {
-              code: "OPENMAIC_FUSION_UNAVAILABLE",
-              message: fusionView.detail || "受管 OpenMAIC 学习工作台当前不可用。",
-              details: { reason: String(fusion?.reason || "") },
-            },
-          },
+      let prompt = "";
+      try {        // 1) 真实课程事实（只读，不走受管服务）
+        const [coursePayload, contextPayload] = await Promise.all([
+          api.getCourses(),
+          api.getOpenMAICCourseContext(courseId).catch(() => null),
+        ]);
+        if (mine !== epoch.current) return;
+        const found = itemsOf(coursePayload).find((item) => String(item.id) === String(courseId)) || null;
+        // 课程基本信息以路由上的真实课程为准；context 作为补充来源。
+        const facts = {
+          name: found?.name || found?.title || contextPayload?.name || "",
+          code: found?.code || contextPayload?.code || "",
+          semester: found?.semester || contextPayload?.semester || "",
+          description: found?.description || contextPayload?.description || "",
+          chapters: contextPayload?.chapters || [],
+          knowledgePoints: contextPayload?.knowledge_points || [],
+          materials: contextPayload?.materials || [],
+          warnings: contextPayload?.warnings || [],
         };
-      }
+        const readiness = describeCourseReadiness(facts);
+        setCourse(found || (facts.name ? { name: facts.name } : null));
+        // 默认主题纳入已授权的真实课程信息与已同步的章节/资料标题。
+        prompt = buildClassroomPrompt(facts);
+        if (!readiness.synced) setNotice(readiness.notice);
 
-      // 3) 复用已有工作台，否则用确定性键创建。
-      //    先查后建：双击时两次调用都会走到同一个已有工作台。
-      const listed = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
-      if (mine !== epoch.current) return;
-      let target = normalizeWorkspaceList(listed)[0] || null;
-      if (!target) {
-        const created = await api.createOpenMAICWorkspace(courseId, {
-          name: found?.name ? `${found.name} · 学习课堂` : "OpenMAIC 学习课堂",
-          description: "由课程真实知识点生成，可继续编辑、播放与导出。",
-          // 确定性键：同课程恒定，双击/重试不会建出第二个工作台。
-          idempotencyKey: classroomEntryIdempotencyKey(courseId),
+        // 2) 受管服务是否可用。不可用就**不进入**，并说清原因。
+        const fusion = await api.getOpenMAICFusionStatus().catch(() => null);
+        if (mine !== epoch.current) return;
+        const fusionView = describeFusionState(fusion);
+        const canEnter = fusionView.state === "ready" && fusionView.canCreateWorkspace;
+        setOnline(canEnter);
+        if (!canEnter) {
+          throw {
+            response: {
+              status: 503,
+              data: {
+                code: "OPENMAIC_FUSION_UNAVAILABLE",
+                message: fusionView.detail || "受管 OpenMAIC 学习工作台当前不可用。",
+                details: { reason: String(fusion?.reason || "") },
+              },
+            },
+          };
+        }
+
+        // 3) 复用已有工作台，否则用确定性键创建。
+        //    先查后建：双击时两次调用都会走到同一个已有工作台；若两次查询交错
+        //    同时落空，服务端的确定性键保证最终仍只有一个。
+        const listed = await api.listOpenMAICWorkspaces(courseId, { limit: 1 });
+        if (mine !== epoch.current) return;
+        let target = normalizeWorkspaceList(listed)[0] || null;
+        if (!target) {
+          const created = await api.createOpenMAICWorkspace(courseId, {
+            name: facts.name ? `${facts.name} · 学习课堂` : "OpenMAIC 学习课堂",
+            description: "由课程真实知识点生成，可继续编辑、播放与导出。",
+            // 确定性键：同课程恒定，双击/重试不会建出第二个工作台。
+            idempotencyKey: classroomEntryIdempotencyKey(courseId),
+          });
+          if (mine !== epoch.current) return;
+          target = normalizeWorkspaceList({ items: [created] })[0] || null;
+        }
+        if (!target?.id) throw new Error("工作台创建结果缺少标识");
+        setWorkspace(target);
+
+        // 4) 已有内容 → 只恢复，不重复生成。这是"刷新不能重复生成"的实现。
+        const stagePayload = await api.listOpenMAICStages(courseId, target.id, { limit: 50 });
+        if (mine !== epoch.current) return;
+        const existing = normalizeStageList(stagePayload);
+        setStages(existing);
+        if (existing.length) {
+          setNotice("已恢复该课程已有的课堂内容。");
+          goToWorkspace(target.id, "");
+          return;
+        }
+
+        // 5) 还没有内容：立即开始生成首个课堂内容。
+        const key = stageGenerationIdempotencyKey(courseId, prompt);
+        const result = await api.generateOpenMAICStage(courseId, target.id, {
+          mode: "slide",
+          prompt,
+          idempotencyKey: key,
         });
         if (mine !== epoch.current) return;
-        target = normalizeWorkspaceList({ items: [created] })[0] || null;
-      }
-      if (!target?.id) throw new Error("工作台创建结果缺少标识");
-      setWorkspace(target);
-
-      // 4) 已有内容 → 只恢复，不重复生成。这是"刷新不能重复生成"的实现。
-      const stagePayload = await api.listOpenMAICStages(courseId, target.id, { limit: 50 });
-      if (mine !== epoch.current) return;
-      const existing = normalizeStageList(stagePayload);
-      setStages(existing);
-      if (existing.length) {
-        setNotice("已恢复该课程已有的课堂内容。");
-        goToWorkspace(target.id, "");
-        return;
-      }
-
-      // 5) 还没有内容：立即开始生成首个课堂内容。
-      const key = stageGenerationIdempotencyKey(courseId, prompt);
-      const result = await api.generateOpenMAICStage(courseId, target.id, {
-        mode: "slide",
-        prompt,
-        idempotencyKey: key,
-      });
-      if (mine !== epoch.current) return;
-      const nextJob = result?.job || null;
-      setJob(nextJob);
-      setPhase(resolveGenerationPhase(nextJob));
-      if (!nextJob?.id) {
-        // 没有任务号却返回成功：当作已就绪，直接进入工作台（仍以服务端 stage 为准）。
-        const after = normalizeStageList(await api.listOpenMAICStages(courseId, target.id, { limit: 50 }));
+        const nextJob = result?.job || null;
+        setJob(nextJob);
+        setPhase(resolveGenerationPhase(nextJob));
+        if (!nextJob?.id) {
+          // 没有任务号却返回成功：当作已就绪，直接进入工作台（仍以服务端 stage 为准）。
+          const after = normalizeStageList(await api.listOpenMAICStages(courseId, target.id, { limit: 50 }));
+          if (mine !== epoch.current) return;
+          if (after.length) { goToWorkspace(target.id, ""); return; }
+          throw new Error("受管服务未返回生成任务");
+        }
+        if (nextJob.status === "completed") { goToWorkspace(target.id, ""); return; }
+        void poll(nextJob.id, target.id, "");
+      } catch (error) {
         if (mine !== epoch.current) return;
-        if (after.length) { goToWorkspace(target.id, ""); return; }
-        throw new Error("受管服务未返回生成任务");
+        setBusy(false);
+        setFailure(describeEntryFailure(error));
+      } finally {
+        // 无论成功失败都释放"在飞"标记，重试才能重新开始。
+        if (inFlight.current === run) inFlight.current = null;
       }
-      if (nextJob.status === "completed") { goToWorkspace(target.id, ""); return; }
-      void poll(nextJob.id, target.id, "");
-    } catch (error) {
-      if (mine !== epoch.current) return;
-      setBusy(false);
-      setFailure(describeEntryFailure(error));
-    }
+    })();
+
+    inFlight.current = run;
+    return run;
   }, [courseId, goToWorkspace, poll]);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    // 允许 StrictMode 的两次挂载都调用 enter()：第二次会复用同一个在飞 Promise，
+    // 因此既不会永久停在等待态，也不会重复发起一遍请求。
     void enter();
-    // 注意：这里**不**在卸载时递增 epoch。StrictMode 会"挂载→卸载→再挂载"，
-    // 若在卸载时作废代次，第一次挂载发起的那次生成会在 await 处被判定为过期而
-    // 静默返回，页面就永远停在"正在确认受管服务状态…"。代次只由 enter() 自己
-    // 递增（每次重跑作废上一次），以及真正切课程时才重置。
   }, [enter]);
 
-  // 切课程时重置：新课程必须重新走一遍，旧请求作废。
-  useEffect(() => () => {
+  /**
+   * 只有**切换课程**才让在飞的流程失效。
+   *
+   * 这里刻意**不**在 effect 的清理函数里递增代次。原因是被真实复现过的卡死：
+   * StrictMode 会"挂载 → 模拟卸载 → 再挂载"，模拟卸载会跑一次清理函数。如果
+   * 清理里递增代次，第一次挂载发起的那次 enter() 会在第一个 await 之后发现
+   * `mine !== epoch.current` 而静默 return；第二次挂载又因为已有在飞 Promise 而
+   * 复用同一次（这正是我们想要的，避免重复请求），于是没有任何一方继续推进，
+   * 页面永久停在"正在确认受管服务状态…"。
+   *
+   * 代次因此只在**依赖真的变化**时递增，也就是真正切到了另一门课。组件真实卸载
+   * 后即使有迟到响应写进 state，也不会再渲染到任何地方，所以不需要靠清理函数来
+   * 兜这件事。
+   */
+  const entryCourse = useRef(courseId);
+  useEffect(() => {
+    if (entryCourse.current === courseId) return;
+    // 真的换课程了：作废旧流程、放开在飞标记，让新课程走一条全新的链路。
+    entryCourse.current = courseId;
     epoch.current += 1;
+    inFlight.current = null;
     if (timer.current) window.clearTimeout(timer.current);
   }, [courseId]);
+
+  // 组件真实卸载时停掉轮询计时器，避免离开页面后还有定时器在跑。
+  useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+  }, []);
 
   /** 重试：直接重跑整个流程，仍然复用同一个确定性键。 */
   const retry = useCallback(() => { void enter(); }, [enter]);
