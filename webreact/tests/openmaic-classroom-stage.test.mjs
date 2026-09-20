@@ -146,8 +146,22 @@ test("playback hands the whole content area to the classroom", () => {
   assert.match(workbenchCss, /\.ow-pane--classroom\.is-learning\s*\{[^}]*background-color:\s*transparent/s);
 });
 
-test("the classroom header survives a 320px viewport", () => {
-  const headerSource = read("src/maic/classroom/classroom-header.jsx");
+test("the canvas toolbar matches the reference and the canvas is not wrapped in dark", () => {
+  const shellSource = read("src/maic/classroom/shell.jsx");
+  // 参考项目的工具栏是**文档流内**的一条 36px 控件条，不是浮层，也不是深色底条。
+  assert.match(stageSource, /shrink-0 h-9 px-2 flex items-center gap-2/, "工具栏必须是 h-9 的文档流控件条");
+  assert.match(stageSource, /bg-white\/80 dark:bg-gray-800\/80 backdrop-blur-xl/, "工具栏底色必须与参考一致");
+  assert.match(stageSource, /border-t border-gray-200\/40/, "工具栏上边框必须与参考一致");
+  // 侧栏开关与页码属于工具栏左侧槽位，不是头栏。
+  assert.match(stageSource, /aria-label="Toggle sidebar"/, "工具栏必须带侧栏开关");
+  assert.match(stageSource, /tabular-nums select-none font-medium/, "工具栏必须带页码");
+  assert.match(shellSource, /侧栏开关\*\*不放在头栏\*\*/, "头栏不得再放侧栏开关");
+  // 画布区底色必须与参考 canvas-area 一致（浅色模式是 gray-50）。
+  assert.match(stageSource, /bg-gray-50 dark:bg-gray-900/, "画布区底色必须与参考一致");
+  assert.doesNotMatch(stageSource, /flex flex-col bg-gray-900"/, "不得把画布区写死成深色");
+});
+
+test("the classroom header survives a 320px viewport", () => {  const headerSource = read("src/maic/classroom/classroom-header.jsx");
   // 320px 下固定 px-8 会把标题块挤成 0 宽，右侧控制簇随即盖住返回按钮并吃掉点击。
   assert.match(headerSource, /px-4 sm:px-8/, "头栏内边距必须窄屏收窄");
   assert.match(headerSource, /gap-2 sm:gap-4/, "头栏间距必须窄屏收窄");

@@ -1,10 +1,13 @@
 import React from "react";
+import { ChevronLeft, ChevronRight, LayoutList } from "lucide-react";
 import { Button } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
 import { MaicClassroomShell } from "../../maic/classroom/index.js";
+import { ctrlBtn } from "../../maic/classroom/classroom-header.jsx";
 import { MaicSceneRenderer } from "../../maic/scene/index.js";
 import { MaicSlideSurface } from "../../maic/slide/index.js";
+import { cn } from "../../maic/utils/cn.js";
 import {
   degradeNotice,
   describePlaybackError,
@@ -189,12 +192,17 @@ export default function OpenMAICClassroomStage({
         <Icon name="PhArrowLeft" size={14} />
         返回编辑
       </Button> : undefined}
-      headerActions={<span className="text-xs text-muted-foreground">{index + 1} / {scenes.length}</span>}
+      // 页码不放在头栏：参考项目的头栏没有页码，它在工具栏左侧（见 SceneToolbar）。
+      // 两边各放一个会让同一件事出现两个数字。
     >
       <SceneStage
         scene={scene}
         outline={current}
         loading={sceneLoading}
+        index={index}
+        total={scenes.length}
+        sidebarCollapsed={collapsed}
+        onToggleSidebar={() => setCollapsed((value) => !value)}
         onPrev={index > 0 ? () => go(index - 1) : undefined}
         onNext={index < scenes.length - 1 ? () => go(index + 1) : undefined}
       />
@@ -206,7 +214,7 @@ export default function OpenMAICClassroomStage({
  * 画布区。只负责**如实执行**服务端给出的渲染决定：
  * 原生交给移植来的渲染器，沙箱交给最小 sandbox 的 iframe，其余说清缺什么。
  */
-function SceneStage({ scene, outline, loading, onPrev, onNext }) {
+function SceneStage({ scene, outline, loading, index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
   const policy = sandboxPolicyFor(outline?.render);
@@ -238,25 +246,97 @@ function SceneStage({ scene, outline, loading, onPrev, onNext }) {
     body = <Fallback title={title} type={type} text="只显示标题，不用占位内容冒充正文。" />;
   }
 
-  return <div className="relative w-full h-full flex flex-col bg-gray-900">
+  return <div className={cn(
+    "relative w-full h-full flex flex-col",
+    // 逐字对齐参考 `canvas-area.tsx` 的根节点：浅色模式是 **gray-50**，不是深色。
+    // 写死深色会把 16:9 幻灯片包进一圈"影厅黑边"，与参考项目完全是两种观感。
+    "bg-gray-50 dark:bg-gray-900",
+  )}>
     <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
       {body}
     </div>
-    {(onPrev || onNext) ? <div className="shrink-0 flex items-center justify-center gap-2 py-3 bg-gray-950/60">
-      <Button type="button" variant="secondary" size="sm" disabled={!onPrev} onClick={onPrev}>上一场景</Button>
-      <Button type="button" variant="secondary" size="sm" disabled={!onNext} onClick={onNext}>下一场景</Button>
-    </div> : null}
+    <SceneToolbar
+      index={index}
+      total={total}
+      sidebarCollapsed={sidebarCollapsed}
+      onToggleSidebar={onToggleSidebar}
+      onPrev={onPrev}
+      onNext={onNext}
+    />
+  </div>;
+}
+
+/**
+ * 画布底栏。逐字移植参考项目 `components/canvas/canvas-toolbar.tsx` 的容器与
+ * 可用控件（`canvas-area.tsx` 里它是**文档流内**的一条，不是浮层）：
+ *
+ *   shrink-0 h-9 px-2 bg-white/80 backdrop-blur-xl border-t border-gray-200/40
+ *
+ * 左侧是侧栏开关 + 页码，中间是上一场景 / 下一场景——位置与参考一致。参考工具栏
+ * 还有白板、元素拾取、演示、静音、停止讨论等控件，它们依赖 TTS / 圆桌 / 画布
+ * store，本仓库没有对应运行时，因此不渲染（而不是渲染一个点了没反应的死按钮）。
+ * 为了不改变工具栏的高度与左右比例，缺失的控件不占位。
+ */
+function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext }) {
+  const empty = total === 0;
+  return <div className={cn(
+    "shrink-0 h-9 px-2 flex items-center gap-2",
+    "bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl",
+    "border-t border-gray-200/40 dark:border-gray-700/40",
+  )}>
+    <div className="flex items-center gap-1 shrink-0 pl-1">
+      {onToggleSidebar ? <button
+        type="button"
+        onClick={onToggleSidebar}
+        className={cn(
+          ctrlBtn,
+          sidebarCollapsed ? "text-gray-400 dark:text-gray-500" : "text-gray-600 dark:text-gray-300",
+        )}
+        aria-label="Toggle sidebar"
+        aria-pressed={!sidebarCollapsed}
+      >
+        <LayoutList className="w-3.5 h-3.5" />
+      </button> : null}
+      <span className="text-[11px] text-gray-400 dark:text-gray-500 tabular-nums select-none font-medium">
+        {empty ? 0 : index + 1}
+        <span className="opacity-35 mx-px">/</span>
+        {total}
+      </span>
+    </div>
+
+    <div className="flex-1 flex items-center justify-center min-w-0">
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={!onPrev}
+        className={cn(ctrlBtn, "w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none")}
+        aria-label="Previous scene"
+        title="上一场景"
+      >
+        <ChevronLeft className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={!onNext}
+        className={cn(ctrlBtn, "w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none")}
+        aria-label="Next scene"
+        title="下一场景"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
   </div>;
 }
 
 function Fallback({ title, type, text }) {
-  return <div className="flex flex-col items-center gap-3 text-center max-w-md px-6 text-gray-300">
+  return <div className="flex flex-col items-center gap-3 text-center max-w-md px-6">
     <Icon name="PhWarningCircle" size={26} />
-    <small className="text-xs uppercase tracking-wide text-gray-500">
+    <small className="text-xs uppercase tracking-wide text-gray-400 dark:text-gray-500">
       {SCENE_TYPE_LABELS[type] || type}
     </small>
-    <strong className="text-base font-medium">「{title}」当前无法播放</strong>
-    <p className="text-sm text-gray-400">{text}</p>
+    <strong className="text-base font-medium text-gray-800 dark:text-gray-200">「{title}」当前无法播放</strong>
+    <p className="text-sm text-gray-500 dark:text-gray-400">{text}</p>
   </div>;
 }
 

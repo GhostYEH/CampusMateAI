@@ -103,8 +103,10 @@ export function MaicClassroomShell({
             title={title || ""}
             backControl={backControl}
             headerActions={headerActions}
-            sidebarCollapsed={sidebarCollapsed}
-            onToggleSidebar={onToggleSidebar}
+            // 侧栏开关**不放在头栏**：参考项目的 `Header` 里没有这个控件，它属于
+            // `canvas-toolbar` 的左侧槽位。移植时把它上提到头栏是一处记录在案的
+            // 偏差（会多占约 60px 宽度，320px 下还会与返回按钮抢位置）。
+            // 现在工具栏补上了，偏差随之撤掉，头栏回到参考实现的结构。
             isPresenting={isPresenting}
             onTogglePresentation={onTogglePresentation}
             className={headerClassName}

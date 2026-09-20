@@ -43,14 +43,14 @@ const ZH = {
 };
 
 /** 参考 `components/canvas/canvas-toolbar.tsx` 的 `ctrlBtn`，逐字保留。 */
-const ctrlBtn = cn(
+export const ctrlBtn = cn(
   "relative w-7 h-7 rounded-md flex items-center justify-center",
   "transition-all duration-150 outline-none cursor-pointer",
   "hover:bg-gray-500/[0.08] dark:hover:bg-gray-400/[0.08] active:scale-90",
 );
 
 /** 参考 `canvas-toolbar.tsx` 的 `CtrlDivider`，逐字保留。 */
-function CtrlDivider() {
+export function CtrlDivider() {
   return <div className="w-px h-3 bg-gray-200/80 dark:bg-gray-700/60 mx-0.5 shrink-0" />;
 }
 
