@@ -31,9 +31,18 @@ class _Circuit:
     failures: int = 0
     opened_at: float | None = None
     probe_in_flight: bool = False
-    # 每次熔断**状态迁移**（打开 / 关闭）自增。一次调用在放行时记下当时的代次，
-    # 返回时只有代次仍然一致，才允许改熔断状态 —— 这样"在熔断打开之前发起、
-    # 在 half-open 之后才返回"的旧请求既不能关掉熔断，也不能释放别人的探测权。
+    # 熔断**状态迁移**的次数，不是"结果计数"。
+    #
+    # 一次调用在放行时记下当时的代次，返回时只有代次仍然一致才允许改动熔断状态 ——
+    # 这样"在熔断打开之前发起、之后才返回"的旧请求既不能关掉熔断，
+    # 也不能释放别人的探测权。
+    #
+    # 只有真正的状态迁移才推进它：
+    #   CLOSED → OPEN            失败数达到阈值
+    #   OPEN / HALF_OPEN → CLOSED 半开探测成功（或熔断关闭状态下的成功探测）
+    # CLOSED 状态下的**一般成功**只是清零失败计数，**不是**迁移，绝不推进代次 ——
+    # 否则同一批并发请求里只要有一个先成功，其余携带旧代次的失败就会被判为
+    # "陈旧结果"丢弃，候选服务部分故障时熔断永远打不开。
     generation: int = 0
 
 
@@ -191,6 +200,16 @@ class ModelShadowRunner:
         """
         return generation is None or generation == state.generation
 
+    def _is_open(self, state: _Circuit) -> bool:
+        """熔断当前是否处于 OPEN（已打开且冷却尚未结束）。
+
+        `opened_at is not None` 只说明"曾经打开过"：冷却结束后它是 HALF_OPEN，
+        仍然允许一次探测，因此那两种情况必须区分开。
+        """
+        if state.opened_at is None:
+            return False
+        return time.monotonic() - state.opened_at < self.circuit_breaker_cooldown_seconds
+
     def _record_failure(self, name: str, *, generation: int | None = None) -> None:
         state = self._circuits.setdefault(name, _Circuit())
         if not self._is_current(state, generation):
@@ -198,7 +217,9 @@ class ModelShadowRunner:
             return
         state.failures += 1
         state.probe_in_flight = False
-        if state.failures >= self.circuit_breaker_threshold:
+        # 只有真的发生迁移才推进代次：CLOSED → OPEN，或 HALF_OPEN 探测失败后重新打开。
+        # 已经处于 OPEN 时不做任何迁移（也就不会把冷却时间越拖越长）。
+        if state.failures >= self.circuit_breaker_threshold and not self._is_open(state):
             state.opened_at = time.monotonic()
             state.generation += 1
 
@@ -208,10 +229,13 @@ class ModelShadowRunner:
             # 陈旧成功**不得关闭熔断**：它是在熔断打开之前发起的调用，
             # 用旧观察去关断会立刻把全部流量重新打向仍在故障的下游。
             return
+        # OPEN / HALF_OPEN → CLOSED 才是迁移；CLOSED 下的一般成功只是清零计数。
+        reopened_to_closed = state.opened_at is not None
         state.failures = 0
         state.opened_at = None
         state.probe_in_flight = False
-        state.generation += 1
+        if reopened_to_closed:
+            state.generation += 1
 
     async def run(self, request: ModelCapabilityRequest, *, sample_rate: float | None = None) -> ModelCapabilityResult:
         """执行一次受控候选调用。

@@ -209,9 +209,11 @@ def _open_circuit(runner: ModelShadowRunner, name: str = "learning_summary_v1") 
         runner._record_failure(name)
 
 
-def _gated_runner(candidate: GatedLLM, **overrides) -> ModelShadowRunner:
+def _gated_runner(candidate, **overrides) -> ModelShadowRunner:
     kwargs = dict(registry=ModelCapabilityRegistry(), candidate_llm=candidate, enabled=True,
-                  sample_rate=1.0, circuit_breaker_threshold=1, circuit_breaker_cooldown_seconds=0.0)
+                  sample_rate=1.0, circuit_breaker_threshold=1, circuit_breaker_cooldown_seconds=0.0,
+                  # 闸门会一直挂到测试主动放行：默认 1500ms 超时会把"挂起"变成"超时"。
+                  timeout_ms=60_000, concurrency_limit=8)
     kwargs.update(overrides)
     return ModelShadowRunner(**kwargs)
 
@@ -425,3 +427,155 @@ def test_circuit_mutations_are_confined_to_run() -> None:
         occurrences = runner_source.count(token)
         with_generation = runner_source.count(f"{token}request.capability_name, generation=generation")
         assert occurrences == with_generation, f"{token} 必须全部带 generation：{occurrences} vs {with_generation}"
+
+
+# ===== CLOSED 状态下的并发成功 / 失败：generation 只能由真正的状态迁移推进 =====
+#
+# 回归背景：`_record_success` 曾经**无条件** `generation += 1`。于是 CLOSED 状态下
+# 同一批并发请求（都持有 generation=0）里，只要有一个成功先返回，generation 就变成 1，
+# 同批随后返回的失败全被判为"陈旧结果"丢弃 —— 候选服务部分故障时，
+# 即使失败数足以达到阈值，熔断也永远打不开。
+#
+# 规则（本组用例即契约）：
+#   - generation 只在真正的状态迁移时推进：CLOSED → OPEN、OPEN/HALF_OPEN → CLOSED；
+#   - CLOSED 状态下的成功只清零失败计数，不推进 generation；
+#   - CLOSED 状态下的失败正常累加，达到阈值即迁移为 OPEN。
+
+
+class OrderedLLM:
+    """按调用序号控制返回结果的假候选：用来构造确定性的并发交错。
+
+    每次调用各有一个闸门，测试可以先让**所有**请求完成 admission
+    （证明它们拿到同一个 generation），再按想要的顺序逐个放行。
+    """
+
+    name = "campusmate-lm:ordered"
+    available = True
+
+    def __init__(self, results: list[str]) -> None:
+        # "ok" → 返回合法 JSON；"fail" → 抛异常，走 MODEL_UNAVAILABLE 分支
+        self.results = list(results)
+        self.calls = 0
+        self.entered = [asyncio.Event() for _ in results]
+        self.gates = [asyncio.Event() for _ in results]
+
+    async def chat(self, messages, *, temperature=0.0, max_tokens=None, timeout=None):
+        index = self.calls
+        self.calls += 1
+        self.entered[index].set()
+        await self.gates[index].wait()
+        if self.results[index] == "fail":
+            raise RuntimeError("candidate failure (ordered)")
+        return LLMResponse('{"summary":"按已提供的优先级安排。","claim_codes":[]}')
+
+
+async def _run_ordered(
+    results: list[str],
+    *,
+    threshold: int,
+    cooldown: float = 60.0,
+    request_prefix: str = "ordered",
+):
+    """让 `results` 里的每个请求都先完成 admission，再按给定顺序逐个放行。
+
+    返回 `(放行后的熔断状态, admission 时的 generation, 真实候选调用次数)`。
+    """
+    candidate = OrderedLLM(results)
+    runner = ModelShadowRunner(
+        registry=ModelCapabilityRegistry(), candidate_llm=candidate, enabled=True,
+        sample_rate=1.0, circuit_breaker_threshold=threshold,
+        circuit_breaker_cooldown_seconds=cooldown,
+        # 夹具必须让所有请求**同时**在途：默认 concurrency_limit=2 会让第 3 个请求
+        # 卡在信号量上，默认 timeout_ms=1500 又会让先到的请求先超时 ——
+        # 那样测的就不是"同一批并发"，而是"排队 + 超时"。
+        concurrency_limit=len(results),
+        timeout_ms=60_000,
+    )
+    tasks = [
+        asyncio.create_task(runner.run(_summary_request(f"{request_prefix}-{index}")))
+        for index in range(len(results))
+    ]
+    for event in candidate.entered:
+        await asyncio.wait_for(event.wait(), timeout=5)
+    generation_at_admission = runner.circuit_status("learning_summary_v1")["generation"]
+    for index in range(len(results)):
+        candidate.gates[index].set()
+        await tasks[index]
+    return runner.circuit_status("learning_summary_v1"), generation_at_admission, candidate.calls
+
+
+def test_closed_concurrent_success_must_not_disable_later_failures() -> None:
+    """CLOSED 并发：先成功、后失败 —— 失败必须仍然被计入并打开熔断。
+
+    这是"部分故障"最典型的形状：一个请求恰好成功，其余都失败。
+    如果成功把 generation 推进了，后面的失败会被当成陈旧结果丢掉，
+    熔断永远不打开，流量继续打向已故障的候选服务。
+    """
+
+    async def scenario() -> None:
+        status, generation_at_admission, calls = await _run_ordered(
+            ["ok", "fail", "fail"], threshold=2, request_prefix="closed-partial-failure",
+        )
+
+        assert calls == 3, "三个请求都必须真的调用过候选（否则测的不是并发）"
+        assert generation_at_admission == 0, "CLOSED 状态下三个请求应当拿到同一个 generation"
+
+        assert status["state"] == "OPEN", f"失败数已达阈值，熔断必须打开：{status}"
+        assert status["failures"] >= 2, f"失败必须被计入：{status}"
+        assert status["probe_in_flight"] is False
+
+    asyncio.run(scenario())
+
+
+def test_closed_success_does_not_advance_generation() -> None:
+    """CLOSED 状态下的成功不是状态迁移：只清零失败计数，generation 不动。"""
+
+    async def scenario() -> None:
+        status, generation_at_admission, calls = await _run_ordered(
+            ["ok", "ok", "ok"], threshold=2, request_prefix="closed-all-success",
+        )
+        assert calls == 3
+        assert generation_at_admission == 0
+        assert status["state"] == "CLOSED"
+        assert status["failures"] == 0
+        assert status["generation"] == 0, "CLOSED 阶段没有任何状态迁移，generation 必须保持 0"
+
+    asyncio.run(scenario())
+
+
+def test_interleaved_closed_success_and_failure_follow_a_defined_rule() -> None:
+    """CLOSED 并发成功/失败交错：成功清零、失败累加、generation 只在迁移时推进。
+
+    与上一个用例互补 —— 那个证明"一个成功不会让后续失败失效"，
+    这个钉住"成功确实会清零计数"，两条一起才把 CLOSED 阶段的语义说清楚。
+    """
+
+    async def scenario() -> None:
+        # (a) 失败 → 成功 → 失败：成功把计数清零，因此只有 1 次连续失败，熔断保持关闭
+        status, generation_at_admission, calls = await _run_ordered(
+            ["fail", "ok", "fail"], threshold=2, request_prefix="interleave-a",
+        )
+        assert calls == 3
+        assert generation_at_admission == 0
+        assert status["state"] == "CLOSED", f"成功清零后未达阈值：{status}"
+        assert status["failures"] == 1, f"成功清零后只应累计到 1 次失败：{status}"
+        assert status["generation"] == 0, "CLOSED 阶段的成功/失败都不是迁移，generation 必须保持 0"
+
+        # (b) 失败 → 失败：达到阈值 → 唯一一次迁移 CLOSED → OPEN
+        status, _generation, calls = await _run_ordered(
+            ["fail", "fail"], threshold=2, request_prefix="interleave-b",
+        )
+        assert calls == 2
+        assert status["state"] == "OPEN", status
+        assert status["failures"] >= 2, status
+        assert status["generation"] == 1, f"只应有 CLOSED → OPEN 一次迁移：{status}"
+
+        # (c) 成功 → 失败 → 失败：成功清零后仍能累计到阈值并打开
+        status, _generation, calls = await _run_ordered(
+            ["ok", "fail", "fail"], threshold=2, request_prefix="interleave-c",
+        )
+        assert calls == 3
+        assert status["state"] == "OPEN", status
+        assert status["failures"] >= 2, status
+
+    asyncio.run(scenario())
