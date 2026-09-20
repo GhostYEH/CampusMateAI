@@ -316,12 +316,13 @@ def login(page, report: list[str]) -> None:
 
 
 def enter_classroom_from_my_courses(page, recorder: Recorder, report: list[str]) -> str:
-    """在「我的课程」里点**真实**「进入课堂」，断言直达工作台。"""
+    """在「我的课程」主入口点**真实**「进入课堂」，断言直达工作台。"""
     page.goto(f"{BASE}/courses", wait_until="domcontentloaded")
-    enter = page.locator(".openmaic-course-rail__enter").first
+    enter = page.locator(".openmaic-classroom-entry__action")
     expect(enter).to_be_visible(timeout=25000)
     label = enter.get_attribute("aria-label") or ""
-    assert "进入" in label and "课堂" in label, f"「进入课堂」入口的可访问名称不对：{label}"
+    visible_label = enter.inner_text()
+    assert "进入" in visible_label and "课堂" in visible_label, f"「进入课堂」入口文案不对：{visible_label}"
     # 入口是一个**直接指向课堂路由**的链接。这就是"不经过角色 / 模式 / 预览确认"
     # 的结构证据：深链里没有任何 prompt / mode / roles 参数，目标也不是预览页。
     href = enter.get_attribute("href") or ""
@@ -329,7 +330,7 @@ def enter_classroom_from_my_courses(page, recorder: Recorder, report: list[str])
     assert "/openmaic-preview" not in href, "「进入课堂」不得指向生成预览"
     for param in ("prompt=", "mode=", "roles="):
         assert param not in href, f"「进入课堂」的深链不应携带 {param}：{href}"
-    _step(report, f"「我的课程」里的直达入口：{label} → {href}（无 prompt/mode/roles）")
+    _step(report, f"「我的课程」主入口：{visible_label} → {href}（无 prompt/mode/roles）")
 
     recorder.responses.clear()
     enter.click()

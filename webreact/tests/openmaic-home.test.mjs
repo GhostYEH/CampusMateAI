@@ -122,16 +122,13 @@ test("courses route calls the aggregate endpoints instead of per-course history"
   assert.doesNotMatch(pageSource, /<AnimatedList/);
 });
 
-test("quick ask keeps its generation-preview path and its user input", () => {
-  // 快速提问是"我带着一个问题/一份材料进来"，必须把 query 与 extras 带过去。
-  // 「进入课堂」的直达在 CourseRail 上，是另一条入口，不能吞掉这里的输入。
-  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
-  assert.match(pageSource, /selectedRoleIds: extras\.selectedRoleIds/);
-  assert.match(pageSource, /webSearch: extras\.webSearch/);
-  assert.match(pageSource, /openmaicAttachment: extras\.attachment/);
-  assert.match(pageSource, /shouldBindWorkspace\(describeFusionState\(fusion\)\)/);
-  assert.doesNotMatch(pageSource, /resolveQuickAskWorkspace\(courseId/);
-  assert.doesNotMatch(pageSource, /gotoCounselor\(courseId/);
+test("the primary course action enters the selected classroom directly", () => {
+  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.match(homeSource, /进入课堂/);
+  assert.doesNotMatch(homeSource, /快速询问/);
+  assert.doesNotMatch(homeSource, /AgentRolePicker/);
+  assert.doesNotMatch(pageSource, /onQuickAsk=/);
+  assert.doesNotMatch(pageSource, /generationPreviewHref/);
 });
 
 test("course context defaults to the first real course after asynchronous loading", () => {
@@ -140,26 +137,8 @@ test("course context defaults to the first real course after asynchronous loadin
   assert.equal(defaultOpenMAICCourseId([{ id: 42, title: "大学英语" }]), "42");
 });
 
-test("quick ask failures stay local and never replace the course content area", () => {
-  const start = pageSource.indexOf("function openQuickAsk(");
-  assert.notEqual(start, -1);
-  const body = pageSource.slice(start, pageSource.indexOf("\n  }", start));
-
-  assert.match(body, /setQuickAskError\(/);
-  // 页级 error 由 AsyncState 消费：写进去就等于用错误卡片替换整个课程内容区。
-  assert.doesNotMatch(body, /setError\(/);
-  // 课程切换仍会清掉上一次的局部错误。
-  assert.match(pageSource, /onCourseChange=\{handleCourseChange\}/);
-  assert.match(pageSource, /quickAskSeq\.current \+= 1/);
-});
-
 test("home surface exposes no placeholder entries and no iframe", () => {
   assert.match(homeSource, /aria-label="OpenMAIC 学习工作台"/);
-  assert.match(homeSource, /快速询问/);
-  assert.match(homeSource, /课堂角色配置/);
-  assert.match(roleSource, /AI教师/);
-  assert.match(homeSource, /预设模式/);
-  assert.match(homeSource, /自动生成/);
   assert.match(homeSource, /describeFusionState/);
   assert.match(homeSource, /role="listbox"/);
   assert.match(homeSource, /选择课程上下文/);

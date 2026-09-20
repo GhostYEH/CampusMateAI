@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
@@ -6,12 +6,7 @@ import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
-import { describeFusionState, normalizeRecentItems } from "../features/openmaic/homeModel.js";
-import {
-  generationPreviewHref,
-  quickAskRejection,
-  shouldBindWorkspace,
-} from "../features/openmaic/quickAskModel.js";
+import { normalizeRecentItems } from "../features/openmaic/homeModel.js";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
@@ -30,24 +25,6 @@ export function CoursesParityPage() {
   const [providerStatus, setProviderStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // 快速询问的失败**只**影响输入区。它绝不能写进上面这个页级 error：那个 error
-  // 由 AsyncState 消费，一旦被写上，整块课程内容都会被一张错误卡片替换掉——
-  // 这正是"快速询问 503 之后连课程列表都没了"的成因。
-  const [quickAskError, setQuickAskError] = useState(null);
-  const [quickAskBusy, setQuickAskBusy] = useState(false);
-  // 代次：课程切换与组件卸载都会 +1。迟到的响应据此作废，绝不把旧课程的
-  // 工作台写到新课程页面上。
-  const quickAskSeq = useRef(0);
-  const aliveRef = useRef(true);
-
-  // 注意 effect 体里必须把 alive 重新置回 true。React 18 的 StrictMode 在开发环境
-  // 会跑一遍"挂载 → 卸载 → 再挂载"：只在 cleanup 里置 false，第二次挂载就再也回不到
-  // true，结果是每次快速询问都在守卫处静默 return —— 请求成功（200/201），但既不跳转
-  // 也不报错，按钮永远停在"正在准备…"。这个缺陷单测看不到，只有真实浏览器能暴露。
-  useEffect(() => {
-    aliveRef.current = true;
-    return () => { aliveRef.current = false; quickAskSeq.current += 1; };
-  }, []);
 
   async function load() {
     setLoading(true);
@@ -80,52 +57,7 @@ export function CoursesParityPage() {
 
   useEffect(() => { void load(); }, []);
 
-  /** 课程切换：作废在途的快速询问，并清掉上一次的局部错误。 */
-  function handleCourseChange() {
-    quickAskSeq.current += 1;
-    setQuickAskBusy(false);
-    setQuickAskError(null);
-  }
-
-  function openQuickAsk(query, courseId, extras = {}) {
-    const rejection = quickAskRejection({ query, courseId, busy: quickAskBusy });
-    if (rejection) {
-      setQuickAskError({ message: rejection, retryable: false, fallbackLabel: "" });
-      return;
-    }
-    ++quickAskSeq.current;
-    setQuickAskError(null);
-
-    // 课程入口必须落到可持久化的工作台；不能用课程辅导页冒充成功。
-    if (!shouldBindWorkspace(describeFusionState(fusion))) {
-      setQuickAskError({
-        kind: "unavailable",
-        reason: "workspace_unavailable",
-        retryable: true,
-        message: "OpenMAIC 学习工作台暂时不可用，请稍后重试。",
-        fallbackLabel: "",
-      });
-      return;
-    }
-
-    // 快速提问保留原有的生成预览路径：用户输入的 query、模式、角色、联网检索与
-    // 附件都要带过去。它是"我带着一个问题/一份材料进来"，与课程卡片的
-    // 「进入课堂」直达不是同一件事——直达由 CourseRail 提供，不能吞掉这里的输入。
-    setQuickAskBusy(false);
-    navigate(generationPreviewHref(courseId, query, {
-      mode: extras.mode,
-      selectedRoleIds: extras.selectedRoleIds,
-      webSearch: extras.webSearch,
-    }), {
-      // File 对象不能写入 URL，保留在本次 SPA 导航状态里，确认生成时继续传给工作台。
-      state: {
-        openmaicWebSearch: Boolean(extras.webSearch),
-        openmaicAttachment: extras.attachment || null,
-      },
-    });
-  }
-
-  return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接提问，或创建一份可以继续编辑的学习内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
+  return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接进入课堂，并在其中继续学习和编辑内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
       <OpenMAICHome
         courses={courses}
@@ -134,11 +66,6 @@ export function CoursesParityPage() {
         recentError={recentError}
         fusion={fusion}
         providerStatus={providerStatus}
-        quickAskError={quickAskError}
-        quickAskBusy={quickAskBusy}
-        onQuickAsk={openQuickAsk}
-        onCourseChange={handleCourseChange}
-        onCreateContent={(courseId) => openQuickAsk("创建一份课程学习内容", courseId)}
       />
     </AsyncState>
   </PageFrame>;

@@ -10,25 +10,10 @@ import {
   buildCourseRailItems,
   defaultOpenMAICCourseId,
   describeFusionState,
-  filterOpenMAICHomeItems,
 } from "../../features/openmaic/homeModel.js";
-import { quickAskRejection } from "../../features/openmaic/quickAskModel.js";
 import { enterClassroomHref } from "../../features/openmaic/enterClassroomModel.js";
-import {
-  DEFAULT_SELECTED_ROLE_IDS,
-  OPENMAIC_AGENT_ROLES,
-  normalizeSelectedRoleIds,
-  selectedRoles,
-} from "../../features/openmaic/roleModel.js";
-import {
-  loadOpenMAICAgentSettings,
-  saveOpenMAICAgentSettings,
-} from "../../features/openmaic/agentSettingsModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
-
-/** 附件接受的文件类型与辅导页保持一致：只收可解析的文本类文件。 */
-const ATTACHMENT_ACCEPT = ".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json";
 
 function CourseRail({ courses, assignments }) {
   const items = buildCourseRailItems(courses, assignments);
@@ -77,58 +62,6 @@ function ProviderList({ providerStatus }) {
   if (!providerStatus) return <p className="muted-copy">Provider 状态暂时取不到，相关入口保持关闭。</p>;
   if (providerStatus.state === "disabled") return <p className="muted-copy">Provider 未启用；课程和已有内容仍可用。</p>;
   return <div className="openmaic-capability-list" aria-label="Provider 能力状态">{Object.entries(labels).map(([key, label]) => <span key={key} className={providerStatus.providers?.[key] ? "is-ready" : "is-closed"}><Icon name={providerStatus.providers?.[key] ? "PhCheckCircle" : "PhMinusCircle"} size={16} />{label}<small>{providerStatus.providers?.[key] ? "已配置" : "未配置"}</small></span>)}</div>;
-}
-
-function AgentRolePicker({ mode, onModeChange, selectedRoleIds, onToggle }) {
-  const [open, setOpen] = React.useState(false);
-  const triggerRef = React.useRef(null);
-  const selected = selectedRoles(selectedRoleIds);
-  const selectedNames = selected.filter((role) => !role.required).map((role) => role.name);
-  React.useEffect(() => {
-    if (!open) return undefined;
-    function onKeyDown(event) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open]);
-  return <div className="openmaic-role-picker">
-    <button
-      type="button"
-      ref={triggerRef}
-      className="openmaic-role-picker__trigger"
-      aria-expanded={open}
-      aria-controls="openmaic-role-picker-panel"
-      onClick={() => setOpen((value) => !value)}
-    >
-      <span className="openmaic-role-picker__avatars" aria-hidden="true">
-        {selected.slice(0, 3).map((role) => <span key={role.id} style={{ background: role.color }}>{role.short}</span>)}
-      </span>
-      <span className="openmaic-role-picker__summary">课堂角色配置<small>{mode === "auto" ? "自动生成" : `${selectedNames.length + 1} 位角色`}</small></span>
-      <Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={15} />
-    </button>
-    {open ? <div id="openmaic-role-picker-panel" className="openmaic-role-picker__panel" role="dialog" aria-modal="false" aria-label="课堂角色配置">
-      <div className="openmaic-role-picker__head"><div><strong>课堂角色配置</strong><span>选择参与这次学习内容的角色</span></div><button type="button" className="openmaic-role-picker__close" aria-label="关闭课堂角色配置" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}><Icon name="PhX" size={14} /></button></div>
-      <div className="openmaic-role-picker__modes" role="tablist" aria-label="角色模式">
-        <button type="button" role="tab" aria-selected={mode === "preset"} className={mode === "preset" ? "is-active" : ""} onClick={() => onModeChange("preset")}>预设模式</button>
-        <button type="button" role="tab" aria-selected={mode === "auto"} className={mode === "auto" ? "is-active" : ""} onClick={() => onModeChange("auto")}><Icon name="PhSparkle" size={13} />自动生成</button>
-      </div>
-      {mode === "preset"
-        ? <div className="openmaic-role-picker__list">{OPENMAIC_AGENT_ROLES.map((role) => {
-          const checked = selectedRoleIds.includes(role.id) || role.required;
-          return <button type="button" key={role.id} className={`openmaic-role-row${checked ? " is-selected" : ""}`} onClick={() => onToggle(role.id)} aria-pressed={checked} disabled={role.required}>
-            <span className={`openmaic-role-row__check${checked ? " is-checked" : ""}`}>{checked ? "✓" : ""}</span>
-            <span className="openmaic-role-row__avatar" style={{ background: role.color }}>{role.short}</span>
-            <span className="openmaic-role-row__name">{role.name}<small>{role.role}</small></span>
-            {role.required ? <small className="openmaic-role-row__required">固定{role.voice ? ` · ${role.voice}音色` : ""}</small> : null}
-          </button>;
-        })}</div>
-        : <div className="openmaic-role-picker__auto"><span className="openmaic-role-picker__auto-icon"><Icon name="PhShuffle" size={18} /></span><p>由 OpenMAIC 根据课程主题自动安排课堂角色。</p></div>}
-    </div> : null}
-  </div>;
 }
 
 /**
@@ -233,124 +166,27 @@ function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
   </div>;
 }
 
-/**
- * 页面视觉焦点：居中的课程学习输入工作区。
- *
- * 这里是唯一的提交入口，因此三件事必须同时成立：可提交性由 `quickAskRejection`
- * 与按钮 disabled 同源决定（不会"亮着但点了没反应"）；失败只显示在输入区下方
- * （不替换课程内容）；失败后问题文本与课程选择原样保留。
- */
-function AskWorkspace({
-  courses,
-  selectedCourseId,
-  onSelectCourse,
-  query,
-  onQuery,
-  webSearch,
-  onWebSearch,
-  attachment,
-  onAttachment,
-  busy,
-  error,
-  status,
-  canCreateContent,
-  onCreateContent,
-  onSubmit,
-  agentMode,
-  selectedRoleIds,
-  onModeChange,
-  onToggleRole,
-}) {
-  const attachmentInput = React.useRef(null);
-  const rejection = quickAskRejection({ query, courseId: selectedCourseId, busy });
+/** 页面视觉焦点：选择真实课程后直达课堂，不经过预览或角色配置。 */
+function ClassroomEntry({ courses, selectedCourseId, onSelectCourse }) {
+  const href = selectedCourseId ? enterClassroomHref(selectedCourseId) : "";
   return <Panel className="openmaic-command-panel">
     <div className="openmaic-brand-lockup" aria-label="OpenMAIC 生成式多智能体互动课堂">
       <span className="openmaic-brand-lockup__mark" aria-hidden="true"><Icon name="PhCube" size={26} weight="duotone" /></span>
       <span><strong>OpenMAIC</strong><small>Generative Learning in Multi-Agent Interactive Classroom</small></span>
     </div>
     <div className="openmaic-command-panel__head">
-      <h2>你好，同学</h2>
-      <p>输入你想学习的内容，OpenMAIC 会和你一起生成一堂可讲解、可继续编辑的互动课堂。</p>
+      <h2>进入课堂</h2>
+      <p>选择一门已选课程，直接开始学习并在课堂中继续编辑内容。</p>
     </div>
-
-    <form className="openmaic-ask" onSubmit={(event) => { event.preventDefault(); if (!rejection) onSubmit(); }}>
-      <div className="openmaic-ask__main">
-        <label className="openmaic-ask__field">
-          <span className="openmaic-ask__label">问题或学习需求</span>
-          <textarea
-            className="openmaic-ask__input"
-            value={query}
-            rows={3}
-            placeholder="例如：用 10 分钟讲清进程和线程的区别…"
-            onChange={(event) => onQuery(event.target.value)}
-          />
-        </label>
-
-        <div className="openmaic-ask__tools">
-          <input
-            ref={attachmentInput}
-            className="reference-file-input"
-            type="file"
-            accept={ATTACHMENT_ACCEPT}
-            aria-label="选择学习资料附件"
-            onChange={(event) => onAttachment(event.target.files?.[0] || null)}
-          />
-          {attachment
-            ? <span className="openmaic-ask__chip">
-              <Icon name="PhFileText" size={15} />{attachment.name}
-              <button
-                type="button"
-                aria-label="移除附件"
-                onClick={() => { onAttachment(null); if (attachmentInput.current) attachmentInput.current.value = ""; }}
-              ><Icon name="PhX" size={13} /></button>
-            </span>
-            : <button type="button" className="openmaic-ask__tool" aria-label="添加学习资料附件" onClick={() => attachmentInput.current?.click()}>
-              <Icon name="PhPaperclip" size={18} />附件
-            </button>}
-          <button
-            type="button"
-            className={`openmaic-ask__tool${webSearch ? " is-active" : ""}`}
-            aria-pressed={webSearch}
-            onClick={() => onWebSearch(!webSearch)}
-          ><Icon name="PhMagnifyingGlass" size={18} />联网搜索</button>
-
-          <div className="openmaic-ask__actions">
-            {canCreateContent
-              ? <Button type="button" variant="secondary" icon="PhSquaresFour" disabled={!selectedCourseId} onClick={() => onCreateContent(selectedCourseId)}>创建学习内容</Button>
-              : null}
-            <Button type="submit" icon="PhSparkle" disabled={Boolean(rejection)}>{busy ? "正在准备…" : "快速询问"}</Button>
-          </div>
-        </div>
-      </div>
-
-      <aside className="openmaic-ask__side">
-        <AgentRolePicker
-          mode={agentMode}
-          onModeChange={onModeChange}
-          selectedRoleIds={selectedRoleIds}
-          onToggle={onToggleRole}
-        />
-        <CourseContextPicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={onSelectCourse} />
-      </aside>
-    </form>
-
-    {/* 局部错误：只说明这一次操作出了什么问题，并给出可执行的下一步。 */}
-    {error
-      ? <div className="openmaic-ask__error" role="alert">
-        <Icon name="PhWarningCircle" size={18} />
-        <div>
-          <strong>{error.message}</strong>
-          <div className="openmaic-ask__error-actions">{error.retryable ? <button type="button" onClick={onSubmit}>重试</button> : null}</div>
-        </div>
-      </div>
-      : null}
-
-    {/* 能力状态：受管服务没就绪时明确说清"哪些入口关了、哪些还能用"。 */}
-    <p className="openmaic-ask__hint" role="status">
-      {status.state === "ready"
-        ? "受管服务已就绪；提问会带上所选课程的上下文。"
-        : `${status.detail}课程列表、课程详情与已有内容不受影响。`}
-    </p>
+    <div className="openmaic-classroom-entry">
+      <CourseContextPicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={onSelectCourse} />
+      {href
+        ? <Link className="button button-primary openmaic-classroom-entry__action" to={href}>
+          <Icon name="PhSparkle" size={17} />进入课堂
+        </Link>
+        : <Button type="button" icon="PhSparkle" disabled>进入课堂</Button>}
+    </div>
+    <p className="openmaic-classroom-entry__hint" role="status">进入后会创建或恢复该课程的课堂；服务不可用时会在课堂页提供可操作的错误说明。</p>
   </Panel>;
 }
 
@@ -441,46 +277,19 @@ export default function OpenMAICHome({
   fusion = null,
   providerStatus = null,
   recentError = "",
-  quickAskError = null,
-  quickAskBusy = false,
-  onQuickAsk,
-  onCourseChange,
-  onCreateContent,
 }) {
-  const [query, setQuery] = React.useState("");
-  const [webSearch, setWebSearch] = React.useState(false);
-  const [attachment, setAttachment] = React.useState(null);
   const [selectedCourseId, setSelectedCourseId] = React.useState(() => defaultOpenMAICCourseId(courses));
-  const initialAgentSettings = React.useMemo(() => loadOpenMAICAgentSettings(), []);
-  const [agentMode, setAgentMode] = React.useState(initialAgentSettings.mode);
-  const [selectedRoleIds, setSelectedRoleIds] = React.useState(initialAgentSettings.selectedRoleIds || DEFAULT_SELECTED_ROLE_IDS);
   const [secondaryTab, setSecondaryTab] = React.useState("");
-  const filteredRecent = filterOpenMAICHomeItems(recentItems, query);
   const status = describeFusionState(fusion);
 
   React.useEffect(() => {
     if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultOpenMAICCourseId(courses));
   }, [courses, selectedCourseId]);
 
-  React.useEffect(() => {
-    saveOpenMAICAgentSettings({ mode: agentMode, selectedRoleIds });
-  }, [agentMode, selectedRoleIds]);
-
-  /** 课程切换必须通知外层：在途的快速询问要据此作废。 */
   function selectCourse(courseId) {
     setSelectedCourseId(courseId);
-    onCourseChange?.(courseId);
   }
 
-  const submit = () => onQuickAsk?.(query.trim(), selectedCourseId, {
-    webSearch,
-    attachment,
-    mode: agentMode,
-    selectedRoleIds: normalizeSelectedRoleIds(selectedRoleIds),
-  });
-  const toggleRole = (roleId) => setSelectedRoleIds((current) => current.includes(roleId)
-    ? (roleId === "default-1" ? current : current.filter((id) => id !== roleId))
-    : [...current, roleId]);
   const selectedCourseName = courses.find((course) => String(course.id) === String(selectedCourseId))?.name || "";
 
   // 次级导航只列**真实存在**的入口：能力没上报就不出现，而不是渲染一个必然
@@ -498,34 +307,18 @@ export default function OpenMAICHome({
 
   return <section className="openmaic-home" aria-label="OpenMAIC 学习工作台">
     <div className="openmaic-home__main">
-      <AskWorkspace
+      <ClassroomEntry
         courses={courses}
         selectedCourseId={selectedCourseId}
         onSelectCourse={selectCourse}
-        query={query}
-        onQuery={setQuery}
-        webSearch={webSearch}
-        onWebSearch={setWebSearch}
-        attachment={attachment}
-        onAttachment={setAttachment}
-        busy={quickAskBusy}
-        error={quickAskError}
-        status={status}
-        canCreateContent={status.canCreateWorkspace && status.capabilities.includes("generation")}
-        onCreateContent={(courseId) => onCreateContent?.(courseId)}
-        onSubmit={submit}
-        agentMode={agentMode}
-        selectedRoleIds={selectedRoleIds}
-        onModeChange={setAgentMode}
-        onToggleRole={toggleRole}
       />
 
       <Panel className="openmaic-recent-panel">
-        <SectionHeading title="最近内容" detail={query ? `${filteredRecent.length} 个匹配结果` : "来自已生成的真实课堂"} />
+        <SectionHeading title="最近内容" detail="来自已生成的真实课堂" />
         {recentError ? <div className="openmaic-home__empty openmaic-home__empty--wide" role="status"><Icon name="PhWarningCircle" size={28} /><div><strong>最近内容暂时取不到</strong><p>{recentError}</p></div></div>
-          : filteredRecent.length ? <div className="openmaic-recent-grid">{filteredRecent.slice(0, 8).map((item) => <Link className="openmaic-recent-card" key={`${item.kind}:${item.id}`} to={item.href}>
+          : recentItems.length ? <div className="openmaic-recent-grid">{recentItems.slice(0, 8).map((item) => <Link className="openmaic-recent-card" key={`${item.kind}:${item.id}`} to={item.href}>
             <span className="openmaic-recent-card__type">{item.title}</span><strong>{item.courseName}</strong><small>{item.scenesCount ? `${item.scenesCount} 个场景` : "互动课堂"}</small><span className="openmaic-recent-card__date">{dateText(item.updatedAt)}</span>
-          </Link>)}</div> : <div className="openmaic-home__empty openmaic-home__empty--wide"><Icon name="PhClockCounterClockwise" size={28} /><div><strong>{query ? "没有匹配的最近内容" : "还没有最近课堂"}</strong><p>{query ? "尝试换一个关键词，或从课程列表进入课程。" : "生成的课堂会在这里按最近更新时间出现。"}</p></div></div>}
+          </Link>)}</div> : <div className="openmaic-home__empty openmaic-home__empty--wide"><Icon name="PhClockCounterClockwise" size={28} /><div><strong>还没有最近课堂</strong><p>生成的课堂会在这里按最近更新时间出现。</p></div></div>}
       </Panel>
 
       <SecondaryPanels

@@ -180,25 +180,11 @@ test("submission is refused with a reason instead of a dead button", () => {
 
 // ===== 源码契约：错误隔离与品牌 =====
 
-test("the courses page keeps a local quick-ask error beside the page error", () => {
-  assert.match(pageSource, /const \[quickAskError, setQuickAskError\] = useState\(null\)/);
-  assert.match(pageSource, /const \[quickAskBusy, setQuickAskBusy\] = useState\(false\)/);
-  assert.match(pageSource, /quickAskError=\{quickAskError\}/);
-  assert.match(pageSource, /quickAskBusy=\{quickAskBusy\}/);
-});
-
-test("switching courses invalidates an in-flight quick ask", () => {
-  const start = pageSource.indexOf("function handleCourseChange(");
-  assert.notEqual(start, -1);
-  const body = pageSource.slice(start, pageSource.indexOf("\n  }", start));
-  assert.match(body, /quickAskSeq\.current \+= 1/);
-  assert.match(body, /setQuickAskError\(null\)/);
-});
-
-test("quick ask navigation is synchronous, keeps the input, and cannot wedge the button", () => {
-  assert.match(pageSource, /navigate\(generationPreviewHref\(courseId, query/);
-  assert.match(pageSource, /openmaicAttachment: extras\.attachment/);
-  assert.match(pageSource, /setQuickAskBusy\(false\)/);
+test("the course surface uses direct classroom entry instead of the legacy quick-ask UI", () => {
+  assert.doesNotMatch(pageSource, /onQuickAsk=/);
+  assert.doesNotMatch(pageSource, /generationPreviewHref/);
+  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.match(homeSource, /进入课堂/);
 });
 
 test("the home surface carries the OpenMAIC branding and classroom tagline", () => {
@@ -208,17 +194,10 @@ test("the home surface carries the OpenMAIC branding and classroom tagline", () 
   assert.doesNotMatch(pageSource, /OpenMAIC \/ Courses/);
 });
 
-test("the focal input workspace is labelled, keyboard reachable and honest about tools", () => {
-  // 输入有可读标签，提交是 form 的 submit（Enter 可用）。
-  assert.match(homeSource, /<span className="openmaic-ask__label">问题或学习需求<\/span>/);
-  assert.match(homeSource, /<form className="openmaic-ask" onSubmit=/);
+test("the classroom entry is keyboard reachable and names its course selector", () => {
   assert.match(homeSource, /aria-label="选择课程上下文"/);
-  // 工具入口是真实开关，不是装饰。
-  assert.match(homeSource, /aria-pressed=\{webSearch\}/);
-  assert.match(homeSource, /onClick=\{\(\) => attachmentInput\.current\?\.click\(\)\}/);
-  // 局部错误与能力提示各自有语义。
-  assert.match(homeSource, /className="openmaic-ask__error" role="alert"/);
-  assert.match(homeSource, /className="openmaic-ask__hint" role="status"/);
+  assert.match(homeSource, /className="button button-primary openmaic-classroom-entry__action"/);
+  assert.match(homeSource, /role="status"/);
 });
 
 test("secondary tools live behind a keyboard accessible tablist", () => {

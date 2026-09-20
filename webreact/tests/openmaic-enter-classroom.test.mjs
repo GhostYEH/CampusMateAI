@@ -62,11 +62,10 @@ test("the classroom entry is a real route and the course rail links to it", () =
   assert.match(homeSource, /进入课堂/);
 });
 
-test("quick ask keeps its own generation-preview entry with the user's input", () => {
-  // 快速提问不能被课堂直达吞掉：它必须继续携带 query 与 extras 进入预览。
-  assert.match(paritySource, /navigate\(generationPreviewHref\(courseId, query/);
-  assert.match(paritySource, /selectedRoleIds: extras\.selectedRoleIds/);
-  assert.match(paritySource, /webSearch: extras\.webSearch/);
+test("the courses page exposes direct classroom entry as its only primary flow", () => {
+  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.doesNotMatch(paritySource, /generationPreviewHref/);
+  assert.doesNotMatch(paritySource, /onQuickAsk=/);
 });
 
 test("the legacy preview deep link stays reachable", () => {
