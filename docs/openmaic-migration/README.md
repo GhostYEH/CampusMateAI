@@ -53,8 +53,10 @@
 以下命令都从**仓库根目录**执行：
 
 ```powershell
-# 一键起三服务（先只读体检，再按依赖顺序拉起；Ctrl+C 三个一起停）
+# 1) 先体检（只读，不改任何配置）
 node scripts/openmaic-local.mjs doctor
+
+# 2) 一键起三服务（按依赖顺序拉起 openmaic-service → FastAPI → Vite；Ctrl+C 三个一起停）
 node scripts/openmaic-local.mjs start
 
 # 浏览器打开，用 student_demo / Demo123456 登录
@@ -62,6 +64,36 @@ node scripts/openmaic-local.mjs start
 ```
 
 端口固定为：Vite `5174` / FastAPI `8000` / openmaic-service `4010`。
+
+### ⚠️ 如果 `start` 起不来：先看端口是不是被占了
+
+`start` 是**全有或全无**的：任一端口被占，对应子进程会退出，启动器随即把另外两个也一起关掉
+（表现为"跑了一下就退出"，而日志里只有 Vite 的 HMR 输出，看不到明显报错）。
+
+先跑 `doctor` 看「端口占用」一节。**最容易被占的是 `:4010`**——
+如果这个仓库同时有别的会话/终端在跑受管服务，它就会先把 4010 占住。
+
+这种情况下**不要反复重试 `start`**，只把缺的那两个单独起起来即可：
+
+```powershell
+# 只起 Vite（:5174）
+cd webreact
+npm run dev
+
+# 只起 FastAPI（:8000），另开一个终端
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+前提是 `:4010` 上已经有一个健康实例。确认方式：
+
+```powershell
+Invoke-WebRequest -Uri 'http://127.0.0.1:4010/internal/health/live' -UseBasicParsing
+# 期望 200 {"status":"ok"}
+```
+
+（注意：`http://127.0.0.1:4010/` 一定返回 404 —— 受管服务只暴露 `/internal/*`，
+404 不代表它没在跑。）
 
 ## 当前基线
 
