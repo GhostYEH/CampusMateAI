@@ -483,6 +483,15 @@ export async function generateOpenMAICStage(courseId, workspaceId, { mode, promp
   ));
 }
 
+/** 首页一次性生成：网关原子解析/创建课程工作台并排队首个 stage。 */
+export async function generateOpenMAICHome(courseId, { mode = "slide", prompt, idempotencyKey }) {
+  return dataOf(await client.post(
+    `/courses/${courseId}/home-generate`,
+    { mode, prompt },
+    { headers: { "Idempotency-Key": idempotencyKey } },
+  ));
+}
+
 export async function getOpenMAICJob(courseId, jobId) {
   return dataOf(await client.get(`/courses/${courseId}/jobs/${jobId}`));
 }

@@ -123,7 +123,7 @@ test("courses route calls the aggregate endpoints instead of per-course history"
 });
 
 test("the primary course action enters the selected classroom directly", () => {
-  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
   assert.match(homeSource, /进入课堂/);
   assert.doesNotMatch(homeSource, /快速询问/);
   assert.doesNotMatch(homeSource, /AgentRolePicker/);
@@ -138,13 +138,25 @@ test("course context defaults to the first real course after asynchronous loadin
 });
 
 test("home surface exposes no placeholder entries and no iframe", () => {
-  assert.match(homeSource, /aria-label="OpenMAIC 学习工作台"/);
-  assert.match(homeSource, /describeFusionState/);
+  assert.match(homeSource, /openmaic-home--reference/);
   assert.match(homeSource, /role="listbox"/);
-  assert.match(homeSource, /选择课程上下文/);
+  assert.match(homeSource, /aria-label="选择课程"/);
   assert.doesNotMatch(homeSource, /<select/);
   assert.doesNotMatch(homeSource, /正在接入/);
   assert.doesNotMatch(homeSource, /iframe/);
+});
+
+test("home uses the reference root composition and submits a real course-bound prompt", () => {
+  assert.match(homeSource, /openmaic-home--reference/);
+  assert.match(homeSource, /<textarea/);
+  assert.match(homeSource, /生成学习内容/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
+  assert.doesNotMatch(homeSource, /api\.createOpenMAICWorkspace/);
+  assert.doesNotMatch(homeSource, /api\.generateOpenMAICStage/);
+  assert.match(homeSource, /stageGenerationIdempotencyKey/);
+  assert.match(homeSource, /最近课堂/);
+  assert.doesNotMatch(homeSource, /更多学习工具/);
+  assert.match(homeSource, /<details className="openmaic-reference-library"/);
 });
 
 test("course detail honours the native deep link from the recent list", () => {

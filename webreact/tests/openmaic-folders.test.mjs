@@ -154,10 +154,9 @@ test("an unknown failure is retryable and never leaks the raw error text", () =>
 
 // ===== 组合契约（源码级） =====
 
-test("the discovery panel is only mounted for capabilities the server really reported", () => {
-  assert.match(homeSource, /status\.canBrowseFolders \|\| status\.canSearch/);
-  assert.match(homeSource, /canBrowseFolders=\{status\.canBrowseFolders\}/);
-  assert.match(homeSource, /canSearch=\{status\.canSearch\}/);
+test("the reference composer keeps discovery tools explicitly unavailable", () => {
+  assert.match(homeSource, /openmaic-reference-tools/);
+  assert.match(homeSource, /title="联网搜索能力尚未接通"/);
   assert.match(panelSource, /if \(!canBrowseFolders && !canSearch\) return null;/);
 });
 
@@ -213,5 +212,6 @@ test("the filing controls only exist when the folder capability was reported", (
 
 test("the home only offers filing when the server reported the folder capability", () => {
   const homeSource = read("src/components/openmaic/OpenMAICHome.jsx");
-  assert.match(homeSource, /canFile=\{status\.canBrowseFolders\}/);
+  assert.doesNotMatch(homeSource, /canFile=\{/);
+  assert.match(homeSource, /openmaic-home--reference/);
 });

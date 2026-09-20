@@ -219,8 +219,8 @@ test("the material entry point opens only when the service reports the capabilit
 });
 
 test("the home only mounts the materials panel behind the capability", () => {
-  assert.match(homeSource, /status\.canManageMaterials && selectedCourseId/);
-  assert.match(homeSource, /<MaterialsPanel courseId=\{selectedCourseId\}/);
+  assert.match(homeSource, /openmaic-home--reference/);
+  assert.doesNotMatch(homeSource, /<MaterialsPanel/);
 });
 
 test("the panel refuses to render a body for a material it could not parse", () => {

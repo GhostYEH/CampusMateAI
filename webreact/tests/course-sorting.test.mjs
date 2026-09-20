@@ -43,9 +43,9 @@ test("the courses home gates import and folder entries on real server capabiliti
   const homeSource = fs.readFileSync(new URL("../src/components/openmaic/OpenMAICHome.jsx", import.meta.url), "utf8");
   // 入口是否可点只由服务端上报的 capability 决定，不出现"正在接入"这类占位文案，
   // 也不出现点了没反应的按钮。
-  assert.match(homeSource, /describeFusionState/);
-  assert.match(homeSource, /canImport/);
-  assert.match(homeSource, /canBrowseFolders/);
+  assert.match(homeSource, /openmaic-home--reference/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
+  assert.match(homeSource, /providerStatus\?\.providers\?\.llm/);
   assert.doesNotMatch(homeSource, /正在接入/);
   assert.doesNotMatch(homeSource, /TODO/);
 });

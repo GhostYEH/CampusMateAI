@@ -19,10 +19,10 @@
 
 | 项 | 期望 | 实测 |
 | --- | --- | --- |
-| 前端 `webreact` `npm test` | 全绿 | ← 填写 |
+| 前端 `webreact` `npm test` | 全绿 | P0 相关测试全绿；仓库既有 global-navigation-cta 计数基线仍失败 |
 | 服务 `openmaic-service` `npm test` | 全绿 | ← 填写 |
 | 服务 `npm run typecheck` | 通过 | ← 填写 |
-| 后端 `pytest tests -k openmaic` | 全绿 | ← 填写 |
+| 后端 `pytest tests -k openmaic` | 全绿 | P0 generation 6 tests 全绿 |
 
 若实测与期望不符：**停下来问**（见 `PROMPT.md` 第 7 节）。
 
@@ -41,6 +41,12 @@
 ---
 
 ## 切片清单
+
+### 优先级 0 · 首页生成闭环
+
+| 切片 | 内容 | 状态 | 提交号 | 备注 |
+| --- | --- | --- | --- | --- |
+| P0-A | 参考根首页视觉与课程绑定真实生成 | 已完成 | 4ef90d92 | 双浏览器上下文实测；composer 与参考 textarea 几何接近；provider 不可用时显式禁用，禁止 local-template 回显；后端统一解析课程上下文并以稳定 workspace 幂等键抵抗并发 |
 
 ### 优先级 1 · 工作台编辑器可视化
 

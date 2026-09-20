@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
 from ...services.container import ServiceContainer, get_container
-from ...services.openmaic.course_context import assert_course_access
+from ...services.openmaic.course_context import assert_course_access, build_course_context
 from ...services.openmaic.fusion_client import OpenMAICFusionClient
 from ...services.openmaic.fusion_errors import FusionInvalidRequest, FusionUnavailable
 from ..deps import current_user
@@ -35,6 +35,17 @@ class GenerationIn(BaseModel):
     selected_role_ids: list[str] = Field(default_factory=list, max_length=7)
 
 
+class HomeGenerationIn(BaseModel):
+    """The single homepage write contract.
+
+    Resolving the workspace and enqueueing its first stage here keeps a browser
+    retry from racing two separate create calls.
+    """
+
+    mode: str = Field("slide", min_length=1, max_length=80)
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+
 def _container() -> ServiceContainer:
     return get_container()
 
@@ -51,9 +62,17 @@ def _require(container: ServiceContainer) -> None:
 
 def _key(value: Optional[str]) -> str:
     text = (value or "").strip()
-    if not text or len(text) > 200:
+    # The gateway appends ``:workspace`` and ``:generation`` before forwarding
+    # the key. Keep the caller budget below the managed service's 200-char cap.
+    if not text or len(text) > 180:
         raise FusionInvalidRequest("生成请求必须携带有效的 Idempotency-Key")
     return text
+
+
+def _course_prompt(topic: str, context: str, budget: int = 2000) -> str:
+    prefix = f"{topic.strip()}\n\n请结合以下已授权课程上下文生成内容：\n"
+    remaining = max(0, budget - len(prefix))
+    return prefix + context[:remaining]
 
 
 @router.post("/{course_id}/workspaces/{workspace_id}/generate", status_code=201)
@@ -74,6 +93,50 @@ async def generate_stage(
         selected_role_ids=body.selected_role_ids,
         idempotency_key=_key(idempotency_key),
     )
+
+
+@router.post("/{course_id}/home-generate", status_code=201)
+async def generate_home(
+    course_id: str,
+    body: HomeGenerationIn,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    client: OpenMAICFusionClient = Depends(_client),
+) -> Dict[str, Any]:
+    """Resolve one course homepage submission into one workspace/job pair."""
+    _require(container)
+    course = assert_course_access(container, user, course_id)
+    key = _key(idempotency_key)
+    provider = await client.provider_status(user_id=str(user.id))
+    if not provider.get("llm"):
+        raise FusionUnavailable("课程生成模型当前不可用", details={"reason": "provider_unavailable"})
+    # Course facts are rebuilt behind the gateway. The browser contributes only
+    # the learner's topic; it cannot smuggle another course's materials into the
+    # provider prompt.
+    context = build_course_context(container, user, course)
+    listed = await client.list_workspaces(user_id=str(user.id), course_id=course_id, limit=1)
+    workspace = (listed.get("items") or [None])[0]
+    if not workspace:
+        workspace = await client.create_workspace(
+            user_id=str(user.id), course_id=course_id,
+            name="OpenMAIC 学习课堂", description="由课程首页主题生成，可继续编辑、播放与导出。",
+            # Workspace identity is stable per learner/course. A different
+            # topic must create a new stage, while concurrent first submits
+            # must converge on one homepage workspace.
+            idempotency_key=f"home-workspace:{user.id}:{course_id}"[:180],
+        )
+    workspace_id = str(workspace.get("id") or "")
+    if not workspace_id:
+        raise FusionUnavailable("受管服务未返回工作台标识")
+    generated = await client.generate_stage(
+        user_id=str(user.id), course_id=course_id, workspace_id=workspace_id,
+        mode=body.mode, prompt=_course_prompt(body.prompt, context), role_mode="preset", selected_role_ids=[],
+        idempotency_key=f"{key}:generation",
+    )
+    if generated.get("source") == "local-template":
+        raise FusionUnavailable("课程生成模型当前不可用", details={"reason": "provider_unavailable"})
+    return {"workspace_id": workspace_id, "source": "provider", **generated}
 
 
 @router.get("/{course_id}/jobs/{job_id}")
@@ -149,4 +212,4 @@ async def retry_job(
     return await client.retry_job(user_id=str(user.id), course_id=course_id, job_id=job_id)
 
 
-__all__ = ["router", "GenerationIn", "ARTIFACT_MEDIA_TYPES"]
+__all__ = ["router", "GenerationIn", "HomeGenerationIn", "ARTIFACT_MEDIA_TYPES"]

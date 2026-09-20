@@ -58,7 +58,7 @@ test("the entry refuses to invent a course", () => {
 test("the classroom entry is a real route and the course rail links to it", () => {
   assert.match(appSource, /path="\/courses\/:courseId\/classroom"/);
   // 直达入口挂在 CourseRail 的「进入课堂」上，与快速提问是两条独立入口。
-  assert.match(homeSource, /enterClassroomHref/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
   assert.match(homeSource, /进入课堂/);
 });
 
@@ -72,7 +72,7 @@ test("the classroom entry opens the workbench in learning mode, not the editor",
 });
 
 test("the courses page exposes direct classroom entry as its only primary flow", () => {
-  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.match(homeSource, /stageGenerationIdempotencyKey\(selectedCourseId, topic\)/);
   assert.doesNotMatch(paritySource, /generationPreviewHref/);
   assert.doesNotMatch(paritySource, /onQuickAsk=/);
 });

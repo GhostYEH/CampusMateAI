@@ -183,30 +183,27 @@ test("submission is refused with a reason instead of a dead button", () => {
 test("the course surface uses direct classroom entry instead of the legacy quick-ask UI", () => {
   assert.doesNotMatch(pageSource, /onQuickAsk=/);
   assert.doesNotMatch(pageSource, /generationPreviewHref/);
-  assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
   assert.match(homeSource, /进入课堂/);
 });
 
 test("the home surface carries the OpenMAIC branding and classroom tagline", () => {
-  assert.match(homeSource, /openmaic-brand-lockup/);
+  assert.match(homeSource, /openmaic-reference__brand/);
   assert.match(homeSource, /<strong>OpenMAIC<\/strong>/);
   assert.match(homeSource, /Generative Learning in Multi-Agent Interactive Classroom/);
   assert.doesNotMatch(pageSource, /OpenMAIC \/ Courses/);
 });
 
 test("the classroom entry is keyboard reachable and names its course selector", () => {
-  assert.match(homeSource, /aria-label="选择课程上下文"/);
-  assert.match(homeSource, /className="button button-primary openmaic-classroom-entry__action"/);
+  assert.match(homeSource, /aria-label="选择课程"/);
+  assert.match(homeSource, /openmaic-reference-submit/);
   assert.match(homeSource, /role="status"/);
 });
 
-test("secondary tools live behind a keyboard accessible tablist", () => {
-  assert.match(homeSource, /role="tablist"/);
-  assert.match(homeSource, /role="tab"/);
-  assert.match(homeSource, /role="tabpanel"/);
-  assert.match(homeSource, /aria-selected=\{tab\.key === activeTab\}/);
-  assert.match(homeSource, /event\.key === "ArrowRight"/);
-  assert.match(homeSource, /tabIndex=\{tab\.key === activeTab \? 0 : -1\}/);
+test("secondary tools expose their unavailable capabilities clearly", () => {
+  assert.match(homeSource, /openmaic-reference-tools/);
+  assert.match(homeSource, /title="附件能力尚未接通"/);
+  assert.match(homeSource, /title="联网搜索能力尚未接通"/);
 });
 
 test("the home never renders a placeholder entry or an iframe", () => {

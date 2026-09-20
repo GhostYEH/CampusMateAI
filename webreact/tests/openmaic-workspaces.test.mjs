@@ -191,10 +191,9 @@ test("listing workspaces passes pagination through as query parameters", async (
 // ===== 接线 =====
 
 test("the workbench panel is gated on the real capability and the chosen course", () => {
-  assert.match(homeSource, /status\.canCreateWorkspace/);
   assert.match(homeSource, /selectedCourseId/);
-  assert.match(homeSource, /<WorkspacePanel/);
-  assert.match(homeSource, /import WorkspacePanel/);
+  assert.match(homeSource, /api\.generateOpenMAICHome/);
+  assert.doesNotMatch(homeSource, /<WorkspacePanel/);
 });
 
 test("the workbench panel offers no dead controls", () => {

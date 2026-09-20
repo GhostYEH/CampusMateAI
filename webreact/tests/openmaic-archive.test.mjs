@@ -203,11 +203,9 @@ test("export and import each open only on their own capability", () => {
   assert.equal(degraded.canImportArchive, false);
 });
 
-test("the home passes both archive capabilities down to the workspace panel", () => {
-  assert.match(homeSource, /canExportArchive=\{status\.canExportArchive\}/);
-  assert.match(homeSource, /canImportArchive=\{status\.canImportArchive\}/);
-  assert.match(homeSource, /canExportMarkdown=\{status\.canExportMarkdown\}/);
-  assert.match(homeSource, /canImportPptx=\{status\.canImportPptx\}/);
+test("the home keeps archive tools out of the reference composer", () => {
+  assert.match(homeSource, /openmaic-home--reference/);
+  assert.doesNotMatch(homeSource, /<WorkspacePanel/);
 });
 
 test("the panel gates both entries on the capability and never renders them unconditionally", () => {

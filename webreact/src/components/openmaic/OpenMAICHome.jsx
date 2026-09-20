@@ -1,337 +1,69 @@
 import React from "react";
-import { Link } from "react-router-dom";
-import { Button, Panel, SectionHeading } from "../Primitives.jsx";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../Icon.jsx";
+import * as api from "../../data/api.js";
 import { formatDateTime } from "../../utils/date.js";
-import WorkspacePanel from "./WorkspacePanel.jsx";
-import DiscoveryPanel from "./DiscoveryPanel.jsx";
-import MaterialsPanel from "./MaterialsPanel.jsx";
-import {
-  buildCourseRailItems,
-  defaultOpenMAICCourseId,
-  describeFusionState,
-} from "../../features/openmaic/homeModel.js";
-import { enterClassroomHref } from "../../features/openmaic/enterClassroomModel.js";
+import { describeEntryFailure, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../../features/openmaic/enterClassroomModel.js";
+import { buildCourseRailItems, defaultOpenMAICCourseId } from "../../features/openmaic/homeModel.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
-function CourseRail({ courses, assignments }) {
-  const items = buildCourseRailItems(courses, assignments);
-  return <aside className="openmaic-home__rail" aria-label="我的课程">
-    <SectionHeading title="我的课程" detail={`${items.length} 门课程`} />
-    {items.length ? <div className="openmaic-course-rail">{items.map((course) => <div className="openmaic-course-rail__row" key={course.id}>
-      <Link className="openmaic-course-rail__item" to={`/courses/${course.id}`}>
-        <span className="openmaic-course-rail__icon" aria-hidden="true"><Icon name="PhBookOpenText" size={18} /></span>
-        <span className="openmaic-course-rail__copy"><strong>{course.name}</strong><small>{[course.teacher, course.term, course.code].filter(Boolean).join(" · ")}</small></span>
-        <span className="openmaic-course-rail__meta">{course.pendingCount ? <b>{course.pendingCount} 项待办</b> : <span>暂无待办</span>}{course.nextDeadline && <small>最近 {dateText(course.nextDeadline)}</small>}</span>
-        <Icon name="PhArrowUpRight" size={15} aria-hidden="true" />
-      </Link>
-      {/* 「进入课堂」直达：不经过角色选择、模式选择，也不经过生成预览。 */}
-      <Link
-        className="openmaic-course-rail__enter"
-        to={enterClassroomHref(course.id)}
-        aria-label={`进入《${course.name}》的课堂`}
-      >
-        <Icon name="PhSparkle" size={15} aria-hidden="true" />进入课堂
-      </Link>
-    </div>)}</div> : <div className="openmaic-home__empty"><Icon name="PhBookOpen" size={24} /><p>暂无已选课程</p><small>课程同步后会显示在这里。</small></div>}
-  </aside>;
-}
-
-/**
- * 能力入口。每一项都由**服务端真实上报的 capability** 决定是否可点，
- * 未上报的能力显示为不可用并说明原因，绝不出现"点了没反应"的空入口。
- */
-function CapabilityList({ fusion }) {
-  const entries = [
-    { key: "folder", icon: "PhFolderSimple", label: "文件夹", enabled: fusion.canBrowseFolders },
-    { key: "import", icon: "PhUploadSimple", label: "导入", enabled: fusion.canImport },
-    { key: "search", icon: "PhMagnifyingGlass", label: "全局搜索", enabled: fusion.canSearch },
-    { key: "workspace", icon: "PhSquaresFour", label: "学习工作台", enabled: fusion.canCreateWorkspace },
-  ];
-  return <div className="openmaic-capability-list" aria-label="内容能力状态">
-    {entries.map((entry) => <span key={entry.key} className={entry.enabled ? "is-ready" : "is-closed"}>
-      <Icon name={entry.icon} size={16} />{entry.label}
-      <small>{entry.enabled ? "可用" : fusion.label}</small>
-    </span>)}
-  </div>;
-}
-
-function ProviderList({ providerStatus }) {
-  const labels = { llm: "模型", web_search: "联网搜索", image: "图片", video: "视频", tts: "TTS", render: "渲染", external_3d: "外部 3D" };
-  if (!providerStatus) return <p className="muted-copy">Provider 状态暂时取不到，相关入口保持关闭。</p>;
-  if (providerStatus.state === "disabled") return <p className="muted-copy">Provider 未启用；课程和已有内容仍可用。</p>;
-  return <div className="openmaic-capability-list" aria-label="Provider 能力状态">{Object.entries(labels).map(([key, label]) => <span key={key} className={providerStatus.providers?.[key] ? "is-ready" : "is-closed"}><Icon name={providerStatus.providers?.[key] ? "PhCheckCircle" : "PhMinusCircle"} size={16} />{label}<small>{providerStatus.providers?.[key] ? "已配置" : "未配置"}</small></span>)}</div>;
-}
-
-/**
- * 课程列表可能有数十门课。原生 select 的弹层由浏览器接管，无法限制高度或保证
- * 在窄屏里不覆盖输入区；这里使用受控 listbox，并在选择后立即收起。
- */
-function CourseContextPicker({ courses, selectedCourseId, onSelectCourse }) {
+function CoursePicker({ courses, selectedCourseId, onSelectCourse }) {
   const [open, setOpen] = React.useState(false);
-  const [menuPlacement, setMenuPlacement] = React.useState({ upward: false, maxHeight: 360 });
-  const rootRef = React.useRef(null);
-  const triggerRef = React.useRef(null);
-  const listboxId = React.useId();
-  const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
-  const selectedName = selectedCourse?.name || selectedCourse?.title || "选择课程";
-
-  const positionMenu = React.useCallback(() => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const gap = 8;
-    const below = Math.max(0, Math.floor(window.innerHeight - rect.bottom - gap));
-    const above = Math.max(0, Math.floor(rect.top - gap));
-    // 优先向下展开；只有下方不足以显示一行且上方更宽裕时才翻转，避免菜单
-    // 盖住标题。无论方向都把高度限制为真实可用视口空间。
-    const upward = below < 96 && above > below;
-    setMenuPlacement({ upward, maxHeight: Math.min(360, upward ? above : below) });
-  }, []);
-
-  React.useEffect(() => {
-    if (!open) return undefined;
-    function closeOnOutsidePointer(event) {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
-    }
-    function closeOnEscape(event) {
-      if (event.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    }
-    function repositionOnResize() {
-      positionMenu();
-    }
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    window.addEventListener("resize", repositionOnResize);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-      window.removeEventListener("resize", repositionOnResize);
-    };
-  }, [open, positionMenu]);
-
-  function toggleMenu() {
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    positionMenu();
-    setOpen(true);
-  }
-
-  function choose(courseId) {
-    onSelectCourse(String(courseId));
-    setOpen(false);
-    triggerRef.current?.focus();
-  }
-
-  return <div ref={rootRef} className="openmaic-course-picker">
-    <button
-      ref={triggerRef}
-      type="button"
-      className="openmaic-course-picker__trigger"
-      disabled={!courses.length}
-      aria-label="选择课程上下文"
-      aria-haspopup="listbox"
-      aria-controls={listboxId}
-      aria-expanded={open}
-      onClick={toggleMenu}
-    >
-      <Icon name="PhBookOpenText" size={16} aria-hidden="true" />
-      <span>{selectedName}</span>
-      <Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" />
-    </button>
-    {open ? <div id={listboxId} className={`openmaic-course-picker__menu${menuPlacement.upward ? " is-upward" : ""}`} style={{ maxHeight: menuPlacement.maxHeight }} role="listbox" aria-label="选择课程上下文">
-      {courses.map((course) => {
-        const courseId = String(course.id);
-        const name = course.name || course.title || "未命名课程";
-        const selected = courseId === String(selectedCourseId);
-        return <button
-          type="button"
-          key={courseId}
-          role="option"
-          aria-selected={selected}
-          data-course-id={courseId}
-          className={selected ? "is-selected" : ""}
-          onClick={() => choose(courseId)}
-        >
-          <span>{name}</span>
-          {selected ? <Icon name="PhCheck" size={15} aria-hidden="true" /> : null}
-        </button>;
-      })}
-    </div> : null}
+  const selected = courses.find((course) => String(course.id) === String(selectedCourseId));
+  return <div className="openmaic-reference-picker">
+    <button type="button" className="openmaic-reference-picker__trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}><Icon name="PhBookOpenText" size={16} aria-hidden="true" /><span>{selected?.name || selected?.title || "选择课程"}</span><Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" /></button>
+    {open ? <div className="openmaic-reference-picker__menu" role="listbox" aria-label="选择课程">{courses.map((course) => <button type="button" role="option" aria-selected={String(course.id) === String(selectedCourseId)} key={course.id} onClick={() => { onSelectCourse(String(course.id)); setOpen(false); }}><span>{course.name || course.title || "未命名课程"}</span>{String(course.id) === String(selectedCourseId) ? <Icon name="PhCheck" size={14} aria-hidden="true" /> : null}</button>)}</div> : null}
   </div>;
 }
 
-/** 页面视觉焦点：选择真实课程后直达课堂，不经过预览或角色配置。 */
-function ClassroomEntry({ courses, selectedCourseId, onSelectCourse }) {
-  const href = selectedCourseId ? enterClassroomHref(selectedCourseId) : "";
-  return <Panel className="openmaic-command-panel">
-    <div className="openmaic-brand-lockup" aria-label="OpenMAIC 生成式多智能体互动课堂">
-      <span className="openmaic-brand-lockup__mark" aria-hidden="true"><Icon name="PhCube" size={26} weight="duotone" /></span>
-      <span><strong>OpenMAIC</strong><small>Generative Learning in Multi-Agent Interactive Classroom</small></span>
-    </div>
-    <div className="openmaic-command-panel__head">
-      <h2>进入课堂</h2>
-      <p>选择一门已选课程，直接开始学习并在课堂中继续编辑内容。</p>
-    </div>
-    <div className="openmaic-classroom-entry">
-      <CourseContextPicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={onSelectCourse} />
-      {href
-        ? <Link className="button button-primary openmaic-classroom-entry__action" to={href}>
-          <Icon name="PhSparkle" size={17} />进入课堂
-        </Link>
-        : <Button type="button" icon="PhSparkle" disabled>进入课堂</Button>}
-    </div>
-    <p className="openmaic-classroom-entry__hint" role="status">进入后会创建或恢复该课程的课堂；服务不可用时会在课堂页提供可操作的错误说明。</p>
-  </Panel>;
+function RecentClassrooms({ items, error }) {
+  return <section className="openmaic-reference-recent" aria-labelledby="openmaic-recent-title"><div className="openmaic-reference-recent__rule" /><div className="openmaic-reference-recent__heading"><span id="openmaic-recent-title"><Icon name="PhClockCounterClockwise" size={15} />最近课堂</span><small>{items.length ? `${items.length} 个` : "暂无"}</small></div><div className="openmaic-reference-recent__rule" />{error ? <div className="openmaic-reference-empty" role="status"><Icon name="PhWarningCircle" size={18} /><span>{error}</span></div> : items.length ? <div className="openmaic-reference-recent__grid">{items.slice(0, 8).map((item) => <Link className="openmaic-reference-classroom" key={`${item.kind}:${item.id}`} to={item.href}><span className="openmaic-reference-classroom__cover"><Icon name="PhFileText" size={23} /></span><span className="openmaic-reference-classroom__copy"><strong>{item.courseName || item.title}</strong><small>{item.title} · {item.scenesCount ? `${item.scenesCount} 个场景` : "互动课堂"}</small><small>{dateText(item.updatedAt)}</small></span></Link>)}</div> : <div className="openmaic-reference-empty"><Icon name="PhClockCounterClockwise" size={21} /><span>还没有最近课堂<small>生成的课堂会在这里按最近更新时间出现。</small></span></div>}</section>;
 }
 
-/** 次级功能：能力驱动、按需挂载，不再和主输入区争夺首屏。 */
-function SecondaryPanels({
-  tabs,
-  activeTab,
-  onSelectTab,
-  selectedCourseId,
-  selectedCourseName,
-  status,
-  providerStatus,
-}) {
-  function onKeyDown(event) {
-    const index = tabs.findIndex((tab) => tab.key === activeTab);
-    if (index < 0) return;
-    let next = null;
-    if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
-    else if (event.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = tabs.length - 1;
-    if (next === null) return;
-    event.preventDefault();
-    onSelectTab(tabs[next].key);
-    document.getElementById(`openmaic-tab-${tabs[next].key}`)?.focus();
-  }
-
-  return <Panel className="openmaic-secondary">
-    <SectionHeading title="更多学习工具" detail="按需展开，未就绪的能力不会出现在这里" />
-    <div className="openmaic-tabs" role="tablist" aria-label="更多学习工具" onKeyDown={onKeyDown}>
-      {tabs.map((tab) => <button
-        key={tab.key}
-        id={`openmaic-tab-${tab.key}`}
-        type="button"
-        role="tab"
-        className={tab.key === activeTab ? "is-active" : ""}
-        aria-selected={tab.key === activeTab}
-        aria-controls={`openmaic-panel-${tab.key}`}
-        tabIndex={tab.key === activeTab ? 0 : -1}
-        onClick={() => onSelectTab(tab.key)}
-      ><Icon name={tab.icon} size={16} />{tab.label}</button>)}
-    </div>
-
-    <div className="openmaic-tabs__panel" id={`openmaic-panel-${activeTab}`} role="tabpanel" aria-labelledby={`openmaic-tab-${activeTab}`} tabIndex={0}>
-      {activeTab === "workspace" && status.canCreateWorkspace && selectedCourseId
-        ? <WorkspacePanel
-          courseId={selectedCourseId}
-          courseName={selectedCourseName}
-          canFile={status.canBrowseFolders}
-          canEdit={status.canEdit}
-          canExportArchive={status.canExportArchive}
-          canImportArchive={status.canImportArchive}
-          canExportMarkdown={status.canExportMarkdown}
-          canExportDocx={status.canExportDocx}
-          canExportPptx={status.canExportPptx}
-          canExportVideo={status.canExportVideo}
-          canImportPptx={status.canImportPptx}
-        />
-        : null}
-
-      {activeTab === "discovery" && selectedCourseId && (status.canBrowseFolders || status.canSearch)
-        ? <DiscoveryPanel
-          courseId={selectedCourseId}
-          canBrowseFolders={status.canBrowseFolders}
-          canSearch={status.canSearch}
-        />
-        : null}
-
-      {activeTab === "materials" && status.canManageMaterials && selectedCourseId
-        ? <MaterialsPanel courseId={selectedCourseId} canManageMaterials={status.canManageMaterials} />
-        : null}
-
-      {activeTab === "service"
-        ? <div className="openmaic-service-status">
-          <p className="muted-copy">服务状态：{status.label}。这里只展示能力与配置与否，不展示密钥或内部地址。</p>
-          <CapabilityList fusion={status} />
-          <ProviderList providerStatus={providerStatus} />
-        </div>
-        : null}
-    </div>
-  </Panel>;
+function CourseLibrary({ courses, assignments }) {
+  const items = buildCourseRailItems(courses, assignments);
+  return <details className="openmaic-reference-library"><summary><span><Icon name="PhBooks" size={18} />我的课程</span><small>{items.length} 门课程</small><Icon name="PhCaretDown" size={15} /></summary><div className="openmaic-reference-library__list">{items.map((course) => <Link key={course.id} to={`/courses/${course.id}`}><span className="openmaic-reference-library__icon"><Icon name="PhBookOpenText" size={15} /></span><span><strong>{course.name}</strong><small>{[course.teacher, course.term, course.code].filter(Boolean).join(" · ")}</small></span><Icon name="PhArrowUpRight" size={14} /></Link>)}</div></details>;
 }
 
-export default function OpenMAICHome({
-  courses = [],
-  assignments = [],
-  recentItems = [],
-  fusion = null,
-  providerStatus = null,
-  recentError = "",
-}) {
+export default function OpenMAICHome({ courses = [], assignments = [], recentItems = [], fusion = null, providerStatus = null, recentError = "" }) {
+  const navigate = useNavigate();
   const [selectedCourseId, setSelectedCourseId] = React.useState(() => defaultOpenMAICCourseId(courses));
-  const [secondaryTab, setSecondaryTab] = React.useState("");
-  const status = describeFusionState(fusion);
+  const [prompt, setPrompt] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [phase, setPhase] = React.useState(null);
+  const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
+  const canGenerate = Boolean(selectedCourseId && fusion?.state === "ready" && fusion?.capabilities?.includes("workspace") && fusion?.capabilities?.includes("generation") && providerStatus?.providers?.llm);
+  React.useEffect(() => { if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultOpenMAICCourseId(courses)); }, [courses, selectedCourseId]);
 
-  React.useEffect(() => {
-    if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultOpenMAICCourseId(courses));
-  }, [courses, selectedCourseId]);
-
-  function selectCourse(courseId) {
-    setSelectedCourseId(courseId);
+  async function waitForJob(courseId, jobId, workspaceId) {
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      const job = await api.getOpenMAICJob(courseId, jobId); setPhase(resolveGenerationPhase(job));
+      if (job.status === "completed") { navigate(`/courses/${courseId}/workspaces/${workspaceId}?mode=playback`, { replace: true }); return; }
+      if (["failed", "cancelled"].includes(job.status)) throw { response: { status: 200, data: job } };
+      await new Promise((resolve) => window.setTimeout(resolve, 800));
+    }
+    throw new Error("课堂生成等待超时，请稍后从最近课堂恢复。");
   }
 
-  const selectedCourseName = courses.find((course) => String(course.id) === String(selectedCourseId))?.name || "";
+  async function submit(event) {
+    event.preventDefault(); const topic = prompt.trim(); if (!topic || !selectedCourseId || busy) return;
+    setBusy(true); setError(""); setPhase(null);
+    try {
+      const result = await api.generateOpenMAICHome(selectedCourseId, { mode: "slide", prompt: topic, idempotencyKey: stageGenerationIdempotencyKey(selectedCourseId, topic) });
+      const workspaceId = result?.workspace_id;
+      if (!workspaceId) throw new Error("网关未返回课程工作台");
+      if (result?.job?.status === "completed") navigate(`/courses/${selectedCourseId}/workspaces/${workspaceId}?mode=playback`, { replace: true });
+      else if (result?.job?.id) await waitForJob(selectedCourseId, result.job.id, workspaceId);
+      else throw new Error("受管服务未返回生成任务");
+    } catch (cause) { setError(describeEntryFailure(cause).message || cause?.message || "课堂生成失败，请重试。"); }
+    finally { setBusy(false); }
+  }
 
-  // 次级导航只列**真实存在**的入口：能力没上报就不出现，而不是渲染一个必然
-  // 失败的按钮。"服务状态"始终可看，它是诊断而不是能力。
-  const tabs = [
-    status.canCreateWorkspace || status.canBrowseFolders
-      ? { key: "workspace", label: "学习工作台", icon: "PhSquaresFour" } : null,
-    status.canBrowseFolders || status.canSearch
-      ? { key: "discovery", label: "文件夹与搜索", icon: "PhFolderSimple" } : null,
-    status.canManageMaterials
-      ? { key: "materials", label: "课程资料", icon: "PhFileText" } : null,
-    { key: "service", label: "服务状态", icon: "PhPulse" },
-  ].filter(Boolean);
-  const activeTab = tabs.some((tab) => tab.key === secondaryTab) ? secondaryTab : tabs[0].key;
-
-  return <section className="openmaic-home" aria-label="OpenMAIC 学习工作台">
-    <div className="openmaic-home__main">
-      <ClassroomEntry
-        courses={courses}
-        selectedCourseId={selectedCourseId}
-        onSelectCourse={selectCourse}
-      />
-
-      <Panel className="openmaic-recent-panel">
-        <SectionHeading title="最近内容" detail="来自已生成的真实课堂" />
-        {recentError ? <div className="openmaic-home__empty openmaic-home__empty--wide" role="status"><Icon name="PhWarningCircle" size={28} /><div><strong>最近内容暂时取不到</strong><p>{recentError}</p></div></div>
-          : recentItems.length ? <div className="openmaic-recent-grid">{recentItems.slice(0, 8).map((item) => <Link className="openmaic-recent-card" key={`${item.kind}:${item.id}`} to={item.href}>
-            <span className="openmaic-recent-card__type">{item.title}</span><strong>{item.courseName}</strong><small>{item.scenesCount ? `${item.scenesCount} 个场景` : "互动课堂"}</small><span className="openmaic-recent-card__date">{dateText(item.updatedAt)}</span>
-          </Link>)}</div> : <div className="openmaic-home__empty openmaic-home__empty--wide"><Icon name="PhClockCounterClockwise" size={28} /><div><strong>还没有最近课堂</strong><p>生成的课堂会在这里按最近更新时间出现。</p></div></div>}
-      </Panel>
-
-      <SecondaryPanels
-        tabs={tabs}
-        activeTab={activeTab}
-        onSelectTab={setSecondaryTab}
-        selectedCourseId={selectedCourseId}
-        selectedCourseName={selectedCourseName}
-        status={status}
-        providerStatus={providerStatus}
-      />
-
-      <CourseRail courses={courses} assignments={assignments} />
-    </div>
+  const capabilityLabel = providerStatus?.providers?.llm ? "模型已连接" : "模型未配置";
+  return <section className="openmaic-home openmaic-home--reference" aria-label="OpenMAIC 首页"><div className="openmaic-reference-glow openmaic-reference-glow--top" aria-hidden="true" /><div className="openmaic-reference-glow openmaic-reference-glow--bottom" aria-hidden="true" /><div className="openmaic-reference__brand"><span className="openmaic-reference__mark"><Icon name="PhCube" size={29} weight="duotone" /></span><span><strong>OpenMAIC</strong><small>Generative Learning in Multi-Agent Interactive Classroom</small></span></div>
+    <form className="openmaic-reference-composer" onSubmit={submit}><div className="openmaic-reference-composer__top"><CoursePicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={setSelectedCourseId} /><span className="openmaic-reference-composer__agents">嗨，同学 <Icon name="PhCaretDown" size={13} /></span></div><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={'输入你想学习的任何内容，例如：\n「从零学习 Python，30 分钟写出第一个程序」\n「用矩阵乘法讲解傅里叶变换」\n「阿里跨库筛选怎么写」'} aria-label="学习主题" /><div className="openmaic-reference-composer__footer"><div className="openmaic-reference-tools" aria-label="课堂工具"><button type="button" aria-label="附件" disabled title="附件能力尚未接通"><Icon name="PhPaperclip" size={17} /></button><button type="button" aria-label="联网搜索" disabled title="联网搜索能力尚未接通"><Icon name="PhGlobe" size={17} /></button><button type="button" aria-label={capabilityLabel} className={providerStatus?.providers?.llm ? "is-ready" : ""} disabled title="模型选择由服务端课程配置管理"><Icon name="PhSlidersHorizontal" size={17} /></button></div><div className="openmaic-reference-actions"><button type="button" className="openmaic-reference-mode" disabled title="当前课程固定使用课堂生成模式">✦ 深度交互</button><button type="submit" aria-label="生成学习内容" className="openmaic-reference-submit" disabled={!canGenerate || !prompt.trim() || busy}>{busy ? (phase?.title || "生成中…") : "进入课堂"}<Icon name="PhArrowUp" size={15} /></button></div></div>{!canGenerate && !error ? <p className="openmaic-reference-hint" role="status">{providerStatus?.providers?.llm ? "课程生成能力正在准备，请稍后重试。" : "需要配置课程生成模型后才能创建真实课堂。"}</p> : null}{error ? <p className="openmaic-reference-error" role="alert">{error}</p> : null}</form>
+    <RecentClassrooms items={recentItems} error={recentError} /><CourseLibrary courses={courses} assignments={assignments} /><p className="openmaic-reference-footer">OpenMAIC Open Source Project</p>
   </section>;
 }

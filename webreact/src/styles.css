@@ -2123,6 +2123,74 @@ html[data-theme="auto"] .courses-page .course-card {
 @media (max-width: 767px) { .openmaic-home { grid-template-columns: 1fr; } .openmaic-ask { grid-template-columns: 1fr; } .openmaic-ask__actions { margin-left: 0; width: 100%; } .openmaic-ask__actions .button { flex: 1 1 auto; } .openmaic-command { grid-template-columns: 1fr; } .openmaic-command select, .openmaic-command .button { min-height: 42px; } .openmaic-recent-grid { grid-template-columns: 1fr; } }
 @media (max-width: 360px) { .openmaic-command-panel, .openmaic-recent-panel, .openmaic-secondary, .openmaic-home__rail { padding: 14px; } .openmaic-command-panel h2 { font-size: 20px; } .openmaic-ask__tool { flex: 1 1 auto; justify-content: center; } .openmaic-course-rail__item { grid-template-columns: 28px minmax(0, 1fr) 15px; } .openmaic-course-rail__meta { grid-column: 2 / -1; justify-items: start; text-align: left; } }
 
+/* P0-A: root-page composition from the reference app, adapted to the CampusMate
+   shell. The course picker and generation state remain native controls so the
+   page keeps the gateway, login and course permissions. */
+.courses-page:has(.openmaic-home--reference) { max-width: none; min-height: calc(100vh - 76px); padding: 0 24px 36px; background: #f5f8fc; }
+.courses-page:has(.openmaic-home--reference) .page-heading { display: none; }
+.openmaic-home--reference { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; box-sizing: border-box; min-height: calc(100vh - 112px); max-width: 1180px; margin: 0 auto; padding: clamp(62px, 9vh, 116px) 16px 24px; overflow: hidden; color: #31405f; }
+.openmaic-reference-glow { position: absolute; width: 500px; height: 500px; border-radius: 50%; filter: blur(18px); opacity: .35; pointer-events: none; }
+.openmaic-reference-glow--top { top: -270px; left: 12%; background: #dce8ff; }
+.openmaic-reference-glow--bottom { right: 7%; bottom: -340px; background: #eee4ff; }
+.openmaic-reference__brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; color: #6556c9; text-align: left; }
+.openmaic-reference__mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 15px; color: #6255c9; background: linear-gradient(145deg, #f0edff, #e5eaff); box-shadow: inset 0 0 0 1px rgba(107,91,210,.15); }
+.openmaic-reference__brand strong { display: block; color: #33386e; font-size: clamp(28px, 3.2vw, 40px); letter-spacing: -.055em; line-height: 1; }
+.openmaic-reference__brand small { display: block; margin-top: 7px; color: #9da6bc; font-size: 11px; }
+.openmaic-reference-composer { position: relative; z-index: 1; width: min(800px, 100%); margin-top: 54px; padding: 16px 18px 13px; border: 1px solid rgba(215,224,239,.85); border-radius: 22px; background: rgba(255,255,255,.9); box-shadow: 0 18px 52px rgba(80,101,150,.12); }
+.openmaic-reference-composer__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.openmaic-reference-composer__agents { display: inline-flex; align-items: center; gap: 5px; color: #435170; font-size: 13px; font-weight: 650; }
+.openmaic-reference-picker { position: relative; min-width: 0; }
+.openmaic-reference-picker__trigger { display: inline-flex; align-items: center; gap: 7px; max-width: 360px; padding: 8px 11px; overflow: hidden; border: 1px solid #e4e8f1; border-radius: 999px; color: #52617c; background: rgba(249,251,255,.9); font: inherit; font-size: 12px; cursor: pointer; }
+.openmaic-reference-picker__trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-reference-picker__menu { position: absolute; z-index: 8; top: calc(100% + 8px); left: 0; display: grid; width: min(390px, calc(100vw - 32px)); max-height: 320px; padding: 6px; overflow: auto; border: 1px solid #dfe5f0; border-radius: 14px; background: #fff; box-shadow: 0 18px 40px rgba(50,70,120,.18); }
+.openmaic-reference-picker__menu button { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; color: #435170; background: transparent; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.openmaic-reference-picker__menu button:hover, .openmaic-reference-picker__menu button:focus-visible { background: #eff3ff; outline: 0; }
+.openmaic-reference-composer textarea { display: block; width: 100%; min-height: 140px; margin-top: 10px; resize: vertical; padding: 12px 4px; border: 0; outline: 0; color: #33415f; background: transparent; font: inherit; font-size: 13px; line-height: 1.75; }
+.openmaic-reference-composer textarea::placeholder { color: #b8bfce; }
+.openmaic-reference-composer__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid #eef1f6; }
+.openmaic-reference-tools, .openmaic-reference-actions { display: flex; align-items: center; gap: 7px; }
+.openmaic-reference-tools button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid #e6eaf2; border-radius: 50%; color: #9aa5b9; background: #fff; cursor: pointer; }
+.openmaic-reference-tools button.is-ready { color: #745bd0; background: #f1edff; }
+.openmaic-reference-tools button:disabled { cursor: not-allowed; opacity: .55; }
+.openmaic-reference-mode, .openmaic-reference-submit { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 12px; cursor: pointer; }
+.openmaic-reference-mode { border: 1px solid #8ed6e8; color: #208ca9; background: #f6fdff; }
+.openmaic-reference-submit { border: 1px solid #dfe4ef; color: #a8b0bf; background: #f2f4f8; }
+.openmaic-reference-submit:not(:disabled) { border-color: #6ad3eb; color: #fff; background: #3bbbdc; box-shadow: 0 6px 14px rgba(59,187,220,.22); }
+.openmaic-reference-submit:disabled { cursor: not-allowed; }
+.openmaic-reference-hint, .openmaic-reference-error { margin: 9px 0 0; font-size: 11px; text-align: center; }
+.openmaic-reference-hint { color: #9aa5b8; }
+.openmaic-reference-error { color: #b4232b; }
+.openmaic-reference-recent { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(40px,1fr) auto minmax(40px,1fr); align-items: center; width: min(1120px, 100%); margin-top: 44px; }
+.openmaic-reference-recent__rule { height: 1px; background: #e2e7f0; }
+.openmaic-reference-recent__heading { display: inline-flex; align-items: center; gap: 10px; padding: 0 14px; color: #8994aa; font-size: 12px; white-space: nowrap; }
+.openmaic-reference-recent__heading span { display: inline-flex; align-items: center; gap: 6px; }
+.openmaic-reference-recent__heading small { color: #b2bac8; font-size: 10px; }
+.openmaic-reference-recent__grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; width: min(900px, 100%); margin: 18px auto 0; }
+.openmaic-reference-classroom { display: flex; gap: 10px; min-width: 0; padding: 10px; border: 1px solid #e8edf5; border-radius: 13px; color: inherit; background: rgba(255,255,255,.66); text-decoration: none; }
+.openmaic-reference-classroom:hover, .openmaic-reference-classroom:focus-visible { border-color: #adc3ef; outline: 0; box-shadow: 0 8px 20px rgba(81,105,163,.1); }
+.openmaic-reference-classroom__cover { display: grid; place-items: center; flex: 0 0 50px; height: 50px; border-radius: 10px; color: #7464d0; background: #f0edff; }
+.openmaic-reference-classroom__copy { display: grid; min-width: 0; gap: 3px; align-content: center; }
+.openmaic-reference-classroom__copy strong, .openmaic-reference-classroom__copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-reference-classroom__copy strong { font-size: 12px; }
+.openmaic-reference-classroom__copy small { color: #9ca6b8; font-size: 10px; }
+.openmaic-reference-empty { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 90px; color: #9ca6b8; font-size: 12px; }
+.openmaic-reference-empty span { display: grid; gap: 3px; }
+.openmaic-reference-empty small { color: #b2bac8; font-size: 10px; }
+.openmaic-reference-library { position: relative; z-index: 1; width: min(900px, 100%); margin-top: 24px; border: 1px solid #e5eaf3; border-radius: 14px; background: rgba(255,255,255,.55); }
+.openmaic-reference-library summary { display: flex; align-items: center; gap: 9px; padding: 12px 15px; color: #53617b; cursor: pointer; list-style: none; }
+.openmaic-reference-library summary::-webkit-details-marker { display: none; }
+.openmaic-reference-library summary span { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 650; }
+.openmaic-reference-library summary small { flex: 1; color: #a1aabd; font-size: 11px; }
+.openmaic-reference-library__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; padding: 0 10px 10px; }
+.openmaic-reference-library__list a { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px; border-radius: 9px; color: inherit; text-decoration: none; }
+.openmaic-reference-library__list a:hover { background: #f0f4ff; }
+.openmaic-reference-library__list a > span:nth-child(2) { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.openmaic-reference-library__list strong, .openmaic-reference-library__list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openmaic-reference-library__list strong { font-size: 11px; }.openmaic-reference-library__list small { color: #9ba5b8; font-size: 10px; }
+.openmaic-reference-library__icon { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; color: #6a5bc7; background: #f0edff; }
+.openmaic-reference-footer { position: relative; z-index: 1; margin: auto 0 0; color: #b5bdca; font-size: 10px; }
+@media (max-width: 640px) { .courses-page:has(.openmaic-home--reference) { padding-inline: 8px; }.openmaic-home--reference { min-height: calc(100vh - 88px); padding-top: 42px; }.openmaic-reference-composer { margin-top: 34px; padding: 12px; border-radius: 18px; }.openmaic-reference-composer__top { align-items: flex-start; flex-direction: column-reverse; }.openmaic-reference-picker, .openmaic-reference-picker__trigger { width: 100%; max-width: none; }.openmaic-reference-composer textarea { min-height: 132px; }.openmaic-reference-composer__footer { align-items: stretch; flex-direction: column; }.openmaic-reference-actions { justify-content: flex-end; }.openmaic-reference-recent { margin-top: 30px; }.openmaic-reference-recent__grid { grid-template-columns: 1fr; }.openmaic-reference__brand strong { font-size: 28px; }.openmaic-reference__brand small { font-size: 9px; } }
+
 /* OpenMAIC reference composition: a centered, quiet composer with its agent
    bar inside the card instead of a separate course-side control panel. */
 .openmaic-command-panel { max-width: 820px; margin-inline: auto; padding: clamp(28px, 5vw, 56px) clamp(20px, 6vw, 72px) 28px; border: 1px solid rgba(216,224,239,.72); border-radius: 24px; background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(246,249,255,.88)); box-shadow: 0 20px 60px rgba(86,106,157,.11); }
