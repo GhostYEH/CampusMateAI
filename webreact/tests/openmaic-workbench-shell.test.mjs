@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 
 import {
   CLASSROOM_ASPECT_RATIO,
+  NARROW_PANES,
   containBox,
   fillWidthBox,
   resolveStageChromeMode,
@@ -103,15 +104,62 @@ test("the wide layout shows all three panes", () => {
   assert.equal(wide.tools, true);
 });
 
-test("the narrow layout is mutually exclusive — one pane at a time", () => {
+/**
+ * 这条契约此前是**错的**，而且是反向的：它断言窄屏 `railMini === true`，于是把
+ * "rail 永远在场、永远占 60px"钉成了正确行为。真实后果是 320/390/768 上的舞台被
+ * 一个固定的 60px mini 目录栏切掉一块，而"目录"这个面板根本不可能被选中。
+ *
+ * 窄屏唯一正确的契约是**恰好一个面板**：`rail` / `classroom` / `tools` 三者之和
+ * 恒等于 1。断言的是"和"，不是"每一个的具体取值"——后者会漏掉"两个同时为 true"。
+ */
+test("the narrow layout is mutually exclusive — exactly one pane, for every pane", () => {
   for (const pane of ["rail", "classroom", "tools"]) {
     const layout = resolveWorkbenchLayout({ narrow: true, activePane: pane });
-    const visible = [layout.classroom, layout.tools].filter(Boolean).length;
-    assert.ok(visible <= 1, `窄屏不能同时显示多个内容面板（${pane}）`);
-    assert.equal(layout.railMini, true, "窄屏 rail 必须收成 mini");
+    const visible = [layout.rail, layout.classroom, layout.tools].filter(Boolean);
+    assert.equal(visible.length, 1, `窄屏必须恰好一个面板为 true（activePane=${pane}）`);
+    assert.equal(layout[pane], true, `被选中的面板必须为 true（activePane=${pane}）`);
+    // 未激活的面板不得留下任何"占位"形态：mini rail 正是被删掉的那个 60px 挤压源。
+    assert.equal(layout.railMini, false, "窄屏不能有 mini rail——它会固定占宽");
+    // 窄屏没有"缝上的重开标签"，切换器就是那个入口，所以这一位必须恒为 false——
+    // 留着它只会让人以为窄屏还有第二种回到面板的方式。
+    assert.equal(layout.classroomTab, false, "窄屏不靠重开标签回到课堂");
   }
   // 未知面板名要退化到课堂，而不是什么都不显示。
-  assert.equal(resolveWorkbenchLayout({ narrow: true, activePane: "bogus" }).classroom, true);
+  const bogus = resolveWorkbenchLayout({ narrow: true, activePane: "bogus" });
+  assert.equal(bogus.classroom, true);
+  assert.equal([bogus.rail, bogus.classroom, bogus.tools].filter(Boolean).length, 1);
+});
+
+test("the narrow switcher and the model share one pane list", () => {
+  // 切换器要是自己再写一遍面板名，就会出现"能渲染但点不到"或"点了渲染不出来"。
+  assert.deepEqual([...NARROW_PANES], ["rail", "classroom", "tools"]);
+  assert.match(workbenchSource, /NARROW_PANES\.map\(/, "切换器必须由模型导出的列表渲染");
+  assert.match(workbenchSource, /role="tablist"/);
+  for (const label of ["目录", "课堂", "工具"]) {
+    assert.match(workbenchSource, new RegExp(label), `切换器缺少「${label}」`);
+  }
+  // 切换器必须在**工作台**上，而不是课堂面板里——否则切到目录就会把它一起带走。
+  assert.match(workbenchSource, /className="ow-nav"/);
+  assert.match(workbenchSource, /\{layout\.narrow \? <NarrowWorkbenchNav/);
+});
+
+test("the workbench renders exactly the panes the layout resolves", () => {
+  // 只测纯模型会漏掉"模型说 classroom=false 但页面照样渲染课堂"这类缺陷——P1 之二
+  // 就是这个形态。所以这里钉住渲染侧真的读了这三个开关。
+  for (const flag of ["layout.rail", "layout.classroom", "layout.tools"]) {
+    assert.match(
+      workbenchSource,
+      new RegExp(`\\{${flag.replace(".", "\\.")}\\s*\\?`),
+      `${flag} 必须直接决定对应面板是否渲染`,
+    );
+  }
+  // 课堂面板不得再被无条件挂载：section 的开标签必须紧跟在 `layout.classroom ?` 之后。
+  assert.match(workbenchSource, /layout\.classroom \? <section className="ow-pane ow-pane--classroom"/,
+    "课堂 section 必须以 layout.classroom 为条件渲染");
+  assert.match(workbenchSource, /layout\.rail \? <aside[\s\S]{0,80}ow-pane--rail/,
+    "目录 aside 必须以 layout.rail 为条件渲染");
+  assert.match(workbenchSource, /layout\.tools \? <aside className="ow-pane ow-pane--tools"/,
+    "工具 aside 必须以 layout.tools 为条件渲染");
 });
 
 test("the workbench ships the narrow layout and no-overflow guards", () => {
@@ -121,6 +169,11 @@ test("the workbench ships the narrow layout and no-overflow guards", () => {
   assert.match(cssSource, /\.ow-root\s*\{[^}]*overflow:\s*hidden/s);
   assert.match(cssSource, /\.ow-root\s*\{[^}]*min-width:\s*0/s);
   assert.match(cssSource, /@media \(max-width: 400px\)/);
+  // 窄屏把三栏转成"导航区 + 唯一面板"的纵向排列。
+  assert.match(cssSource, /data-ow-layout='narrow'\]\s*\{\s*flex-direction:\s*column/s);
+  // 未激活面板不得靠视觉隐藏冒充互斥：那条固定 60px 的 mini rail 必须彻底消失。
+  assert.doesNotMatch(cssSource, /data-ow-layout='narrow'\]\s*\.ow-pane--rail\s*\{[^}]*width:\s*\d+px/,
+    "窄屏不得把 rail 固定成某个像素宽（那正是 320px 舞台被挤压的原因）");
 });
 
 // ===== 面板头只允许一个高度 =====

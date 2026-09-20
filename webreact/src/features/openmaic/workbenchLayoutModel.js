@@ -166,6 +166,18 @@ export function resolveStageChromeMode({
 export const NARROW_QUERY = "(max-width: 1023px)";
 
 /**
+ * 窄屏下可以被选中的面板。
+ *
+ * 这个列表是**唯一**的合法取值来源：模型、渲染和测试都从它派生，所以"新增一个
+ * 面板却忘了在切换器里给出入口"或者"切换器给出一个渲染不出来的面板"都不可能
+ * 悄悄发生。
+ */
+export const NARROW_PANES = Object.freeze(["rail", "classroom", "tools"]);
+
+/** 未知面板名的回退目标：课堂是窄屏的默认视图。 */
+export const NARROW_PANE_FALLBACK = "classroom";
+
+/**
  * 是否是"窄屏"（<1024）。
  *
  * 参考项目在窄屏下只是隐藏 rail，没有互斥；本项目的需求明确要求 768–1023 走
@@ -195,31 +207,45 @@ export function useNarrowViewport(query = NARROW_QUERY) {
  *
  * - **收起 rail 时不能再收起最后一个可见面板。** 折叠一个没人接手的列会把用户
  *   留在空工作台上。
- * - **窄屏互斥。** <1024 时三栏并排会把 16:9 舞台压到无法使用；此时只显示当前
- *   面板，其余以可重新打开的标签形式留在缝上。这是本项目相对参考项目新增的需求。
+ * - **窄屏互斥。** <1024 时三栏并排会把 16:9 舞台压到无法使用；此时**恰好一个**
+ *   面板占据整个可用工作区，其余两个都完全不渲染。
+ *
+ * 窄屏这一支此前是错的，而且错得很隐蔽：它让 rail（mini，60px）**和**当前内容
+ * 面板同时在 `flex` 行里，于是一个 60px 的目录栏永远挤着 320/390/768 上的舞台；
+ * 而 `classroom` 又被无条件置为 `true`，所以切到「工具」时课堂仍然在渲染。
+ * 现在三者的不变式是显式的：
+ *
+ *     `rail` / `classroom` / `tools` 中**恰好一个**为 true。
+ *
+ * 未激活的面板不是"被视觉隐藏"，而是根本不进 DOM——一个 `display: none` 的面板
+ * 仍然会保留可聚焦元素、仍然要跑它的数据加载，那正是这条需求要杜绝的。
  */
 export function resolveWorkbenchLayout({
   narrow = false,
   railCollapsed = false,
-  activePane = "classroom",
+  activePane = NARROW_PANE_FALLBACK,
   classroomOpen = true,
   toolsCollapsed = false,
 } = {}) {
   if (narrow) {
-    // 窄屏互斥：只有一个面板在场，rail 收成 mini，工具区让位给当前面板。
-    const pane = activePane === "rail" || activePane === "tools" ? activePane : "classroom";
+    // 未知取值退到课堂，而不是什么都不显示——空工作台比默认面板更难理解。
+    const pane = NARROW_PANES.includes(activePane) ? activePane : NARROW_PANE_FALLBACK;
     return {
       narrow: true,
-      rail: true,
-      railMini: true,
+      pane,
+      // 互斥：只有被选中的那一个为 true，其余两个连宽度都不占。
+      rail: pane === "rail",
+      railMini: false,
       classroom: pane === "classroom",
       tools: pane === "tools",
-      classroomTab: pane !== "classroom",
+      // 窄屏没有"缝上的重开标签"这回事，切换器本身就是那个入口。
+      classroomTab: false,
     };
   }
   // 宽屏：rail 可折叠；工具区独立成一栏，可单独收起。
   return {
     narrow: false,
+    pane: "wide",
     rail: !railCollapsed,
     railMini: railCollapsed,
     classroom: classroomOpen,

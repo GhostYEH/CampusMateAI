@@ -15,6 +15,7 @@ import { describeFusionState } from "../features/openmaic/homeModel.js";
 import { filenameFromContentDisposition } from "../features/openmaic/archiveModel.js";
 import { formatDateTime } from "../utils/date.js";
 import {
+  NARROW_PANES,
   resolveStageChromeMode,
   resolveWorkbenchLayout,
   useNarrowViewport,
@@ -23,12 +24,80 @@ import {
 import { resolveGenerationPhase } from "../features/openmaic/enterClassroomModel.js";
 
 const MODES = [["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"]];
+
+/**
+ * 窄屏面板切换器的文案。
+ *
+ * 和 `NARROW_PANES` 一一对应：渲染用的列表由模型导出，**没有**第二个"这里也写一遍"
+ * 的地方，所以切换器不可能给出一个渲染不出来的面板，也不可能漏掉一个能渲染的面板。
+ * 按钮的尺寸由各自的类决定（切换器要小，导航区要给「开始学习」和课程标签留位置），
+ * 但可访问名称始终是这三个词。
+ */
+const NARROW_PANE_LABELS = { rail: "目录", classroom: "课堂", tools: "工具" };
+
+/** 窄屏工作台导航区：面板切换器 + 课程标签 + 出口。三件事挤在一行里，所以只留必要文案。 */
+function NarrowWorkbenchNav({ pane, onSelect, tabs, workspaceId, courseId, navigate, onCloseTab }) {
+  return <div className="ow-nav" role="tablist" aria-label="工作台面板">
+    <div className="ow-seg ow-seg--nav">
+      {NARROW_PANES.map((key) => <button
+        key={key}
+        type="button"
+        role="tab"
+        aria-selected={pane === key}
+        tabIndex={pane === key ? 0 : -1}
+        className={pane === key ? "is-active" : ""}
+        onClick={() => onSelect(key)}
+      >{NARROW_PANE_LABELS[key]}</button>)}
+    </div>
+    <WorkspaceCourseTabs
+      tabs={tabs}
+      activeCourseId={workspaceId}
+      onActivate={(id) => { if (id !== workspaceId) navigate(`/courses/${courseId}/workspaces/${id}`); }}
+      onClose={onCloseTab}
+    />
+    <button type="button" className="ow-icon-btn" aria-label="返回课程列表" title="返回课程列表" onClick={() => navigate("/courses")}>
+      <Icon name="PhArrowLeft" size={15} />
+    </button>
+  </div>;
+}
+
 const RAIL_STORAGE_KEY = "campus_openmaic_workbench_rail_width";
 const RAIL_WIDTH_DEFAULT = 264;
 const RAIL_WIDTH_MIN = 200;
 const RAIL_WIDTH_MAX = 360;
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 const errorText = (error, fallback = "工作台加载失败，请重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+
+/**
+ * 量出工作台顶边到视口顶边的距离，写进 `--ow-top-offset`。
+ *
+ * 工作台是"撑满剩余高度"的三栏布局，高度必须等于「视口底边 - 工作台顶边」。它上面
+ * 还有一条固定顶栏，而顶栏高度是随断点变的（手机 76px、桌面 88px…），所以写死任何
+ * 一个数字都会在别的断点把面板底部切到屏幕外——实测 320×720 的「生成」和 1440×900
+ * 的「生成」就是这样被裁掉、点不到的。这里直接量，不猜。
+ */
+function useTopOffset(ref) {
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    const measure = () => {
+      const top = Math.max(0, Math.round(node.getBoundingClientRect().top));
+      setOffset((current) => (current === top ? current : top));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    // 观察工作台自己和它的父级：顶栏收起/展开、路由内容区高度变化都要重新量。
+    observer.observe(node);
+    if (node.parentElement) observer.observe(node.parentElement);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [ref]);
+  return offset;
+}
 
 function saveBlob(blob, filename) {
   if (typeof document === "undefined" || typeof URL === "undefined") return;
@@ -80,16 +149,25 @@ function ExportMenu({ courseId, workspaceId, stage, canExportPptx, canExportMark
  * 学习工作台。
  *
  * 三栏：左（课程/场景目录 + 可打开的课堂标签）、中（16:9 舞台）、右（课堂工具）。
- * 768–1023px 走**互斥单面板**——三栏并排会把 16:9 舞台压到无法使用（见
+ * 1023px 及以下走**互斥单面板**——三栏并排会把 16:9 舞台压到无法使用（见
  * `resolveWorkbenchLayout`），此时用面板开关切换，而不是硬挤。
  *
- * 两件事刻意沿用参考项目的结论：
+ * 三件事刻意沿用参考项目的结论：
  *
  * - **编辑/播放不是开关，是推导。** 面板里的课堂是"编辑锁定"的，进播放的唯一门是
  *   「开始学习」。任何"编辑还没就绪"的中间态都落在 `loading` 上，不会闪一屏播放
  *   chrome 再跳回来。
  * - **切换编辑/播放不卸载编辑器。** 参考项目里两者是互斥挂载的，结果是切一次就
  *   丢掉编辑器状态；这里用 `hidden` 保留编辑器，只切换可见性。
+ * - **面板的"在不在场"就是它的 `flex` 子项在不在。** 窄屏未激活的面板不进 DOM，
+ *   而不是 `display: none`：后者仍然保留可聚焦元素，也仍然要跑自己的数据加载。
+ *
+ * ── 窄屏的工作台导航区（`ow-nav`）─────────────────────────────────────────
+ *
+ * 切换器**不**放在课堂面板头里。课堂是三者之一，把它当成另外两个的宿主，就会出现
+ * "切到目录以后课堂连同切换器一起消失，再也回不去"的死角——而这正是本次要修的
+ * 缺陷形态。所以切换器属于工作台本身，和课程标签、返回出口一起构成窄屏唯一持久的
+ * 导航区，任何面板被选中时它都在。
  */
 export default function OpenMAICWorkbenchPage() {
   const { courseId, workspaceId } = useParams();
@@ -118,10 +196,20 @@ export default function OpenMAICWorkbenchPage() {
   const epoch = useRef(0);
   const polling = useRef(null);
   const launchStarted = useRef(false);
+  const rootRef = useRef(null);
   const narrow = useNarrowViewport();
+  const topOffset = useTopOffset(rootRef);
   const rail = useResizableWidth({
     initial: RAIL_WIDTH_DEFAULT, min: RAIL_WIDTH_MIN, max: RAIL_WIDTH_MAX, storageKey: RAIL_STORAGE_KEY,
   });
+
+  const closeTab = useCallback((id) => {
+    setTabsOpen((current) => {
+      const rest = current.filter((tab) => tab.id !== id);
+      if (id === workspaceId) navigate(rest.length ? `/courses/${courseId}/workspaces/${rest[rest.length - 1].id}` : "/courses");
+      return rest;
+    });
+  }, [courseId, navigate, workspaceId]);
 
   const load = useCallback(async () => {
     const mine = ++epoch.current;
@@ -247,11 +335,31 @@ export default function OpenMAICWorkbenchPage() {
     onReset={rail.reset}
   />;
 
-  return <main className="ow-root" data-testid="openmaic-workbench" data-ow-layout={layout.narrow ? "narrow" : "wide"}>
-    {/* ── 左下 / 左栏：目录 ───────────────────────────────────────────── */}
+  return <main
+    className="ow-root"
+    ref={rootRef}
+    style={{ "--ow-top-offset": `${topOffset}px` }}
+    data-testid="openmaic-workbench"
+    data-ow-layout={layout.narrow ? "narrow" : "wide"}
+    data-ow-pane={layout.pane}
+  >
+    {/* ── 窄屏唯一的持久导航区：面板切换器 + 课程标签 + 返回出口 ─────────────
+        它渲染在**工作台**上，不属于任何一个面板，所以无论当前是目录、课堂还是
+        工具，它都在。放进课堂面板头里会出现"切到目录就再也回不到课堂"的死角。 */}
+    {layout.narrow ? <NarrowWorkbenchNav
+      pane={layout.pane}
+      onSelect={setNarrowPane}
+      tabs={tabsOpen}
+      workspaceId={workspaceId}
+      courseId={courseId}
+      navigate={navigate}
+      onCloseTab={closeTab}
+    /> : null}
+
+    {/* ── 左栏：目录（窄屏下只有被选中时才存在） ───────────────────────── */}
     {layout.rail ? <aside
       className={`ow-pane ow-pane--rail${layout.railMini ? " is-mini" : ""}`}
-      style={layout.railMini ? undefined : { width: rail.width }}
+      style={layout.railMini ? undefined : { width: layout.narrow ? undefined : rail.width }}
       aria-label="课堂目录"
     >
       <header className="ow-pane-head">
@@ -274,8 +382,8 @@ export default function OpenMAICWorkbenchPage() {
           className={layout.railMini ? "is-hidden" : ""}
         />
       </div>
-      {/* 生成入口只在宽屏出现；窄屏空间要留给舞台。 */}
-      {!layout.railMini && !narrow ? <div className="ow-composer">
+      {/* 生成入口：窄屏也必须有，否则"目录"面板里没有任何生成新内容的入口。 */}
+      {!layout.railMini ? <div className="ow-composer">
         <form onSubmit={(event) => { event.preventDefault(); void generatePrompt(prompt); }}>
           <label className="ow-composer__field">
             <span className="ow-sr-only">学习内容主题</span>
@@ -293,36 +401,22 @@ export default function OpenMAICWorkbenchPage() {
           <Button type="submit" disabled={busy || !prompt.trim()}>{busy ? "提交中…" : "生成"}</Button>
         </form>
       </div> : null}
-      {/* 宽屏下用拖拽手柄调宽；窄屏 rail 是 mini，不提供拖拽。 */}
-      {!layout.railMini ? resizeHandle : null}
+      {/* 拖拽调宽只在宽屏、且 rail 不是 mini 时有意义。 */}
+      {!layout.railMini && !layout.narrow ? resizeHandle : null}
     </aside> : null}
 
-    {/* ── 中栏 + 右栏：课堂与工具 ─────────────────────────────────────── */}
-    <section className="ow-pane ow-pane--classroom" aria-label="课堂">
+    {/* ── 中栏：课堂 ─────────────────────────────────────────────────── */}
+    {layout.classroom ? <section className="ow-pane ow-pane--classroom" aria-label="课堂">
       <header className="ow-pane-head ow-classroom-head">
-        {/* 折叠/展开在窄屏是面板开关；宽屏是工具区开关。 */}
-        {layout.narrow ? <div className="ow-seg" role="tablist" aria-label="面板切换">
-          {[["rail", "目录"], ["classroom", "课堂"], ["tools", "工具"]].map(([key, label]) => <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={narrowPane === key}
-            tabIndex={narrowPane === key ? 0 : -1}
-            className={narrowPane === key ? "is-active" : ""}
-            onClick={() => setNarrowPane(key)}
-          >{label}</button>)}
-        </div> : null}
-        <WorkspaceCourseTabs
+        {/* 宽屏：课程标签 + 导出 + 「开始学习」。窄屏这三样分别在导航区、舞台头
+            和课程标签里，所以这里只保留「开始学习」这一个唯一的播放入口。 */}
+        {layout.narrow ? null : <WorkspaceCourseTabs
           tabs={tabsOpen}
           activeCourseId={workspaceId}
           onActivate={(id) => { if (id !== workspaceId) navigate(`/courses/${courseId}/workspaces/${id}`); }}
-          onClose={(id) => {
-            const rest = tabsOpen.filter((tab) => tab.id !== id);
-            setTabsOpen(rest);
-            if (id === workspaceId) navigate(rest.length ? `/courses/${courseId}/workspaces/${rest[rest.length - 1].id}` : "/courses");
-          }}
-        />
-        <span className="ow-ctabs-rule" aria-hidden="true" />
+          onClose={closeTab}
+        />}
+        {layout.narrow ? null : <span className="ow-ctabs-rule" aria-hidden="true" />}
         <ExportMenu
           courseId={courseId}
           workspaceId={workspaceId}
@@ -373,7 +467,7 @@ export default function OpenMAICWorkbenchPage() {
           : !selectedStage ? <div className="ow-stage-state">
             <Icon name="PhLayout" size={30} />
             <p>这个工作台还没有课堂内容</p>
-            <small>{narrow ? "在「目录」里生成新的内容。" : "在左下输入主题，生成第一份内容。"}</small>
+            <small>在「目录」里输入主题，生成第一份内容。</small>
           </div>
           : <>
             {/* 播放态与编辑态**同时挂载**，用可见性切换：切一次不会丢编辑器状态。 */}
@@ -392,15 +486,17 @@ export default function OpenMAICWorkbenchPage() {
             </p>
           </>}
       </div>
-    </section>
+    </section> : null}
 
-    {/* ── 右栏：课堂工具区 ─────────────────────────────────────────────── */}
-    {layout.tools && !layout.narrow ? <aside className="ow-pane ow-pane--tools" aria-label="课堂工具">
+    {/* ── 右栏：课堂工具区（窄屏下只有被选中时才存在） ─────────────────── */}
+    {layout.tools ? <aside className="ow-pane ow-pane--tools" aria-label="课堂工具">
       <header className="ow-pane-head">
         <span className="ow-pane-eyebrow">课堂工具</span>
-        <button type="button" className="ow-icon-btn" aria-label="收起课堂工具" title="收起课堂工具" onClick={() => setToolsCollapsed(true)}>
+        {/* "收起"是宽屏并排时的动作。窄屏工具是三个互斥面板之一，收起它等于把
+            用户丢到一个没有面板的空白工作台上——退出这一栏的入口是导航区。 */}
+        {layout.narrow ? null : <button type="button" className="ow-icon-btn" aria-label="收起课堂工具" title="收起课堂工具" onClick={() => setToolsCollapsed(true)}>
           <Icon name="PhCaretRight" size={15} />
-        </button>
+        </button>}
       </header>
       <div className="ow-pane-body">
         <ProviderToolsPanel

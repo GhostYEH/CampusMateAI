@@ -15,9 +15,10 @@
  *     主因。
  *   - **动效只在入场发生一次**，之后不主动动。
  *
- * 本项目相对参考项目新增的只有一件事：768–1023px 的**互斥单面板**布局（见
- * `.ow-root[data-ow-layout='narrow']`）。参考项目在窄屏只是隐藏 rail，而三栏并排
- * 会把 16:9 舞台压到不可用。
+ * 本项目相对参考项目新增的只有一件事：1023px 及以下的**互斥单面板**布局（见
+ * `.ow-root[data-ow-layout='narrow']`）——三个面板在同一时刻只有被选中的那一个
+ * 占据可用工作区，另外两个不渲染、不占宽度。参考项目在窄屏只是隐藏 rail，而三栏
+ * 并排会把 16:9 舞台压到不可用。
  */
 
 .ow-root {
@@ -53,6 +54,10 @@
   /* 只有一个高度令牌：两个面板头的下沿虚线必须在缝上连成一条线。 */
   --ow-pane-head-h: 42px;
   --ow-tree-row-h: 32px;
+  /* 工作台顶边到视口顶边的距离（也就是全局顶栏占掉的那一段），由页面在挂载时
+     量出来写进这里。默认 0 表示"没有顶栏"，而不是猜一个数字——猜错就会把面板
+     底部切在屏幕外。 */
+  --ow-top-offset: 0px;
 
   display: flex;
   align-items: stretch;
@@ -61,8 +66,15 @@
      任一栏的内容偏宽，整个工作台就会被顶出横向滚动条。显式归零才好让各栏
      自己决定收缩。 */
   min-width: 0;
-  /* 100dvh 而不是 100vh：移动端地址栏收起时 vh 会多出一截，工作台被顶出屏幕。 */
-  height: 100dvh;
+  /* 100dvh 而不是 100vh：移动端地址栏收起时 vh 会多出一截，工作台被顶出屏幕。
+     但 100dvh 是**视口**高度，而工作台并不从视口顶端开始——它挂在 AppShell 的
+     路由内容区里，上面还有一条固定顶栏。照 100dvh 撑高，整块面板就会比可用高度
+     多出顶栏那一段，底部被切在屏幕外（实测：320×720 的「生成」、1440×900 的
+     「生成」都点不到）。
+     这里不用固定常量：顶栏实际高度随断点变（88px / 96px / …），写死一个数字就会
+     在别的断点重新多切一刀。用 `100dvh - 工作台自身的文档顶部偏移`，让高度在任何
+     断点都等于"从工作台顶边到视口底边"。 */
+  height: calc(100dvh - var(--ow-top-offset, 0px));
   min-height: 0;
   overflow: hidden;
   background: linear-gradient(180deg, var(--ow-canvas-top) 0%, var(--ow-canvas-bottom) 100%);
@@ -95,6 +107,13 @@
 .ow-pane--rail { flex: 0 0 auto; }
 .ow-pane--classroom { flex: 1 1 auto; box-shadow: none; }
 .ow-pane--tools { flex: 0 0 300px; box-shadow: inset 1px 0 0 0 var(--ow-line-soft); }
+/* 目录这一栏是"列表 + 固定在底部的生成输入"两段：列表自己滚，输入区常驻。
+   若交给 `.ow-pane-body` 滚（默认 overflow:auto），超出部分会被它裁掉，而下面的
+   生成输入又不在它里面——320px 下"生成"按钮就这样被裁在可视区之外，用户点不到，
+   而它是这一栏唯一的出口。`.ow-rail` 自己滚之后还要 `min-height: 0`：flex 子项
+   默认"不小于内容高度"，没有它列表不会滚，而是把整栏撑到内容那么高。 */
+.ow-pane--rail .ow-pane-body { overflow: hidden; }
+.ow-pane--rail .ow-rail { flex: 1 1 auto; overflow: auto; }
 .ow-pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; }
 .ow-pane.is-mini { width: 60px; }
 .ow-pane.is-mini .ow-pane-body { padding: 6px; }
@@ -350,7 +369,7 @@
 .ow-start:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ow-accent-thread); }
 
 /* ── 场景目录 ─────────────────────────────────────────────────────────── */
-.ow-rail { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.ow-rail { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: auto; }
 .ow-rail__head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; }
 .ow-rail__body { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
 .ow-rail__skeleton { display: flex; flex-direction: column; gap: 6px; padding: 4px 8px; }
@@ -477,6 +496,16 @@ button.ow-scene-item:focus-visible { outline: none; background: var(--ow-tint); 
 .ow-composer input::placeholder { color: var(--ow-ink-faint); }
 .ow-composer input:focus-visible,
 .ow-composer select:focus-visible { outline: none; border-color: var(--ow-accent-thread); box-shadow: 0 0 0 3px var(--ow-accent-wash); }
+
+/* 矮视口下"主题 + 类型 + 生成"三行摞起来有 130px 高，会把目录栏挤出可视区，连带
+   把「生成」这个唯一的出口裁到屏幕外（320×720 实测就是这样）。改成一行：
+   主题输入吃掉剩余宽度，类型与按钮按内容收缩。320px 下这一行仍然放得下。 */
+@media (max-height: 820px) {
+  .ow-composer form { flex-direction: row; align-items: center; }
+  .ow-composer__field { flex: 1 1 auto; min-width: 0; }
+  .ow-composer form > select { flex: 0 0 auto; width: auto; max-width: 40%; }
+  .ow-composer form > .button { flex: 0 0 auto; }
+}
 
 /* ── 舞台 ─────────────────────────────────────────────────────────────────
    16:9 盒子由 JS 量出来（ContainBox），**不用 aspect-ratio**：宿主在首次挂载时
@@ -631,16 +660,79 @@ html[data-ow-resizing] { cursor: col-resize !important; user-select: none !impor
 .ow-tools-reopen:hover { color: var(--ow-accent); background: var(--ow-accent-wash); }
 .ow-tools-reopen:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--ow-accent-thread); }
 
-/* ── 窄屏互斥（本项目新增：参考项目只是隐藏 rail，三栏并排会让 16:9 不可用） ── */
-.ow-root[data-ow-layout='narrow'] .ow-pane--rail { width: 60px; }
-.ow-root[data-ow-layout='narrow'] .ow-pane--rail .ow-rail { display: none; }
-.ow-root[data-ow-layout='narrow'] .ow-pane--classroom { flex: 1 1 auto; }
+/* ── 窄屏互斥（本项目新增：参考项目只是隐藏 rail，三栏并排会让 16:9 不可用） ──
+ *
+ * 不变式只有一句：**被选中的那一个面板占满可用工作区，另外两个不存在。**
+ * "不存在"由渲染保证（未激活的面板根本不进 DOM），这里只负责让在场的那个吃满。
+ *
+ * 这里曾经写的是 `.ow-pane--rail { width: 60px }`——一个固定的 60px mini 目录栏。
+ * 它和"互斥"是直接矛盾的：rail 永远在场，于是 320/390/768 上的舞台永远被切掉
+ * 60px，而"目录"这个面板也永远不可能被真正选中。宽度留给 `.ow-pane--rail` 自己
+ * 的 `flex: 0 0 auto`，窄屏下选中它时由下面的规则吃掉整行。 */
+.ow-root[data-ow-layout='narrow'] {
+  flex-direction: column;
+}
+
+.ow-root[data-ow-layout='narrow'] .ow-pane {
+  /* 唯一的在场面板：占满导航区剩下的全部空间。 */
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 窄屏每屏只有一个面板，没有"缝"可言，所以任何列分隔线都是噪声。 */
+.ow-root[data-ow-layout='narrow'] .ow-pane--rail,
+.ow-root[data-ow-layout='narrow'] .ow-pane--tools {
+  box-shadow: none;
+}
+
 .ow-root[data-ow-layout='narrow'] .ow-classroom-body { padding: 8px; }
 .ow-root[data-ow-layout='narrow'] .ow-stage-meta { font-size: 10.5px; }
 
-/* 窄屏下目录面板被选中时，它以整栏呈现。 */
-.ow-root[data-ow-layout='narrow'] .ow-pane--rail.is-narrow-open { width: 100%; }
-.ow-root[data-ow-layout='narrow'] .ow-pane--rail.is-narrow-open .ow-rail { display: flex; }
+/* ── 窄屏的工作台导航区 ───────────────────────────────────────────────────
+ * 切换器**不**在课堂面板里：课堂是三个面板之一，把它当成另外两个的宿主，就会
+ * 出现"切到目录后课堂连同切换器一起消失、再也回不去"的死角。所以它属于工作台，
+ * 和课程标签、返回出口同处一条持久存在的横条。
+ *
+ * 高度用和面板头同一个令牌，切换面板时这一条不会跳动。 */
+.ow-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  /* 320px 下这里要放下切换器 + 一个课程标签 + 返回按钮，所以头高比宽屏紧 6px；
+     横向内边距也收到 8px。两者都只影响窄屏。 */
+  height: calc(var(--ow-pane-head-h) - 6px);
+  padding: 0 8px;
+  background-color: var(--ow-pane-bg);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 -1px 0 0 var(--ow-line-soft);
+}
+
+.ow-seg--nav { padding: 1px; }
+.ow-seg--nav button {
+  /* 触控面积按 24px 高、~38px 宽给：既进得了 320px 的一行，也没有小到点不中。 */
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 窄屏导航区里的标签条不参与面板头那套"标签=面板名"的几何，只当一个普通滚动条。 */
+.ow-nav .ow-ctabs { padding-top: 0; align-items: center; height: 100%; }
+.ow-nav .ow-ctab {
+  border-radius: 7px;
+  height: 24px;
+  min-width: 62px;
+  font-size: 11.5px;
+}
+.ow-nav .ow-ctab-on {
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--ow-line), var(--ow-lift-sm);
+}
+/* 尾巴是给面板头那条虚线收口的；导航区的标签下面没有虚线，留着会是一条白杠。 */
+.ow-nav .ow-ctab-on::after { display: none; }
+.ow-nav .ow-ctab-on .ow-ctab-name { padding-right: 24px; }
 
 /* ── 入场：只发生一次，之后不主动动 ───────────────────────────────────── */
 @keyframes ow-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -653,9 +745,15 @@ html[data-ow-resizing] { cursor: col-resize !important; user-select: none !impor
   .ow-start, .ow-ctab, .ow-scene-item, .ow-resize__thread { transition: none; }
 }
 
-/* 320px：面板头必须还能放下标签条与「开始学习」。 */
+/* 320px：导航区那一行与面板头都要完整放得下。 */
 @media (max-width: 400px) {
   .ow-pane-head { padding: 0 6px 0 8px; gap: 5px; }
   .ow-start { padding: 0 9px; }
+  /* 导出在 320px 没有位置。这里用 `display: none` 而不是 `visibility: hidden`：
+     只有前者会让子按钮退出 tab 序列。否则键盘用户会聚焦到一个 0×0、看不见的
+     「导出」上。 */
   .ow-export { display: none; }
+  .ow-nav { gap: 5px; padding: 0 6px; }
+  .ow-seg--nav button { padding: 3px 6px; }
+  .ow-nav .ow-ctab { min-width: 52px; }
 }

@@ -175,6 +175,12 @@
 .openmaic-scene-item__type { flex: 0 0 auto; padding: 2px 7px; border-radius: 999px; font-size: 10.5px; color: #4c3fa8; background: #f0edff; }
 .openmaic-scene-item__title { flex: 1 1 auto; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .openmaic-scene-item__actions { display: flex; gap: 2px; flex: 0 0 auto; }
+/* 这一行有 8 个按钮，而舞台是 16:9 的固定像素盒：窄视口下"标题 + 8 个按钮"根本
+   排不下。此前它们被硬挤出编辑面板的可视区（`overflow: hidden` 裁掉），也就是
+   "DOM 里有、用户点不到"。允许换行并让按钮可收缩，行才会长成两行而不是溢出。 */
+.openmaic-scene-item { flex-wrap: wrap; }
+.openmaic-scene-item .row-copy { flex: 1 1 120px; }
+.openmaic-scene-item .button { min-width: 0; }
 
 .openmaic-scene-content-editor { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-height: 140px; }
 .openmaic-scene-content-editor textarea {
