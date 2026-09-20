@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from pathlib import Path
 
 import pytest
@@ -622,5 +623,56 @@ def test_generation_advances_once_per_real_state_transition() -> None:
         after = runner.circuit_status(name)
         assert after["generation"] == 3, f"陈旧代次必须被丢弃：{after}"
         assert after["state"] == "CLOSED" and after["failures"] == 0, after
+
+    asyncio.run(scenario())
+
+
+def _replay_oracle(results: list[str], threshold: int) -> tuple[str, int, int]:
+    """把同一批结果**按完成顺序串行重放**，作为并发结果的 oracle。
+
+    CLOSED 批次里每个请求都持有代次 0，因此最终状态完全由完成顺序决定：
+    成功清零、失败累加、达到阈值即 CLOSED → OPEN 并推进代次；
+    熔断一旦打开，同批其余请求的旧代次全部作废，不得再改动状态。
+    返回 `(state, failures, generation)`。
+    """
+    failures = 0
+    opened = False
+    for item in results:
+        if opened:
+            continue  # 熔断已打开：同批旧代次结果全部被丢弃
+        if item == "ok":
+            failures = 0  # CLOSED 下的一般成功只清零计数，不推进代次
+        else:
+            failures += 1
+            if failures >= threshold:
+                opened = True  # CLOSED → OPEN，本批次唯一一次迁移
+    return ("OPEN" if opened else "CLOSED"), failures, (1 if opened else 0)
+
+
+def test_randomized_closed_interleavings_match_the_sequential_oracle() -> None:
+    """随机交错不变量：并发结果必须等于"按完成顺序串行重放"的结果。
+
+    手写用例只能覆盖想得到的组合 —— 评审正是因为这一点漏掉了 CLOSED 下
+    "先成功、后失败"的形状。这里用**固定种子**生成大量交错序列（成功/失败 ×
+    阈值 1~3 × 长度 1~6），逐条与 oracle 比对状态 / 失败计数 / 代次。
+
+    种子固定，所以用例完全可复现；任一序列与 oracle 不一致都会指名道姓地报出来。
+    """
+
+    async def scenario() -> None:
+        rng = random.Random(20260920)
+        for trial in range(120):
+            threshold = rng.choice([1, 2, 3])
+            results = [rng.choice(["ok", "fail"]) for _ in range(rng.randint(1, 6))]
+            status, generation_at_admission, calls = await _run_ordered(
+                results, threshold=threshold, request_prefix=f"oracle-{trial}",
+            )
+            context = f"#{trial} threshold={threshold} results={results}"
+            assert generation_at_admission == 0, f"{context} CLOSED 批次应同为代次 0"
+            assert calls == len(results), f"{context} 每个请求都必须真的调用候选"
+            assert status["probe_in_flight"] is False, f"{context} 不应持有 probe：{status}"
+            assert (
+                status["state"], status["failures"], status["generation"],
+            ) == _replay_oracle(results, threshold), f"{context} 与 oracle 不一致：{status}"
 
     asyncio.run(scenario())
