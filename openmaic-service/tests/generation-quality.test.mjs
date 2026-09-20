@@ -43,6 +43,14 @@ test('local slide generation has explanation, worked example, and a real quiz wh
   assert.deepEqual(reviewGeneratedStage(stage, 'slide', '牛顿第二定律选择题练习'), []);
 });
 
+test('simulation mode preserves teaching slides and appends an interactive runtime when provider omits one', () => {
+  const stage = prepareStage(materializeGeneratedStage(doc([concept, example]), { mode: 'simulation', prompt: '验证牛顿第二定律的实验' })).document;
+  assert.equal(stage.scenes[0].type, 'slide');
+  assert.equal(stage.scenes.at(-1).type, 'interactive');
+  assert.equal(stage.scenes.at(-1).content.widgetType, 'simulation');
+  assert.deepEqual(reviewGeneratedStage(stage, 'simulation', '验证牛顿第二定律的实验'), []);
+});
+
 test('provider retries a weak lesson with quality feedback before accepting the complete document', async () => {
   const requests = [];
   const server = createServer((request, response) => {
