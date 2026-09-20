@@ -17,6 +17,9 @@ import "./styles/agent-ops.css";
 import "./styles/interactive-classroom.css";
 import "./styles/openmaic-workbench.css";
 import "./styles/openmaic-classroom.css";
+// 必须最后引入：这是移植自参考项目的 Tailwind + 设计令牌层，只作用于
+// `.maic-root` 作用域内。放最后可让工具类在与既有手写 CSS 的优先级打平时胜出。
+import "./styles/maic.css";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

@@ -139,7 +139,8 @@ test("the narrow switcher and the model share one pane list", () => {
   }
   // 切换器必须在**工作台**上，而不是课堂面板里——否则切到目录就会把它一起带走。
   assert.match(workbenchSource, /className="ow-nav"/);
-  assert.match(workbenchSource, /\{layout\.narrow \? <NarrowWorkbenchNav/);
+  // 播放态例外：那时导航由课堂自己的头栏承担，留着它会与课堂头栏叠成两条。
+  assert.match(workbenchSource, /\{layout\.narrow && !playing \? <NarrowWorkbenchNav/);
 
   // 导航区外层是普通 <nav>，**不是** tablist：它肚子里有 WorkspaceCourseTabs，
   // 而后者自己就是 tablist，嵌起来层级就错了。
@@ -165,20 +166,29 @@ test("the narrow switcher and the model share one pane list", () => {
 test("the workbench renders exactly the panes the layout resolves", () => {
   // 只测纯模型会漏掉"模型说 classroom=false 但页面照样渲染课堂"这类缺陷——P1 之二
   // 就是这个形态。所以这里钉住渲染侧真的读了这三个开关。
-  for (const flag of ["layout.rail", "layout.classroom", "layout.tools"]) {
-    assert.match(
-      workbenchSource,
-      new RegExp(`\\{${flag.replace(".", "\\.")}\\s*\\?`),
-      `${flag} 必须直接决定对应面板是否渲染`,
-    );
-  }
-  // 课堂面板不得再被无条件挂载：section 的开标签必须紧跟在 `layout.classroom ?` 之后。
-  assert.match(workbenchSource, /layout\.classroom \? <section className="ow-pane ow-pane--classroom"/,
+  //
+  // 播放态是**唯一**的例外，而且例外本身也是契约：参考项目的全屏播放会把工作台
+  // 让到一边（"Full-screen playback steps the workspace aside"），于是目录与工具
+  // 让位、课堂接管。例外写成显式的 `&& !playing`，而不是把 layout 条件删掉——
+  // 删掉开关才是真的回到上面那个缺陷。所以这里同时钉住开关和例外。
+  assert.match(workbenchSource, /layout\.rail\s*&&\s*!playing\s*\?/,
+    "layout.rail 必须决定目录面板是否渲染（播放态除外）");
+  assert.match(workbenchSource, /\(layout\.classroom\s*\|\|\s*playing\)\s*\?/,
+    "课堂面板由 layout.classroom 决定，播放态下强制在场");
+  assert.match(workbenchSource, /layout\.tools\s*&&\s*!playing\s*\?/,
+    "layout.tools 必须决定工具面板是否渲染（播放态除外）");
+  // 课堂面板不得再被无条件挂载：section 的开标签必须紧跟在课堂条件之后。
+  assert.match(workbenchSource, /\(layout\.classroom \|\| playing\) \? <section[\s\S]{0,80}ow-pane--classroom/,
     "课堂 section 必须以 layout.classroom 为条件渲染");
-  assert.match(workbenchSource, /layout\.rail \? <aside[\s\S]{0,80}ow-pane--rail/,
-    "目录 aside 必须以 layout.rail 为条件渲染");
-  assert.match(workbenchSource, /layout\.tools \? <aside className="ow-pane ow-pane--tools"/,
-    "工具 aside 必须以 layout.tools 为条件渲染");
+  assert.match(workbenchSource, /layout\.rail && !playing \? <aside[\s\S]{0,80}ow-pane--rail/,
+    "目录 aside 必须由 layout.rail 决定，并在播放态让位");
+  assert.match(workbenchSource, /layout\.tools && !playing \? <aside className="ow-pane ow-pane--tools"/,
+    "工具 aside 必须由 layout.tools 决定，并在播放态让位");
+  // 播放态必须真的把课堂渲染出来，而不是只把两栏藏掉、留一块空白。
+  assert.match(workbenchSource, /data-ow-playback=\{playing \? "true" : "false"\}/,
+    "工作台根节点必须如实标出播放态，供样式与验收读取");
+  assert.match(workbenchSource, /<OpenMAICClassroomStage/,
+    "播放态必须渲染移植过来的课堂，而不是留下空白内容区");
 });
 
 test("the workbench ships the narrow layout and no-overflow guards", () => {

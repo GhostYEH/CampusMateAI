@@ -1,0 +1,127 @@
+/**
+ * 逐字移植自参考
+ * `components/slide-renderer/components/element/LineElement/index.tsx`。
+ *
+ * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ * `@/lib/utils/element` 的 `getLineElementPath` → `_compat/element.js`。
+ * 两条 path（可见线 + 透明加宽热区）与类名逐字保留。
+ */
+import { useId, useMemo } from 'react';
+import { getLineElementPath } from '../../../_compat/element.js';
+import { useElementShadow } from '../hooks/useElementShadow.js';
+import { LinePointMarker } from './LinePointMarker.jsx';
+
+export { BaseLineElement } from './BaseLineElement.jsx';
+
+/**
+ * Line element component
+ * Renders SVG lines with optional arrow/dot endpoints
+ */
+export function LineElement({ elementInfo, selectElement }) {
+  const { shadowStyle } = useElementShadow(elementInfo.shadow);
+  const markerId = `${elementInfo.id}-${useId().replaceAll(':', '')}`;
+
+  const handleSelectElement = (e) => {
+    if (elementInfo.lock) return;
+    e.stopPropagation();
+    selectElement?.(e, elementInfo);
+  };
+
+  // Calculate SVG dimensions
+  const svgWidth = useMemo(() => {
+    const width = Math.abs(elementInfo.start[0] - elementInfo.end[0]);
+    return width < 24 ? 24 : width;
+  }, [elementInfo.start, elementInfo.end]);
+
+  const svgHeight = useMemo(() => {
+    const height = Math.abs(elementInfo.start[1] - elementInfo.end[1]);
+    return height < 24 ? 24 : height;
+  }, [elementInfo.start, elementInfo.end]);
+
+  // Calculate line dash array for dashed/dotted styles
+  const lineDashArray = useMemo(() => {
+    const size = elementInfo.width;
+    if (elementInfo.style === 'dashed') {
+      return size <= 8 ? `${size * 5} ${size * 2.5}` : `${size * 5} ${size * 1.5}`;
+    }
+    if (elementInfo.style === 'dotted') {
+      return size <= 8 ? `${size * 1.8} ${size * 1.6}` : `${size * 1.5} ${size * 1.2}`;
+    }
+    return '0 0';
+  }, [elementInfo.width, elementInfo.style]);
+
+  // Generate path data
+  const path = useMemo(() => {
+    return getLineElementPath(elementInfo);
+  }, [elementInfo]);
+
+  return (
+    <div
+      className={`editable-element-line absolute pointer-events-none ${elementInfo.lock ? 'lock' : ''}`}
+      style={{
+        top: `${elementInfo.top}px`,
+        left: `${elementInfo.left}px`,
+      }}
+    >
+      <div
+        className="element-content relative w-full h-full"
+        style={{
+          filter: shadowStyle ? `drop-shadow(${shadowStyle})` : '',
+        }}
+        onMouseDown={handleSelectElement}
+        onTouchStart={handleSelectElement}
+      >
+        <svg
+          overflow="visible"
+          width={svgWidth}
+          height={svgHeight}
+          className="transform-origin-[0_0]"
+        >
+          <defs>
+            {elementInfo.points[0] && (
+              <LinePointMarker
+                id={markerId}
+                position="start"
+                type={elementInfo.points[0]}
+                color={elementInfo.color}
+                baseSize={elementInfo.width}
+              />
+            )}
+            {elementInfo.points[1] && (
+              <LinePointMarker
+                id={markerId}
+                position="end"
+                type={elementInfo.points[1]}
+                color={elementInfo.color}
+                baseSize={elementInfo.width}
+              />
+            )}
+          </defs>
+          {/* Visible line */}
+          <path
+            className={`line-point pointer-events-auto ${elementInfo.lock ? 'cursor-default' : 'cursor-move'}`}
+            d={path}
+            stroke={elementInfo.color}
+            strokeWidth={elementInfo.width}
+            strokeDasharray={lineDashArray}
+            fill="none"
+            markerStart={
+              elementInfo.points[0] ? `url(#${markerId}-${elementInfo.points[0]}-start)` : ''
+            }
+            markerEnd={
+              elementInfo.points[1] ? `url(#${markerId}-${elementInfo.points[1]}-end)` : ''
+            }
+          />
+          {/* Invisible wider path for easier clicking */}
+          <path
+            className={`line-path pointer-events-auto ${elementInfo.lock ? 'cursor-default' : 'cursor-move'}`}
+            d={path}
+            stroke="transparent"
+            strokeWidth="20"
+            fill="none"
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}

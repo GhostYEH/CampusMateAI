@@ -106,6 +106,15 @@
 
 .ow-pane--rail { flex: 0 0 auto; }
 .ow-pane--classroom { flex: 1 1 auto; box-shadow: none; }
+/* 播放态的课堂**接管整块内容区**：它是参考项目的全出血课堂（自带场景栏与头栏），
+   所以要摘掉工作台面板的背景、模糊与分隔线，否则会在课堂四周露出一圈工作台的
+   玻璃壳，"这是课堂"和"这是编辑器里的预览框"两个信号会同时出现。 */
+.ow-pane--classroom.is-learning {
+  background-color: transparent;
+  backdrop-filter: none;
+  padding: 0;
+  overflow: hidden;
+}
 .ow-pane--tools { flex: 0 0 300px; box-shadow: inset 1px 0 0 0 var(--ow-line-soft); }
 /* 目录这一栏是"列表 + 固定在底部的生成输入"两段：列表自己滚，输入区常驻。
    若交给 `.ow-pane-body` 滚（默认 overflow:auto），超出部分会被它裁掉，而下面的

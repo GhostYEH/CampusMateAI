@@ -75,7 +75,9 @@ export default function OpenMAICClassroomEntryPage() {
   const inFlight = useRef(null);
 
   const goToWorkspace = useCallback((workspaceId, prompt) => {
-    navigate(workspaceHref(courseId, workspaceId, prompt), { replace: true });
+    // `mode=playback` 让工作台一进来就是学习态。用户点的是「进入课堂」，
+    // 落到编辑器布局再让他自己找「开始学习」是把入口的语义丢在了半路。
+    navigate(workspaceHref(courseId, workspaceId, prompt, { mode: "playback" }), { replace: true });
   }, [courseId, navigate]);
   /**
    * 轮询一次生成任务。

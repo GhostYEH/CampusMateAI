@@ -1,0 +1,40 @@
+/**
+ * 逐字移植自参考
+ * `components/slide-renderer/components/element/LineElement/LinePointMarker.tsx`。
+ *
+ * 只做两处机械改写：去掉 TypeScript 类型与 `@openmaic/dsl` 的 `LinePoint` 类型；
+ * `NonEmptyLinePoint` 只是 `Exclude<LinePoint, ''>` 的别名，运行时无对应物。
+ */
+const pathMap = {
+  dot: 'm0 5a5 5 0 1 0 10 0a5 5 0 1 0 -10 0z',
+  arrow: 'M0,0 L10,5 0,10 Z',
+};
+
+const rotateMap = {
+  'arrow-start': 180,
+  'arrow-end': 0,
+};
+
+export function LinePointMarker({ id, position, type, baseSize, color }) {
+  const path = pathMap[type];
+  const rotate = rotateMap[`${type}-${position}`] || 0;
+  const size = baseSize < 2 ? 2 : baseSize;
+
+  return (
+    <marker
+      id={`${id}-${type}-${position}`}
+      markerUnits="userSpaceOnUse"
+      orient="auto"
+      markerWidth={size * 3}
+      markerHeight={size * 3}
+      refX={size * 1.5}
+      refY={size * 1.5}
+    >
+      <path
+        d={path}
+        fill={color}
+        transform={`scale(${size * 0.3}, ${size * 0.3}) rotate(${rotate}, 5, 5)`}
+      />
+    </marker>
+  );
+}

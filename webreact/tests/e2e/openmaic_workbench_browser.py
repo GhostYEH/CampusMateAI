@@ -343,7 +343,11 @@ def enter_classroom_from_my_courses(page, recorder: Recorder, report: list[str])
     expect(page.locator('[data-testid="openmaic-workbench"]')).to_be_visible(timeout=30000)
     _step(report, "直达工作台：未经过角色 / 模式 / 预览确认")
     # direct 落地后必须真的把课堂渲染出来（可以是"正在生成"，但不能是空白）。
-    expect(page.locator(".ow-classroom-body")).to_be_visible(timeout=30000)
+    #
+    # 落的是**学习态**：工作台三栏让位，由课堂自己提供场景栏与头栏（参考项目的
+    # "Full-screen playback steps the workspace aside"）。所以这里断言的是学习态
+    # 容器，而不是编辑器里的 `.ow-classroom-body` —— 后者在播放态按设计不存在。
+    expect(page.locator('[data-testid="ow-learning-classroom"]')).to_be_visible(timeout=30000)
     _step(report, f"工作台 URL：{page.url.split('?')[0].split('/workspaces/')[-1]}")
     return page.url
 
@@ -685,15 +689,30 @@ def check_play_and_back(page, recorder: Recorder, report: list[str]) -> None:
     expect(start).to_be_visible(timeout=10000)
     start.click()
     page.wait_for_timeout(600)
-    assert start.get_attribute("aria-pressed") == "true", "「开始学习」按下后未进入播放态"
-    assert "返回编辑" in start.inner_text(), f"播放态下按钮文案应为「返回编辑」：{start.inner_text()}"
-    _step(report, "点击「开始学习」进入播放态（按钮变为「返回编辑」）")
 
-    start.click()
+    # 播放态由**课堂接管整块内容区**，工作台三栏让位。所以「开始学习」这个开关
+    # 自己也随面板头一起消失 —— 出口改为课堂自己头栏里的「返回编辑」。这不是把
+    # 出口弄丢了：它换到了课堂里，和参考项目全屏播放时"把工作台让到一边"一致。
+    expect(page.locator('[data-testid="ow-learning-classroom"]')).to_be_visible(timeout=10000)
+    assert page.locator('[data-testid="ow-start-learning"]').count() == 0, \
+        "播放态下工作台面板头必须让位给课堂自己的头栏"
+    for selector in (".ow-pane--rail", ".ow-pane--tools"):
+        assert page.locator(selector).count() == 0, f"播放态下 {selector} 必须让位给课堂"
+    _step(report, "点击「开始学习」进入播放态：课堂接管内容区，工作台三栏让位")
+
+    back = page.locator('[data-testid="ow-classroom-back"]')
+    expect(back).to_be_visible(timeout=10000)
+    assert "返回编辑" in back.inner_text(), f"课堂出口文案应为「返回编辑」：{back.inner_text()}"
+    back.click()
     page.wait_for_timeout(600)
+
+    start = page.locator('[data-testid="ow-start-learning"]')
+    expect(start).to_be_visible(timeout=10000)
     assert start.get_attribute("aria-pressed") == "false", "「返回编辑」未回到编辑态"
     assert "开始学习" in start.inner_text(), "返回编辑后按钮文案未复原"
-    _step(report, "「返回编辑」回到编辑态")
+    assert page.locator('[data-testid="ow-learning-classroom"]').count() == 0, \
+        "回到编辑态后不应仍挂着学习态课堂"
+    _step(report, "课堂头栏「返回编辑」回到编辑态（工作台三栏原样回来）")
 
     recorder.page_errors.clear()
     page.reload(wait_until="domcontentloaded")
@@ -713,12 +732,21 @@ def check_narrow_play_entry(page, report: list[str]) -> None:
     assert box and box["width"] >= 64 and box["height"] >= 24, f"320px「开始学习」触控面积过小：{box}"
     start.click()
     page.wait_for_timeout(600)
-    assert start.get_attribute("aria-pressed") == "true", "320px 下点「开始学习」没有进入播放"
-    start.click()
-    page.wait_for_timeout(400)
+    # 320px 下课堂接管后，出口必须仍然真实可点 —— 否则窄屏用户会被关在课堂里。
+    back = page.locator('[data-testid="ow-classroom-back"]')
+    expect(back).to_be_visible(timeout=10000)
+    back_box = back.bounding_box()
+    assert back_box and back_box["width"] >= 44 and back_box["height"] >= 24, \
+        f"320px 课堂「返回编辑」触控面积过小：{back_box}"
+    assert back_box["x"] >= 0 and back_box["x"] + back_box["width"] <= 321, \
+        f"320px 课堂「返回编辑」越界：{back_box}"
+    back.click()
+    page.wait_for_timeout(500)
+    start = page.locator('[data-testid="ow-start-learning"]')
+    expect(start).to_be_visible(timeout=10000)
     assert start.get_attribute("aria-pressed") == "false"
     _step(report, f"320px「开始学习」真实可点：{round(box['width'])}×{round(box['height'])}px，"
-                 f"进入播放并返回编辑")
+                 f"课堂「返回编辑」同样可点（{round(back_box['width'])}×{round(back_box['height'])}px）")
 
 
 def check_mid_route_survives(page, recorder: Recorder, report: list[str]) -> None:

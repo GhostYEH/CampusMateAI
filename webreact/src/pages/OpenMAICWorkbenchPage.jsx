@@ -4,7 +4,10 @@ import * as api from "../data/api.js";
 import { Button } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import StageEditorPanel from "../components/openmaic/StageEditorPanel.jsx";
-import StagePlayerPanel from "../components/openmaic/StagePlayerPanel.jsx";
+// 播放态不再用 StagePlayerPanel 的语义化渲染：它只把课件画成 <ul><li>，
+// 与参考项目的课堂相差太远。全局播放走 OpenMAICClassroomStage；
+// StagePlayerPanel 仍由 StageEditorPanel 的单场景「播放」入口使用。
+import OpenMAICClassroomStage from "../components/openmaic/OpenMAICClassroomStage.jsx";
 import ProviderToolsPanel from "../components/openmaic/ProviderToolsPanel.jsx";
 import ContainBox from "../components/openmaic/ContainBox.jsx";
 import ResizeHandle from "../components/openmaic/ResizeHandle.jsx";
@@ -229,7 +232,13 @@ export default function OpenMAICWorkbenchPage() {
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(false);
   // 播放是**推导出来的**一个输入：只有用户按「开始学习」它为真。
-  const [learning, setLearning] = useState(false);
+  //
+  // 「进入课堂」直达入口把 `mode=playback` 写进地址，于是它进来时就已经是
+  // 学习态。之前这个状态只有本地初值 `false`，导致「进入课堂」总是先把人丢进
+  // 编辑器布局——用户点的是"上课"，看到的却是编辑台，还得自己再找一次
+  // 「开始学习」。由 URL 决定还带来一个副作用：刷新后仍停在同一态。
+  const wantsLearning = searchParams.get("mode") === "playback";
+  const [learning, setLearning] = useState(wantsLearning);
   const [toolsCollapsed, setToolsCollapsed] = useState(false);
   const [narrowPane, setNarrowPane] = useState("classroom");
   const [tabsOpen, setTabsOpen] = useState([]);
@@ -284,13 +293,16 @@ export default function OpenMAICWorkbenchPage() {
   }, [courseId, workspaceId]);
 
   useEffect(() => {
-    setJob(null); setLearning(false);
+    // 切课程/工作台要把播放态收回去，否则会把上一门课的"正在上课"带进来。
+    // 但收到的是**地址表达的意图**而不是写死的 `false`：直达入口的
+    // `mode=playback` 必须活过这一次重置，否则初值等于白设。
+    setJob(null); setLearning(wantsLearning);
     void load();
     // 能力状态各自独立降级：取不到时只是入口关闭，不影响已有内容。
     api.getOpenMAICProviderStatus().then(setProviderStatus).catch(() => setProviderStatus(null));
     api.getOpenMAICFusionStatus().then(setFusionStatus).catch(() => setFusionStatus(null));
     return () => { if (polling.current) window.clearTimeout(polling.current); };
-  }, [load]);
+  }, [load, wantsLearning]);
 
   // 打开的课堂标签。当前 workspace 始终在列表里，且是活动项。
   useEffect(() => {
@@ -376,6 +388,12 @@ export default function OpenMAICWorkbenchPage() {
     hasCurrentScene: Boolean(selectedStage),
   });
 
+  // 播放态**接管整块内容区**。参考项目的全屏播放会把工作台让到一边
+  // （"Full-screen playback steps the workspace aside"），这里遵循同一条边界：
+  // 若不接管，左栏的舞台列表会和课堂自己的场景栏同时出现在屏幕上，用户看到
+  // 两份互相矛盾的目录。进入编辑态后工作台三栏原样回来。
+  const playing = chromeMode === "playback";
+
   const resizeHandle = <ResizeHandle
     label="拖动调整目录宽度"
     value={rail.width}
@@ -392,11 +410,13 @@ export default function OpenMAICWorkbenchPage() {
     data-testid="openmaic-workbench"
     data-ow-layout={layout.narrow ? "narrow" : "wide"}
     data-ow-pane={layout.pane}
+    data-ow-playback={playing ? "true" : "false"}
   >
     {/* ── 窄屏唯一的持久导航区：面板切换器 + 课程标签 + 返回出口 ─────────────
         它渲染在**工作台**上，不属于任何一个面板，所以无论当前是目录、课堂还是
-        工具，它都在。放进课堂面板头里会出现"切到目录就再也回不到课堂"的死角。 */}
-    {layout.narrow ? <NarrowWorkbenchNav
+        工具，它都在。放进课堂面板头里会出现"切到目录就再也回不到课堂"的死角。
+        播放态例外：那时导航由课堂自己的头栏承担，留着它会与课堂头栏叠成两条。 */}
+    {layout.narrow && !playing ? <NarrowWorkbenchNav
       pane={layout.pane}
       onSelect={setNarrowPane}
       tabs={tabsOpen}
@@ -406,8 +426,8 @@ export default function OpenMAICWorkbenchPage() {
       onCloseTab={closeTab}
     /> : null}
 
-    {/* ── 左栏：目录（窄屏下只有被选中时才存在） ───────────────────────── */}
-    {layout.rail ? <aside
+    {/* ── 左栏：目录（窄屏下只有被选中时才存在；播放态让位给课堂自己的场景栏） ── */}
+    {layout.rail && !playing ? <aside
       className={`ow-pane ow-pane--rail${layout.railMini ? " is-mini" : ""}`}
       style={layout.railMini ? undefined : { width: layout.narrow ? undefined : rail.width }}
       aria-label="课堂目录"
@@ -456,7 +476,18 @@ export default function OpenMAICWorkbenchPage() {
     </aside> : null}
 
     {/* ── 中栏：课堂 ─────────────────────────────────────────────────── */}
-    {layout.classroom ? <section className="ow-pane ow-pane--classroom" aria-label="课堂">
+    {(layout.classroom || playing) ? <section
+      className={`ow-pane ow-pane--classroom${playing ? " is-learning" : ""}`}
+      aria-label="课堂"
+      data-testid={playing ? "ow-learning-classroom" : undefined}
+    >
+      {playing ? <PlaybackTakeover
+        loading={loading}
+        selectedStage={selectedStage}
+        courseId={courseId}
+        workspaceId={workspaceId}
+        onExit={() => setLearning(false)}
+      /> : <>
       <header className="ow-pane-head ow-classroom-head">
         {/* 宽屏：课程标签 + 导出 + 「开始学习」。窄屏这三样分别在导航区、舞台头
             和课程标签里，所以这里只保留「开始学习」这一个唯一的播放入口。 */}
@@ -520,13 +551,10 @@ export default function OpenMAICWorkbenchPage() {
             <small>在「目录」里输入主题，生成第一份内容。</small>
           </div>
           : <>
-            {/* 播放态与编辑态**同时挂载**，用可见性切换：切一次不会丢编辑器状态。 */}
-            <div className={`ow-stage${chromeMode === "playback" ? " is-playback" : ""}`}>
+            <div className="ow-stage">
               <ContainBox label="课堂舞台">
                 <div className="ow-stage__inner">
-                  {chromeMode === "playback"
-                    ? <StagePlayerPanel courseId={courseId} workspaceId={workspaceId} stageId={selectedStage.id} onClose={() => setLearning(false)} />
-                    : <StageEditorPanel courseId={courseId} workspaceId={workspaceId} stageId={selectedStage.id} onSaved={load} />}
+                  <StageEditorPanel courseId={courseId} workspaceId={workspaceId} stageId={selectedStage.id} onSaved={load} />
                 </div>
               </ContainBox>
             </div>
@@ -536,10 +564,11 @@ export default function OpenMAICWorkbenchPage() {
             </p>
           </>}
       </div>
+      </>}
     </section> : null}
 
-    {/* ── 右栏：课堂工具区（窄屏下只有被选中时才存在） ─────────────────── */}
-    {layout.tools ? <aside className="ow-pane ow-pane--tools" aria-label="课堂工具">
+    {/* ── 右栏：课堂工具区（窄屏下只有被选中时才存在；播放态让位给课堂） ── */}
+    {layout.tools && !playing ? <aside className="ow-pane ow-pane--tools" aria-label="课堂工具">
       <header className="ow-pane-head">
         <span className="ow-pane-eyebrow">课堂工具</span>
         {/* "收起"是宽屏并排时的动作。窄屏工具是三个互斥面板之一，收起它等于把
@@ -557,8 +586,35 @@ export default function OpenMAICWorkbenchPage() {
       </div>
     </aside> : null}
 
-    {!layout.tools && !layout.narrow ? <button type="button" className="ow-tools-reopen" aria-label="展开课堂工具" onClick={() => setToolsCollapsed(false)}>
+    {!layout.tools && !layout.narrow && !playing ? <button type="button" className="ow-tools-reopen" aria-label="展开课堂工具" onClick={() => setToolsCollapsed(false)}>
       <Icon name="PhCaretLeft" size={14} /><span>课堂工具</span>
     </button> : null}
   </main>;
+}
+
+/**
+ * 播放态的内容区。
+ *
+ * 单独抽出来是为了让三种状态（读取中 / 没有内容 / 有内容）与工作台的编辑分支
+ * 互不干扰：编辑分支里的 `ContainBox`、舞台头、课程标签在播放时都不该出现，
+ * 否则课堂会被塞回一个"编辑器里的预览框"里，而这正是要摆脱的样子。
+ */
+function PlaybackTakeover({ loading, selectedStage, courseId, workspaceId, onExit }) {
+  if (loading) {
+    return <div className="ow-stage-state" aria-busy="true"><span className="loading-orb" /><p>正在打开课堂…</p></div>;
+  }
+  if (!selectedStage) {
+    return <div className="ow-stage-state">
+      <Icon name="PhLayout" size={30} />
+      <p>这个工作台还没有课堂内容</p>
+      <small>返回编辑，在「目录」里输入主题生成第一份内容。</small>
+    </div>;
+  }
+  return <OpenMAICClassroomStage
+    courseId={courseId}
+    workspaceId={workspaceId}
+    stageId={selectedStage.id}
+    fallbackTitle={selectedStage.title}
+    onExit={onExit}
+  />;
 }

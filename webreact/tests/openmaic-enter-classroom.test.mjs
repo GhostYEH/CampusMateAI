@@ -62,6 +62,15 @@ test("the classroom entry is a real route and the course rail links to it", () =
   assert.match(homeSource, /进入课堂/);
 });
 
+test("the classroom entry opens the workbench in learning mode, not the editor", () => {
+  // 用户点的是「进入课堂」。工作台若把 `learning` 固定在本地初值 `false`，入口就会
+  // 先把人丢进编辑器布局，他还得自己再找一次「开始学习」——入口的语义丢在了半路。
+  // 地址里的 `mode=playback` 是这条链路上唯一的凭据，两端都要钉住。
+  assert.match(entryPageSource, /workspaceHref\(courseId, workspaceId, prompt, \{ mode: "playback" \}\)/);
+  const workbenchSource = read("src/pages/OpenMAICWorkbenchPage.jsx");
+  assert.match(workbenchSource, /searchParams\.get\("mode"\) === "playback"/);
+});
+
 test("the courses page exposes direct classroom entry as its only primary flow", () => {
   assert.match(homeSource, /enterClassroomHref\(selectedCourseId\)/);
   assert.doesNotMatch(paritySource, /generationPreviewHref/);
