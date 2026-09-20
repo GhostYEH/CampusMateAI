@@ -75,6 +75,19 @@ export function slideElementMoveCommand(sceneId, elementId, left, top) {
   return { type: "slide.element.move", sceneId, elementId, left, top };
 }
 
+export function slideElementUpdateCommand(sceneId, elementId, content) {
+  if (typeof sceneId !== "string" || !sceneId.trim()) {
+    throw new EditorCommandError("scene_id_required", "sceneId", "必须指定场景");
+  }
+  if (typeof elementId !== "string" || !elementId.trim()) {
+    throw new EditorCommandError("element_id_required", "elementId", "必须指定元素");
+  }
+  if (typeof content !== "string") {
+    throw new EditorCommandError("command_field_invalid", "content", "文本内容必须是字符串");
+  }
+  return { type: "slide.element.update", sceneId, elementId, content };
+}
+
 export function stageUpdateCommand(patch = {}) {
   return { type: "stage.update", ...patch };
 }
@@ -206,6 +219,26 @@ export function applyCommandLocally(document, command) {
         ...scene,
         content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } },
       };
+      return { ...document, scenes };
+    }
+    case "slide.element.update": {
+      if (typeof command.content !== "string") {
+        throw new EditorCommandError("command_field_invalid", "content", "文本内容必须是字符串");
+      }
+      const at = indexOf(command.sceneId);
+      const scene = scenes[at];
+      if (scene.type !== "slide" || scene.content?.type !== "slide") {
+        throw new EditorCommandError("slide_element_requires_slide", "sceneId", "只能编辑 slide 场景元素");
+      }
+      const elements = Array.isArray(scene.content.canvas?.elements) ? scene.content.canvas.elements : [];
+      const elementAt = elements.findIndex((element) => element?.id === command.elementId);
+      if (elementAt === -1) throw new EditorCommandError("element_not_found", "elementId", "找不到该元素");
+      if (elements[elementAt]?.type !== "text") {
+        throw new EditorCommandError("element_type_invalid", "elementId", "只有文本元素支持就地编辑");
+      }
+      const nextElements = elements.slice();
+      nextElements[elementAt] = { ...nextElements[elementAt], content: command.content };
+      scenes[at] = { ...scene, content: { ...scene.content, canvas: { ...scene.content.canvas, elements: nextElements } } };
       return { ...document, scenes };
     }
     case "stage.update": {

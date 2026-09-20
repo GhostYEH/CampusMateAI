@@ -16,6 +16,7 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementUpdateCommand,
 } from "../../features/openmaic/editorModel.js";
 
 /**
@@ -137,6 +138,11 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
   function moveSlideElement(elementId, left, top) {
     if (!selectedScene?.id) return false;
     return run(slideElementMoveCommand(selectedScene.id, elementId, left, top));
+  }
+
+  function updateTextElement(elementId, content) {
+    if (!selectedScene?.id) return false;
+    return run(slideElementUpdateCommand(selectedScene.id, elementId, content));
   }
 
   async function editScene(sceneId) {
@@ -283,7 +289,11 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
           <Button type="button" variant="quiet" onClick={() => run(sceneDeleteCommand(scene.id))}>删除</Button>
         </li>)}
         </ol>
-        <StageCanvasPreview scene={selectedScene} onMoveElement={moveSlideElement} />
+        <StageCanvasPreview
+          scene={selectedScene}
+          onMoveElement={moveSlideElement}
+          onUpdateTextElement={updateTextElement}
+        />
       </div>
       : <div className="openmaic-home__empty openmaic-home__empty--wide">
         <Icon name="PhLayout" size={26} />

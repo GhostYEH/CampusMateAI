@@ -44,6 +44,7 @@ export const STAGE_COMMANDS = [
   'scene.move',
   'scene.update',
   'slide.element.move',
+  'slide.element.update',
 ] as const;
 
 export type StageCommandType = (typeof STAGE_COMMANDS)[number];
@@ -389,6 +390,44 @@ function applySlideElementMove(
   return { ...aggregate, scenes };
 }
 
+/** Update the editable payload of one existing slide element. */
+function applySlideElementUpdate(
+  aggregate: StageAggregate,
+  command: Record<string, unknown>,
+  path: string,
+): StageAggregate {
+  const sceneId = requireSceneId(command, path);
+  const elementId = nonEmptyString(command.elementId, `${path}.elementId`);
+  const sceneIndex = sceneIndexOf(aggregate.scenes, sceneId, `${path}.sceneId`);
+  const scene = aggregate.scenes[sceneIndex];
+  if (scene.type !== 'slide' || scene.content.type !== 'slide') {
+    throw new DslCommandError('slide_element_requires_slide', `${path}.sceneId`, 'slide.element.update 只能作用于 slide 场景');
+  }
+  const content = optionalText(command.content, `${path}.content`, 20_000);
+  if (content === undefined) {
+    throw new DslCommandError('command_no_effect', path, 'slide.element.update 必须提供 content');
+  }
+  const canvas = scene.content.canvas;
+  const elements = isObject(canvas) && Array.isArray(canvas.elements) ? canvas.elements : [];
+  const elementIndex = elements.findIndex((element) => isObject(element) && element.id === elementId);
+  if (elementIndex === -1) {
+    throw new DslCommandError('element_not_found', `${path}.elementId`, `找不到元素 ${elementId}`);
+  }
+  const target = elements[elementIndex] as Record<string, unknown>;
+  if (target.type !== 'text') {
+    throw new DslCommandError('element_type_invalid', `${path}.elementId`, '只有文本元素支持就地编辑');
+  }
+  const nextElements = elements.slice();
+  nextElements[elementIndex] = { ...target, content };
+  const nextScene = {
+    ...scene,
+    content: { ...scene.content, canvas: { ...canvas, elements: nextElements } },
+  };
+  const scenes = aggregate.scenes.slice();
+  scenes[sceneIndex] = nextScene;
+  return { ...aggregate, scenes };
+}
+
 export interface ApplyOptions {
   /** Injected for deterministic fixture output; defaults to `Date.now()`. */
   now?: number;
@@ -454,6 +493,9 @@ export function applyStageCommands(
         break;
       case 'slide.element.move':
         aggregate = applySlideElementMove(aggregate, rawCommand, path);
+        break;
+      case 'slide.element.update':
+        aggregate = applySlideElementUpdate(aggregate, rawCommand, path);
         break;
       default: {
         const exhaustive: never = rawCommand.type;

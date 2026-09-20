@@ -8,12 +8,14 @@ import { MaicSlideSurface } from "../slide/MaicSlideSurface.jsx";
  * Keeping this boundary read-only leaves selection, drag, and command wiring
  * for the following editor slices while making the workbench preview truthful.
  */
-export default function StageCanvasPreview({ scene, onMoveElement }) {
+export default function StageCanvasPreview({ scene, onMoveElement, onUpdateTextElement }) {
   const rootRef = React.useRef(null);
   const dragRef = React.useRef(null);
   const [selectedElementId, setSelectedElementId] = React.useState("");
   const [dragPosition, setDragPosition] = React.useState(null);
   const [selectionRect, setSelectionRect] = React.useState(null);
+  const [editingTextId, setEditingTextId] = React.useState("");
+  const [textDraft, setTextDraft] = React.useState("");
   const content = scene?.content;
   const canvas = content?.type === "slide" ? content.canvas : null;
   const elements = Array.isArray(canvas?.elements) ? canvas.elements : [];
@@ -47,6 +49,11 @@ export default function StageCanvasPreview({ scene, onMoveElement }) {
       scaleY: Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1,
     });
   }, [canvas, selectedElement, selectedElementId]);
+
+  React.useEffect(() => {
+    setEditingTextId("");
+    setTextDraft("");
+  }, [scene?.id]);
 
   React.useEffect(() => {
     if (selectedElementId && !selectedElement) setSelectedElementId("");
@@ -113,6 +120,28 @@ export default function StageCanvasPreview({ scene, onMoveElement }) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
   }, [canvas, elements]);
 
+  const beginTextEdit = React.useCallback((event) => {
+    const target = event.target?.closest?.("[data-maic-element-id]");
+    if (!target || !rootRef.current) return;
+    const elementId = target.getAttribute("data-maic-element-id") || "";
+    const element = elements.find((entry) => entry?.id === elementId);
+    if (element?.type !== "text") return;
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedElementId(elementId);
+    setEditingTextId(elementId);
+    setTextDraft(typeof element.content === "string" ? element.content : "");
+  }, [elements]);
+
+  const finishTextEdit = React.useCallback(() => {
+    if (!editingTextId) return;
+    const element = elements.find((entry) => entry?.id === editingTextId);
+    if (element && textDraft !== element.content) {
+      onUpdateTextElement?.(editingTextId, textDraft);
+    }
+    setEditingTextId("");
+  }, [editingTextId, elements, onUpdateTextElement, textDraft]);
+
   const handlePointerMove = React.useCallback((event) => {
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
@@ -143,6 +172,7 @@ export default function StageCanvasPreview({ scene, onMoveElement }) {
     onPointerMove={handlePointerMove}
     onPointerUp={finishDrag}
     onPointerCancel={(event) => finishDrag(event, true)}
+    onDoubleClick={beginTextEdit}
     style={{ position: "relative", touchAction: "none" }}
   >
     {scene && content?.type === "slide" && elements.length ? <div className="maic-edit-canvas__surface flex-1 overflow-hidden relative h-full w-full">
@@ -161,6 +191,26 @@ export default function StageCanvasPreview({ scene, onMoveElement }) {
         top: renderedSelection.top,
         width: renderedSelection.width,
         height: renderedSelection.height,
+      }}
+    /> : null}
+    {editingTextId && selectionRect ? <div
+      className="maic-edit-canvas__text-editor"
+      data-testid="openmaic-text-editor"
+      data-editing-element-id={editingTextId}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-label="编辑文本元素"
+      onInput={(event) => setTextDraft(event.currentTarget.innerHTML)}
+      onBlur={finishTextEdit}
+      dangerouslySetInnerHTML={{ __html: textDraft }}
+      style={{
+        position: "absolute",
+        left: selectionRect.left,
+        top: selectionRect.top,
+        width: selectionRect.width,
+        minHeight: selectionRect.height,
+        zIndex: 4,
       }}
     /> : null}
   </div>;

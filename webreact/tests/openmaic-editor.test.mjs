@@ -29,6 +29,7 @@ import {
   sceneMoveCommand,
   sceneUpdateCommand,
   slideElementMoveCommand,
+  slideElementUpdateCommand,
 } from "../src/features/openmaic/editorModel.js";
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
@@ -115,6 +116,22 @@ test("slide.element.move mirrors only a finite coordinate pair on an existing sl
     () => applyCommandLocally(nonFinitePosition, slideElementMoveCommand("s3", "e3", 1, 1)),
     (error) => error.code === "element_position_invalid" && error.path === "elementId",
   );
+});
+
+test("slide.element.update changes only an existing text element payload", () => {
+  const document = documentWith([{
+    id: "s1", type: "slide", title: "A", order: 0,
+    actions: [{ id: "a1", type: "speech", text: "保留" }],
+    content: { type: "slide", canvas: { elements: [
+      { id: "e1", type: "text", content: "旧文本", left: 10, top: 20 },
+      { id: "e2", type: "shape", left: 30, top: 40 },
+    ] } },
+  }]);
+  const updated = applyCommandLocally(document, slideElementUpdateCommand("s1", "e1", "<p>新文本</p>"));
+  assert.equal(updated.scenes[0].content.canvas.elements[0].content, "<p>新文本</p>");
+  assert.equal(updated.scenes[0].content.canvas.elements[0].left, 10);
+  assert.deepEqual(updated.scenes[0].actions, document.scenes[0].actions);
+  assert.throws(() => applyCommandLocally(document, slideElementUpdateCommand("s1", "e2", "文本")), (error) => error.code === "element_type_invalid");
 });
 
 test("duplicating locally deep-copies the payload", () => {
@@ -347,7 +364,9 @@ test("the outline and a single scene are read from the editor endpoints", async 
 test("the editor surface is reachable from the workspace panel (not dead code)", () => {
   assert.match(workspaceSource, /StageEditorPanel/);
   assert.match(workspaceSource, /listOpenMAICStages/);
-  assert.match(editorSource, /applyOpenMAICStageCommands/);
+assert.match(editorSource, /applyOpenMAICStageCommands/);
+assert.match(editorSource, /slideElementUpdateCommand/);
+assert.match(read("src/maic/edit/StageCanvasPreview.jsx"), /contentEditable/);
   assert.match(editorSource, /createCommandBuffer/);
 });
 

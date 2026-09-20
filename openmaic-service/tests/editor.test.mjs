@@ -219,6 +219,30 @@ test('slide.element.move rejects unknown targets, non-slide scenes, and non-fini
   );
 });
 
+test('slide.element.update changes only an existing text element payload', () => {
+  const document = {
+    ...aggregate(),
+    scenes: [{
+      id: 'slide_1', stageId: 'stg_1', title: '幻灯片', order: 0, type: 'slide',
+      actions: [{ id: 'act_1', type: 'speech', text: '保留' }],
+      content: { type: 'slide', canvas: { elements: [
+        { id: 'el_1', type: 'text', left: 1, top: 2, content: '旧文本' },
+        { id: 'el_2', type: 'shape', left: 3, top: 4 },
+      ] } },
+    }],
+  };
+  const next = applyStageCommands(document, [{
+    type: 'slide.element.update', sceneId: 'slide_1', elementId: 'el_1', content: '<p>新文本</p>',
+  }]);
+  assert.equal(next.scenes[0].content.canvas.elements[0].content, '<p>新文本</p>');
+  assert.equal(next.scenes[0].content.canvas.elements[0].left, 1);
+  assert.deepEqual(next.scenes[0].actions, document.scenes[0].actions);
+  assert.throws(
+    () => applyStageCommands(document, [{ type: 'slide.element.update', sceneId: 'slide_1', elementId: 'el_2', content: '文本' }]),
+    (error) => error instanceof DslCommandError && error.code === 'element_type_invalid',
+  );
+});
+
 test('an unknown command or a missing scene is refused before anything is applied', () => {
   const first = applyStageCommands(aggregate(), [{ type: 'scene.create', sceneType: 'slide' }]);
   assert.throws(
