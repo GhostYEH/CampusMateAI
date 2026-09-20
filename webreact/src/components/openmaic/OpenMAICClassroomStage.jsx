@@ -8,6 +8,7 @@ import { ctrlBtn } from "../../maic/classroom/classroom-header.jsx";
 import { MaicSceneRenderer } from "../../maic/scene/index.js";
 import { MaicSlideSurface } from "../../maic/slide/index.js";
 import { MaicRoundtable } from "../../maic/roundtable/index.jsx";
+import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
 import { cn } from "../../maic/utils/cn.js";
 import {
   degradeNotice,
@@ -415,6 +416,8 @@ function SceneStage({
 
   const sandboxHtml = typeof scene?.content?.html === "string" ? scene.content.html : "";
   const sandboxUrl = typeof scene?.content?.url === "string" ? scene.content.url : "";
+  const isNativeSimulation = scene?.content?.type === "interactive"
+    && scene.content.widgetType === "simulation";
 
   let body;
   if (loading) {
@@ -422,6 +425,8 @@ function SceneStage({
       <span className="loading-orb" />
       <p>正在读取场景内容…</p>
     </div>;
+  } else if (isNativeSimulation) {
+    body = <SimulationRuntimePanel content={scene.content} sceneId={scene.id} />;
   } else if (policy.allowIframe && (sandboxHtml || sandboxUrl)) {
     body = <iframe
       className="w-full h-full border-0 bg-white"

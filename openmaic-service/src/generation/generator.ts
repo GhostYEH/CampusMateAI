@@ -262,7 +262,7 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
   const source = isObject(raw) ? raw : {};
   const stageInput = isObject(source.stage) ? source.stage : {};
   const scenesInput = Array.isArray(source.scenes) ? source.scenes : [];
-  const scenes = scenesInput.map((scene, index) => {
+  let scenes = scenesInput.map((scene, index) => {
     const input = isObject(scene) ? scene : {};
     return {
       ...assignContentIds(input),
@@ -273,11 +273,24 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
       updatedAt: now,
     } as unknown as Scene;
   });
+  if (options.mode === 'simulation') {
+    // Providers often return a rich interactive explanation with the correct
+    // widget type but omit the parameter schema. Keep that explanation and
+    // supply the same local runtime contract used by the fallback template.
+    scenes = scenes.map((scene) => {
+      if (scene.type !== 'interactive' || !isObject(scene.content) || scene.content.widgetType !== 'simulation') return scene;
+      const title = scene.title || options.prompt?.trim() || '交互式模拟实验';
+      const defaults = widgetContent('simulation', title).widgetConfig;
+      const current = isObject(scene.content.widgetConfig) ? scene.content.widgetConfig : {};
+      const parameters = Array.isArray(current.parameters) && current.parameters.length ? current.parameters : defaults?.parameters;
+      return { ...scene, content: { ...scene.content, widgetConfig: { ...defaults, ...current, ...(parameters ? { parameters } : {}) } } } as Scene;
+    });
+  }
   // The provider sometimes explains an experiment as slides even when the
   // requested runtime is simulation. Preserve those useful explanations and
   // append a real parameterized simulation instead of silently degrading to
   // a read-only lesson.
-  if (options.mode === 'simulation' && !scenes.some((scene) => scene.type === 'interactive')) {
+  if (options.mode === 'simulation' && !scenes.some((scene) => scene.type === 'interactive' && scene.content.widgetType === 'simulation')) {
     const title = typeof stageInput.name === 'string' && stageInput.name.trim() ? stageInput.name.trim() : (options.prompt?.trim() || '交互式模拟实验');
     const content = widgetContent('simulation', title);
     scenes.push(authoredScene(stageId, scenes.length, `${title}：交互仿真`, content, now));
