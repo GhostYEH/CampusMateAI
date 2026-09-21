@@ -1,6 +1,6 @@
 # @magicclass/renderer
 
-React component for rendering PPTist-style `Slide` JSON. Extracted from [magic class](https://github.com/THU-MAIC/MagicClass).
+React component for rendering PPTist-style `Slide` JSON. Extracted from [magic class](https://github.com/THU-MAIC/OpenMAIC).
 
 > `@magicclass/renderer` is the read-only canvas package. Editing lives in the
 > separate `@magicclass/editor` package, which depends on this renderer.

@@ -87,6 +87,54 @@ const NOT_VENDORED = ['assets/', '.codegraph/.gitignore'];
 const ADDED_BY_US = ['.env.example'];
 
 /**
+ * 已声明的、**可逆品牌补丁无法表达**的偏离。
+ *
+ * 上一轮改名用大小写不敏感的方式把上游的 `OpenMAIC` / `OpenMaic` 统一成了
+ * `magicclass` / `MagicClass`，大小写信息不可逆地丢失：逆向映射只能得到小写
+ * `openmaic` 或全大写 `OpenMAIC`，还原不出原始形态。而同一个 `magicclass`
+ * 在不同文件里要还原成不同大小写（`package.json` 里的包名确实是小写），
+ * 所以这类差异**无法**写成一条可重放的规则，只能逐条声明。
+ *
+ * verify 会把它们单独列出（而不是当成未知偏离），只有未声明偏离为 0 时才退出 0。
+ * 维护约定：只声明**已逐条核对过语义**的条目，reason 里写清依据；
+ * 不要为了让 verify 变绿而把没查清的文件塞进来。同步上游新版本后优先复查此表。
+ */
+const DECLARED_DEVIATIONS = new Map([
+  // 上游正文/文档里的品牌词是标题大小写的 OpenMAIC，被改名小写成了 magicclass
+  ['CONTRIBUTING.md', '正文品牌词大小写（上游 OpenMAIC）'],
+  ['README.md', '正文品牌词大小写（上游 OpenMAIC）'],
+  ['README-zh.md', '正文品牌词大小写（上游 OpenMAIC）'],
+  ['lib/web-search/searxng.ts', 'User-Agent 里的品牌 token（上游 OpenMAIC/1.0）'],
+  ['lib/video-export/emit-hyperframes/noto-cjk-assets.ts', 'CSS font-family 名里的品牌词（上游 OpenMAIC Noto Sans SC）'],
+  ['lib/video-export/emit-hyperframes/noto-script-font-assets.ts', 'CSS font-family 名里的品牌词'],
+  ['packages/@openmaic/editor/README.md', '正文品牌词大小写'],
+  ['packages/@openmaic/editor/package.json', 'description 里的品牌词大小写'],
+  ['packages/@openmaic/importer/DESIGN.md', '正文品牌词大小写'],
+  ['packages/@openmaic/importer/SKILL.md', '正文品牌词大小写'],
+  ['packages/@openmaic/importer/src/serializer/textSerializer.md', '正文品牌词大小写'],
+  ['packages/@openmaic/renderer/package.json', 'description 里的品牌词大小写'],
+  ['packages/@openmaic/storage/test/asset-http-egress.test.ts', '用例断言里的品牌词大小写'],
+  ['packages/docs/content/docs/getting-started.ar.mdx', '阿拉伯语文档正文品牌词大小写'],
+  ['packages/docs/content/docs/getting-started.ru.mdx', '俄语文档正文品牌词大小写'],
+  ['packages/docs/content/docs/supported-models.ar.mdx', '阿拉伯语文档正文品牌词大小写'],
+  ['packages/docs/content/docs/supported-models.ru.mdx', '俄语文档正文品牌词大小写'],
+  ['packages/docs/content/docs/voxcpm.ar.mdx', '阿拉伯语文档正文品牌词大小写'],
+  ['skills/openmaic/SKILL.md', '正文品牌词大小写'],
+  ['tests/agent-runtime/skills.test.ts', '用例断言里的品牌词大小写'],
+  ['tests/document/text-extractor.test.ts', '用例断言里的品牌词大小写'],
+  ['tests/pbl/v2/planner.test.ts', '用例断言里的品牌词大小写'],
+  ['tests/server/skill-export.test.ts', '用例断言里的品牌词大小写'],
+  ['tests/video-export/cover-card-layout.browser.test.ts', '用例断言里的品牌词大小写'],
+  ['tests/web-search/baidu.test.ts', '用例断言里的品牌词大小写'],
+  // 上游驼峰标识 OpenMaic 被改名成了 MagicClass，逆向只会得到 OpenMAIC
+  ['lib/video-export/emit-hyperframes/index.ts', '驼峰标识（上游 initializeOpenMaic…）'],
+  ['tests/video-export/emit-hyperframes.test.ts', '驼峰标识（上游 initializeOpenMaic…）'],
+  // 有意的内容改动，不是改名带来的
+  ['instrumentation.ts', 'Edge 打包改用 globalThis.process，避免 Edge bundle 里的静态 process.once'],
+  ['public/logo-horizontal.png', '重新设计的品牌图（二进制，无法按文本还原）'],
+]);
+
+/**
  * 我们自己界面里的可见品牌词（不属于上游偏离，所以 verify 不看这些文件）。
  * JSX 文本节点一律用表达式包裹，避免撇号撞上 react/no-unescaped-entities。
  */
@@ -369,7 +417,8 @@ export function audit() {
   return problems;
 }
 
-function treePathFor(upstreamPath) {
+/** 上游路径 -> 这份树里的落点。声明表与清单都用上游路径，测试/工具查文件时需要它。 */
+export function treePathFor(upstreamPath) {
   return renameTechnical(upstreamPath);
 }
 
@@ -402,6 +451,12 @@ export function verify() {
     });
   const known = new Set(entries.map((e) => e.path));
   const problems = [];
+  const declared = [];
+  /** 已声明的偏离单独收集：它们是已知且已核对的，不该和未知偏离混在一起。 */
+  const report = (path, message) => {
+    if (DECLARED_DEVIATIONS.has(path)) declared.push(`${message}：${path}`);
+    else problems.push(`${message}：${path}`);
+  };
   let checked = 0;
   let regenerated = 0;
   let absent = 0;
@@ -416,7 +471,7 @@ export function verify() {
     }
     const treeFile = locate(entry.path);
     if (!treeFile) {
-      problems.push(`缺少上游文件：${entry.path}`);
+      report(entry.path, '缺少上游文件');
       continue;
     }
     const raw = readFileSync(treeFile);
@@ -427,15 +482,18 @@ export function verify() {
       ? Buffer.from(restore(entry.path, raw.toString('utf8')).replace(/\r\n/g, '\n'), 'utf8')
       : raw;
     if (createHash('sha256').update(bytes).digest('hex') === entry.sha) checked += 1;
-    else problems.push(`还原后仍与上游不符（品牌补丁之外的改动）：${entry.path}`);
+    else report(entry.path, '还原后仍与上游不符（品牌补丁之外的改动）');
   }
   const upstreamOf = (path) => renameTechnical(path, true);
   const extra = walk(APP)
     .map(rel)
     .map(upstreamOf)
     .filter((path) => !known.has(path) && !startsWithAny(path, ADDED_BY_US) && !startsWithAny(path, GENERATED));
-  for (const path of extra) problems.push(`清单里没有的新文件（不是上游内容）：${path}`);
-  return { checked, regenerated, absent, total: entries.length, problems };
+  for (const path of extra) report(path, '清单里没有的新文件（不是上游内容）');
+  // 声明表里长期用不上的条目说明它已不再偏离（或已被上游同步掉），应清理。
+  const declaredPaths = new Set([...declared].map((line) => line.slice(line.lastIndexOf('：') + 1)));
+  const unusedDeclarations = [...DECLARED_DEVIATIONS.keys()].filter((path) => !declaredPaths.has(path));
+  return { checked, regenerated, absent, total: entries.length, problems, declared, unusedDeclarations };
 }
 
 /** verify 用的逆变换：与 apply 严格互逆。 */
@@ -464,8 +522,17 @@ function main(argv) {
     const result = verify();
     console.log(`逆向校验：${result.checked}/${result.total} 个上游文件还原后逐字节一致`
       + `（工具链重新生成 ${result.regenerated}、刻意未入库 ${result.absent}）`);
+    if (result.declared?.length) {
+      console.log(`另有 ${result.declared.length} 处已声明偏离（见本文件 DECLARED_DEVIATIONS 及各自理由）：`);
+      for (const line of result.declared.slice(0, 8)) console.log(`  · ${line}`);
+      if (result.declared.length > 8) console.log(`  …另外 ${result.declared.length - 8} 处`);
+    }
+    if (result.unusedDeclarations?.length) {
+      console.log(`提示：${result.unusedDeclarations.length} 条声明已不再偏离，可以从 DECLARED_DEVIATIONS 里删掉：`);
+      for (const path of result.unusedDeclarations.slice(0, 8)) console.log(`  · ${path}`);
+    }
     if (result.problems.length === 0) {
-      console.log('结论：这份树 = 上游 magic class v1.0.3 + magicclass-brand.mjs 定义的改动');
+      console.log('结论：这份树 = 上游 v1.0.3 + 本文件定义的改动 + 上列已声明偏离');
       return 0;
     }
     console.error(`发现 ${result.problems.length} 处无法用品牌补丁解释的差异：`);

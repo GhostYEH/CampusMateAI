@@ -78,7 +78,7 @@ jobs:
 
           CLAWHUB=/usr/bin/true \
             PUBLISH_VERSION='' \
-            SOURCE_REPO='THU-MAIC/MagicClass' \
+            SOURCE_REPO='THU-MAIC/OpenMAIC' \
             /bin/bash .github/scripts/publish-magicclass-skill.sh
 
           compat_dir="$RUNNER_TEMP/clawhub-bash3"
@@ -103,7 +103,7 @@ jobs:
             PATH="$compat_dir:$PATH" \
             PUBLISH_VERSION='0.4.0' \
             RUNNER_TEMP="$compat_dir" \
-            SOURCE_REPO='THU-MAIC/MagicClass' \
+            SOURCE_REPO='THU-MAIC/OpenMAIC' \
             /bin/bash .github/scripts/publish-magicclass-skill.sh
           if [[ "$(wc -l < "$compat_dir/calls" | tr -d ' ')" != "2" ]] ||
             ! grep -q -- $'--version\t0.4.0\t' "$compat_dir/calls"; then
