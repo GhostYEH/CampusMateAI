@@ -380,6 +380,7 @@ def main() -> int:
         print(f"三服务就绪，浏览器验收目标：{base_url}\n")
 
         os.environ["WEB_BASE_URL"] = base_url
+        os.environ["E2E_SHOTS_DIR"] = str(tmp_root / "shots")
         sys.path.insert(0, str(HERE))
         import magicclass_courses_browser  # noqa: E402  （必须在 WEB_BASE_URL 之后导入）
 
