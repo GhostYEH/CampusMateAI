@@ -1,19 +1,36 @@
-/* 导航栏「学习空间」页：承载上游 magic class 独立应用（跨源 iframe）。 */
-
+/* 导航栏「学习空间」页：本站保留全局操作，课堂在余下的视口中沉浸式展开。 */
 .learning-space-page {
   display: grid;
-  gap: 16px;
+  grid-template-rows: minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  min-height: 560px;
+  padding: 94px 24px 20px;
 }
 
-/* 容器刻意用深色：ClassroomEmbed 的降级文案是深底浅字，而本站其余页面是浅色主题；
-   深底让"iframe 被浏览器拦住"时的提示仍然可读，也更接近应用自身的外观。 */
+/* 不再为独立应用再套一张卡片：舞台直接占满 CampusMate 内容区。
+   深色背景仅用于 iframe 被浏览器拦截时的可读降级状态。 */
 .learning-space-stage {
-  height: min(78vh, 900px);
-  min-height: 460px;
+  position: relative;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   background: #12161f;
+  box-shadow: 0 20px 50px rgba(30, 42, 72, .11);
+}
+
+.learning-space-feedback {
+  display: grid;
+  min-height: 0;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(145deg, #f8faff, #eff3fb);
+}
+
+.learning-space-feedback .state-card {
+  width: min(480px, 100%);
+  min-height: 220px;
+  background: rgba(255, 255, 255, .82);
   box-shadow: var(--shadow);
 }
 
@@ -29,32 +46,25 @@
   font-size: 12px;
 }
 
-.learning-space-blocker__hint code,
-.learning-space-note code {
+.learning-space-blocker__hint code {
   padding: 1px 5px;
   border-radius: 5px;
   background: #eef2f9;
   font-size: 12px;
 }
 
-.learning-space-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.learning-space-note svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
 @media (max-width: 760px) {
+  .learning-space-page {
+    min-height: 480px;
+    padding: 76px 0 0;
+  }
+
   .learning-space-stage {
-    height: 70vh;
-    min-height: 380px;
+    height: auto;
+    min-height: 0;
+  }
+
+  .learning-space-feedback {
+    padding: 16px;
   }
 }

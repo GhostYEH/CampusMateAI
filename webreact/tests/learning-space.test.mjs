@@ -13,6 +13,7 @@
  */
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 
@@ -34,6 +35,8 @@ const vite = await createServer({
 });
 
 const { learningSpaceView } = await vite.ssrLoadModule("/src/pages/LearningSpacePage.jsx");
+const learningSpacePageSource = await readFile(new URL("../src/pages/LearningSpacePage.jsx", import.meta.url), "utf8");
+const learningSpaceStyles = await readFile(new URL("../src/styles/learning-space.css", import.meta.url), "utf8");
 
 const APP_ORIGIN = "http://127.0.0.1:3000";
 
@@ -59,6 +62,17 @@ const readyStatus = (overrides = {}) => ({
 });
 
 after(async () => { await vite.close(); });
+
+// ===== 沉浸式承载 =====
+
+test("学习空间移除外层标题卡并占满全局导航下方的内容区", () => {
+  assert.match(learningSpacePageSource, /<PageFrame\s+className="learning-space-page"\s+showHeading=\{false\}/);
+  assert.doesNotMatch(learningSpacePageSource, /description="magic class 以独立进程运行/);
+  assert.match(learningSpaceStyles, /\.learning-space-page\s*\{[^}]*max-width:\s*none;[^}]*height:\s*100dvh;/s);
+  assert.match(learningSpaceStyles, /\.learning-space-page\s*\{[^}]*padding:\s*94px\s+24px\s+20px;/s);
+  const stageRule = learningSpaceStyles.match(/\.learning-space-stage\s*\{(?<rule>[^}]*)\}/s)?.groups?.rule || "";
+  assert.doesNotMatch(stageRule, /border(?:-radius)?\s*:/, "课堂舞台不应再被卡片边框包裹");
+});
 
 // ===== 适配器 =====
 

@@ -118,75 +118,59 @@ export default function LearningSpacePage() {
     if (ready) window.open(origin, "_blank", "noopener,noreferrer");
   };
 
-  const actions = (
-    <>
-      <Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>
-        重新检测
-      </Button>
-      {ready && (
-        <Button variant="quiet" icon="PhArrowUpRight" onClick={openExternal}>
-          在新窗口打开
-        </Button>
-      )}
-    </>
-  );
-
   return (
     <PageFrame
       className="learning-space-page"
-      eyebrow="学习空间"
-      title="学习空间"
-      description="magic class 以独立进程运行，这里直接承载它完整的课堂、工作台与编辑器。"
-      actions={actions}
+      showHeading={false}
     >
       {loading && (
-        <div className="state-card loading-state" aria-busy="true">
-          <span className="loading-orb" />
-          <p>正在检测学习空间…</p>
+        <div className="learning-space-feedback">
+          <div className="state-card loading-state" aria-busy="true">
+            <span className="loading-orb" />
+            <p>正在连接学习空间…</p>
+          </div>
         </div>
       )}
 
       {!loading && error && (
-        <div className="state-card error-state" role="alert">
-          <Icon name="PhWarningCircle" size={24} />
-          <p>学习空间状态读取失败：{String(error?.message || error)}</p>
-          <Button variant="secondary" onClick={load}>重试</Button>
+        <div className="learning-space-feedback">
+          <div className="state-card error-state" role="alert">
+            <Icon name="PhWarningCircle" size={24} />
+            <p>学习空间状态读取失败：{String(error?.message || error)}</p>
+            <Button variant="secondary" onClick={load}>重试</Button>
+          </div>
         </div>
       )}
 
       {blocker && (
-        <div className="state-card empty-state" role="status">
-          <Icon name="PhChalkboardTeacher" size={34} />
-          <h2 className="learning-space-blocker__title">{blocker.title}</h2>
-          <p>{blocker.body}</p>
-          <p className="learning-space-blocker__hint">{blocker.hint}</p>
+        <div className="learning-space-feedback">
+          <div className="state-card empty-state" role="status">
+            <Icon name="PhChalkboardTeacher" size={34} />
+            <h2 className="learning-space-blocker__title">{blocker.title}</h2>
+            <p>{blocker.body}</p>
+            <p className="learning-space-blocker__hint">{blocker.hint}</p>
+            <Button variant="secondary" icon="PhArrowClockwise" onClick={load}>
+              重新检测
+            </Button>
+          </div>
         </div>
       )}
 
       {ready && (
-        <div className="learning-space-stage">
+        <section className="learning-space-stage" aria-label="学习空间">
           <ClassroomEmbed
             url={origin}
             trustedOrigins={origins}
             title="学习空间"
             onOpenExternal={openExternal}
           />
-        </div>
+        </section>
       )}
 
-      {ready && (
-        <p className="learning-space-note">
-          <Icon name="PhInfo" size={15} />
-          学习空间是独立应用，拥有自己的账号门禁与主题；本站的身份与课程权限不会传给它。
-        </p>
-      )}
-
-      {origin && !origin.startsWith("https:") && (
-        <p className="learning-space-note">
-          <Icon name="PhWarningCircle" size={15} />
-          当前公开 Origin 是 <code>{origin}</code>（非 HTTPS）——
-          仅适用于本机开发；生产环境必须使用 HTTPS。
-        </p>
+      {ready && origin && !origin.startsWith("https:") && (
+        <span className="sr-only">
+          当前公开 Origin 是 {origin}（非 HTTPS），仅适用于本机开发；生产环境必须使用 HTTPS。
+        </span>
       )}
     </PageFrame>
   );
