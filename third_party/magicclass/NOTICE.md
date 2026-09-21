@@ -24,5 +24,14 @@ node scripts/magicclass-brand.mjs verify
 
 A pass means `magicclass-app/` = this upstream commit + the rules in that one file. Anything
 beyond those rules shows up as a mismatch. Upstream MIT license and copyright stay in place
-(`magicclass-app/LICENSE`); `render-service/` keeps its two published `@magicclass/*`
-dependencies because those are third-party packages on npm, not our workspace packages.
+(`magicclass-app/LICENSE`).
+
+Two carve-outs are deliberate, not oversights:
+
+- `magicclass-app/render-service/` (the app's own render service — not the repo-root
+  `render-service/`) keeps its two **published** `@openmaic/dsl` / `@openmaic/renderer`
+  dependencies verbatim. Those are third-party packages on npm, not our workspace packages;
+  renaming them to `@magicclass/*` produces an install that cannot resolve (verified: both
+  names 404 on the npm registry). `magicclass-brand.mjs` therefore skips that subtree.
+- `magicclass-app/packages/@magicclass/*` **are** our workspace packages, so those do get
+  renamed from `@openmaic/*`.

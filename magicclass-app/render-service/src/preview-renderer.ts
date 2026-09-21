@@ -12,7 +12,7 @@ import type {
   QuizContent,
   Scene,
   SlideContent,
-} from '@magicclass/dsl';
+} from '@openmaic/dsl';
 import puppeteer from 'puppeteer-core';
 import type { Browser, Frame, HTTPRequest, Page } from 'puppeteer-core';
 import { UNTRUSTED_HTML_CSP, injectUntrustedHtmlCsp } from './untrusted-html-csp.js';
@@ -259,7 +259,7 @@ export function buildSlideClientBundle(builder: SlideBundleBuilder = build): Pro
         import React from 'react';
         import { flushSync } from 'react-dom';
         import { createRoot } from 'react-dom/client';
-        import { SlideCanvas } from '@magicclass/renderer';
+        import { SlideCanvas } from '@openmaic/renderer';
 
         const props = window.__MAGICCLASS_PREVIEW_PROPS__;
         const root = document.getElementById('preview-slide-root');

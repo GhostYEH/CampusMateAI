@@ -1,5 +1,5 @@
 /** Pure semantic checks that keep previews faithful and drawable. */
-import { slideMediaSlotDescriptors } from '@magicclass/dsl';
+import { slideMediaSlotDescriptors } from '@openmaic/dsl';
 import { parse } from 'parse5';
 import type { PreviewScene } from './preview-renderer.js';
 

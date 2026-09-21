@@ -26,7 +26,7 @@ import { createReadStream } from 'node:fs';
 import { mkdir, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { serve } from '@hono/node-server';
-import { validateScene } from '@magicclass/dsl';
+import { validateScene } from '@openmaic/dsl';
 import { Hono, type Context } from 'hono';
 import { config } from './config.js';
 import { InMemoryJobStore } from './job-store.js';

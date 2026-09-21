@@ -67,8 +67,8 @@ describe('searchWithBaidu', () => {
 
     expect(proxyFetchMock).toHaveBeenCalledTimes(2);
     expect(proxyFetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
-      'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=magicclass',
-      'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=magicclass&pageNum=0&enable_ai_abstract=true',
+      'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=magic+class',
+      'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=magic+class&pageNum=0&enable_ai_abstract=true',
     ]);
     expect(result.sources.map((source) => source.title)).toEqual([
       'magic class - Baidu Baike',
@@ -109,8 +109,8 @@ describe('searchWithBaidu', () => {
 
     expect(proxyFetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
       'https://qianfan.baidubce.com/v2/ai_search/web_search',
-      'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=magicclass',
-      'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=magicclass&pageNum=0&enable_ai_abstract=true',
+      'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=magic+class',
+      'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=magic+class&pageNum=0&enable_ai_abstract=true',
     ]);
   });
 });
