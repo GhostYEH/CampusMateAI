@@ -3,8 +3,14 @@ name: Backend CI
 on:
   push:
     branches: [main, master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend_ci.yml'
   pull_request:
     branches: [main, master]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend_ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -15,7 +21,8 @@ jobs:
   backend-test:
     name: Backend Test & Retrieval Eval
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 全量后端套件已超过 2,000 项；为 pytest 与后续检索评测保留合理余量。
+    timeout-minutes: 35
     env:
       # CI 中绝不调用真实 LLM；使用降级模式验证 retrieval_summary 与 fallback 行为
       APP_ENV: test
