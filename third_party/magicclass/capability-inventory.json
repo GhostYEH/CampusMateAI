@@ -1,6 +1,6 @@
 {
   "source": {
-    "repository": "https://github.com/THU-MAIC/magicclass.git",
+    "repository": "https://github.com/THU-MAIC/OpenMAIC.git",
     "tag": "v1.0.3",
     "commit": "e693e11a81644f84c258df73dbda378643520a62"
   },

@@ -9,7 +9,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ExpectedCommit,
 
-    [string]$Repository = 'https://github.com/THU-MAIC/magicclass.git',
+    [string]$Repository = 'https://github.com/THU-MAIC/OpenMAIC.git',
     [string]$Tag = 'v1.0.3'
 )
 

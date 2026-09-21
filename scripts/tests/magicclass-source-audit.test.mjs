@@ -92,7 +92,7 @@ test('resolves the provenance notice instead of leaking placeholders', () => {
       '',
       'This directory records the audited source boundary for magic class `v1.0.3`.',
       '',
-      '- Repository: `https://github.com/THU-MAIC/magicclass.git`',
+      '- Repository: `https://github.com/THU-MAIC/OpenMAIC.git`',
       '- Tag: `v1.0.3`',
       `- Commit: \`${fixture.head}\``,
       '- License: MIT; see `LICENSE`.',
@@ -115,8 +115,8 @@ test('honours an overridden repository and tag in the notice', () => {
     tag: 'v9.9.9',
   });
   const notice = normalize(readFileSync(join(output, 'NOTICE.md'), 'utf8'));
-  assert.match(notice, /boundary for MagicClass `v9\.9\.9`\./);
-  assert.match(notice, /- Repository: `https:\/\/example\.invalid\/MagicClass\.git`/);
+  assert.match(notice, /boundary for magic class `v9\.9\.9`\./);
+  assert.match(notice, /- Repository: `https:\/\/example\.invalid\/magicclass\.git`/);
   assert.equal(notice.includes('$Tag'), false);
 });
 

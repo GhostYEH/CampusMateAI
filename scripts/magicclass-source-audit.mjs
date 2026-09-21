@@ -22,7 +22,7 @@ import { copyFileSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpath
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const DEFAULT_REPOSITORY = 'https://github.com/THU-MAIC/magicclass.git';
+export const DEFAULT_REPOSITORY = 'https://github.com/THU-MAIC/OpenMAIC.git';
 export const DEFAULT_TAG = 'v1.0.3';
 
 const EXCLUDED = /(^|\/)(\.git|node_modules|\.next|data|logs?)(\/|$)|(^|\/)(\.env($|\.)|.*\.(pem|key))/;
@@ -132,7 +132,7 @@ export function buildNotice({ tag, repository, commit }) {
   return [
     '# magic class provenance notice',
     '',
-    `This directory records the audited source boundary for MagicClass \`${tag}\`.`,
+    `This directory records the audited source boundary for magic class \`${tag}\`.`,
     '',
     `- Repository: \`${repository}\``,
     `- Tag: \`${tag}\``,
@@ -146,7 +146,7 @@ export function buildNotice({ tag, repository, commit }) {
 export function audit({ source, output, expectedCommit, repository = DEFAULT_REPOSITORY, tag = DEFAULT_TAG }) {
   const sourcePath = resolve(source);
   if (lstatSync(sourcePath, { throwIfNoEntry: false })?.isDirectory() !== true) {
-    throw new Error(`MagicClass source directory does not exist: ${source}`);
+    throw new Error(`magic class source directory does not exist: ${source}`);
   }
   const outputPath = resolve(output);
   if (outputPath === sourcePath || outputPath.startsWith(sourcePath + sep)) {
@@ -155,7 +155,7 @@ export function audit({ source, output, expectedCommit, repository = DEFAULT_REP
 
   const actualCommit = execFileSync('git', ['-C', sourcePath, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   if (actualCommit !== expectedCommit) {
-    throw new Error(`MagicClass source commit mismatch: expected ${expectedCommit}, got ${actualCommit}`);
+    throw new Error(`magic class source commit mismatch: expected ${expectedCommit}, got ${actualCommit}`);
   }
 
   const licensePath = join(sourcePath, 'LICENSE');
@@ -181,7 +181,7 @@ export function audit({ source, output, expectedCommit, repository = DEFAULT_REP
 
   const unclassified = [...routes, ...packages, ...components].filter((entry) => !entry.mapping);
   if (unclassified.length > 0) {
-    throw new Error(`Unclassified MagicClass surfaces: ${unclassified.map((entry) => entry.path).join(', ')}`);
+    throw new Error(`Unclassified magic class surfaces: ${unclassified.map((entry) => entry.path).join(', ')}`);
   }
 
   const notice = buildNotice({ tag, repository, commit: actualCommit });

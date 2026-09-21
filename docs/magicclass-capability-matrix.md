@@ -1,6 +1,6 @@
 # magic class 能力矩阵
 
-来源固定为 [THU-MAIC/MagicClass v1.0.3](https://github.com/THU-MAIC/magicclass/tree/v1.0.3)，commit `e693e11a81644f84c258df73dbda378643520a62`。状态只有在实现、自动化测试和验收证据同时具备时才能变为“已验证”。
+来源固定为 [THU-MAIC/OpenMAIC v1.0.3](https://github.com/THU-MAIC/OpenMAIC/tree/v1.0.3)，commit `e693e11a81644f84c258df73dbda378643520a62`。状态只有在实现、自动化测试和验收证据同时具备时才能变为“已验证”。
 
 本表“v1.0.3 源文件”一列写的是仓库内 `magicclass-app/` 的**当前路径**：品牌补丁（`scripts/magicclass-brand.mjs`）之后 workspace 包在 `packages/@magicclass/*`，上游原路径是 `packages/@magicclass/*`。
 

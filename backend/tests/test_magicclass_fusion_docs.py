@@ -74,7 +74,7 @@ def test_provenance_notice_states_repository_tag_and_commit():
     """NOTICE 必须把三个可核对事实分开写清楚，且不留未展开的占位符。"""
     notice = (REPO_ROOT / "third_party" / "magicclass" / "NOTICE.md").read_text(encoding="utf-8")
     assert not re.search(r"\$[A-Za-z]", notice)
-    assert "- Repository: `https://github.com/THU-MAIC/magicclass.git`" in notice
+    assert "- Repository: `https://github.com/THU-MAIC/OpenMAIC.git`" in notice
     assert "- Tag: `v1.0.3`" in notice
     assert "- Commit: `e693e11a81644f84c258df73dbda378643520a62`" in notice
     # 生成器必须产出同样的三行，否则"重新生成"会与已提交的 NOTICE 分叉。

@@ -2,7 +2,7 @@
 
 This directory records the audited source boundary for magic class `v1.0.3`.
 
-- Repository: `https://github.com/THU-MAIC/magicclass.git`
+- Repository: `https://github.com/THU-MAIC/OpenMAIC.git`
 - Tag: `v1.0.3`
 - Commit: `e693e11a81644f84c258df73dbda378643520a62`
 - License: MIT; see `LICENSE`.
@@ -12,7 +12,7 @@ This directory records the audited source boundary for magic class `v1.0.3`.
 
 The tree under `magicclass-app/` is the commit above with exactly **one** additional,
 replayable transformation: `scripts/magicclass-brand.mjs`, which renames the user-visible
-brand to `magic class` and the npm identity `magicclass` / `@magicclass/*` to
+brand `OpenMAIC` to `magic class` and the npm identity `openmaic` / `@openmaic/*` to
 `magicclass` / `@magicclass/*`.
 
 `source-manifest.sha256` still pins **upstream** bytes. To prove that nothing else changed,

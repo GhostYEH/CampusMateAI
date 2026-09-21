@@ -74,8 +74,13 @@ const TEXT_NAME = new Set(['Dockerfile', 'docker-compose.yml', 'pnpm-workspace.y
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist', 'out', 'coverage', 'build', '__pycache__', '.swc', '.turbo']);
 /** 不参与 sweep 的子树：render-service 依赖 npm 上的已发布包，public/vendor 是构建产物。 */
 const SKIP_PREFIX = ['render-service/', 'public/vendor/'];
-/** 由工具链重新生成、内容合理地偏离上游的文件。 */
-const GENERATED = ['pnpm-lock.yaml', 'public/vendor/', 'next-env.d.ts'];
+/**
+ * 由工具链重新生成、内容合理地偏离上游的文件。
+ * `AGENTS.md` / `CLAUDE.md` 是 Next.js 在 `next dev` 时写入的 agent 规则文件
+ * （开头是 `<!-- BEGIN:nextjs-agent-rules -->`），上游审计时的检出里没有它们，
+ * 因此不属于上游内容，也不该被当成"清单里没有的新文件"。
+ */
+const GENERATED = ['pnpm-lock.yaml', 'public/vendor/', 'next-env.d.ts', 'AGENTS.md', 'CLAUDE.md'];
 /** 刻意没有入库的上游文件（见 docs/magicclass-deployment.md）。 */
 const NOT_VENDORED = ['assets/', '.codegraph/.gitignore'];
 /** 补丁之外我们自己加进这份树的文件。 */

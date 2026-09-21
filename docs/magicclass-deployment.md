@@ -4,7 +4,7 @@
 
 ## 固定来源
 
-- Repository: `https://github.com/THU-MAIC/magicclass.git`
+- Repository: `https://github.com/THU-MAIC/OpenMAIC.git`
 - Tag: `v1.0.3`
 - Commit: `e693e11a81644f84c258df73dbda378643520a62`
 - License: MIT，版权与全文见 `third_party/magicclass/LICENSE`
