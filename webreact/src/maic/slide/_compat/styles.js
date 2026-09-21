@@ -1,7 +1,7 @@
 /**
  * 移植补充：`slide-renderer-prose` 文本排版契约。
  *
- * 逐字移植自参考 `packages/@openmaic/renderer/src/styles.ts`。参考项目的
+ * 逐字移植自参考 `packages/@magicclass/renderer/src/styles.ts`。参考项目的
  * `SlideCanvas` 会在画布顶部注入这段 CSS，用来抹平宿主与 UA 默认样式（段落间距
  * 走 `--paragraphSpace`，列表符号还原，行内公式外边距归零）。
  *

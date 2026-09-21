@@ -7,7 +7,7 @@ import {
 /**
  * 移植自参考项目 `lib/quiz/runtime.ts` 的**等价替换**。
  *
- * 参考实现把 quiz 生命周期事实追加到一个 learner 分区的 `@openmaic/storage`
+ * 参考实现把 quiz 生命周期事实追加到一个 learner 分区的 `@magicclass/storage`
  * RuntimeStore（IndexedDB / 服务端 KV）里，再做 session 折叠与并发 CAS。目标项目
  * 没有这套存储层，所以这里把同一份语义落到 localStorage：
  *

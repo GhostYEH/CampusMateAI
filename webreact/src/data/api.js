@@ -285,8 +285,8 @@ export async function loginChaoxing(username, password) {
 export async function syncChaoxing() { return dataOf(await client.post("/chaoxing/sync", {}, { timeout: 120000 })); }
 export async function disconnectChaoxing() { return dataOf(await client.post("/chaoxing/disconnect")); }
 
-// ===== 课程智能辅导空间（OpenMAIC 学生侧互动课堂）=====
-// 只能经 CampusMate 后端触达 OpenMAIC，不直连、不在前端保存任何 OpenMAIC 访问资料。
+// ===== 课程智能辅导空间（magic class 学生侧互动课堂）=====
+// 只能经 CampusMate 后端触达 magic class，不直连、不在前端保存任何 magic class 访问资料。
 
 /**
  * 查询互动课堂能力状态。未配置服务 / 请求失败时不抛出 —— 返回 enabled:false，
@@ -300,7 +300,7 @@ export async function getInteractiveClassroomStatus(courseId) {
   }
 }
 
-/** 生成前的只读计划：课程、可选资料、推荐形态与理由。不创建任何 OpenMAIC 任务。 */
+/** 生成前的只读计划：课程、可选资料、推荐形态与理由。不创建任何 magic class 任务。 */
 export async function getInteractiveClassroomPlan(courseId, mode = "adaptive") {
   return dataOf(
     await client.get(
@@ -333,7 +333,7 @@ export async function getInteractiveClassroomComposition(courseId, sessionId) {
   return dataOf(await client.get(`/courses/${courseId}/interactive-classroom/${sessionId}/composition`));
 }
 
-/** 轮询生成进度（服务端会现场轮询一次 OpenMAIC 后返回）。 */
+/** 轮询生成进度（服务端会现场轮询一次 magic class 后返回）。 */
 export async function getInteractiveClassroomJob(courseId, sessionId) {
   return dataOf(await client.get(`/courses/${courseId}/interactive-classroom/jobs/${sessionId}`));
 }
@@ -344,34 +344,34 @@ export async function listInteractiveClassrooms(courseId) {
 }
 
 /**
- * 受管 OpenMAIC 服务的公开状态。
+ * 受管 magic class 服务的公开状态。
  * `state` 是唯一判据：disabled / unavailable / degraded / ready。
  * 只有 ready 时 `capabilities` 才非空。
  */
-export async function getOpenMAICFusionStatus() {
-  return dataOf(await client.get("/openmaic/fusion/status"));
+export async function getMagicClassFusionStatus() {
+  return dataOf(await client.get("/magicclass/fusion/status"));
 }
 
 /**
  * 跨课程"最近内容"聚合（服务端已按权限过滤并按 updated_at 倒序）。
  * 取代浏览器对前 N 门课程分别发历史请求。
  */
-export async function getOpenMAICRecent(limit = 20) {
-  return dataOf(await client.get("/openmaic/fusion/recent", { params: { limit } }));
+export async function getMagicClassRecent(limit = 20) {
+  return dataOf(await client.get("/magicclass/fusion/recent", { params: { limit } }));
 }
 
-export async function getOpenMAICProviderStatus() {
-  return dataOf(await client.get("/openmaic/fusion/providers"));
+export async function getMagicClassProviderStatus() {
+  return dataOf(await client.get("/magicclass/fusion/providers"));
 }
 
 /**
  * 生成前的只读课程上下文：这门课已同步的知识点、章节与可用资料。
  *
- * 只读且只读本地库——它不经过受管 OpenMAIC 服务，所以受管服务不可用时它依然
+ * 只读且只读本地库——它不经过受管 magic class 服务，所以受管服务不可用时它依然
  * 可用。界面据此如实说明"这次能拿什么去生成"，而不是编一份听起来合理的主题。
  */
-export async function getOpenMAICCourseContext(courseId) {
-  return dataOf(await client.get(`/courses/${courseId}/openmaic-context`));
+export async function getMagicClassCourseContext(courseId) {
+  return dataOf(await client.get(`/courses/${courseId}/magicclass-context`));
 }
 
 // ===== 学习工作台（workspace / stage） =====
@@ -386,7 +386,7 @@ export function newIdempotencyKey() {
   return `idem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export async function listOpenMAICWorkspaces(courseId, { limit = 20, cursor = null } = {}) {
+export async function listMagicClassWorkspaces(courseId, { limit = 20, cursor = null } = {}) {
   return dataOf(
     await client.get(`/courses/${courseId}/workspaces`, {
       params: { limit, ...(cursor ? { cursor } : {}) },
@@ -394,7 +394,7 @@ export async function listOpenMAICWorkspaces(courseId, { limit = 20, cursor = nu
   );
 }
 
-export async function createOpenMAICWorkspace(courseId, { name, description = "", folderId, idempotencyKey }) {
+export async function createMagicClassWorkspace(courseId, { name, description = "", folderId, idempotencyKey }) {
   return dataOf(
     await client.post(
       `/courses/${courseId}/workspaces`,
@@ -404,7 +404,7 @@ export async function createOpenMAICWorkspace(courseId, { name, description = ""
   );
 }
 
-export async function getOpenMAICWorkspace(courseId, workspaceId) {
+export async function getMagicClassWorkspace(courseId, workspaceId) {
   return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}`));
 }
 
@@ -415,7 +415,7 @@ export async function getOpenMAICWorkspace(courseId, workspaceId) {
  * `null` = 取消归档，字符串 = 归档到该文件夹。把它折叠成一种会让"取消归档"
  * 变成"什么都不做"。
  */
-export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision, name, description, folderId }) {
+export async function updateMagicClassWorkspace(courseId, workspaceId, { revision, name, description, folderId }) {
   const payload = {};
   if (name !== undefined) payload.name = name;
   if (description !== undefined) payload.description = description;
@@ -427,7 +427,7 @@ export async function updateOpenMAICWorkspace(courseId, workspaceId, { revision,
   );
 }
 
-export async function deleteOpenMAICWorkspace(courseId, workspaceId, { revision }) {
+export async function deleteMagicClassWorkspace(courseId, workspaceId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/workspaces/${workspaceId}`, {
       headers: { "If-Match": String(revision) },
@@ -435,7 +435,7 @@ export async function deleteOpenMAICWorkspace(courseId, workspaceId, { revision 
   );
 }
 
-export async function listOpenMAICStages(courseId, workspaceId, { limit = 20, cursor = null } = {}) {
+export async function listMagicClassStages(courseId, workspaceId, { limit = 20, cursor = null } = {}) {
   return dataOf(
     await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages`, {
       params: { limit, ...(cursor ? { cursor } : {}) },
@@ -443,11 +443,11 @@ export async function listOpenMAICStages(courseId, workspaceId, { limit = 20, cu
   );
 }
 
-export async function getOpenMAICStage(courseId, workspaceId, stageId) {
+export async function getMagicClassStage(courseId, workspaceId, stageId) {
   return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`));
 }
 
-export async function createOpenMAICStage(courseId, workspaceId, { title, document = null, idempotencyKey }) {
+export async function createMagicClassStage(courseId, workspaceId, { title, document = null, idempotencyKey }) {
   return dataOf(
     await client.post(
       `/courses/${courseId}/workspaces/${workspaceId}/stages`,
@@ -457,7 +457,7 @@ export async function createOpenMAICStage(courseId, workspaceId, { title, docume
   );
 }
 
-export async function replaceOpenMAICStage(courseId, workspaceId, stageId, { revision, document, title }) {
+export async function replaceMagicClassStage(courseId, workspaceId, stageId, { revision, document, title }) {
   return dataOf(
     await client.put(
       `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`,
@@ -467,7 +467,7 @@ export async function replaceOpenMAICStage(courseId, workspaceId, stageId, { rev
   );
 }
 
-export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revision }) {
+export async function deleteMagicClassStage(courseId, workspaceId, stageId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
       headers: { "If-Match": String(revision) },
@@ -475,7 +475,7 @@ export async function deleteOpenMAICStage(courseId, workspaceId, stageId, { revi
   );
 }
 
-export async function generateOpenMAICStage(courseId, workspaceId, { mode, prompt, roleMode = "preset", selectedRoleIds = [], idempotencyKey }) {
+export async function generateMagicClassStage(courseId, workspaceId, { mode, prompt, roleMode = "preset", selectedRoleIds = [], idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/generate`,
     { mode, prompt, role_mode: roleMode, selected_role_ids: selectedRoleIds },
@@ -484,7 +484,7 @@ export async function generateOpenMAICStage(courseId, workspaceId, { mode, promp
 }
 
 /** 首页一次性生成：网关原子解析/创建课程工作台并排队首个 stage。 */
-export async function generateOpenMAICHome(courseId, { mode = "slide", prompt, idempotencyKey }) {
+export async function generateMagicClassHome(courseId, { mode = "slide", prompt, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/home-generate`,
     { mode, prompt },
@@ -492,19 +492,19 @@ export async function generateOpenMAICHome(courseId, { mode = "slide", prompt, i
   ));
 }
 
-export async function getOpenMAICJob(courseId, jobId) {
+export async function getMagicClassJob(courseId, jobId) {
   return dataOf(await client.get(`/courses/${courseId}/jobs/${jobId}`));
 }
 
-export async function cancelOpenMAICJob(courseId, jobId) {
+export async function cancelMagicClassJob(courseId, jobId) {
   return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/cancel`));
 }
 
-export async function retryOpenMAICJob(courseId, jobId) {
+export async function retryMagicClassJob(courseId, jobId) {
   return dataOf(await client.post(`/courses/${courseId}/jobs/${jobId}/retry`));
 }
 
-export async function synthesizeOpenMAICTts(courseId, { text, instruction, voice, idempotencyKey }) {
+export async function synthesizeMagicClassTts(courseId, { text, instruction, voice, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/tts`,
     { text, ...(instruction ? { instruction } : {}), ...(voice ? { voice } : {}) },
@@ -512,7 +512,7 @@ export async function synthesizeOpenMAICTts(courseId, { text, instruction, voice
   ));
 }
 
-export async function runOpenMAICDiscussion(courseId, { prompt, idempotencyKey }) {
+export async function runMagicClassDiscussion(courseId, { prompt, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/discussion`,
     { prompt },
@@ -527,7 +527,7 @@ export async function runOpenMAICDiscussion(courseId, { prompt, idempotencyKey }
  * "这一页的音频"与"这一页的内容"不可能对不上。返回里 `job` 为 null 表示这一页
  * 还没有音频（或讲稿为空，看 `has_script`）。
  */
-export async function getOpenMAICSceneNarration(courseId, workspaceId, stageId, sceneId) {
+export async function getMagicClassSceneNarration(courseId, workspaceId, stageId, sceneId) {
   return dataOf(await client.get(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/narration`,
   ));
@@ -540,7 +540,7 @@ export async function getOpenMAICSceneNarration(courseId, workspaceId, stageId, 
  * 再付一次 TTS。真正的去重由服务端做（已完成/在飞/幂等键三层），这里只是让
  * 默认键对同一页稳定。
  */
-export async function synthesizeOpenMAICSceneNarration(courseId, workspaceId, stageId, sceneId, { idempotencyKey } = {}) {
+export async function synthesizeMagicClassSceneNarration(courseId, workspaceId, stageId, sceneId, { idempotencyKey } = {}) {
   const key = idempotencyKey || `narration:${courseId}:${stageId}:${sceneId}`;
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/narration`,
@@ -549,7 +549,7 @@ export async function synthesizeOpenMAICSceneNarration(courseId, workspaceId, st
   ));
 }
 
-export async function getOpenMAICArtifact(courseId, artifactId) {
+export async function getMagicClassArtifact(courseId, artifactId) {
   const response = await client.get(`/courses/${courseId}/artifacts/${artifactId}`, { responseType: "blob" });
   return {
     blob: response.data,
@@ -558,7 +558,7 @@ export async function getOpenMAICArtifact(courseId, artifactId) {
   };
 }
 
-export async function enqueueOpenMAICStageVideo(courseId, workspaceId, stageId, { idempotencyKey }) {
+export async function enqueueMagicClassStageVideo(courseId, workspaceId, stageId, { idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/video`,
     {},
@@ -566,7 +566,7 @@ export async function enqueueOpenMAICStageVideo(courseId, workspaceId, stageId, 
   ));
 }
 
-export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
+export async function addMagicClassWhiteboard(courseId, workspaceId, stageId, { board, revision, idempotencyKey }) {
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,
     { board },
@@ -579,7 +579,7 @@ export async function addOpenMAICWhiteboard(courseId, workspaceId, stageId, { bo
 // 两者都只经 CampusMate 后端。搜索的关键词长度与空值在网关和受管服务各校验
 // 一次；前端这里只负责"空关键词不发请求"，避免把"没输入"变成"返回全部"。
 
-export async function listOpenMAICFolders(courseId, { limit = 20, cursor = null } = {}) {
+export async function listMagicClassFolders(courseId, { limit = 20, cursor = null } = {}) {
   return dataOf(
     await client.get(`/courses/${courseId}/folders`, {
       params: { limit, ...(cursor ? { cursor } : {}) },
@@ -587,7 +587,7 @@ export async function listOpenMAICFolders(courseId, { limit = 20, cursor = null 
   );
 }
 
-export async function createOpenMAICFolder(courseId, { name, parentId = null, idempotencyKey }) {
+export async function createMagicClassFolder(courseId, { name, parentId = null, idempotencyKey }) {
   return dataOf(
     await client.post(
       `/courses/${courseId}/folders`,
@@ -597,12 +597,12 @@ export async function createOpenMAICFolder(courseId, { name, parentId = null, id
   );
 }
 
-export async function getOpenMAICFolder(courseId, folderId) {
+export async function getMagicClassFolder(courseId, folderId) {
   return dataOf(await client.get(`/courses/${courseId}/folders/${folderId}`));
 }
 
 /** `parentId` 为 `null` 表示移动到根层；`undefined` 表示不改层级。 */
-export async function updateOpenMAICFolder(courseId, folderId, { revision, name, parentId }) {
+export async function updateMagicClassFolder(courseId, folderId, { revision, name, parentId }) {
   const payload = {};
   if (name !== undefined) payload.name = name;
   if (parentId !== undefined) payload.parent_id = parentId;
@@ -613,7 +613,7 @@ export async function updateOpenMAICFolder(courseId, folderId, { revision, name,
   );
 }
 
-export async function deleteOpenMAICFolder(courseId, folderId, { revision }) {
+export async function deleteMagicClassFolder(courseId, folderId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/folders/${folderId}`, {
       headers: { "If-Match": String(revision) },
@@ -621,7 +621,7 @@ export async function deleteOpenMAICFolder(courseId, folderId, { revision }) {
   );
 }
 
-export async function searchOpenMAICContent(courseId, { query, limit = 20, cursor = null }) {
+export async function searchMagicClassContent(courseId, { query, limit = 20, cursor = null }) {
   return dataOf(
     await client.get(`/courses/${courseId}/search`, {
       params: { q: query, limit, ...(cursor ? { cursor } : {}) },
@@ -635,7 +635,7 @@ export async function searchOpenMAICContent(courseId, { query, limit = 20, curso
 // 之间。网关解析出正文后才调用受管服务，所以内部调用里从来没有文件本身。
 // 创建必须带 Idempotency-Key（重试不能变成第二份资料），删除必须带 If-Match。
 
-export async function listOpenMAICMaterials(courseId, { limit = 20, cursor = null } = {}) {
+export async function listMagicClassMaterials(courseId, { limit = 20, cursor = null } = {}) {
   return dataOf(
     await client.get(`/courses/${courseId}/materials`, {
       params: { limit, ...(cursor ? { cursor } : {}) },
@@ -643,7 +643,7 @@ export async function listOpenMAICMaterials(courseId, { limit = 20, cursor = nul
   );
 }
 
-export async function uploadOpenMAICMaterial(courseId, { file, idempotencyKey }) {
+export async function uploadMagicClassMaterial(courseId, { file, idempotencyKey }) {
   const form = new FormData();
   form.append("file", file);
   return dataOf(
@@ -654,11 +654,11 @@ export async function uploadOpenMAICMaterial(courseId, { file, idempotencyKey })
 }
 
 /** 唯一会返回正文的资料接口。 */
-export async function getOpenMAICMaterial(courseId, materialId) {
+export async function getMagicClassMaterial(courseId, materialId) {
   return dataOf(await client.get(`/courses/${courseId}/materials/${materialId}`));
 }
 
-export async function deleteOpenMAICMaterial(courseId, materialId, { revision }) {
+export async function deleteMagicClassMaterial(courseId, materialId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/materials/${materialId}`, {
       headers: { "If-Match": String(revision) },
@@ -667,7 +667,7 @@ export async function deleteOpenMAICMaterial(courseId, materialId, { revision })
 }
 
 /** 批量解析引用：返回服务端**授权过**的引用与没能解析到的 id。 */
-export async function resolveOpenMAICMaterials(courseId, { materialIds }) {
+export async function resolveMagicClassMaterials(courseId, { materialIds }) {
   return dataOf(
     await client.post(`/courses/${courseId}/materials/resolve`, { material_ids: materialIds }),
   );
@@ -680,7 +680,7 @@ export async function resolveOpenMAICMaterials(courseId, { materialIds }) {
 // （中文走 RFC 5987 的 filename*），前端只解析、不自己拼。
 // 导入用多部分表单：学生选的是文件，网关负责把它编码成内部调用需要的形状。
 
-export async function exportOpenMAICStage(courseId, workspaceId, stageId) {
+export async function exportMagicClassStage(courseId, workspaceId, stageId) {
   const response = await client.get(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export`,
     { responseType: "blob" },
@@ -692,7 +692,7 @@ export async function exportOpenMAICStage(courseId, workspaceId, stageId) {
   };
 }
 
-export async function exportOpenMAICStageFormat(courseId, workspaceId, stageId, format) {
+export async function exportMagicClassStageFormat(courseId, workspaceId, stageId, format) {
   const response = await client.get(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/${format}`,
     { responseType: "blob" },
@@ -704,7 +704,7 @@ export async function exportOpenMAICStageFormat(courseId, workspaceId, stageId, 
   };
 }
 
-export async function importOpenMAICStage(courseId, workspaceId, { file, idempotencyKey }) {
+export async function importMagicClassStage(courseId, workspaceId, { file, idempotencyKey }) {
   const form = new FormData();
   form.append("file", file);
   return dataOf(
@@ -714,7 +714,7 @@ export async function importOpenMAICStage(courseId, workspaceId, { file, idempot
   );
 }
 
-export async function importOpenMAICPptx(courseId, workspaceId, { file, idempotencyKey }) {
+export async function importMagicClassPptx(courseId, workspaceId, { file, idempotencyKey }) {
   const form = new FormData();
   form.append("file", file);
   return dataOf(
@@ -730,14 +730,14 @@ export async function importOpenMAICPptx(courseId, workspaceId, { file, idempote
 // 回退别人的改动。两个头同样属于协议：Idempotency-Key 防止重试重复建场景，
 // If-Match 携带这组命令所基于的 revision。
 
-export async function getOpenMAICStageOutline(courseId, workspaceId, stageId) {
+export async function getMagicClassStageOutline(courseId, workspaceId, stageId) {
   return dataOf(
     await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/outline`),
   );
 }
 
 /** 播放计划（渲染决定 + 恢复位置）。`sceneId` 是刷新后要回到的场景。 */
-export async function getOpenMAICStagePlayback(courseId, workspaceId, stageId, { sceneId = null } = {}) {
+export async function getMagicClassStagePlayback(courseId, workspaceId, stageId, { sceneId = null } = {}) {
   return dataOf(
     await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/playback`, {
       params: sceneId ? { scene_id: sceneId } : {},
@@ -745,7 +745,7 @@ export async function getOpenMAICStagePlayback(courseId, workspaceId, stageId, {
   );
 }
 
-export async function getOpenMAICStageScene(courseId, workspaceId, stageId, sceneId) {
+export async function getMagicClassStageScene(courseId, workspaceId, stageId, sceneId) {
   return dataOf(
     await client.get(
       `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}`,
@@ -753,15 +753,15 @@ export async function getOpenMAICStageScene(courseId, workspaceId, stageId, scen
   );
 }
 
-export async function getOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId) {
+export async function getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId) {
   return dataOf(await client.get(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/quiz-attempt`));
 }
 
-export async function saveOpenMAICQuizAttempt(courseId, workspaceId, stageId, sceneId, payload) {
+export async function saveMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/scenes/${sceneId}/quiz-attempt`, payload));
 }
 
-export async function applyOpenMAICStageCommands(courseId, workspaceId, stageId, { commands, revision, idempotencyKey }) {
+export async function applyMagicClassStageCommands(courseId, workspaceId, stageId, { commands, revision, idempotencyKey }) {
   return dataOf(
     await client.post(
       `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/commands`,
@@ -776,7 +776,7 @@ export async function retryInteractiveClassroom(courseId, sessionId, payload) {
   return dataOf(await client.post(`/courses/${courseId}/interactive-classroom/${sessionId}/retry`, { mode: payload.mode, ...interactiveBriefPayload(payload) }));
 }
 
-/** 创建一个受管 Agent 任务（互动课堂生成走这里，前端不直接调用 OpenMAIC）。 */
+/** 创建一个受管 Agent 任务（互动课堂生成走这里，前端不直接调用 magic class）。 */
 export async function createAgentJob(payload) {
   return dataOf(await client.post("/agent-jobs", payload));
 }

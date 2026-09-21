@@ -1,7 +1,7 @@
 /**
  * 逐字移植自参考
  * `components/slide-renderer/components/element/ChartElement/index.tsx`。
- * 只去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入。
+ * 只去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入。
  */
 import { ElementOutline } from '../ElementOutline.jsx';
 import { Chart } from './Chart.jsx';

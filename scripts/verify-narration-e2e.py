@@ -15,20 +15,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from app.services.openmaic.service_assertion import issue_service_assertion  # noqa: E402
+from app.services.magicclass.service_assertion import issue_service_assertion  # noqa: E402
 
 BASE = "http://127.0.0.1:4010"
-SERVICE_ENV = Path(__file__).resolve().parents[1] / "openmaic-service" / ".env"
+SERVICE_ENV = Path(__file__).resolve().parents[1] / "magicclass-service" / ".env"
 
 
 def read_secret() -> str:
     for line in SERVICE_ENV.read_text(encoding="utf-8").splitlines():
-        if line.startswith("OPENMAIC_INTERNAL_SECRET="):
+        if line.startswith("MAGICCLASS_INTERNAL_SECRET="):
             return line.split("=", 1)[1].strip()
     raise SystemExit("no secret")
 
 
-DB_PATH = Path(__file__).resolve().parents[1] / "openmaic-service" / "data" / "openmaic-service.db"
+DB_PATH = Path(__file__).resolve().parents[1] / "magicclass-service" / "data" / "magicclass-service.db"
 
 
 def read_job_input(job_id: str) -> dict:

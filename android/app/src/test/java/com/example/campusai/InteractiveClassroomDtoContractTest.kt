@@ -132,11 +132,11 @@ class InteractiveClassroomDtoContractTest {
             step = "failed",
             terminal = true,
             retryable = true,
-            errorCode = "OPENMAIC_GENERATION_FAILED",
+            errorCode = "MAGICCLASS_GENERATION_FAILED",
         )
         assertTrue(failed.terminal)
         assertTrue(failed.retryable)
-        assertEquals("OPENMAIC_GENERATION_FAILED", failed.errorCode)
+        assertEquals("MAGICCLASS_GENERATION_FAILED", failed.errorCode)
     }
 
     @Test

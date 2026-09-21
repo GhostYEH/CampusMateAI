@@ -127,7 +127,7 @@ def install_api_mock(
                 "available": True,
                 "browser_embed_available": True,
                 "embed_origin": embed_origin,
-                "service": "openmaic",
+                "service": "magicclass",
                 "version": "0.1.0",
                 "poll_interval_ms": 1,
                 "external_3d_available": True,
@@ -195,7 +195,7 @@ def install_api_mock(
                     "progress": 42,
                     "message": "课堂生成失败",
                     "error": "模拟上游超时",
-                    "error_code": "OPENMAIC_GENERATION_FAILED",
+                    "error_code": "MAGICCLASS_GENERATION_FAILED",
                     "terminal": True,
                     "retryable": True,
                 })
@@ -460,7 +460,7 @@ def main() -> int:
         page.get_by_role("button", name="重新生成", exact=True).click()
         page.get_by_role("button", name=re.compile("确认生成")).click()
         expect(page.get_by_text("模拟上游超时").first).to_be_visible(timeout=10000)
-        expect(page.get_by_text("OPENMAIC_GENERATION_FAILED")).to_be_visible()
+        expect(page.get_by_text("MAGICCLASS_GENERATION_FAILED")).to_be_visible()
         page.get_by_role("button", name="重新生成", exact=True).click()
         expect(page.get_by_text("课堂已生成", exact=True).first).to_be_visible(timeout=10000)
 

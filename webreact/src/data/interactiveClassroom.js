@@ -1,15 +1,15 @@
 /**
- * 课程智能辅导空间（OpenMAIC 学生侧互动课堂）共享数据契约与安全判定。
+ * 课程智能辅导空间（magic class 学生侧互动课堂）共享数据契约与安全判定。
  *
  * 生成、查询等 API 只允许通过 CampusMate 后端
- * （/api/v1/courses/{course_id}/interactive-classroom/*）触达 OpenMAIC，前端绝不保存
- * OpenMAIC 密钥/访问码；生成后的课堂页面仅在后端确认浏览器可访问且 Origin 可信时加载。
+ * （/api/v1/courses/{course_id}/interactive-classroom/*）触达 magic class，前端绝不保存
+ * magic class 密钥/访问码；生成后的课堂页面仅在后端确认浏览器可访问且 Origin 可信时加载。
  *
  * 两条硬约束：
  * 1. 内嵌/外链之前必须做**完整 Origin 精确校验**（scheme + host + port），
  *    且课堂 Origin **不得等于 CampusMate 页面自身 Origin**（同源内嵌会让
  *    sandbox 的 allow-same-origin 失去隔离意义）。
- * 2. 内容形态只是"生成意图"。OpenMAIC 的生成接口没有类型参数，最终包含什么
+ * 2. 内容形态只是"生成意图"。magic class 的生成接口没有类型参数，最终包含什么
  *    由生成器决定；因此"已生成内容包含……"只能来自**回读真实课堂**的结果。
  */
 
@@ -51,7 +51,7 @@ export function normalizeMode(mode) {
 
 /**
  * 服务端 step 取值的阶段中文文案。
- * 对齐 OpenMAIC 真实生成步骤（lib/server/classroom-generation.ts 的 ClassroomGenerationStep）
+ * 对齐 magic class 真实生成步骤（lib/server/classroom-generation.ts 的 ClassroomGenerationStep）
  * 以及 job 级别的 queued / failed。
  */
 export const INTERACTIVE_STEP_LABELS = {
@@ -106,7 +106,7 @@ export const CLASSROOM_STATE_TEXT = {
   loading: { title: "正在检测辅导服务…", body: "正在检测互动课堂能力…" },
   not_configured: {
     title: "本课程尚未开启智能辅导",
-    body: "OpenMAIC 互动课堂尚未为这门课配置。你可以先对 CPM 提问，获取学习建议。",
+    body: "magic class 互动课堂尚未为这门课配置。你可以先对 CPM 提问，获取学习建议。",
   },
   unavailable: {
     title: "辅导服务暂不可用",
@@ -189,11 +189,11 @@ export function isSameOriginAsPage(url) {
 }
 
 /**
- * 判定 OpenMAIC 课堂 url 是否可信（可安全内嵌 / 可新窗口打开）。
+ * 判定 magic class 课堂 url 是否可信（可安全内嵌 / 可新窗口打开）。
  *
  * 采用**完整 URL.origin 精确比对**（含端口），而不是 host 后缀匹配：
- * `http://openmaic.example.com:3000` 与 `http://openmaic.example.com:3001`
- * 或 `https://openmaic.example.com` 互不信任。
+ * `http://magicclass.example.com:3000` 与 `http://magicclass.example.com:3001`
+ * 或 `https://magicclass.example.com` 互不信任。
  * 白名单为空时恒为 false —— 未配置可信 Origin 前 fail-closed。
  */
 export function isTrustedEmbedUrl(url, origins = DEFAULT_TRUSTED_EMBED_ORIGINS) {

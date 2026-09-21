@@ -1,5 +1,5 @@
 /**
- * 逐字移植自参考 `packages/@openmaic/renderer/src/effects/LaserOverlay.tsx`。
+ * 逐字移植自参考 `packages/@magicclass/renderer/src/effects/LaserOverlay.tsx`。
  * 只去掉 `'use client'` 与 TypeScript 类型。`geometry` 的形状是
  * `_compat/geometry.js` 里的 `PercentageGeometry`。
  */

@@ -249,6 +249,15 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
     setDragPosition({ left, top });
   }, []);
 
+  // Slide elements are supplied by the embedded renderer. Some element types
+  // legitimately manage their own pointer interaction and may stop bubbling;
+  // the editor still owns selection and drag-to-save, so observe movement in
+  // the capture phase before an inner renderer can consume it.
+  const handleAnyPointerMove = React.useCallback((event) => {
+    handleTransformMove(event);
+    handlePointerMove(event);
+  }, [handlePointerMove, handleTransformMove]);
+
   const renderedSelection = selectedElement && selectionRect
     ? {
       ...selectionRect,
@@ -264,14 +273,13 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
     ref={rootRef}
     className="maic-edit-canvas flex flex-col h-full"
     data-maic-edit-canvas="true"
-    data-testid="openmaic-editor-canvas"
+    data-testid="magicclass-editor-canvas"
     data-scene-id={scene?.id || ""}
     aria-label={scene ? `编辑预览：${scene.title || "未命名场景"}` : "编辑预览"}
-    onPointerDown={handlePointerDown}
-    onPointerMove={handlePointerMove}
-    onPointerMoveCapture={handleTransformMove}
-    onPointerUp={finishDrag}
-    onPointerCancel={(event) => finishDrag(event, true)}
+    onPointerDownCapture={handlePointerDown}
+    onPointerMoveCapture={handleAnyPointerMove}
+    onPointerUpCapture={finishDrag}
+    onPointerCancelCapture={(event) => finishDrag(event, true)}
     onDoubleClick={beginTextEdit}
     style={{ position: "relative", touchAction: "none" }}
   >
@@ -283,7 +291,7 @@ export default function StageCanvasPreview({ scene, onMoveElement, onTransformEl
     </div>}
     {renderedSelection ? <div
       className="maic-edit-canvas__selection"
-      data-testid="openmaic-selected-element"
+      data-testid="magicclass-selected-element"
       data-selected-element-id={selectedElement.id}
       aria-label={`已选中元素：${selectedElement.id}`}
       style={{

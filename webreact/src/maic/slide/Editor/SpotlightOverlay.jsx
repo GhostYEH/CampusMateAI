@@ -1,5 +1,5 @@
 /**
- * 逐字移植自参考 `packages/@openmaic/renderer/src/effects/SpotlightOverlay.tsx`。
+ * 逐字移植自参考 `packages/@magicclass/renderer/src/effects/SpotlightOverlay.tsx`。
  *
  * 机械改写：去掉 `'use client'` 与 TypeScript 类型；
  * `style={{ vectorEffect: 'non-scaling-stroke' } as React.CSSProperties}`

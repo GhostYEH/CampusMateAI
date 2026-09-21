@@ -1,0 +1,768 @@
+/**
+ * magic class 学习工作台的视觉层。
+ *
+ * 全部作用域在 `.ow-root` 下，并且只由工作台页面引入，所以其它页面拿不到这里
+ * 任何一条规则。设计词汇沿用参考项目 `workspace-shell.css` 的结论——那套颜色阶、
+ * 行高与层次是被真实问题打磨出来的，重新发明只会丢掉它的理由：
+ *
+ *   - **画布是 slate 渐变，不是纯白。** 纯白平面会让面板失去"纸"的质感。
+ *   - **墨色阶每一档都是一个有对比度指标的"角色"**，不是随手取的相邻色：
+ *       ink   16.5:1  课程名、活动行
+ *       soft  10.0:1  小节标签
+ *       mute   4.7:1  元数据、静止态图标（AA）
+ *       faint  2.5:1  仅装饰——分隔线。**永不用于文字**
+ *   - **阴影是叠出来的**（接触→中→远），不是一坨 blur——这是"看起来没设计过"的
+ *     主因。
+ *   - **动效只在入场发生一次**，之后不主动动。
+ *
+ * 本项目相对参考项目新增的只有一件事：1023px 及以下的**互斥单面板**布局（见
+ * `.ow-root[data-ow-layout='narrow']`）——三个面板在同一时刻只有被选中的那一个
+ * 占据可用工作区，另外两个不渲染、不占宽度。参考项目在窄屏只是隐藏 rail，而三栏
+ * 并排会把 16:9 舞台压到不可用。
+ */
+
+.ow-root {
+  /* ── 表面 ── */
+  --ow-canvas-top: #f8fafc;
+  --ow-canvas-bottom: #f1f5f9;
+  --ow-pane-bg: rgba(255, 255, 255, 0.82);
+  --ow-raised: #ffffff;
+
+  /* ── 墨色阶（对比度见文件头） ── */
+  --ow-ink: #0f172a;
+  --ow-ink-soft: #334155;
+  --ow-ink-mute: #64748b;
+  --ow-ink-faint: #94a3b8;
+
+  --ow-line: rgba(15, 23, 42, 0.11);
+  --ow-line-soft: rgba(15, 23, 42, 0.065);
+  --ow-tint: rgba(15, 23, 42, 0.055);
+  --ow-tint-strong: rgba(15, 23, 42, 0.09);
+
+  --ow-accent: #7c3aed;
+  --ow-accent-thread: rgba(124, 58, 237, 0.32);
+  --ow-accent-wash: rgba(124, 58, 237, 0.08);
+  --ow-live: #10b981;
+  --ow-fail: #f43f5e;
+
+  --ow-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* ── 叠出来的阴影 ── */
+  --ow-lift-sm: 0 1px 1px rgba(15, 23, 42, .03), 0 2px 4px -1px rgba(15, 23, 42, .035), 0 6px 12px -6px rgba(15, 23, 42, .045);
+  --ow-lift: 0 1px 1px rgba(15, 23, 42, .035), 0 3px 6px -2px rgba(15, 23, 42, .04), 0 10px 20px -8px rgba(15, 23, 42, .05), 0 26px 46px -22px rgba(15, 23, 42, .07);
+
+  /* 只有一个高度令牌：两个面板头的下沿虚线必须在缝上连成一条线。 */
+  --ow-pane-head-h: 42px;
+  --ow-tree-row-h: 32px;
+  /* 工作台顶边到视口顶边的距离（也就是全局顶栏占掉的那一段），由页面在挂载时
+     量出来写进这里。默认 0 表示"没有顶栏"，而不是猜一个数字——猜错就会把面板
+     底部切在屏幕外。 */
+  --ow-top-offset: 0px;
+
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  /* flex 子项默认 `min-width: auto`，也就是"不小于内容宽度"；三栏并排时只要
+     任一栏的内容偏宽，整个工作台就会被顶出横向滚动条。显式归零才好让各栏
+     自己决定收缩。 */
+  min-width: 0;
+  /* 100dvh 而不是 100vh：移动端地址栏收起时 vh 会多出一截，工作台被顶出屏幕。
+     但 100dvh 是**视口**高度，而工作台并不从视口顶端开始——它挂在 AppShell 的
+     路由内容区里，上面还有一条固定顶栏。照 100dvh 撑高，整块面板就会比可用高度
+     多出顶栏那一段，底部被切在屏幕外（实测：320×720 的「生成」、1440×900 的
+     「生成」都点不到）。
+     这里不用固定常量：顶栏实际高度随断点变（88px / 96px / …），写死一个数字就会
+     在别的断点重新多切一刀。用 `100dvh - 工作台自身的文档顶部偏移`，让高度在任何
+     断点都等于"从工作台顶边到视口底边"。 */
+  height: calc(100dvh - var(--ow-top-offset, 0px));
+  min-height: 0;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--ow-canvas-top) 0%, var(--ow-canvas-bottom) 100%);
+  color: var(--ow-ink);
+}
+
+.ow-sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── 面板 ─────────────────────────────────────────────────────────────────
+   每条缝用 inset box-shadow 而不是 border：border 参与布局，拖动改变宽度时
+   会有一像素的抖动。 */
+.ow-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background-color: var(--ow-pane-bg);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset -1px 0 0 0 var(--ow-line-soft);
+}
+
+.ow-pane--rail { flex: 0 0 auto; }
+.ow-pane--classroom { flex: 1 1 auto; box-shadow: none; }
+/* 播放态的课堂**接管整块内容区**：它是参考项目的全出血课堂（自带场景栏与头栏），
+   所以要摘掉工作台面板的背景、模糊与分隔线，否则会在课堂四周露出一圈工作台的
+   玻璃壳，"这是课堂"和"这是编辑器里的预览框"两个信号会同时出现。 */
+.ow-pane--classroom.is-learning {
+  background-color: transparent;
+  backdrop-filter: none;
+  padding: 0;
+  overflow: hidden;
+}
+.ow-pane--tools { flex: 0 0 300px; box-shadow: inset 1px 0 0 0 var(--ow-line-soft); }
+/* 目录这一栏是"列表 + 固定在底部的生成输入"两段：列表自己滚，输入区常驻。
+   若交给 `.ow-pane-body` 滚（默认 overflow:auto），超出部分会被它裁掉，而下面的
+   生成输入又不在它里面——320px 下"生成"按钮就这样被裁在可视区之外，用户点不到，
+   而它是这一栏唯一的出口。`.ow-rail` 自己滚之后还要 `min-height: 0`：flex 子项
+   默认"不小于内容高度"，没有它列表不会滚，而是把整栏撑到内容那么高。 */
+.ow-pane--rail .ow-pane-body { overflow: hidden; }
+.ow-pane--rail .ow-rail { flex: 1 1 auto; overflow: auto; }
+.ow-pane-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; }
+.ow-pane.is-mini { width: 60px; }
+.ow-pane.is-mini .ow-pane-body { padding: 6px; }
+
+/* ── 统一面板头 ───────────────────────────────────────────────────────────
+   高度只由 `--ow-pane-head-h` 决定，面板自己不许另设高度，否则两个头的下沿
+   会在缝上错开一像素，那条虚线就断了。 */
+.ow-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: var(--ow-pane-head-h);
+  padding: 0 8px 0 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0));
+  box-shadow: inset 0 -1px 0 0 var(--ow-line-soft);
+}
+
+.ow-pane-eyebrow {
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ow-ink-mute);
+  flex: 0 0 auto;
+}
+
+.ow-pane-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ow-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ow-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.145em;
+  color: var(--ow-ink-soft);
+}
+
+.ow-count {
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: var(--ow-ink-mute);
+}
+
+.ow-icon-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 26px; height: 26px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ow-ink-mute);
+  background: transparent;
+  transition: background-color 150ms var(--ow-ease), color 150ms var(--ow-ease);
+}
+.ow-icon-btn:hover { background: var(--ow-tint); color: var(--ow-ink); }
+.ow-icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--ow-accent-thread); }
+
+/* ── 课程标签条 ───────────────────────────────────────────────────────────
+   "还有更多"需要两个信号：边缘渐隐（硬裁看起来像坏了，渐隐看起来像还能继续）
+   加上手绘滚动条（原生 overlay 滚动条在滚动前不占位也不绘制，等于一个要先猜到
+   才存在的提示）。 */
+.ow-ctabs {
+  display: flex;
+  align-items: flex-start;
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  /* 渐隐宽 26px，所以"滚进视野"必须越过 26px，否则标签停在渐隐下半透明。 */
+  scroll-padding-inline: 26px;
+  scrollbar-width: none;
+  background-repeat: no-repeat, no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+}
+.ow-ctabs::-webkit-scrollbar { display: none; }
+
+.ow-ctabs[data-more='right'] {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+}
+.ow-ctabs[data-more='left'] {
+  -webkit-mask-image: linear-gradient(270deg, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(270deg, #000 calc(100% - 26px), transparent);
+}
+.ow-ctabs[data-more='both'] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 26px, #000 calc(100% - 26px), transparent);
+}
+
+.ow-ctab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 86px 是推导出来的下限，不是猜的：15px 内边距之外还剩 71px，13px 下正好
+     五个汉字；70px 时只剩 32px，标签就什么都说明不了了。 */
+  flex: 0 1 auto;
+  min-width: 86px;
+  max-width: 250px;
+  height: 31px;
+  padding: 0 6px 0 9px;
+  border-radius: 7px 7px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ow-ink-mute);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 140ms var(--ow-ease), color 140ms var(--ow-ease);
+}
+.ow-ctab:hover { background: var(--ow-tint-strong); color: var(--ow-ink-soft); }
+.ow-ctab:focus-visible { outline: 2px solid var(--ow-accent); outline-offset: -2px; }
+
+/* 活动标签：地板提到 113px，因为它那个 × 是常驻的；活动标签对自己的说明
+   不能比旁边的标签更差。 */
+.ow-ctab-on {
+  flex: 1.6 1 auto;
+  min-width: 113px;
+  z-index: 1;
+  color: var(--ow-accent);
+  font-weight: 600;
+  background: var(--ow-raised);
+  box-shadow: inset 1px 0 0 var(--ow-line), inset -1px 0 0 var(--ow-line), inset 0 1px 0 var(--ow-line), 0 -2px 7px -5px var(--ow-ink-faint);
+}
+/* 尾巴盖住面板头那条虚线，让标签和下面的内容连成一体。 */
+.ow-ctab-on::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -5px;
+  height: 5px;
+  background: var(--ow-raised);
+}
+/* 只有非活动标签之间才有分隔线。 */
+.ow-ctab:not(.ow-ctab-on) + .ow-ctab:not(.ow-ctab-on)::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 6px; bottom: 6px;
+  width: 1px;
+  background: var(--ow-line);
+}
+
+.ow-ctab-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.ow-ctab-on .ow-ctab-name { padding-right: 27px; }
+
+/* × 是**脱离文档流**的：这是比"隐藏时占位"更强的保证——显示 × 永远不会
+   让标签发生位移。 */
+.ow-ctab-x {
+  position: absolute;
+  z-index: 2;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 22px; height: 22px;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: background-color 130ms, color 130ms, opacity 130ms;
+}
+.ow-ctab-on .ow-ctab-x { color: var(--ow-ink-mute); opacity: .6; pointer-events: auto; }
+.ow-ctab:hover .ow-ctab-x,
+.ow-ctab:focus-within .ow-ctab-x {
+  color: var(--ow-ink-soft);
+  opacity: .9;
+  background: var(--ow-raised);
+  box-shadow: 0 0 0 1px var(--ow-line-soft);
+}
+.ow-ctab:hover .ow-ctab-x:hover,
+.ow-ctab:focus-within .ow-ctab-x:hover { color: var(--ow-ink); opacity: 1; }
+
+/* 作用域分界线：左边作用于单个标签，右边作用于整个面板。 */
+.ow-ctabs-rule {
+  flex: 0 0 1px;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--ow-line);
+}
+
+/* ── 课堂面板头的控件 ─────────────────────────────────────────────────── */
+.ow-classroom-head { gap: 6px; }
+
+.ow-seg {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--ow-tint);
+  box-shadow: inset 0 0 0 1px var(--ow-line-soft);
+}
+.ow-seg button {
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11.5px;
+  color: var(--ow-ink-mute);
+  background: transparent;
+}
+.ow-seg button.is-active {
+  color: var(--ow-ink);
+  background: var(--ow-raised);
+  box-shadow: inset 0 0 0 1px var(--ow-line-soft), var(--ow-lift-sm);
+}
+.ow-seg button:focus-visible { outline: none; box-shadow: 0 0 0 1px var(--ow-accent-thread), 0 0 0 3px var(--ow-accent-wash); }
+
+/* 「开始学习」是进入播放的唯一门。 */
+.ow-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ow-accent);
+  background: var(--ow-accent-wash);
+  transition: background-color 150ms var(--ow-ease), box-shadow 150ms var(--ow-ease);
+}
+.ow-start:hover:not(:disabled) { background: rgba(124, 58, 237, 0.14); box-shadow: var(--ow-lift-sm); }
+.ow-start:disabled { opacity: .45; cursor: not-allowed; }
+.ow-start:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ow-accent-thread); }
+
+/* ── 场景目录 ─────────────────────────────────────────────────────────── */
+.ow-rail { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: auto; }
+.ow-rail__head { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; }
+.ow-rail__body { display: flex; flex-direction: column; gap: 2px; min-height: 0; }
+.ow-rail__skeleton { display: flex; flex-direction: column; gap: 6px; padding: 4px 8px; }
+.ow-skeleton { display: block; height: 8px; width: 96px; border-radius: 999px; background: var(--ow-tint-strong); animation: ow-pulse 1.4s ease-in-out infinite; }
+
+.ow-rail__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--ow-ink-mute);
+}
+.ow-rail__empty p { margin: 0; font-size: 12.5px; color: var(--ow-ink-soft); }
+.ow-rail__empty small { font-size: 11px; line-height: 1.5; }
+
+.ow-scene-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
+/* 行高统一（--ow-tree-row-h 的语义），所以切换课程时这一列不会重排。
+   选中态是"比 hover 强一档并保持"的中性 pill：不加强调色条、不加边框。 */
+.ow-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--ow-ink-soft);
+  background: transparent;
+  transition: background-color 160ms var(--ow-ease), color 160ms var(--ow-ease), box-shadow 160ms var(--ow-ease);
+}
+button.ow-scene-item:hover { background: var(--ow-tint); color: var(--ow-ink); }
+button.ow-scene-item:focus-visible { outline: none; background: var(--ow-tint); box-shadow: 0 0 0 1px var(--ow-accent-thread); }
+.ow-scene-item.is-selected { color: var(--ow-ink); background: var(--ow-tint-strong); }
+
+.ow-scene-item__index {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ow-ink-mute);
+  background: var(--ow-tint);
+}
+.ow-scene-item.is-selected .ow-scene-item__index { color: var(--ow-accent); background: var(--ow-accent-wash); }
+
+.ow-scene-item__copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.ow-scene-item__copy strong { font-size: 13px; font-weight: 550; line-height: 1.25; letter-spacing: -0.006em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-scene-item__copy small { font-size: 10.5px; color: var(--ow-ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 生成中：脉冲骨架 + 真实进度。 */
+.ow-scene-item.is-generating { background: var(--ow-tint); }
+.ow-scene-item__thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  width: 46px; height: 28px;
+  padding: 5px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--ow-tint-strong);
+  box-shadow: inset 0 0 0 1px var(--ow-line-soft);
+}
+.ow-scene-item__bar { display: block; height: 5px; border-radius: 999px; background: rgba(15, 23, 42, .12); }
+.ow-scene-item__bar--title { width: 62%; }
+.ow-scene-item__bar--line { width: 40%; height: 4px; }
+.ow-scene-item__shimmer {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .55), transparent);
+  animation: ow-shimmer 2s infinite;
+}
+
+/* 失败：真实原因 + 重试。绝不显示成空列表。 */
+.ow-scene-item.is-failed {
+  align-items: flex-start;
+  background: rgba(244, 63, 94, .06);
+  box-shadow: inset 0 0 0 1px rgba(244, 63, 94, .18);
+}
+.ow-scene-item.is-failed .ow-scene-item__thumb { width: 28px; height: 28px; align-items: center; color: var(--ow-fail); background: rgba(244, 63, 94, .1); }
+.ow-scene-item.is-failed .ow-scene-item__copy strong { color: #b91c1c; }
+.ow-scene-item.is-failed .ow-scene-item__copy small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; line-height: 1.4; }
+.ow-scene-item__retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #b91c1c;
+  background: rgba(244, 63, 94, .12);
+}
+.ow-scene-item__retry:hover { background: rgba(244, 63, 94, .2); }
+
+/* ── 生成输入 ─────────────────────────────────────────────────────────── */
+.ow-composer { flex: 0 0 auto; padding: 8px; box-shadow: inset 0 1px 0 0 var(--ow-line-soft); }
+.ow-composer form { display: flex; flex-direction: column; gap: 6px; }
+.ow-composer__field { display: block; }
+.ow-composer input,
+.ow-composer select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ow-line);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--ow-ink);
+  background: var(--ow-raised);
+}
+.ow-composer input::placeholder { color: var(--ow-ink-faint); }
+.ow-composer input:focus-visible,
+.ow-composer select:focus-visible { outline: none; border-color: var(--ow-accent-thread); box-shadow: 0 0 0 3px var(--ow-accent-wash); }
+
+/* 矮视口下"主题 + 类型 + 生成"三行摞起来有 130px 高，会把目录栏挤出可视区，连带
+   把「生成」这个唯一的出口裁到屏幕外（320×720 实测就是这样）。改成一行：
+   主题输入吃掉剩余宽度，类型与按钮按内容收缩。320px 下这一行仍然放得下。 */
+@media (max-height: 820px) {
+  .ow-composer form { flex-direction: row; align-items: center; }
+  .ow-composer__field { flex: 1 1 auto; min-width: 0; }
+  .ow-composer form > select { flex: 0 0 auto; width: auto; max-width: 40%; }
+  .ow-composer form > .button { flex: 0 0 auto; }
+}
+
+/* ── 舞台 ─────────────────────────────────────────────────────────────────
+   16:9 盒子由 JS 量出来（ContainBox），**不用 aspect-ratio**：宿主在首次挂载时
+   还在 settle，纯 CSS 会按那一刻的错误尺寸撑框。这里只负责居中与裁剪。 */
+.ow-classroom-body { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 12px; gap: 10px; }
+
+.ow-stage { display: flex; flex: 1 1 auto; min-height: 0; }
+.ow-contain {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.ow-contain__box {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--ow-line), 0 10px 40px -12px rgba(15, 23, 42, .18);
+}
+.ow-stage__inner { position: relative; width: 100%; height: 100%; overflow: auto; }
+
+.ow-stage-state {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  text-align: center;
+  color: var(--ow-ink-mute);
+}
+.ow-stage-state p { margin: 0; font-size: 13px; color: var(--ow-ink-soft); }
+.ow-stage-state small { font-size: 11.5px; }
+
+.ow-stage-meta { flex: 0 0 auto; margin: 0; padding: 0 2px; font-size: 11px; color: var(--ow-ink-mute); }
+.ow-stage-meta a { color: var(--ow-accent); text-decoration: underline; }
+
+/* ── 生成进度（面板内） ───────────────────────────────────────────────── */
+.ow-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--ow-accent-wash);
+  box-shadow: inset 0 0 0 1px var(--ow-accent-thread);
+}
+.ow-progress.is-failed { background: rgba(244, 63, 94, .07); box-shadow: inset 0 0 0 1px rgba(244, 63, 94, .2); }
+.ow-progress__copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ow-progress__copy strong { font-size: 12.5px; color: var(--ow-ink); }
+.ow-progress__copy small { font-size: 11px; color: var(--ow-ink-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-progress.is-failed .ow-progress__copy strong { color: #b91c1c; }
+.ow-progress__bar { flex: 1 1 auto; min-width: 60px; height: 5px; border-radius: 999px; background: var(--ow-tint-strong); overflow: hidden; }
+.ow-progress__bar span { display: block; height: 100%; border-radius: 999px; background: var(--ow-accent); transition: width 320ms var(--ow-ease); }
+.ow-progress.is-failed .ow-progress__bar span { background: var(--ow-fail); }
+.ow-progress__actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* ── 局部错误：绝不替换整个工作台 ─────────────────────────────────────── */
+.ow-inline-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #b91c1c;
+  background: rgba(244, 63, 94, .07);
+  box-shadow: inset 0 0 0 1px rgba(244, 63, 94, .2);
+}
+.ow-inline-error div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ow-inline-error strong { font-size: 12.5px; }
+.ow-inline-error small { font-size: 11px; color: #9f1239; }
+
+.ow-hint { flex: 0 0 auto; margin: 0; font-size: 11.5px; color: var(--ow-ink-mute); }
+.ow-hint--error { color: #b91c1c; }
+
+/* ── 导出 ─────────────────────────────────────────────────────────────── */
+.ow-export { position: relative; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.ow-export__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--ow-raised);
+  box-shadow: 0 0 0 1px var(--ow-line), var(--ow-lift);
+}
+.ow-export__menu button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--ow-ink-soft);
+  background: transparent;
+}
+.ow-export__menu button:hover:not(:disabled) { background: var(--ow-tint); color: var(--ow-ink); }
+.ow-export__empty { padding: 7px 10px; font-size: 11.5px; color: var(--ow-ink-mute); }
+
+/* ── 拖拽调宽 ─────────────────────────────────────────────────────────── */
+.ow-resize {
+  position: absolute;
+  top: 0; bottom: 0; right: 0;
+  z-index: 20;
+  width: 6px;
+  transform: translateX(50%);
+  cursor: col-resize;
+}
+.ow-resize__thread {
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: transparent;
+  transition: width 140ms var(--ow-ease), background-color 140ms var(--ow-ease);
+}
+.ow-resize:hover .ow-resize__thread,
+.ow-resize:focus-visible .ow-resize__thread { width: 2px; background: var(--ow-ink-faint); }
+.ow-resize:focus-visible { outline: none; }
+.ow-resize[data-ow-drag='true'] .ow-resize__thread { width: 2px; background: var(--ow-accent); box-shadow: 0 0 0 3px var(--ow-accent-wash); }
+
+/* 拖动期间锁住光标与选中：不锁的话指针划过其它元素时光标会闪。 */
+html[data-ow-resizing] { cursor: col-resize !important; user-select: none !important; }
+
+/* ── 工具区重新打开 ───────────────────────────────────────────────────── */
+.ow-tools-reopen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: 30px;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 0;
+  font-size: 11px;
+  color: var(--ow-ink-mute);
+  background: var(--ow-pane-bg);
+  box-shadow: inset 1px 0 0 0 var(--ow-line-soft);
+  writing-mode: vertical-rl;
+}
+.ow-tools-reopen:hover { color: var(--ow-accent); background: var(--ow-accent-wash); }
+.ow-tools-reopen:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--ow-accent-thread); }
+
+/* ── 窄屏互斥（本项目新增：参考项目只是隐藏 rail，三栏并排会让 16:9 不可用） ──
+ *
+ * 不变式只有一句：**被选中的那一个面板占满可用工作区，另外两个不存在。**
+ * "不存在"由渲染保证（未激活的面板根本不进 DOM），这里只负责让在场的那个吃满。
+ *
+ * 这里曾经写的是 `.ow-pane--rail { width: 60px }`——一个固定的 60px mini 目录栏。
+ * 它和"互斥"是直接矛盾的：rail 永远在场，于是 320/390/768 上的舞台永远被切掉
+ * 60px，而"目录"这个面板也永远不可能被真正选中。宽度留给 `.ow-pane--rail` 自己
+ * 的 `flex: 0 0 auto`，窄屏下选中它时由下面的规则吃掉整行。 */
+.ow-root[data-ow-layout='narrow'] {
+  flex-direction: column;
+}
+
+.ow-root[data-ow-layout='narrow'] .ow-pane {
+  /* 唯一的在场面板：占满导航区剩下的全部空间。 */
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/* 窄屏每屏只有一个面板，没有"缝"可言，所以任何列分隔线都是噪声。 */
+.ow-root[data-ow-layout='narrow'] .ow-pane--rail,
+.ow-root[data-ow-layout='narrow'] .ow-pane--tools {
+  box-shadow: none;
+}
+
+.ow-root[data-ow-layout='narrow'] .ow-classroom-body { padding: 8px; }
+.ow-root[data-ow-layout='narrow'] .ow-stage-meta { font-size: 10.5px; }
+
+/* ── 窄屏的工作台导航区 ───────────────────────────────────────────────────
+ * 切换器**不**在课堂面板里：课堂是三个面板之一，把它当成另外两个的宿主，就会
+ * 出现"切到目录后课堂连同切换器一起消失、再也回不去"的死角。所以它属于工作台，
+ * 和课程标签、返回出口同处一条持久存在的横条。
+ *
+ * 高度用和面板头同一个令牌，切换面板时这一条不会跳动。 */
+.ow-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  /* 320px 下这里要放下切换器 + 一个课程标签 + 返回按钮，所以头高比宽屏紧 6px；
+     横向内边距也收到 8px。两者都只影响窄屏。 */
+  height: calc(var(--ow-pane-head-h) - 6px);
+  padding: 0 8px;
+  background-color: var(--ow-pane-bg);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 -1px 0 0 var(--ow-line-soft);
+}
+
+.ow-seg--nav { padding: 1px; }
+.ow-seg--nav button {
+  /* 触控面积按 24px 高、~38px 宽给：既进得了 320px 的一行，也没有小到点不中。 */
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 窄屏导航区里的标签条不参与面板头那套"标签=面板名"的几何，只当一个普通滚动条。 */
+.ow-nav .ow-ctabs { padding-top: 0; align-items: center; height: 100%; }
+.ow-nav .ow-ctab {
+  border-radius: 7px;
+  height: 24px;
+  min-width: 62px;
+  font-size: 11.5px;
+}
+.ow-nav .ow-ctab-on {
+  border-radius: 7px;
+  box-shadow: inset 0 0 0 1px var(--ow-line), var(--ow-lift-sm);
+}
+/* 尾巴是给面板头那条虚线收口的；导航区的标签下面没有虚线，留着会是一条白杠。 */
+.ow-nav .ow-ctab-on::after { display: none; }
+.ow-nav .ow-ctab-on .ow-ctab-name { padding-right: 24px; }
+
+/* ── 入场：只发生一次，之后不主动动 ───────────────────────────────────── */
+@keyframes ow-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ow-shimmer { to { transform: translateX(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-skeleton, .ow-scene-item__shimmer { animation: none; }
+  .ow-ctabs { scroll-behavior: auto; }
+  .ow-progress__bar span { transition: none; }
+  .ow-start, .ow-ctab, .ow-scene-item, .ow-resize__thread { transition: none; }
+}
+
+/* 320px：导航区那一行与面板头都要完整放得下。 */
+@media (max-width: 400px) {
+  .ow-pane-head { padding: 0 6px 0 8px; gap: 5px; }
+  .ow-start { padding: 0 9px; }
+  /* 导出在 320px 没有位置。这里用 `display: none` 而不是 `visibility: hidden`：
+     只有前者会让子按钮退出 tab 序列。否则键盘用户会聚焦到一个 0×0、看不见的
+     「导出」上。 */
+  .ow-export { display: none; }
+  .ow-nav { gap: 5px; padding: 0 6px; }
+  .ow-seg--nav button { padding: 3px 6px; }
+  .ow-nav .ow-ctab { min-width: 52px; }
+}

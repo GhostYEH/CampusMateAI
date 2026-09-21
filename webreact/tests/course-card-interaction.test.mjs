@@ -54,10 +54,10 @@ test("keeps course identity, teaching information and progress in the redesigned
   );
 });
 
-test("the live courses route uses the native OpenMAIC home and no legacy card grid", () => {
-  assert.match(parityPageSource, /OpenMAICHome/);
+test("the live courses route uses the native magic class home and no legacy card grid", () => {
+  assert.match(parityPageSource, /MagicClassHome/);
   // 最近内容走服务端聚合接口，不再对前 N 门课程逐个发历史请求
-  assert.match(parityPageSource, /api\.getOpenMAICRecent\(/);
+  assert.match(parityPageSource, /api\.getMagicClassRecent\(/);
   assert.doesNotMatch(parityPageSource, /api\.listInteractiveClassrooms/);
   assert.doesNotMatch(parityPageSource, /<AnimatedList/);
   assert.doesNotMatch(parityPageSource, /asset-page-hero/);

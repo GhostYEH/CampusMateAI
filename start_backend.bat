@@ -4,6 +4,11 @@ setlocal enabledelayedexpansion
 
 cd /d "%~dp0backend"
 
+:: Local launcher default: the login page advertises student_demo/Demo123456.
+:: An explicitly supplied shell value still wins, so real-user testing can set
+:: AUTO_SEED_DEMO_USERS=false before launching this script.
+if not defined AUTO_SEED_DEMO_USERS set "AUTO_SEED_DEMO_USERS=true"
+
 echo ============================================
 echo   CampusMate AI Backend
 echo ============================================

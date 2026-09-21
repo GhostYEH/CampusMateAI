@@ -618,7 +618,7 @@ data class CourseContentPageDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
-// ── 交互课堂（生成与运行都经 CampusMate 后端；客户端绝不持有 OpenMAIC 凭据）──
+// ── 交互课堂（生成与运行都经 CampusMate 后端；客户端绝不持有 magic class 凭据）──
 //
 // 注意：DTO 里**永远**不出现 ACCESS_CODE / Cookie / Token / Provider Key。
 // 课堂地址只有通过 ClassroomUrlPolicy 校验后才会被打开。
@@ -1231,7 +1231,7 @@ interface ApiService {
         @Path("courseId") courseId: String,
     ): Response<CourseKnowledgeGraphDto>
 
-    // 查询后端已生成的交互课堂（只读，绝不调用 OpenMAIC 生成）
+    // 查询后端已生成的交互课堂（只读，绝不调用 magic class 生成）
     @GET("courses/{courseId}/interactive-classroom")
     suspend fun getInteractiveClassroom(
         @Path("courseId") courseId: String,
@@ -1257,14 +1257,14 @@ interface ApiService {
         @Body body: InteractiveClassroomGenerateRequest,
     ): Response<InteractiveClassroomGenerateResponse>
 
-    /** 轮询进度（服务端会现场轮询一次 OpenMAIC）。 */
+    /** 轮询进度（服务端会现场轮询一次 magic class）。 */
     @GET("courses/{courseId}/interactive-classroom/jobs/{sessionId}")
     suspend fun getInteractiveClassroomJob(
         @Path("courseId") courseId: String,
         @Path("sessionId") sessionId: String,
     ): Response<InteractiveClassroomSessionDto>
 
-    /** 重试 = 重新提交一个新任务（OpenMAIC 没有原生 retry）。 */
+    /** 重试 = 重新提交一个新任务（magic class 没有原生 retry）。 */
     @POST("courses/{courseId}/interactive-classroom/{sessionId}/retry")
     suspend fun retryInteractiveClassroom(
         @Path("courseId") courseId: String,

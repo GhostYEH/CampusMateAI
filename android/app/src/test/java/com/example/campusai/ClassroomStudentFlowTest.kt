@@ -91,7 +91,7 @@ class ClassroomStudentFlowTest {
     }
 
     @Test
-    fun `step labels cover real openmaic steps`() {
+    fun `step labels cover real magicclass steps`() {
         assertEquals("生成语音讲解", ClassroomProgressReducer.stepLabel("generating_tts"))
         assertEquals("生成教学大纲", ClassroomProgressReducer.stepLabel("generating_outlines"))
         assertEquals("保存课堂", ClassroomProgressReducer.stepLabel("persisting"))
@@ -115,7 +115,7 @@ class ClassroomStudentFlowTest {
         // 后端已不再下发内部地址；这里保证前端也不会把它当可打开
         val state = ClassroomProgressState(
             phase = ClassroomPhase.SUCCEEDED,
-            publicUrl = "http://openmaic:3000/classroom/r1",
+            publicUrl = "http://magicclass:3000/classroom/r1",
         )
         // openableUrl 只做"非空"判断，真正的准入由 ClassroomUrlPolicy 负责；
         // 因此这里断言 policy 会拒绝它（见 ClassroomUrlPolicyTest）。

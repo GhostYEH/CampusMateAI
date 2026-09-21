@@ -1,7 +1,7 @@
 /**
  * 逐字移植自参考
  * `components/slide-renderer/components/element/ShapeElement/GradientDefs.tsx`。
- * 只去掉 TypeScript 类型与 `@openmaic/dsl` 类型导入。
+ * 只去掉 TypeScript 类型与 `@magicclass/dsl` 类型导入。
  */
 export function GradientDefs({ id, type, colors, rotate = 0 }) {
   if (type === 'linear') {

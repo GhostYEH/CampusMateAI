@@ -12,7 +12,7 @@ import org.junit.Test
  * 课程上下文传递的合约测试：
  * - ChatRequest 的 course_id 必须以 "course_id" 序列化，且 null 时不写到线上。
  * - 交互课堂 GET 响应只读解析，未启用 / 无 URL 时不给出可打开链接。
- * - 交互课堂 DTO 不承载任何 OpenMAIC 凭据（访问码只在后端）。
+ * - 交互课堂 DTO 不承载任何 magic class 凭据（访问码只在后端）。
  */
 class CourseChatContextContractTest {
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
@@ -64,8 +64,8 @@ class CourseChatContextContractTest {
     }
 
     @Test
-    fun `interactive classroom dto never models openmaic credentials`() {
-        // OpenMAIC 访问码等凭据只存在于后端；客户端 DTO 不允许出现承载凭据的字段。
+    fun `interactive classroom dto never models magicclass credentials`() {
+        // magic class 访问码等凭据只存在于后端；客户端 DTO 不允许出现承载凭据的字段。
         val dtoProps = InteractiveClassroomDto::class.memberProperties.map { it.name }.toSet()
         assertEquals(setOf("enabled", "items"), dtoProps)
         val itemProps = InteractiveClassroomItemDto::class.memberProperties.map { it.name }.toSet()
@@ -92,16 +92,16 @@ class CourseChatContextContractTest {
         {"enabled":true,
          "embed_origin":"http://127.0.0.1:3000",
          "access_code":"s3cret-value",
-         "openmaic_access_code":"s3cret-value",
+         "magicclass_access_code":"s3cret-value",
          "items":[{"url":"http://127.0.0.1:3000/classroom/r1",
                    "access_code":"s3cret-value",
-                   "cookie":"openmaic_access=token"}]}
+                   "cookie":"magicclass_access=token"}]}
         """.trimIndent()
         val dto = moshi.adapter(InteractiveClassroomDto::class.java).fromJson(json)!!
         assertTrue(dto.enabled)
         assertEquals(listOf("http://127.0.0.1:3000/classroom/r1"), dto.existingClassroomUrls())
         val rendered = dto.toString()
         assertFalse("凭据不得进入客户端模型: $rendered", rendered.contains("s3cret-value"))
-        assertFalse("访问码 cookie 不得进入客户端模型: $rendered", rendered.contains("openmaic_access"))
+        assertFalse("访问码 cookie 不得进入客户端模型: $rendered", rendered.contains("magicclass_access"))
     }
 }

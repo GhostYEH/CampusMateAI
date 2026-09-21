@@ -1,6 +1,6 @@
 /**
- * 近似替换：参考项目 `@openmaic/generation` 导出的 `parseJsonResponse`
- * （实现位于 `packages/@openmaic/generation/src/json-repair.ts`），它依赖 npm 包
+ * 近似替换：参考项目 `@magicclass/generation` 导出的 `parseJsonResponse`
+ * （实现位于 `packages/@magicclass/generation/src/json-repair.ts`），它依赖 npm 包
  * `jsonrepair` 修复被截断 / 含注释 / 含尾逗号的 LLM JSON 输出。
  *
  * 目标项目既没有 `jsonrepair`，也没有那个 workspace 包，所以这里保留**同一套调用

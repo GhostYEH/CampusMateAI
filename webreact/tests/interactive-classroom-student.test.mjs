@@ -54,7 +54,7 @@ const enabledStatus = (overrides = {}) => ({
   compatibility: "compatible",
   degraded: false,
   unavailable_capabilities: [],
-  service: "openmaic",
+  service: "magicclass",
   version: "1.0.1",
   embed_origin: TRUSTED,
   browser_embed_available: true,
@@ -306,7 +306,7 @@ test("未知类型安全降级展示，不崩溃也不冒充已知类型", () =>
 test("composition 读取失败时明说失败，不显示成空内容", () => {
   const markup = render({
     session: { session_id: "s1", status: "succeeded", step: "completed", url: CLASSROOM_URL },
-    compositionError: "课堂内容读取失败(OpenMAICUnavailable)",
+    compositionError: "课堂内容读取失败(MagicClassUnavailable)",
   });
   assert.match(markup, /课堂内容读取失败/);
   assert.doesNotMatch(markup, /这节课没有生成可展示的内容/);
@@ -374,7 +374,7 @@ test("进度区展示真实 step、更新时间，且不提供取消按钮", () 
   assert.match(markup, /45%/);
   assert.match(markup, /最近更新/);
   assert.match(markup, /停止查看进度/);
-  // 不存在"取消"语义（OpenMAIC 没有 cancel 端点，不能给学生假按钮）
+  // 不存在"取消"语义（magic class 没有 cancel 端点，不能给学生假按钮）
   assert.doesNotMatch(markup, />取消</);
 });
 
@@ -385,13 +385,13 @@ test("失败态展示稳定错误码与重试入口", () => {
       status: "failed",
       step: "failed",
       error: "场景 3 生成超时",
-      error_code: "OPENMAIC_GENERATION_FAILED",
+      error_code: "MAGICCLASS_GENERATION_FAILED",
       retryable: true,
     },
   });
   assert.match(markup, /role="alert"/);
   assert.match(markup, /场景 3 生成超时/);
-  assert.match(markup, /OPENMAIC_GENERATION_FAILED/);
+  assert.match(markup, /MAGICCLASS_GENERATION_FAILED/);
   assert.match(markup, /重新生成/);
 });
 

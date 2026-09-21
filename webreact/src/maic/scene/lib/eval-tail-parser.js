@@ -4,7 +4,7 @@ import { parseJsonResponse } from './json-parse.js';
  * 移植自参考项目 `lib/pbl/v2/operations/runtime/eval-tail-parser.ts`。
  *
  * 机械改写：
- *   - `parseJsonResponse` 从 `@openmaic/generation` 改为本层的近似实现
+ *   - `parseJsonResponse` 从 `@magicclass/generation` 改为本层的近似实现
  *     （见 json-parse.js 的说明：契约相同，修复能力略弱）。
  *   - 去掉全部 TypeScript 类型标注（泛型 / 联合类型 / `as` / 非空断言 `!`）。
  *
@@ -17,7 +17,7 @@ import { parseJsonResponse } from './json-parse.js';
  *
  * Robustness we explicitly handle:
  *  - LLM emits fenced JSON, naked JSON, or prose + JSON → reuse the
- *    shared OpenMAIC generation JSON repair parser
+ *    shared magic class generation JSON repair parser
  *  - LLM emits malformed JSON inside the fence → reuse shared repair;
  *    return null only if no object can be recovered
  *  - LLM emits `stars: "4/5"` / `"good"` / `null` / `8.7` / `NaN`

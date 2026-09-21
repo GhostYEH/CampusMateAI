@@ -51,12 +51,12 @@ from ...core.logging import logger
 from ...models.multi_role import UserRow
 from ...models.personal_task import PersonalTaskRow
 from ...schemas.chat import ChatFinalMeta, ChatRequest, SuggestedAction
-from ...schemas.openmaic import MODE_INTENT_LABELS
+from ...schemas.magicclass import MODE_INTENT_LABELS
 from ...services.container import ServiceContainer, get_container
 from ...services.course_access import can_view_course
 from ...services.emotion_context import EmotionContextBuilder
-from ...services.openmaic.fusion_client import OpenMAICFusionClient
-from ...services.openmaic.fusion_errors import FusionInvalidRequest
+from ...services.magicclass.fusion_client import MagicClassFusionClient
+from ...services.magicclass.fusion_errors import FusionInvalidRequest
 from ..deps import current_user_optional
 
 router = APIRouter()
@@ -67,12 +67,12 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
-def _workspace_client(container: ServiceContainer = Depends(_container)) -> OpenMAICFusionClient:
+def _workspace_client(container: ServiceContainer = Depends(_container)) -> MagicClassFusionClient:
     settings = container.settings
-    return OpenMAICFusionClient(
-        base_url=settings.openmaic_service_url,
-        secret=settings.openmaic_internal_secret,
-        timeout_seconds=settings.openmaic_service_timeout_seconds,
+    return MagicClassFusionClient(
+        base_url=settings.magicclass_service_url,
+        secret=settings.magicclass_internal_secret,
+        timeout_seconds=settings.magicclass_service_timeout_seconds,
     )
 
 
@@ -182,7 +182,7 @@ def _collect_teaching_context(
                 warnings.append(f"无权访问课程 {c.name},已忽略")
             else:
                 # 富课程上下文：章节/作业/互动课堂存在状态(权限内、后端重查)
-                from ...services.openmaic.course_context import build_cpm_course_block
+                from ...services.magicclass.course_context import build_cpm_course_block
                 try:
                     block = build_cpm_course_block(container, user, c)
                 except Exception as exc:  # noqa: BLE001
@@ -609,18 +609,18 @@ async def build_interactive_classroom_action(
     course_id: Optional[str],
     message: str,
 ):
-    """只读地提出一个互动课堂建议。**不创建任何 OpenMAIC 任务**。
+    """只读地提出一个互动课堂建议。**不创建任何 magicclass 任务**。
 
     CPM 只负责理解意图与提建议；真正的生成必须由学生确认后走
     `POST /api/v1/agent-jobs`（受管 Handler + 审批门 + 幂等 + 审计），
-    counselor 与 LLM 都不允许直接调用 OpenMAICClient。
+    counselor 与 LLM 都不允许直接调用 magicclassClient。
     """
     if not course_id or user is None or getattr(user, "role", "") != "student":
         return None
-    service = getattr(container, "openmaic_classroom_service", None)
+    service = getattr(container, "magicclass_classroom_service", None)
     if service is None:
         return None
-    from ...services.openmaic.course_context import assert_course_access
+    from ...services.magicclass.course_context import assert_course_access
 
     try:
         course = assert_course_access(container, user, course_id)
@@ -662,7 +662,7 @@ async def build_interactive_classroom_action(
 async def chat(
     req: ChatRequest,
     user: Optional[UserRow] = Depends(current_user_optional),
-    workspace_client: OpenMAICFusionClient = Depends(_workspace_client),
+    workspace_client: MagicClassFusionClient = Depends(_workspace_client),
 ):
     container = get_container()
     # A quick question launched from /courses is a real native workspace

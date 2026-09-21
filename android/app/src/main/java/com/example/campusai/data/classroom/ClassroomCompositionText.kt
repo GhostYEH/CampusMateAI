@@ -5,7 +5,7 @@ import com.example.campusai.data.remote.InteractiveClassroomCompositionDto
 /**
  * 真实课堂组成的可读化。
  *
- * OpenMAIC 的真实 `scene.type` 只有 4 种：slide / quiz / interactive / pbl；
+ * magic class 的真实 `scene.type` 只有 4 种：slide / quiz / interactive / pbl；
  * 3D、思维导图、编程、模拟、游戏都是 `interactive` 内部的 `widgetType`。
  *
  * 因此"这节课包含什么"**只能**来自回读结果，绝不能根据请求的 mode 推断 ——

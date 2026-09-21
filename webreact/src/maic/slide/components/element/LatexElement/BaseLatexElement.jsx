@@ -2,7 +2,7 @@
  * 逐字移植自参考
  * `components/slide-renderer/components/element/LatexElement/BaseLatexElement.tsx`。
  *
- * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  * `ALIGN_MAP` 的 `as const` 随类型检查一起去掉。
  *
  * 关于 KaTeX：目标项目没有安装 `katex` / `temml`（也禁止改 package.json），

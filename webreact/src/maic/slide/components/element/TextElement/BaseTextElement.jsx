@@ -3,7 +3,7 @@
  * `components/slide-renderer/components/element/TextElement/BaseTextElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  *   - `// @ts-expect-error - CSS custom property` 注释随类型检查一起去掉。
  * 类名、内联样式、DOM 结构逐字保留。
  */

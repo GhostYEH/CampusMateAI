@@ -1,7 +1,7 @@
 /**
  * 导航栏「学习空间」契约。
  *
- * 学习空间是上游 OpenMAIC 应用以**独立进程、独立 Origin** 运行的那一份，由本站
+ * 学习空间是上游 magic class 应用以**独立进程、独立 Origin** 运行的那一份，由本站
  * 跨源内嵌。这条链路里最容易松掉的是 admission：后端一旦没配公开 Origin、
  * 或者公开 Origin 恰好等于本站，页面必须**不渲染 iframe**（fail-closed），
  * 而不是渲染一个空壳或退回内部地址。
@@ -48,7 +48,7 @@ const readyStatus = (overrides = {}) => ({
   degraded: false,
   capabilities: {},
   unavailable_capabilities: [],
-  service: "openmaic",
+  service: "magicclass",
   version: "1.0.3",
   embed_origin: APP_ORIGIN,
   browser_embed_available: true,
@@ -62,12 +62,12 @@ after(async () => { await vite.close(); });
 
 // ===== 适配器 =====
 
-test("状态适配器 GET /openmaic/learning-space/status", async () => {
+test("状态适配器 GET /magicclass/learning-space/status", async () => {
   const mock = createMockClient(client);
   try {
-    mock.onGet("/openmaic/learning-space/status", readyStatus());
+    mock.onGet("/magicclass/learning-space/status", readyStatus());
     const out = await getLearningSpaceStatus();
-    assert.equal(mock.lastRequest().url, "/openmaic/learning-space/status");
+    assert.equal(mock.lastRequest().url, "/magicclass/learning-space/status");
     assert.equal(out.embed_origin, APP_ORIGIN);
   } finally {
     mock.reset();

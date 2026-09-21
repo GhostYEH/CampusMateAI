@@ -98,7 +98,7 @@ class ChatRequest(BaseModel):
         None,
         min_length=1,
         max_length=120,
-        description="原生 OpenMAIC workspace 会话归属；必须与 course_id 一起提供并通过服务端归属校验",
+        description="原生 magic class workspace 会话归属；必须与 course_id 一起提供并通过服务端归属校验",
     )
     recent_tasks: List[CounselorRecentTask] = Field(
         default_factory=list,

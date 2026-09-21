@@ -3,7 +3,7 @@
  * `components/slide-renderer/Editor/ScreenElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 的 `PPTElement` 类型；
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 的 `PPTElement` 类型；
  *   - `ElementTypes` 常量对象 → `_compat/dsl.js`；
  *   - `@/lib/contexts/scene-context` 的 `useSceneSelector` → `_compat/scene-context.js`；
  *   - `../element-dom` → `_compat/element-dom.js`。

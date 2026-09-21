@@ -3,7 +3,7 @@
  * `RendererScreenCanvas.tsx`（`PlaybackScreenCanvas` 那个入口）。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` / `@/lib/types/*`
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` / `@/lib/types/*`
  *     的类型导入；
  *   - `@/lib/hooks/use-slide-background-style` →
  *     `_compat/use-slide-background-style.js`；

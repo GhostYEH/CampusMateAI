@@ -5,8 +5,8 @@ import { itemsOf } from "../data/contracts.js";
 import { examDetailFields } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
-import OpenMAICHome from "../components/openmaic/OpenMAICHome.jsx";
-import { normalizeRecentItems } from "../features/openmaic/homeModel.js";
+import MagicClassHome from "../components/magicclass/magicclassHome.jsx";
+import { normalizeRecentItems } from "../features/magicclass/homeModel.js";
 import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
@@ -36,9 +36,9 @@ export function CoursesParityPage() {
       setAssignments(list(assignmentPayload));
       // 两个辅助请求各自独立降级：任一失败都不该让课程列表整页失败。
       const [recentResult, fusionResult, providerResult] = await Promise.allSettled([
-        api.getOpenMAICRecent(RECENT_LIMIT),
-        api.getOpenMAICFusionStatus(),
-        api.getOpenMAICProviderStatus(),
+        api.getMagicClassRecent(RECENT_LIMIT),
+        api.getMagicClassFusionStatus(),
+        api.getMagicClassProviderStatus(),
       ]);
       if (recentResult.status === "fulfilled") {
         setRecentItems(normalizeRecentItems(recentResult.value));
@@ -59,7 +59,7 @@ export function CoursesParityPage() {
 
   return <PageFrame className="courses-page" eyebrow="课程" title="学习内容" description="选择课程后直接进入课堂，并在其中继续学习和编辑内容。" actions={<Button variant="secondary" icon="PhArrowClockwise" onClick={load} disabled={loading}>{loading ? "同步中…" : "刷新"}</Button>}>
     <AsyncState loading={loading} error={error} empty={!courses.length ? "暂时没有已选课程" : null} onRetry={load}>
-      <OpenMAICHome
+      <MagicClassHome
         courses={courses}
         assignments={assignments}
         recentItems={recentItems}

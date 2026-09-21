@@ -26,7 +26,7 @@
 | `edu._ADAPTERS` | 4 个适配器实例 | 已核实**无实例状态**（只持有 parser/validator），无影响 | — |
 | 教育会话 | `EncryptedSqliteEduSessionStore`（`EDU_SESSION_STORE=auto` 时**生产**走加密 SQLite） | 生产已跨进程安全；但 `auto` 在**非生产**环境是 `memory` —— 那种环境下多 worker 会丢会话（仅影响 dev/test） | — |
 | `AgentWorker` / `AdaptiveReplanningWorker` | 无内存状态 | 用**数据库租约 + CAS** 协调，已按多 worker 设计 | — |
-| `openmaic result_store` | 进程内线程锁 | 真正的互斥靠文件 `O_CREAT\|O_EXCL` 预占 + 租约，跨进程安全 | — |
+| `magicclass result_store` | 进程内线程锁 | 真正的互斥靠文件 `O_CREAT\|O_EXCL` 预占 + 租约，跨进程安全 | — |
 | `sqlite_db` `RLock` | 进程内连接守卫 | 跨进程由 SQLite 文件锁 + `timeout=30` 负责 | — |
 
 ## 需要修的两项（都需要授权，均未实施）

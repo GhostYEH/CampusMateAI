@@ -1,0 +1,966 @@
+{
+  "source": {
+    "repository": "https://github.com/THU-MAIC/magicclass.git",
+    "tag": "v1.0.3",
+    "commit": "e693e11a81644f84c258df73dbda378643520a62"
+  },
+  "routes": [
+    {
+      "path": "app/api/access-code/status/route.ts",
+      "mapping": "service-auth"
+    },
+    {
+      "path": "app/api/access-code/verify/route.ts",
+      "mapping": "service-auth"
+    },
+    {
+      "path": "app/api/agent/owner-events/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/runtime/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/[id]/cancel/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/[id]/events/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/[id]/messages/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/[id]/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/sessions/status/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/skills/[id]/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/agent/skills/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/azure-voices/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/chat/pi/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/chat/pi/whiteboard-visibility/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/chat/route.ts",
+      "mapping": "chat/multi-agent"
+    },
+    {
+      "path": "app/api/classroom-media/[classroomId]/[...path]/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/classroom/route.ts",
+      "mapping": "generation/player"
+    },
+    {
+      "path": "app/api/comfyui-workflows/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/export-video/capability/route.ts",
+      "mapping": "video-export"
+    },
+    {
+      "path": "app/api/export-video/render/[jobId]/download/route.ts",
+      "mapping": "video-export"
+    },
+    {
+      "path": "app/api/export-video/render/[jobId]/route.ts",
+      "mapping": "video-export"
+    },
+    {
+      "path": "app/api/export-video/render/route.ts",
+      "mapping": "video-export"
+    },
+    {
+      "path": "app/api/extract-document/route.ts",
+      "mapping": "materials"
+    },
+    {
+      "path": "app/api/folders/[id]/route.ts",
+      "mapping": "folders"
+    },
+    {
+      "path": "app/api/folders/members/route.ts",
+      "mapping": "folders"
+    },
+    {
+      "path": "app/api/folders/route.ts",
+      "mapping": "folders"
+    },
+    {
+      "path": "app/api/generate-classroom/[jobId]/route.ts",
+      "mapping": "generation/player"
+    },
+    {
+      "path": "app/api/generate-classroom/route.ts",
+      "mapping": "generation/player"
+    },
+    {
+      "path": "app/api/generate/agent-profiles/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/image/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/scene-actions/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/scene-content/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/scene-outlines-stream/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/tts/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/video/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/generate/voice/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/health/route.ts",
+      "mapping": "health"
+    },
+    {
+      "path": "app/api/materials/[id]/route.ts",
+      "mapping": "materials"
+    },
+    {
+      "path": "app/api/materials/route.ts",
+      "mapping": "materials"
+    },
+    {
+      "path": "app/api/parse-pdf/route.ts",
+      "mapping": "materials"
+    },
+    {
+      "path": "app/api/pbl/v2/evaluate/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/pbl/v2/instructor/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/pbl/v2/open-task/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/pbl/v2/simulator/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/pbl/v2/task/update/route.ts",
+      "mapping": "generation"
+    },
+    {
+      "path": "app/api/persistence/[...path]/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/provider/probe-models/route.ts",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "app/api/proxy-media/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/quiz-grade/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/server-providers/route.ts",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "app/api/skills/[id]/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/stage-meta/[stageId]/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/freshness/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/generation-complete/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/manifest/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/publish/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/scenes/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/status/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/[id]/unpublish/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/stages/route.ts",
+      "mapping": "workspace/stage"
+    },
+    {
+      "path": "app/api/transcription/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/usage/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/verify-image-provider/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/verify-model/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/verify-pdf-provider/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/verify-video-provider/route.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "app/api/web-search/route.ts",
+      "mapping": "web-search"
+    }
+  ],
+  "packages": [
+    {
+      "path": "packages/@magicclass/dsl",
+      "mapping": "dsl"
+    },
+    {
+      "path": "packages/@magicclass/editor",
+      "mapping": "editor/player"
+    },
+    {
+      "path": "packages/@magicclass/generation",
+      "mapping": "generation"
+    },
+    {
+      "path": "packages/@magicclass/importer",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/@magicclass/renderer",
+      "mapping": "editor/player"
+    },
+    {
+      "path": "packages/@magicclass/storage",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/docs/.gitignore",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/app",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/components",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/content",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/instrumentation.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/lib",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/next.config.mjs",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/package.json",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/pnpm-lock.yaml",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/postcss.config.mjs",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/README.md",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/scripts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/source.config.ts",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/docs/tsconfig.json",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "packages/mathml2omml/.gitignore",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/mathml2omml/LICENSE",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/mathml2omml/package.json",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/mathml2omml/rollup.config.js",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/mathml2omml/src",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/.gitignore",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/package.json",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/rollup.config.mjs",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/src",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/tsconfig.json",
+      "mapping": "import/export"
+    },
+    {
+      "path": "packages/pptxgenjs/types",
+      "mapping": "import/export"
+    }
+  ],
+  "components": [
+    {
+      "path": "components/access-code-guard.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/access-code-modal.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/agent",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/ai-elements",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/audio",
+      "mapping": "whiteboard/tts/multi-agent"
+    },
+    {
+      "path": "components/canvas",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/chat",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/classroom",
+      "mapping": "player"
+    },
+    {
+      "path": "components/discovery",
+      "mapping": "homepage/workspace"
+    },
+    {
+      "path": "components/edit",
+      "mapping": "editor"
+    },
+    {
+      "path": "components/generation",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/header.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/language-switcher.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/roundtable",
+      "mapping": "whiteboard/tts/multi-agent"
+    },
+    {
+      "path": "components/scene-renderers",
+      "mapping": "player"
+    },
+    {
+      "path": "components/server-providers-init.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/settings",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/site-header",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/slide-renderer",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/stage",
+      "mapping": "player"
+    },
+    {
+      "path": "components/stage.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/storage-health-notice.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/ui",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/user-profile.tsx",
+      "mapping": "campusmate-equivalent"
+    },
+    {
+      "path": "components/whiteboard",
+      "mapping": "whiteboard/tts/multi-agent"
+    },
+    {
+      "path": "components/workbench",
+      "mapping": "homepage/workspace"
+    }
+  ],
+  "renderService": [
+    {
+      "path": "render-service/.dockerignore",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/.gitignore",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/docker-entrypoint.sh",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/Dockerfile",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/package-lock.json",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/package.json",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/README.md",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/scripts/egress-smoke.sh",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/artifact-store.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/capped-stream.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/chunk-executor.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/chunk-worker.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/config.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/events.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/job-store.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/main.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/preview-gate.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/preview-renderer.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/preview-validation.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/project-html-hardening.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/render-coordinator.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/render-executor.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/resource-profile.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/runtime-info.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/semaphore.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/types.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/untrusted-document-sanitizer.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/untrusted-html-csp.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/src/unzip.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/capped-stream.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/chunk-executor.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/config.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/container-config.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/events.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/fixtures/hanging-chunk-worker.mjs",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-browser-boundary.fixture.mjs",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-browser-boundary.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-gate.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-renderer.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-route.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/preview-validation.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/producer-job-config.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/render-coordinator-admission.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/render-coordinator.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/render-executor.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/render-lifecycle-events.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/render-route.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/resource-profile.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/semaphore.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/support/async.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/support/fakes.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/untrusted-document-sanitizer.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/untrusted-html-boundary.fixture.mjs",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/untrusted-html-boundary.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/untrusted-html-csp.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/test/unzip.test.ts",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/tsconfig.json",
+      "mapping": "render-service"
+    },
+    {
+      "path": "render-service/vitest.config.ts",
+      "mapping": "render-service"
+    }
+  ],
+  "skills": [
+    {
+      "path": "skills/agent-runtime/build-personal-skill/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/curriculum-planner/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/deep-interactive/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/deep-interactive/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/deep-research/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/deep-research/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/fact-check/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/feynman-learning/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/references/core-literacy.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/humanities.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/languages.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/mathematics.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/references/subjects/science.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/k12-core-literacy-planning/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/learning-to-learn/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/lecture-style/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/lecture-style/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/page-clone/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/pptx-import/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/pptx-import/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/pro-editing/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/pro-editing/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/slide-craft/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/slide-dsl/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/social-emotional-learning/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/spiral-curriculum/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-design/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-dsl/references/actions.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-dsl/references/pbl.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-dsl/references/quiz.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-dsl/references/widget.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/stage-dsl/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/style-clone/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/style-clone/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/teacher-style-clone/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/teacher-style-clone/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/understanding-by-design/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/vocational/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/vocational/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/workshop-style/outline-constraints.json",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/workshop-style/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/zone-of-proximal-development/references/exercise-lesson.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/zone-of-proximal-development/references/theory.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/agent-runtime/zone-of-proximal-development/SKILL.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/clone.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/extend-cookbook.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/extend-sdk.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/extend.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/generate-flow.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/live-demo.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/provider-keys.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/references/startup-modes.md",
+      "mapping": "provider-capabilities"
+    },
+    {
+      "path": "skills/magicclass/SKILL.md",
+      "mapping": "provider-capabilities"
+    }
+  ],
+  "unclassified": []
+}

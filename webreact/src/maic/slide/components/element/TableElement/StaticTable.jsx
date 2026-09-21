@@ -2,7 +2,7 @@
  * 逐字移植自参考
  * `components/slide-renderer/components/element/TableElement/StaticTable.tsx`。
  *
- * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  * `@/lib/utils/element` 的 `getTableSubThemeColor` → `_compat/element.js`。
  * 主题配色规则（首行/首列/间隔行）、边框样式串、合并单元格处理逐字保留。
  */

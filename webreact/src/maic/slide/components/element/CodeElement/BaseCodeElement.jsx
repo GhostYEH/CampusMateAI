@@ -3,7 +3,7 @@
  * `components/slide-renderer/components/element/CodeElement/BaseCodeElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入
  *     （`CodeLine` 只是类型；`React.ReactNode` → 普通值）；
  *   - 打字机动画、逐行插入/替换动画、拖拽滚动与 wheel 收敛的事件处理、
  *     窗口红黄绿圆点、行号列、`tokens` 容器结构全部逐字保留。

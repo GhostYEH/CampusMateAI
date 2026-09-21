@@ -2,7 +2,7 @@
  * P1-1 —— 内部服务地址 vs 浏览器公开课堂地址。
  *
  * 生产部署下两者必然不同：
- *   内部   http://openmaic:3000
+ *   内部   http://magicclass:3000
  *   公开   https://classroom.example.edu
  *
  * 后端已修好"只下发公开地址"，但前端必须独立成立：
@@ -35,7 +35,7 @@ const { InteractiveClassroomView } = await vite.ssrLoadModule(
   "/src/components/interactive/InteractiveClassroomPanel.jsx",
 );
 
-const INTERNAL = "http://openmaic:3000";
+const INTERNAL = "http://magicclass:3000";
 const PUBLIC_ORIGIN = "https://classroom.example.edu";
 const PUBLIC_URL = PUBLIC_ORIGIN + "/classroom/room_1";
 
@@ -48,7 +48,7 @@ const enabledStatus = (overrides = {}) => ({
   compatibility: "compatible",
   degraded: false,
   unavailable_capabilities: [],
-  service: "openmaic",
+  service: "magicclass",
   version: "1.0.1",
   embed_origin: PUBLIC_ORIGIN,
   browser_embed_available: true,
@@ -82,7 +82,7 @@ test("Web 拒绝内部服务地址，绝不渲染成可打开入口", () => {
     },
   });
   assert.doesNotMatch(markup, /<iframe/, "内部地址绝不能渲染 iframe");
-  assert.doesNotMatch(markup, /openmaic:3000/);
+  assert.doesNotMatch(markup, /magicclass:3000/);
   assert.match(markup, /无法在此内嵌课堂/);
 });
 
@@ -97,7 +97,7 @@ test("历史里只有内部地址时不提供任何打开入口", () => {
       },
     ],
   });
-  assert.doesNotMatch(markup, /openmaic:3000/);
+  assert.doesNotMatch(markup, /magicclass:3000/);
   assert.match(markup, /待打开/);
 });
 

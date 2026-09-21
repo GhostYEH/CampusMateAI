@@ -25,7 +25,7 @@ from app.services.agent_runtime.handlers.final_review import PLAN_ACTIVATE_TOOL
 from app.services.agent_runtime.handlers.interactive_classroom import GENERATE_TOOL
 from app.services.agent_runtime.tool_gateway import ToolInvocationRequest, build_request_hash
 from final_review_helpers import drain_worker
-from test_openmaic_student_integration import (
+from test_magicclass_student_integration import (
     _bootstrap,
     _first_course,
     _recording_handler,

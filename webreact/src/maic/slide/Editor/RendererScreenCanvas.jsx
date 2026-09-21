@@ -2,9 +2,9 @@
  * 逐字移植自参考 `components/slide-renderer/Editor/RendererScreenCanvas.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` / `@/lib/types/*`
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` / `@/lib/types/*`
  *     的类型导入；
- *   - `@openmaic/renderer` 的 `SlideCanvas` → 本目录 `ScreenCanvas.jsx`。两条
+ *   - `@magicclass/renderer` 的 `SlideCanvas` → 本目录 `ScreenCanvas.jsx`。两条
  *     canvas 实现最终渲染的是同一批 base 元素（同一套 `.base-element-*` 标记、
  *     同一套 DOM id 契约），因此视觉结果等价；
  *   - `../use-resolved-slide` → `_compat/use-resolved-slide.js`；
@@ -297,7 +297,7 @@ export function PlaybackImageContent({ element, defaultContent, media, sceneId, 
  * 播放画布的渲染器入口。
  *
  * 与参考的差异（同一批元素、同一套 DOM 契约，只换宿主组件）：
- * 参考把 `resolved.slide` 交给 `@openmaic/renderer` 的 `<SlideCanvas>`，并把
+ * 参考把 `resolved.slide` 交给 `@magicclass/renderer` 的 `<SlideCanvas>`，并把
  * `PlaybackImageContent` / `PlaybackVideoContent` 通过它的 `renderImage` /
  * `renderVideo` 插槽注入。目标项目没有那个包，改用本目录的 `ScreenCanvas`：
  *

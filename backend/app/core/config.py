@@ -217,83 +217,83 @@ class Settings(BaseSettings):
     volc_seeduplex_api_key: str = ""
     volc_seeduplex_ws_url: str = "wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue"
 
-    # ===== OpenMAIC 互动课堂生成 =====
-    # 默认安全关闭；未启用或未配置 OPENMAIC_BASE_URL 时，所有互动课堂接口
+    # ===== magic class 互动课堂生成 =====
+    # 默认安全关闭；未启用或未配置 MAGICCLASS_BASE_URL 时，所有互动课堂接口
     # 返回明确的"服务未启用"状态，不影响课程详情与 CPM 基础聊天。
-    openmaic_enabled: bool = False
-    openmaic_base_url: str = ""
-    # 短时 FastAPI -> 受管 OpenMAIC 服务断言的共享密钥，仅存在服务端。
-    openmaic_internal_secret: str = ""
+    magicclass_enabled: bool = False
+    magicclass_base_url: str = ""
+    # 短时 FastAPI -> 受管 magic class 服务断言的共享密钥，仅存在服务端。
+    magicclass_internal_secret: str = ""
     # 仓库内受管服务的融合状态总开关；关闭时不发起内部网络请求。
-    openmaic_fusion_enabled: bool = False
-    openmaic_service_url: str = ""
-    openmaic_service_timeout_seconds: float = 5.0
-    # 目标 OpenMAIC 部署若启用了 ACCESS_CODE 保护，后端用此访问码换 cookie。
+    magicclass_fusion_enabled: bool = False
+    magicclass_service_url: str = ""
+    magicclass_service_timeout_seconds: float = 5.0
+    # 目标 magic class 部署若启用了 ACCESS_CODE 保护，后端用此访问码换 cookie。
     # 仅后端可见：绝不写入任何响应体、日志或客户端。
-    openmaic_access_code: str = ""
+    magicclass_access_code: str = ""
     # 提交/轮询单次请求超时(秒)
-    openmaic_request_timeout_seconds: float = 30.0
+    magicclass_request_timeout_seconds: float = 30.0
     # 课程上下文送入生成 requirements 的最大字符数(防隐私/体积爆炸)
-    openmaic_course_context_max_chars: int = 4000
+    magicclass_course_context_max_chars: int = 4000
     # 同一课程最多保留的生成课堂记录数(超出后丢弃最早的已结束记录)
-    openmaic_max_results_per_course: int = 20
+    magicclass_max_results_per_course: int = 20
     # user_id+course_id 生成预占的租约时长(秒)，超时后允许新请求接管
-    openmaic_reservation_ttl_seconds: int = 600
-    # 浏览器可见的公开 Origin(独立可信子域)。与内部 OPENMAIC_BASE_URL 严格分离：
+    magicclass_reservation_ttl_seconds: int = 600
+    # 浏览器可见的公开 Origin(独立可信子域)。与内部 MAGICCLASS_BASE_URL 严格分离：
     # 内部地址绝不下发给客户端，未配置时客户端 fail-closed(不渲染内嵌)。
-    openmaic_embed_origin: str = ""
+    magicclass_embed_origin: str = ""
     # 是否允许浏览器内嵌课堂。关闭后只提供安全新窗口打开。
-    openmaic_embed_enabled: bool = True
+    magicclass_embed_enabled: bool = True
     # 健康/契约指纹探测的超时(秒)，与业务请求超时分离，避免探测拖慢接口
-    openmaic_health_timeout_seconds: float = 5.0
+    magicclass_health_timeout_seconds: float = 5.0
     # 契约指纹探测结果缓存时长(秒)。0 表示每次都重新探测。
-    openmaic_probe_ttl_seconds: int = 60
-    # 允许的 OpenMAIC 版本范围(仅用于审计与越界判定；无法判定时不判不兼容)
-    openmaic_allowed_versions: str = ">=1.0.0 <2.0.0"
+    magicclass_probe_ttl_seconds: int = 60
+    # 允许的 magic class 版本范围(仅用于审计与越界判定；无法判定时不判不兼容)
+    magicclass_allowed_versions: str = ">=1.0.0 <2.0.0"
     # 轮询建议间隔与最长轮询时长(前端/客户端据此退避)
-    openmaic_poll_interval_ms: int = 5000
-    openmaic_poll_max_seconds: int = 1800
+    magicclass_poll_interval_ms: int = 5000
+    magicclass_poll_max_seconds: int = 1800
     # 3D(visualization3d) 依赖学生浏览器访问外部 CDN(unpkg.com)。
     # 关闭后 adaptive 不再推荐 3D，UI 需把 3D 标记为当前环境不可用。
-    openmaic_external_3d_available: bool = True
+    magicclass_external_3d_available: bool = True
     # 运维级能力总开关：只能收紧服务端 health 已声明的能力，不能放开
-    openmaic_enable_web_search: bool = True
-    openmaic_enable_image_generation: bool = True
-    openmaic_enable_video_generation: bool = True
-    openmaic_enable_tts: bool = True
+    magicclass_enable_web_search: bool = True
+    magicclass_enable_image_generation: bool = True
+    magicclass_enable_video_generation: bool = True
+    magicclass_enable_tts: bool = True
 
     @property
-    def openmaic_available(self) -> bool:
-        return self.openmaic_enabled and bool(self.openmaic_base_url)
+    def magicclass_available(self) -> bool:
+        return self.magicclass_enabled and bool(self.magicclass_base_url)
 
     @property
-    def openmaic_origin(self) -> str:
-        """从 OPENMAIC_BASE_URL 推导**内部**服务 Origin。
+    def magicclass_origin(self) -> str:
+        """从 MAGICCLASS_BASE_URL 推导**内部**服务 Origin。
 
         用于校验服务端返回的课堂 URL 是否属于已配置的目标服务；这个 Origin
         只存在于后端，绝不下发给客户端。
         """
-        parsed = urlparse(self.openmaic_base_url)
+        parsed = urlparse(self.magicclass_base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return ""
         return f"{parsed.scheme}://{parsed.netloc}"
 
     @property
-    def openmaic_public_origin(self) -> str:
+    def magicclass_public_origin(self) -> str:
         """浏览器可见的公开 Origin；未配置时返回空串(fail-closed)。"""
-        parsed = urlparse(self.openmaic_embed_origin)
+        parsed = urlparse(self.magicclass_embed_origin)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return ""
         return f"{parsed.scheme}://{parsed.netloc}"
 
     @property
-    def openmaic_capability_switches(self) -> dict:
+    def magicclass_capability_switches(self) -> dict:
         """运维级能力总开关(与服务端 health 取交集后才是有效能力)。"""
         return {
-            "webSearch": self.openmaic_enable_web_search,
-            "imageGeneration": self.openmaic_enable_image_generation,
-            "videoGeneration": self.openmaic_enable_video_generation,
-            "tts": self.openmaic_enable_tts,
+            "webSearch": self.magicclass_enable_web_search,
+            "imageGeneration": self.magicclass_enable_image_generation,
+            "videoGeneration": self.magicclass_enable_video_generation,
+            "tts": self.magicclass_enable_tts,
         }
 
     # ===== CORS =====
@@ -479,30 +479,30 @@ class Settings(BaseSettings):
         # ===== production 强约束 =====
         # 正式 Release 不得启用测试环境数据 seeding
         # 不得依赖 DEMO_MODE / USE_MOCK_BACKEND 等开关返回模拟业务数据
-        if self.openmaic_enabled:
-            parsed = urlparse(self.openmaic_base_url)
+        if self.magicclass_enabled:
+            parsed = urlparse(self.magicclass_base_url)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
                 raise ValueError(
-                    "OPENMAIC_BASE_URL must be a safe HTTP(S) origin without credentials/query/fragment"
+                    "MAGICCLASS_BASE_URL must be a safe HTTP(S) origin without credentials/query/fragment"
                 )
-            if self.openmaic_request_timeout_seconds < 1:
-                raise ValueError("OPENMAIC_REQUEST_TIMEOUT_SECONDS must be positive")
-            if self.openmaic_reservation_ttl_seconds < 30:
-                raise ValueError("OPENMAIC_RESERVATION_TTL_SECONDS must be at least 30")
-            if self.openmaic_health_timeout_seconds <= 0:
-                raise ValueError("OPENMAIC_HEALTH_TIMEOUT_SECONDS must be positive")
-            if self.openmaic_probe_ttl_seconds < 0:
-                raise ValueError("OPENMAIC_PROBE_TTL_SECONDS must not be negative")
-            if self.openmaic_poll_interval_ms < 500:
-                raise ValueError("OPENMAIC_POLL_INTERVAL_MS must be at least 500")
-            if self.openmaic_poll_max_seconds < 60:
-                raise ValueError("OPENMAIC_POLL_MAX_SECONDS must be at least 60")
+            if self.magicclass_request_timeout_seconds < 1:
+                raise ValueError("MAGICCLASS_REQUEST_TIMEOUT_SECONDS must be positive")
+            if self.magicclass_reservation_ttl_seconds < 30:
+                raise ValueError("MAGICCLASS_RESERVATION_TTL_SECONDS must be at least 30")
+            if self.magicclass_health_timeout_seconds <= 0:
+                raise ValueError("MAGICCLASS_HEALTH_TIMEOUT_SECONDS must be positive")
+            if self.magicclass_probe_ttl_seconds < 0:
+                raise ValueError("MAGICCLASS_PROBE_TTL_SECONDS must not be negative")
+            if self.magicclass_poll_interval_ms < 500:
+                raise ValueError("MAGICCLASS_POLL_INTERVAL_MS must be at least 500")
+            if self.magicclass_poll_max_seconds < 60:
+                raise ValueError("MAGICCLASS_POLL_MAX_SECONDS must be at least 60")
             # 版本范围语法非法属于配置错误，必须在启动期暴露而不是运行期静默放行
             from .semver import parse_version_spec
 
-            parse_version_spec(self.openmaic_allowed_versions)
-        if self.openmaic_fusion_enabled:
-            service = urlparse(self.openmaic_service_url)
+            parse_version_spec(self.magicclass_allowed_versions)
+        if self.magicclass_fusion_enabled:
+            service = urlparse(self.magicclass_service_url)
             if (
                 service.scheme not in {"http", "https"}
                 or not service.netloc
@@ -513,15 +513,15 @@ class Settings(BaseSettings):
                 or service.path not in ("", "/")
             ):
                 raise ValueError(
-                    "OPENMAIC_SERVICE_URL must be a bare HTTP(S) origin without credentials/query/fragment/path"
+                    "MAGICCLASS_SERVICE_URL must be a bare HTTP(S) origin without credentials/query/fragment/path"
                 )
-            if not self.openmaic_internal_secret:
-                raise ValueError("OPENMAIC_INTERNAL_SECRET is required when OpenMAIC fusion is enabled")
-            if self.openmaic_service_timeout_seconds <= 0:
-                raise ValueError("OPENMAIC_SERVICE_TIMEOUT_SECONDS must be positive")
+            if not self.magicclass_internal_secret:
+                raise ValueError("MAGICCLASS_INTERNAL_SECRET is required when magic class fusion is enabled")
+            if self.magicclass_service_timeout_seconds <= 0:
+                raise ValueError("MAGICCLASS_SERVICE_TIMEOUT_SECONDS must be positive")
         # 浏览器公开 Origin：与内部地址分离，且不得指向内网/元数据地址
-        if self.openmaic_embed_origin:
-            embed = urlparse(self.openmaic_embed_origin)
+        if self.magicclass_embed_origin:
+            embed = urlparse(self.magicclass_embed_origin)
             if (
                 embed.scheme not in {"http", "https"}
                 or not embed.netloc
@@ -532,23 +532,23 @@ class Settings(BaseSettings):
                 or embed.path not in ("", "/")
             ):
                 raise ValueError(
-                    "OPENMAIC_EMBED_ORIGIN must be a bare HTTP(S) origin without credentials/query/fragment/path"
+                    "MAGICCLASS_EMBED_ORIGIN must be a bare HTTP(S) origin without credentials/query/fragment/path"
                 )
             embed_host = (embed.hostname or "").lower()
             if _is_unspecified_or_link_local_host(embed_host):
                 raise ValueError(
-                    "OPENMAIC_EMBED_ORIGIN must not be an unspecified or link-local address"
+                    "MAGICCLASS_EMBED_ORIGIN must not be an unspecified or link-local address"
                 )
             if self.app_env == "production":
                 if embed.scheme != "https":
-                    raise ValueError("OPENMAIC_EMBED_ORIGIN must use https in production")
+                    raise ValueError("MAGICCLASS_EMBED_ORIGIN must use https in production")
                 if _is_internal_host(embed_host):
                     raise ValueError(
-                        "OPENMAIC_EMBED_ORIGIN must not be an internal address in production"
+                        "MAGICCLASS_EMBED_ORIGIN must not be an internal address in production"
                     )
-                if self.openmaic_public_origin == self.openmaic_origin:
+                if self.magicclass_public_origin == self.magicclass_origin:
                     raise ValueError(
-                        "OPENMAIC_EMBED_ORIGIN must differ from the internal OPENMAIC_BASE_URL in production"
+                        "MAGICCLASS_EMBED_ORIGIN must differ from the internal MAGICCLASS_BASE_URL in production"
                     )
         if self.app_env == "production":
             if self.jwt_secret == "campusmate_dev_secret_change_in_production" or len(self.jwt_secret) < 32:

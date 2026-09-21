@@ -3,7 +3,7 @@
  * `components/slide-renderer/components/element/LineElement/BaseLineElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  *   - `@/lib/utils/element` 的 `getLineElementPath` → `_compat/element.js`。
  * 绘制动画（600ms stroke-dashoffset）、`useId()` 派生的 marker id、类名与
  * 内联样式逐字保留。

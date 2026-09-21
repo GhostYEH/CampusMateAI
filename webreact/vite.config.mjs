@@ -7,7 +7,7 @@ const backendPort = process.env.VITE_BACKEND_PORT || "8000";
 export default defineConfig({
   server: {
     port: 5174,
-    // 端口必须固定：导航栏「学习空间」是跨源 iframe，openmaic-app 只放行
+    // 端口必须固定：导航栏「学习空间」是跨源 iframe，magicclass-app 只放行
     // 5174 两个 Origin 的 frame-ancestors。自动漂移（如 5175）不会报端口错，
     // 只会让 iframe 被浏览器按 CSP 拒掉（控制台报 frame-ancestors 违规），
     // 表现为「学习空间」打不开。

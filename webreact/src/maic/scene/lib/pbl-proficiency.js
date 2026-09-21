@@ -1,7 +1,7 @@
 import { appendProficiencyUpdatedRuntimeEvent } from './pbl-runtime-events.js';
 
 /**
- * 参考项目 `packages/@openmaic/generation/src/pbl/operations/kernel/proficiency.ts`
+ * 参考项目 `packages/@magicclass/generation/src/pbl/operations/kernel/proficiency.ts`
  * 的**必要子集**移植。
  *
  * 参考实现有 33KB：关键词/生物/前序场景检测、初始评估、EWMA 动态信号、tier 迁移

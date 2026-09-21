@@ -1,5 +1,5 @@
 /**
- * 逐字移植自参考 `packages/@openmaic/renderer/src/hooks/useViewportSize.ts`。
+ * 逐字移植自参考 `packages/@magicclass/renderer/src/hooks/useViewportSize.ts`。
  * 只去掉 TypeScript 类型与 `RefObject` 泛型。逻辑、默认值（1000 / 0.5625 / 100）
  * 与副作用顺序完全保留。
  *

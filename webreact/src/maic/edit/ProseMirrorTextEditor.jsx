@@ -101,7 +101,7 @@ export default function ProseMirrorTextEditor({ value, onCommit, className = "",
     {...rest}
     ref={hostRef}
     className={`prosemirror-editor maic-edit-canvas__text-editor ${className}`.trim()}
-    data-testid="openmaic-text-editor"
+    data-testid="magicclass-text-editor"
     role="textbox"
     aria-label="编辑文本元素"
     onPointerDown={(event) => event.stopPropagation()}

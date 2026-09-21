@@ -100,10 +100,10 @@ from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
 from ..services.course_research.citation_verifier import CitationVerifier
 from ..services.course_research.source_fetcher import ControlledSourceFetcher
-from ..services.openmaic.client import OpenMAICClient
-from ..services.openmaic.classroom_service import OpenMAICClassroomService
-from ..services.openmaic.result_store import OpenMAICResultStore
-from ..services.openmaic.quiz_attempt_store import QuizAttemptStore
+from ..services.magicclass.client import MagicClassClient
+from ..services.magicclass.classroom_service import MagicClassClassroomService
+from ..services.magicclass.result_store import MagicClassResultStore
+from ..services.magicclass.quiz_attempt_store import QuizAttemptStore
 from ..services.notice_workflow.interpreter import NoticeInterpreter
 from ..services.notice_workflow.workflow_service import NoticeWorkflowService
 from ..services.learning_planner_service import LearningPlannerService
@@ -212,10 +212,10 @@ class ServiceContainer:
     final_review_service: FinalReviewService
     course_research_repository: CourseResearchRepository
     course_research_pipeline: CourseResearchPipeline
-    # OpenMAIC 互动课堂适配层
-    openmaic_result_store: OpenMAICResultStore
+    # magic class 互动课堂适配层
+    magicclass_result_store: MagicClassResultStore
     quiz_attempt_store: QuizAttemptStore
-    openmaic_classroom_service: OpenMAICClassroomService
+    magicclass_classroom_service: MagicClassClassroomService
     notice_workflow_repository: NoticeWorkflowRepository
     notice_workflow_service: NoticeWorkflowService
     # QR 扫码登录与可信设备
@@ -234,13 +234,13 @@ class ServiceContainer:
 _container: Optional[ServiceContainer] = None
 
 
-def _openmaic_store_dir(settings: Settings) -> Path:
-    """OpenMAIC 课堂会话存储目录，紧随数据库文件目录，保证各环境隔离。"""
+def _magicclass_store_dir(settings: Settings) -> Path:
+    """magic class 课堂会话存储目录，紧随数据库文件目录，保证各环境隔离。"""
     if settings.database_path is not None:
         base = settings.database_path.parent
     else:
         base = Path(__file__).resolve().parents[2] / "data"
-    path = base / "openmaic_classrooms"
+    path = base / "magicclass_classrooms"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -506,17 +506,17 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         edu_repo=edu_repo,
         edu_data_repo=edu_data_repo,
     )
-    openmaic_result_store = OpenMAICResultStore(
-        _openmaic_store_dir(settings),
-        max_results=settings.openmaic_max_results_per_course,
+    magicclass_result_store = MagicClassResultStore(
+        _magicclass_store_dir(settings),
+        max_results=settings.magicclass_max_results_per_course,
     )
     quiz_attempt_store = QuizAttemptStore(
         (settings.database_path.parent if settings.database_path is not None else Path(__file__).resolve().parents[2] / "data")
-        / "openmaic_quiz_attempts"
+        / "magicclass_quiz_attempts"
     )
-    openmaic_classroom_service = OpenMAICClassroomService(
+    magicclass_classroom_service = MagicClassClassroomService(
         settings=settings,
-        store=openmaic_result_store,
+        store=magicclass_result_store,
     )
     container = ServiceContainer(
         settings=settings,
@@ -611,9 +611,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             course_content_lookup=course_content_repository,
             retrieval_service=retrieval,
         ),
-        openmaic_result_store=openmaic_result_store,
+        magicclass_result_store=magicclass_result_store,
         quiz_attempt_store=quiz_attempt_store,
-        openmaic_classroom_service=openmaic_classroom_service,
+        magicclass_classroom_service=magicclass_classroom_service,
         notice_workflow_repository=notice_workflow_repository,
         notice_workflow_service=NoticeWorkflowService(
             repository=notice_workflow_repository,

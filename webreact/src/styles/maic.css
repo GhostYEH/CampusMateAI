@@ -1,5 +1,5 @@
 /**
- * MAIC 移植层：Tailwind CSS 4 + 参考项目（清华大学学习平台 / OpenMAIC）的设计令牌。
+ * MAIC 移植层：Tailwind CSS 4 + 参考项目（清华大学学习平台 / magic class）的设计令牌。
  *
  * 为什么不直接 `@import "tailwindcss"`：
  *
@@ -11,7 +11,7 @@
  *
  * 2. **令牌名会撞车。** 参考项目用裸名 `--background` / `--border` / `--primary`
  *    等，若注入 `:root` 就等于给整站改了主题变量。这里把它们全部限定在
- *    `.maic-root` 作用域内：只有移植过来的 OpenMAIC 界面（外层包一层
+ *    `.maic-root` 作用域内：只有移植过来的 magic class 界面（外层包一层
  *    `.maic-root`）能看到它们，站内其它页面取到的是 undefined，保持原样。
  *
  * 令牌值逐条对抄自参考项目 `app/globals.css`，未做近似替换——像素对齐的前提

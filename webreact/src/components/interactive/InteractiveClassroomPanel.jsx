@@ -28,8 +28,8 @@ export const interactiveErrorText = (error, fallback = "操作失败，请稍后
   return (
     error?.response?.data?.detail ||
     error?.response?.data?.message ||
-    (error?.response?.data?.code === "OPENMAIC_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
-    (error?.response?.data?.code === "OPENMAIC_INCOMPATIBLE"
+    (error?.response?.data?.code === "MAGICCLASS_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
+    (error?.response?.data?.code === "MAGICCLASS_INCOMPATIBLE"
       ? "互动课堂服务版本不兼容，已暂停生成，请联系管理员核对部署版本。"
       : null) ||
     error?.message ||
@@ -216,7 +216,7 @@ export function InteractiveClassroomView({
   onStopViewing = () => {},
 }) {
   // 可信 Origin：显式注入优先（测试/受限部署，传入即权威，空数组=完全禁止内嵌），
-  // 否则使用后端 /status 返回的 OpenMAIC Origin（未配置时为空 → fail-closed）。
+  // 否则使用后端 /status 返回的 magic class Origin（未配置时为空 → fail-closed）。
   const trustedOrigins = useMemo(() => {
     if (trustedEmbedOrigins != null) return normalizeTrustedOrigins(trustedEmbedOrigins);
     return trustedOriginsFromStatus(status);
@@ -250,7 +250,7 @@ export function InteractiveClassroomView({
     const text = statusText(state, status);
     // 区分两种情况：
     // - 有公开地址但浏览器被拦（如 ACCESS_CODE 保护）→ "课堂浏览授权尚未配置"；
-    // - 课堂已生成但**根本没有公开地址**（未配置 OPENMAIC_EMBED_ORIGIN）
+    // - 课堂已生成但**根本没有公开地址**（未配置 MAGICCLASS_EMBED_ORIGIN）
     //   → "已生成，但当前部署未开放浏览器访问"，否则学生以为白生成了。
     const generatedButClosed =
       state === CLASSROOM_STATES.EMBED_BLOCKED &&
@@ -297,7 +297,7 @@ export function InteractiveClassroomView({
       <div className="interactive-panel-head">
         <SectionHeading
           title="智能辅导"
-          detail={`互动课堂 · ${status.service || "OpenMAIC"}${status.version ? ` ${status.version}` : ""}`}
+          detail={`互动课堂 · ${status.service || "magic class"}${status.version ? ` ${status.version}` : ""}`}
           action={
             <Button variant="quiet" icon="PhArrowsClockwise" disabled={polling} onClick={onRefresh}>
               刷新
@@ -595,7 +595,7 @@ const EMPTY_BRIEF = {
  * 服务不可用（enabled:false）/ 版本不兼容 / 请求失败都只影响本面板，绝不抛到课程详情整页。
  *
  * 生成必须由学生**明确确认**：先看 /plan 的课程、资料与推荐理由，再点"确认生成"。
- * /plan 是只读的，不创建任何 OpenMAIC 任务。
+ * /plan 是只读的，不创建任何 magic class 任务。
  *
  * 并发正确性（这是修复的重点）：切换课程 A→B 时，A 的旧请求可能晚于 B 返回。
  * 共享一个 `alive` 布尔量是不够的 —— B 的 effect 会把 `alive` 立刻设回 true，

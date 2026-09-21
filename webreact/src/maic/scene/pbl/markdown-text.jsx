@@ -6,7 +6,7 @@ import { cn } from '../../utils/cn.js';
 /**
  * 移植自参考项目 `components/scene-renderers/pbl/v2/markdown-text.tsx`。
  *
- * **唯一但重要的近似替换**：上游用 `streamdown` 渲染 Markdown（OpenMAIC 渲染
+ * **唯一但重要的近似替换**：上游用 `streamdown` 渲染 Markdown（magic class 渲染
  * AI 元素消息用的同一个组件）。目标项目依赖里没有 `streamdown`，只有 `marked`。
  * 因此：
  *   - 外层 `<div>` 的**全部 Tailwind 类名逐字保留**（包括那一长串

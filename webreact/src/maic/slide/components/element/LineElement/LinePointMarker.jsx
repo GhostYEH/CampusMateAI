@@ -2,7 +2,7 @@
  * 逐字移植自参考
  * `components/slide-renderer/components/element/LineElement/LinePointMarker.tsx`。
  *
- * 只做两处机械改写：去掉 TypeScript 类型与 `@openmaic/dsl` 的 `LinePoint` 类型；
+ * 只做两处机械改写：去掉 TypeScript 类型与 `@magicclass/dsl` 的 `LinePoint` 类型；
  * `NonEmptyLinePoint` 只是 `Exclude<LinePoint, ''>` 的别名，运行时无对应物。
  */
 const pathMap = {

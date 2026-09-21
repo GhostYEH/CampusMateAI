@@ -3,7 +3,7 @@
  *
  * 用真实 React 渲染（vite ssrLoadModule + renderToStaticMarkup）断言学生看到什么，
  * 并用 mock axios 断言前端只调用 CampusMate 的受管接口（/agent-jobs、
- * /agent-approvals），绝不直接触达 OpenMAIC。
+ * /agent-approvals），绝不直接触达 magic class。
  */
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
@@ -86,12 +86,12 @@ test("没有 course_id 时不渲染任何东西", () => {
   assert.equal(render({ proposal: { mode: "review" } }), "");
 });
 
-test("提案卡源码不直接触达 OpenMAIC", () => {
+test("提案卡源码不直接触达 magic class", () => {
   const src = read("src/components/interactive/ClassroomProposalCard.jsx");
   // 不得出现任何直连外部服务的痕迹
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /https?:\/\//);
-  assert.doesNotMatch(src, /openmaic_?(base_url|access_code|access)/i);
+  assert.doesNotMatch(src, /magicclass_?(base_url|access_code|access)/i);
   // 并发防护与受管接口调用全部委托给作用域会话模块
   assert.match(src, /createProposalSession/);
   assert.match(src, /from "\.\.\/\.\.\/data\/classroomProposalSession\.js"/);
@@ -99,14 +99,14 @@ test("提案卡源码不直接触达 OpenMAIC", () => {
   assert.match(src, /已准备好，需要你确认后才会真正开始生成/);
 });
 
-test("作用域会话模块是唯一调用受管接口的地方，且不触达 OpenMAIC", () => {
+test("作用域会话模块是唯一调用受管接口的地方，且不触达 magic class", () => {
   const src = read("src/data/classroomProposalSession.js");
   assert.match(src, /createAgentJob/);
   assert.match(src, /decideAgentApproval/);
   assert.match(src, /getAgentJob/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /https?:\/\//);
-  assert.doesNotMatch(src, /openmaic/i);
+  assert.doesNotMatch(src, /magicclass/i);
   // 迟到响应防护必须同时校验 epoch 与 jobId
   assert.match(src, /function isCurrent\(myEpoch, jobId\)/);
   assert.match(src, /myEpoch !== epoch/);

@@ -1,10 +1,10 @@
-"""互动课堂的受管工具与 Handler —— CPM 触发 OpenMAIC 生成的唯一合法路径。
+"""互动课堂的受管工具与 Handler —— CPM 触发 magicclass 生成的唯一合法路径。
 
 为什么要有这一层：
-- 创建互动课堂会调用外部 OpenMAIC 并**产生真实费用**，属于有成本的外部动作。
+- 创建互动课堂会调用外部 magicclass 并**产生真实费用**，属于有成本的外部动作。
   它必须经过 `ToolInvocationGateway` 的完整流水线：角色授权、资源归属、
   `RiskEngine` 定级、`ApprovalGate` 审批、`claim_tool_call` 幂等、审计事件。
-  LLM / counselor 绝不能直接调用 `OpenMAICClient`。
+  LLM / counselor 绝不能直接调用 `magicclassClient`。
 - 只读工具（inspect/list/propose/status/open）声明为 `AUTO_SAFE`，
   可以在学生提问时直接调用，不产生任何外部任务与费用。
 - `interactive_classroom.generate` 声明为 `CONFIRM_REQUIRED + requires_approval`，
@@ -63,7 +63,7 @@ OPEN_TOOL = "interactive_classroom.open"
 _STAGE_APPLIED = "APPLIED"
 _STAGE_AWAITING_APPROVAL = "AWAITING_APPROVAL"
 
-# 意图标签（与后端 schemas/openmaic.py 的 MODE_INTENT_LABELS 一致）
+# 意图标签（与后端 schemas/magicclass.py 的 MODE_INTENT_LABELS 一致）
 _MODE_LABELS: Dict[str, str] = {
     "adaptive": "自动推荐",
     "explain": "概念讲解",
@@ -78,7 +78,7 @@ _MODE_LABELS: Dict[str, str] = {
 
 
 def classroom_deep_link(course_id: str, session_id: str = "") -> str:
-    """CampusMate **内部**深链。绝不返回 OpenMAIC 内部地址或凭据。"""
+    """CampusMate **内部**深链。绝不返回 magic class 内部地址或凭据。"""
     base = f"/courses/{course_id}?tab=mentoring"
     return f"{base}&session={session_id}" if session_id else base
 
@@ -145,7 +145,7 @@ def _resolve_course(container: Any, user_id: str, course_id: str):
             "用户不存在", code="AGENT_RUN_NOT_FOUND", http_status=404
         )
     try:
-        from ...openmaic.course_context import assert_course_access
+        from ...magicclass.course_context import assert_course_access
 
         return assert_course_access(container, user, course_id), user
     except CourseNotFound as exc:
@@ -162,11 +162,11 @@ def _context_and_plan(container: Any, user: Any, course: Any, mode: str) -> Dict
     """只读地构造课程上下文与生成计划（不创建任何外部任务）。"""
     from dataclasses import replace
 
-    from ...openmaic.course_context import ContextLimits, build_learning_context
-    from ...openmaic.requirement_builder import choose_adaptive_mode, normalize_mode
+    from ...magicclass.course_context import ContextLimits, build_learning_context
+    from ...magicclass.requirement_builder import choose_adaptive_mode, normalize_mode
 
     limits = ContextLimits(
-        total_chars=container.settings.openmaic_course_context_max_chars
+        total_chars=container.settings.magicclass_course_context_max_chars
     )
     context = build_learning_context(container, user, course, limits=limits)
     requested = normalize_mode(mode)
@@ -175,7 +175,7 @@ def _context_and_plan(container: Any, user: Any, course: Any, mode: str) -> Dict
     if requested == "adaptive":
         signals = replace(
             context.signals,
-            external_3d_available=bool(container.settings.openmaic_external_3d_available),
+            external_3d_available=bool(container.settings.magicclass_external_3d_available),
         )
         resolved, adaptive_reason = choose_adaptive_mode(signals)
     return {
@@ -200,7 +200,7 @@ def build_inspect_context_tool(container: Any) -> ToolSpec:
             container, arguments["user_id"], arguments["course_id"]
         )
         plan = _context_and_plan(container, user, course, arguments.get("mode", "adaptive"))
-        status = await container.openmaic_classroom_service.status()
+        status = await container.magicclass_classroom_service.status()
         context = plan["context"]
         return {
             "course_id": course.id,
@@ -234,7 +234,7 @@ def build_list_tool(container: Any) -> ToolSpec:
         course, user = _resolve_course(
             container, arguments["user_id"], arguments["course_id"]
         )
-        service = container.openmaic_classroom_service
+        service = container.magicclass_classroom_service
         items = service.list_classrooms(user_id=user.id, course_id=course.id)
         return {
             "course_id": course.id,
@@ -270,7 +270,7 @@ def build_propose_tool(container: Any) -> ToolSpec:
             container, arguments["user_id"], arguments["course_id"]
         )
         plan = _context_and_plan(container, user, course, arguments.get("mode", "adaptive"))
-        status = await container.openmaic_classroom_service.status()
+        status = await container.magicclass_classroom_service.status()
         context = plan["context"]
         return {
             "course_id": course.id,
@@ -302,22 +302,22 @@ def build_propose_tool(container: Any) -> ToolSpec:
 
 
 def build_generate_tool(container_provider) -> ToolSpec:
-    """真正调用 OpenMAIC 的工具 —— 必须审批，且副作用恰好一次。"""
+    """真正调用 magic class 的工具 —— 必须审批，且副作用恰好一次。"""
 
     async def _execute(arguments: dict) -> dict:
         container = container_provider()
         course, user = _resolve_course(
             container, arguments["user_id"], arguments["course_id"]
         )
-        from ...openmaic.course_context import ContextLimits, build_learning_context
-        from ...openmaic.requirement_builder import (
+        from ...magicclass.course_context import ContextLimits, build_learning_context
+        from ...magicclass.requirement_builder import (
             GenerationRequestSnapshot,
             StudentBrief,
         )
 
-        service = container.openmaic_classroom_service
+        service = container.magicclass_classroom_service
         limits = ContextLimits(
-            total_chars=container.settings.openmaic_course_context_max_chars
+            total_chars=container.settings.magicclass_course_context_max_chars
         )
         selected = list(arguments.get("selected_material_ids") or [])
         mode = str(arguments.get("mode", "adaptive"))
@@ -389,7 +389,7 @@ def build_status_tool(container: Any) -> ToolSpec:
         course, user = _resolve_course(
             container, arguments["user_id"], arguments["course_id"]
         )
-        service = container.openmaic_classroom_service
+        service = container.magicclass_classroom_service
         session = service.get_session(
             user_id=user.id, course_id=course.id, session_id=arguments["session_id"]
         )
@@ -427,14 +427,14 @@ def build_status_tool(container: Any) -> ToolSpec:
 
 
 def build_open_tool(container_provider) -> ToolSpec:
-    """只返回 CampusMate 内部深链，绝不返回 OpenMAIC 地址或凭据。"""
+    """只返回 CampusMate 内部深链，绝不返回 magic class 地址或凭据。"""
 
     async def _execute(arguments: dict) -> dict:
         container = container_provider()
         course, user = _resolve_course(
             container, arguments["user_id"], arguments["course_id"]
         )
-        service = container.openmaic_classroom_service
+        service = container.magicclass_classroom_service
         session = service.get_session(
             user_id=user.id, course_id=course.id, session_id=arguments["session_id"]
         )
@@ -480,7 +480,7 @@ def build_interactive_classroom_tools(container_provider) -> tuple[ToolSpec, ...
 
 
 class InteractiveClassroomGenerateHandler:
-    """经 Gateway 执行的互动课堂生成。审批通过后才真正调用 OpenMAIC。
+    """经 Gateway 执行的互动课堂生成。审批通过后才真正调用 magic class。
 
     注意：`code` 必须与 `job_kind` 一致 —— Job 记录里存的是 `handler_code`，
     而 `JobHandlerRegistry` 是按 `job_kind` 索引的，两者不同会导致崩溃恢复时

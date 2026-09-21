@@ -3,7 +3,7 @@
  * `components/slide-renderer/components/element/ImageElement/BaseImageElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  *   - `@/lib/media/media-orchestrator` 的 `mediaRetryTarget` / `retryMediaTask`
  *     → `_compat/media-ref.js`（目标项目没有生成任务可重试，`retryMediaTask`
  *     为 no-op，并且 `mediaResolutionCanRetry` 恒为 false，所以重试按钮不会渲染）；

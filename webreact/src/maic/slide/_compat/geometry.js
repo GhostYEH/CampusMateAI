@@ -1,7 +1,7 @@
 /**
  * 移植补充：百分比几何换算。
  *
- * 逐字移植自参考 `packages/@openmaic/renderer/src/utils/geometry.ts`。
+ * 逐字移植自参考 `packages/@magicclass/renderer/src/utils/geometry.ts`。
  * `SlideCanvas` / `ScreenCanvas` 用它把元素矩形换算成聚光灯、激光笔、缩放的
  * 百分比坐标。剔除的只有 TypeScript 类型。
  */

@@ -24,7 +24,7 @@ import { MarkdownText } from './pbl/markdown-text.jsx';
  *   - 增加 `slide` 分支的**退化渲染**（见 SlideCanvasFallback 的说明）。
  */
 
-/** 参考实现里 slide 画布的设计尺寸（`@openmaic/renderer` 的 viewport 默认值）。 */
+/** 参考实现里 slide 画布的设计尺寸（`@magicclass/renderer` 的 viewport 默认值）。 */
 const SLIDE_VIEWPORT_SIZE = 1000;
 const SLIDE_VIEWPORT_RATIO = 0.5625; // 16:9
 const SLIDE_VIEWPORT_HEIGHT = SLIDE_VIEWPORT_SIZE * SLIDE_VIEWPORT_RATIO; // 562.5
@@ -32,13 +32,13 @@ const SLIDE_VIEWPORT_HEIGHT = SLIDE_VIEWPORT_SIZE * SLIDE_VIEWPORT_RATIO; // 562
 /**
  * **CampusMate 专用兜底**（不属于参考项目）。
  *
- * OpenMAIC 的 slide 场景内容是 `{ type: 'slide', canvas: { elements: [...] } }`。
+ * magic class 的 slide 场景内容是 `{ type: 'slide', canvas: { elements: [...] } }`。
  * CampusMate 生成的课堂里，一部分 slide 场景只带 `{ title, body }`，没有 `canvas`。
  * 直接交给 `MaicSlideSurface` 会渲染出一个空画布（课堂里就是一块空白色矩形）。
  *
  * 这个兜底把 title / body 放进**和参考实现完全一致的画布盒**里：
  *   - 设计尺寸 1000 × 562.5（16:9），
- *   - 背景 `#fff`（`@openmaic/renderer` 的 `useSlideBackgroundStyle` 默认值），
+ *   - 背景 `#fff`（`@magicclass/renderer` 的 `useSlideBackgroundStyle` 默认值），
  *   - 用 contain 方式等比缩放到容器内（与 `useViewportSize` 的 fit 语义相同）。
  * 文字用 slide 尺度的排版（标题 44px / 正文 20px）渲染，正文走移植后的
  * `MarkdownText`，这样纯文本与 Markdown 都能正常显示。

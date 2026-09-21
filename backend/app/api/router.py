@@ -45,21 +45,21 @@ from .routes import (
     agent_observability,
     final_review,
     course_research,
-    openmaic_classroom,
-    openmaic_archive,
-    openmaic_discovery,
-    openmaic_editor,
-    openmaic_fusion,
-    openmaic_materials,
-    openmaic_workspaces,
-    openmaic_generation,
-    openmaic_discussion,
-    openmaic_provider,
-    openmaic_tts,
-    openmaic_narration,
-    openmaic_quiz,
-    openmaic_course_context,
-    openmaic_learning_space,
+    magicclass_classroom,
+    magicclass_archive,
+    magicclass_discovery,
+    magicclass_editor,
+    magicclass_fusion,
+    magicclass_materials,
+    magicclass_workspaces,
+    magicclass_generation,
+    magicclass_discussion,
+    magicclass_provider,
+    magicclass_tts,
+    magicclass_narration,
+    magicclass_quiz,
+    magicclass_course_context,
+    magicclass_learning_space,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -129,31 +129,31 @@ api_router.include_router(course_research.router)
 # 否则会产生重复的 OpenAPI operationId。
 # CampusMate EduConnector — 高校教务系统统一连接层
 api_router.include_router(edu.router)
-# OpenMAIC 互动课堂适配层(学生侧课程智能辅导空间)
-api_router.include_router(openmaic_classroom.router)
-api_router.include_router(openmaic_fusion.router)
-# OpenMAIC 学习工作台(受管服务的 workspace/stage 持久化)
-api_router.include_router(openmaic_workspaces.router)
-# OpenMAIC 内容发现(文件夹与站内搜索,同样只经 CampusMate 网关)
-api_router.include_router(openmaic_discovery.router)
-# OpenMAIC 编辑器(Stage/Scene 命令,If-Match + Idempotency-Key)
-api_router.include_router(openmaic_editor.router)
-# OpenMAIC 课程资料(上传即解析,正文只在单份读取时返回)
-api_router.include_router(openmaic_materials.router)
-# OpenMAIC 档案(单份 stage 的 .maic.zip 导出 / 导入)
-api_router.include_router(openmaic_archive.router)
-# OpenMAIC 生成任务与产物下载(排队 + 轮询)
-api_router.include_router(openmaic_generation.router)
-# OpenMAIC 语音合成与多智能体圆桌(入队即返回 202,音频/记录经产物下载)
-api_router.include_router(openmaic_tts.router)
-# OpenMAIC 按场景的讲解音频(按需生成;讲稿由服务端从场景正文派生,浏览器只给 scene id)
-api_router.include_router(openmaic_narration.router)
-api_router.include_router(openmaic_quiz.router)
-api_router.include_router(openmaic_discussion.router)
-api_router.include_router(openmaic_provider.router)
-# OpenMAIC 生成前的只读课程上下文(知识点/章节/资料的真实同步状态)
-api_router.include_router(openmaic_course_context.router)
+# magic class 互动课堂适配层(学生侧课程智能辅导空间)
+api_router.include_router(magicclass_classroom.router)
+api_router.include_router(magicclass_fusion.router)
+# magic class 学习工作台(受管服务的 workspace/stage 持久化)
+api_router.include_router(magicclass_workspaces.router)
+# magic class 内容发现(文件夹与站内搜索,同样只经 CampusMate 网关)
+api_router.include_router(magicclass_discovery.router)
+# magic class 编辑器(Stage/Scene 命令,If-Match + Idempotency-Key)
+api_router.include_router(magicclass_editor.router)
+# magic class 课程资料(上传即解析,正文只在单份读取时返回)
+api_router.include_router(magicclass_materials.router)
+# magic class 档案(单份 stage 的 .maic.zip 导出 / 导入)
+api_router.include_router(magicclass_archive.router)
+# magic class 生成任务与产物下载(排队 + 轮询)
+api_router.include_router(magicclass_generation.router)
+# magic class 语音合成与多智能体圆桌(入队即返回 202,音频/记录经产物下载)
+api_router.include_router(magicclass_tts.router)
+# magic class 按场景的讲解音频(按需生成;讲稿由服务端从场景正文派生,浏览器只给 scene id)
+api_router.include_router(magicclass_narration.router)
+api_router.include_router(magicclass_quiz.router)
+api_router.include_router(magicclass_discussion.router)
+api_router.include_router(magicclass_provider.router)
+# magic class 生成前的只读课程上下文(知识点/章节/资料的真实同步状态)
+api_router.include_router(magicclass_course_context.router)
 # 导航栏「学习空间」的服务可见性与可信公开 Origin(不绑定课程)
-api_router.include_router(openmaic_learning_space.router)
+api_router.include_router(magicclass_learning_space.router)
 
 __all__ = ["api_router"]

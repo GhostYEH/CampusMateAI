@@ -5,7 +5,7 @@ import java.util.Locale
 /**
  * 9 个学生生成意图（与后端 `MODE_INTENT_LABELS`、Web `INTERACTIVE_MODES` 一一对应）。
  *
- * 关键认知：OpenMAIC 的生成接口**只接受一个 requirement 字符串**，没有任何类型参数。
+ * 关键认知：magic class 的生成接口**只接受一个 requirement 字符串**，没有任何类型参数。
  * 所以这些 mode 只是"生成意图"，不承诺最终产出某种具体形式；真实组成必须回读
  * `GET /api/classroom?id=` 才知道（见 [ClassroomCompositionText]）。
  */

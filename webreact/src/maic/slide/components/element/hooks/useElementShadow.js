@@ -1,7 +1,7 @@
 /**
  * 逐字移植自参考
  * `components/slide-renderer/components/element/hooks/useElementShadow.ts`。
- * 只去掉 TypeScript 类型与 `@openmaic/dsl` 类型导入。
+ * 只去掉 TypeScript 类型与 `@magicclass/dsl` 类型导入。
  */
 import { useMemo } from 'react';
 

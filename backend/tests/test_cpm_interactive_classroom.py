@@ -3,15 +3,15 @@
 覆盖：
 - 能力/Handler/工具确实注册，且 generate 是 CONFIRM_REQUIRED + 需要审批；
 - 只读工具是 AUTO_SAFE；
-- CPM 只**提出**建议，不创建任何 OpenMAIC 任务；
+- CPM 只**提出**建议，不创建任何 magicclass 任务；
 - 建议必须经过课程权限校验；
 - 创建 agent job 后处于 AWAITING_APPROVAL，审批前绝不调用上游；
 - 审批 + Worker 排空后恰好提交一次，并返回 CampusMate 内部深链；
 - 不同输入各自需要审批（"确认后参数变化必须重新确认"）；
 - 同幂等键 + 同请求重放；同幂等键 + 不同请求 409；
-- 工具结果不含凭据、不含 OpenMAIC 内部地址。
+- 工具结果不含凭据、不含 magic class 内部地址。
 
-上游 OpenMAIC 全部由 `httpx.MockTransport` 模拟；本文件不声称做过真实联调。
+上游 magic class 全部由 `httpx.MockTransport` 模拟；本文件不声称做过真实联调。
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from app.services.agent_runtime.handlers.interactive_classroom import (
     STATUS_TOOL,
     classroom_deep_link,
 )
-from test_openmaic_student_integration import (
+from test_magicclass_student_integration import (
     BASE,
     _bootstrap,
     _first_course,
@@ -117,7 +117,7 @@ def test_cpm_proposal_is_read_only(tmp_path):
     assert data["requires_confirmation"] is True
     assert "生成意图" in data["intent_note"]
     # 关键：只提建议，不得创建任何上游任务
-    assert _submits(recorder) == [], "CPM 建议不得创建 OpenMAIC 任务"
+    assert _submits(recorder) == [], "CPM 建议不得创建 magic class 任务"
 
 
 def test_cpm_proposal_carries_a_unique_nonce(tmp_path):
@@ -166,7 +166,7 @@ def test_cpm_proposal_nonce_is_not_a_credential_or_internal_url(tmp_path):
     )
     blob = resp.text
     assert BASE not in blob
-    assert "openmaic:3000" not in blob
+    assert "magicclass:3000" not in blob
     for token in ("access_code", "Cookie", "Authorization"):
         assert token not in blob
 
@@ -223,7 +223,7 @@ def test_cpm_without_course_id_proposes_nothing(tmp_path):
 def test_cpm_proposal_still_offered_when_service_unavailable(tmp_path):
     """服务不可用时仍给建议，但明确标注 available=false，由 UI 决定怎么提示。"""
     _, tc, headers, _ = _setup(
-        tmp_path, openmaic_enabled=False, openmaic_embed_origin=""
+        tmp_path, magicclass_enabled=False, magicclass_embed_origin=""
     )
     cid = _first_course(tc, headers)
     resp = tc.post(
@@ -328,10 +328,10 @@ def test_job_output_exposes_internal_deep_link_only(tmp_path):
     assert output.get("deep_link") == classroom_deep_link(cid, output["session_id"])
     assert output["deep_link"].startswith("/courses/")
     blob = str(output)
-    # 绝不返回 OpenMAIC 内部地址或凭据
+    # 绝不返回 magic class 内部地址或凭据
     assert BASE not in blob
     assert "access_code" not in blob
-    assert "openmaic_access" not in blob
+    assert "magicclass_access" not in blob
 
 
 def test_different_arguments_need_their_own_approval(tmp_path):

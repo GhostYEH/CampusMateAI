@@ -1,6 +1,6 @@
 /**
  * 逐字移植自参考
- * `packages/@openmaic/renderer/src/effects/HighlightOverlay.tsx`。
+ * `packages/@magicclass/renderer/src/effects/HighlightOverlay.tsx`。
  * 只去掉 `'use client'` 与 TypeScript 类型。`slide-renderer-pulse` /
  * `slide-renderer-ping` 两个 keyframes 由 `_compat/styles.js` 提供。
  */

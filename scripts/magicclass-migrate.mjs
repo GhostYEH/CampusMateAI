@@ -3,7 +3,7 @@
  * Rebrand every versioned legacy contract without turning identifiers into
  * invalid display text. Human-facing content uses "magic class"; source
  * identifiers, file names, package names, and environment keys use valid
- * MagicClass/magicclass/MAGICCLASS spellings.
+ * magicclass/magicclass/MAGICCLASS spellings.
  */
 import { execFileSync } from 'node:child_process';
 import {
@@ -33,8 +33,8 @@ const UPPER_BRAND = PACKAGE_BRAND.toUpperCase();
 const LEGACY_TOKEN_RE = new RegExp(LEGACY_LOWER, 'gi');
 const TEXT_EXTENSIONS = new Set([
   '.bat', '.cjs', '.css', '.env', '.html', '.ini', '.java', '.js', '.json', '.jsx',
-  '.kt', '.md', '.mjs', '.properties', '.py', '.sh', '.sql', '.svg', '.toml',
-  '.ts', '.tsx', '.txt', '.xml', '.yaml', '.yml',
+  '.kt', '.md', '.mdx', '.mjs', '.properties', '.ps1', '.py', '.sh', '.snap',
+  '.sha256', '.sql', '.svg', '.toml', '.ts', '.tsx', '.txt', '.xml', '.yaml', '.yml',
 ]);
 const TEXT_NAMES = new Set([
   '.dockerignore', '.env.example', '.gitignore', '.npmrc', 'Dockerfile', 'LICENSE',

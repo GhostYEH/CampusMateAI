@@ -30,10 +30,10 @@ const FinalReviewPage = lazy(() => import("./pages/FinalReviewPage.jsx"));
 const CourseResearchPage = lazy(() => import("./pages/CourseResearchPage.jsx"));
 const NoticeWorkflowPage = lazy(() => import("./pages/NoticeWorkflowPage.jsx"));
 const AgentRuntimeOpsPage = lazy(() => import("./pages/AgentRuntimeOpsPage.jsx"));
-const OpenMAICWorkspacePage = lazy(() => import("./pages/OpenMAICWorkspacePage.jsx"));
-const OpenMAICGenerationPreviewPage = lazy(() => import("./pages/OpenMAICGenerationPreviewPage.jsx"));
-const OpenMAICClassroomEntryPage = lazy(() => import("./pages/OpenMAICClassroomEntryPage.jsx"));
-const OpenMAICWorkbenchPage = lazy(() => import("./pages/OpenMAICWorkbenchPage.jsx"));
+const MagicClassWorkspacePage = lazy(() => import("./pages/magicclassWorkspacePage.jsx"));
+const MagicClassGenerationPreviewPage = lazy(() => import("./pages/magicclassGenerationPreviewPage.jsx"));
+const MagicClassClassroomEntryPage = lazy(() => import("./pages/magicclassClassroomEntryPage.jsx"));
+const MagicClassWorkbenchPage = lazy(() => import("./pages/magicclassWorkbenchPage.jsx"));
 const LearningSpacePage = lazy(() => import("./pages/LearningSpacePage.jsx"));
 const pages = {
   HomePage, CoursesPage, CourseDetailPage,
@@ -45,8 +45,8 @@ const pages = {
   ExamEditPage: lazyToolPage("ExamEditPage"),
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
-  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, OpenMAICWorkspacePage, OpenMAICGenerationPreviewPage,
-  OpenMAICClassroomEntryPage, OpenMAICWorkbenchPage, LearningSpacePage,
+  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, MagicClassWorkspacePage, MagicClassGenerationPreviewPage,
+  MagicClassClassroomEntryPage, MagicClassWorkbenchPage, LearningSpacePage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
 
@@ -75,14 +75,14 @@ export default function App() {
       <Route path="/home" element={<Page name="HomePage" />} />
       <Route path="/courses" element={<Page name="CoursesPage" />} />
       {/* 「进入课堂」直达入口：创建/复用工作台并立即开始生成，不再经过角色、模式或预览。 */}
-      <Route path="/courses/:courseId/classroom" element={<Page name="OpenMAICClassroomEntryPage" />} />
+      <Route path="/courses/:courseId/classroom" element={<Page name="MagicClassClassroomEntryPage" />} />
       {/* 旧预览深链继续兼容，只是不再由课程页的默认入口抵达。 */}
-      <Route path="/courses/:courseId/openmaic-preview" element={<Page name="OpenMAICGenerationPreviewPage" />} />
-      <Route path="/courses/:courseId/workspaces/:workspaceId" element={<Page name="OpenMAICWorkbenchPage" />} />
+      <Route path="/courses/:courseId/magicclass-preview" element={<Page name="MagicClassGenerationPreviewPage" />} />
+      <Route path="/courses/:courseId/workspaces/:workspaceId" element={<Page name="MagicClassWorkbenchPage" />} />
       {/* 旧工作台页面保留为兼容深链。 */}
-      <Route path="/courses/:courseId/workspaces/:workspaceId/legacy" element={<Page name="OpenMAICWorkspacePage" />} />
+      <Route path="/courses/:courseId/workspaces/:workspaceId/legacy" element={<Page name="MagicClassWorkspacePage" />} />
       <Route path="/courses/:courseId" element={<Page name="CourseDetailPage" />} />
-      {/* 导航栏「学习空间」：承载以独立进程、独立 Origin 运行的上游 OpenMAIC 应用。 */}
+      {/* 导航栏「学习空间」：承载以独立进程、独立 Origin 运行的上游 magic class 应用。 */}
       <Route path="/learning-space" element={<Page name="LearningSpacePage" />} />
       <Route path="/tasks" element={<Page name="TasksPage" />} />
       <Route path="/tasks/:kind/:id" element={<Page name="TaskDetailPage" />} />

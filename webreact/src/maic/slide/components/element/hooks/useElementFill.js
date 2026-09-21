@@ -1,7 +1,7 @@
 /**
  * 逐字移植自参考
  * `components/slide-renderer/components/element/hooks/useElementFill.ts`。
- * 只做两处机械改写：去掉 TypeScript 类型、`@openmaic/dsl` 类型导入。
+ * 只做两处机械改写：去掉 TypeScript 类型、`@magicclass/dsl` 类型导入。
  */
 import { useMemo } from 'react';
 

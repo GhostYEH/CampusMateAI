@@ -15,7 +15,7 @@ import { Icon } from "../Icon.jsx";
  * - 课堂 Origin **不得等于 CampusMate 页面自身 Origin**：同源 iframe 上
  *   `allow-same-origin` 会失去隔离意义（框架内容可与父页面互相访问）；
  * - sandbox 收紧为 `allow-scripts allow-same-origin allow-forms`：
- *   `allow-same-origin` 必须保留（OpenMAIC 课堂页是 Next.js 应用，需要自身
+ *   `allow-same-origin` 必须保留（magic class 课堂页是 Next.js 应用，需要自身
  *   origin 的 storage），但仅在**跨源**时安全 —— 上面的同源硬断言保证这一点。
  *   移除 `allow-popups` / `allow-downloads`（学生不需要，且扩大攻击面）。
  * - 不设置 `allow="*"`；`referrerPolicy="no-referrer"`；

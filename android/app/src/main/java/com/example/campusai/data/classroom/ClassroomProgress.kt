@@ -6,7 +6,7 @@ import com.example.campusai.data.remote.InteractiveClassroomSessionDto
 /**
  * 互动课堂生成进度（课程详情侧）。
  *
- * OpenMAIC 的真实 job 状态只有 `queued / running / succeeded / failed`，
+ * magic class 的真实 job 状态只有 `queued / running / succeeded / failed`，
  * 没有 cancel。所以 UI 只能"停止查看进度"，不能给学生一个假的"取消"。
  */
 enum class ClassroomPhase {
@@ -41,7 +41,7 @@ data class ClassroomProgressState(
 ) {
     val isLive: Boolean get() = phase == ClassroomPhase.QUEUED || phase == ClassroomPhase.RUNNING
 
-    /** 已成功但**没有**可打开的公开地址（未配置 OPENMAIC_EMBED_ORIGIN）。 */
+    /** 已成功但**没有**可打开的公开地址（未配置 MAGICCLASS_EMBED_ORIGIN）。 */
     val generatedButClosed: Boolean
         get() = phase == ClassroomPhase.SUCCEEDED && publicUrl.isNullOrBlank()
 
@@ -116,7 +116,7 @@ object ClassroomProgressReducer {
         else -> ClassroomPhase.QUEUED
     }
 
-    /** step 文案（对齐 OpenMAIC 真实步骤，未知阶段显示"处理中"）。 */
+    /** step 文案（对齐 magic class 真实步骤，未知阶段显示"处理中"）。 */
     fun stepLabel(step: String?): String = when (step) {
         "queued" -> "排队中"
         "initializing" -> "初始化课堂"

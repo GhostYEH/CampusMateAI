@@ -71,6 +71,7 @@ test/**/failures/
 .arts/
 .codeartsdoer/
 .mimocode/
+.workbuddy-ai/
 
 # Local Git worktrees
 .worktrees/
@@ -112,6 +113,8 @@ web/.npmrc
 
 # Local QA screenshots
 *-audit.png
+# 根目录下的验证截图(登录 / 学习空间等本地验收证据)
+/*.png
 webreact/tests/e2e/shots/
 # Playwright E2E 产物(不纳入版本控制)
 playwright-report/
@@ -129,13 +132,14 @@ backend/data/*.db-journal
 backend/data/*.db-wal
 backend/data/*.db-shm
 backend/data/uploads/
+backend/data/magicclass_quiz_attempts/
 
-# OpenMAIC 受管服务自有数据库(断言重放记录 / workspace / stage)
-openmaic-service/data/
-openmaic-service/*.db
-openmaic-service/*.db-journal
-openmaic-service/*.db-wal
-openmaic-service/*.db-shm
+# magic class 受管服务自有数据库(断言重放记录 / workspace / stage)
+magicclass-service/data/
+magicclass-service/*.db
+magicclass-service/*.db-journal
+magicclass-service/*.db-wal
+magicclass-service/*.db-shm
 
 # CNN 训练产物与工程验证模型(不纳入版本控制)
 ml/expression_recognition/artifacts/

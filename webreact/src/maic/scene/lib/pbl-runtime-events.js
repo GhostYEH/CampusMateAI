@@ -1,5 +1,5 @@
 /**
- * 移植自参考项目 `packages/@openmaic/generation/src/pbl/operations/kernel/runtime-events.ts`
+ * 移植自参考项目 `packages/@magicclass/generation/src/pbl/operations/kernel/runtime-events.ts`
  * （参考项目通过 `lib/pbl/v2/operations/kernel/runtime-events.ts` 的 barrel 再导出）。
  *
  * 仅擦除 TypeScript 类型标注。运行时事件是 PBL 进度账本，`transitionProjectUiPhase`

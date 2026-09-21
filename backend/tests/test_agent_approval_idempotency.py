@@ -20,11 +20,11 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.main import create_app
 from app.services.demo_seeder import seed_demo_data
-from app.services.openmaic.classroom_service import OpenMAICClassroomService
-from app.services.openmaic.client import OpenMAICClient
-from app.services.openmaic.result_store import OpenMAICResultStore
+from app.services.magicclass.classroom_service import MagicClassClassroomService
+from app.services.magicclass.client import MagicClassClient
+from app.services.magicclass.result_store import MagicClassResultStore
 from final_review_helpers import drain_worker
-from test_openmaic_student_integration import (
+from test_magicclass_student_integration import (
     BASE,
     _bootstrap,
     _first_course,
@@ -91,17 +91,17 @@ def _awaiting_job_file_db(tmp_path, **overrides):
     sqlite_db._db_instance = None
     container = build_container(settings)
     seed_demo_data(container, force=True)
-    store = OpenMAICResultStore(tmp_path / "openmaic_classrooms")
-    container.openmaic_result_store = store
-    container.openmaic_classroom_service = OpenMAICClassroomService(
+    store = MagicClassResultStore(tmp_path / "magicclass_classrooms")
+    container.magicclass_result_store = store
+    container.magicclass_classroom_service = MagicClassClassroomService(
         settings,
         store,
-        client=OpenMAICClient(
+        client=MagicClassClient(
             base_url=BASE,
             timeout_seconds=5.0,
             origin=BASE,
             transport=httpx.MockTransport(_recording_handler([])),
-            access_code=settings.openmaic_access_code,
+            access_code=settings.magicclass_access_code,
         ),
     )
     tc = TestClient(create_app())

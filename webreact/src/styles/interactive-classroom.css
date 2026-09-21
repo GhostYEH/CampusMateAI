@@ -1,4 +1,4 @@
-/* 课程智能辅导空间（OpenMAIC 学生互动课堂）+ CPM 课程上下文 */
+/* 课程智能辅导空间（magic class 学生互动课堂）+ CPM 课程上下文 */
 
 .interactive-panel .interactive-panel-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; justify-content: space-between; }
 .interactive-ask-cpm { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }

@@ -7,7 +7,7 @@ import {
   discussionSpeakers,
   speakerColor,
   speakerInitial,
-} from "../../features/openmaic/roundtableModel.js";
+} from "../../features/magicclass/roundtableModel.js";
 
 /**
  * 圆桌讨论面板——逐字移植参考项目 `components/roundtable/index.tsx` 的**外框与三栏

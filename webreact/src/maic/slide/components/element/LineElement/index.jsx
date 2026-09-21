@@ -2,7 +2,7 @@
  * 逐字移植自参考
  * `components/slide-renderer/components/element/LineElement/index.tsx`。
  *
- * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  * `@/lib/utils/element` 的 `getLineElementPath` → `_compat/element.js`。
  * 两条 path（可见线 + 透明加宽热区）与类名逐字保留。
  */

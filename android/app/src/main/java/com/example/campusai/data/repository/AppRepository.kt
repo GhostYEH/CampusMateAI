@@ -1282,7 +1282,7 @@ class AppRepository(
     }
 
     /**
-     * 只读查询后端已为该课程生成的交互课堂 URL，不触发 OpenMAIC 生成。
+     * 只读查询后端已为该课程生成的交互课堂 URL，不触发 magic class 生成。
      * 后端不可用或尚未生成时返回空列表，调用方据此只展示提示而不打开播放器。
      */
     suspend fun suggestInteractiveClassroomUrls(courseId: String): List<String> {
@@ -1352,7 +1352,7 @@ class AppRepository(
         }
     }
 
-    /** 轮询进度（服务端会现场轮询一次 OpenMAIC）。 */
+    /** 轮询进度（服务端会现场轮询一次 magic class）。 */
     suspend fun interactiveClassroomJob(
         courseId: String,
         sessionId: String,
@@ -1370,7 +1370,7 @@ class AppRepository(
         }
     }
 
-    /** 重试 = 重新提交一个新任务（OpenMAIC 没有原生 retry）。 */
+    /** 重试 = 重新提交一个新任务（magic class 没有原生 retry）。 */
     suspend fun retryInteractiveClassroom(
         courseId: String,
         sessionId: String,

@@ -3,7 +3,7 @@
  * `components/slide-renderer/components/element/VideoElement/BaseVideoElement.tsx`。
  *
  * 机械改写：
- *   - 去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入；
+ *   - 去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入；
  *   - `@/lib/store/canvas` 的 `useCanvasStore` → `_compat/canvas-store.js`
  *     （API 子集同形状：`use.playingVideoElementId()` / `getState().pauseVideo()`）；
  *   - `@/lib/media/media-orchestrator` → `_compat/media-ref.js`；

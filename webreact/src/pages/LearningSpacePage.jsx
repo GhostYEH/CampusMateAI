@@ -1,8 +1,8 @@
 /**
  * LearningSpacePage — 导航栏「学习空间」（/learning-space）。
  *
- * 学习空间是上游 OpenMAIC 应用以**独立进程、独立 Origin** 运行的那一份
- * （仓库根目录 `openmaic-app/`，版本与 `third_party/openmaic/` 固定的来源一致）。
+ * 学习空间是上游 magic class 应用以**独立进程、独立 Origin** 运行的那一份
+ * （仓库根目录 `magicclass-app/`，版本与 `third_party/magicclass/` 固定的来源一致）。
  * 这一页只做三件事：
  *
  * 1. 向后端要「是否可用 + 允许从哪个公开 Origin 内嵌」；未配置公开 Origin 时
@@ -11,7 +11,7 @@
  *    也就不可能在别处悄悄放宽 sandbox。
  * 3. 不可用时说清是链条上哪一段没起来、以及怎么起来，不摆一个点了没反应的假入口。
  *
- * 不在这里重新实现 OpenMAIC 的任何界面：那是它自己的产品。
+ * 不在这里重新实现 magic class 的任何界面：那是它自己的产品。
  */
 import { useCallback, useEffect, useState } from "react";
 
@@ -26,7 +26,7 @@ import {
 import { getLearningSpaceStatus } from "../data/learningSpaceApi.js";
 
 /** 起服务的命令按仓库根目录相对书写，不写本机盘符或绝对路径。 */
-const START_HINT = "在仓库根目录执行 node scripts/openmaic-local.mjs start（先跑 doctor 体检）。";
+const START_HINT = "在仓库根目录执行 node scripts/magicclass-local.mjs start（先跑 doctor 体检）。";
 
 /**
  * 从后端状态推导出「这一页该显示什么」。
@@ -48,7 +48,7 @@ export function blockerFor({ status, origins, origin }) {
   if (status.incompatible === true || status.compatibility === "incompatible") {
     return {
       title: "学习空间版本与后端约定不一致",
-      body: "应用连得上，但接口契约或版本不匹配。重试无用，需要核对 openmaic-app/ 的版本。",
+      body: "应用连得上，但接口契约或版本不匹配。重试无用，需要核对 magicclass-app/ 的版本。",
       hint: START_HINT,
     };
   }
@@ -70,7 +70,7 @@ export function blockerFor({ status, origins, origin }) {
     return {
       title: "浏览器访问尚未开放",
       body: "后端未配置公开 Origin。为免把内部地址下发到浏览器，这里不会猜测一个地址。",
-      hint: "在 backend/.env 配置 OPENMAIC_EMBED_ORIGIN 后重新检测。",
+      hint: "在 backend/.env 配置 MAGICCLASS_EMBED_ORIGIN 后重新检测。",
     };
   }
   if (isSameOriginAsPage(origin)) {
@@ -84,7 +84,7 @@ export function blockerFor({ status, origins, origin }) {
     return {
       title: "学习空间地址不在可信范围内",
       body: "公开 Origin 未通过校验，已阻止内嵌。",
-      hint: "核对 backend/.env 的 OPENMAIC_EMBED_ORIGIN。",
+      hint: "核对 backend/.env 的 MAGICCLASS_EMBED_ORIGIN。",
     };
   }
   return null;
@@ -136,7 +136,7 @@ export default function LearningSpacePage() {
       className="learning-space-page"
       eyebrow="学习空间"
       title="学习空间"
-      description="magic'class 以独立进程运行，这里直接承载它完整的课堂、工作台与编辑器。"
+      description="magic class 以独立进程运行，这里直接承载它完整的课堂、工作台与编辑器。"
       actions={actions}
     >
       {loading && (

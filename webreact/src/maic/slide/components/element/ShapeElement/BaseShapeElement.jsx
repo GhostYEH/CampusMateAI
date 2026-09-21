@@ -2,7 +2,7 @@
  * 逐字移植自参考
  * `components/slide-renderer/components/element/ShapeElement/BaseShapeElement.tsx`。
  *
- * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@openmaic/dsl` 类型导入
+ * 机械改写：去掉 `'use client'`、TypeScript 类型与 `@magicclass/dsl` 类型导入
  * （`ShapeText` 只是类型）。类名、内联样式、`--paragraphSpace` 自定义属性、
  * SVG `<g transform>` 表达式逐字保留。
  */

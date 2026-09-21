@@ -38,7 +38,7 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
-data/openmaic_classrooms/
+data/magicclass_classrooms/
 data/app.db
 data/test_app.db
 

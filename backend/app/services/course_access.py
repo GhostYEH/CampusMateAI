@@ -3,7 +3,7 @@
 全后端只有这一份"谁能看这门课"的判断，避免各路由各写一份导致策略漂移：
 - `courses._assert_can_view_course`（课程详情/内容/知识图谱）
 - `course_content._course`（课程内容与知识图谱）
-- `openmaic.course_context.assert_course_access`（互动课堂）
+- `magicclass.course_context.assert_course_access`（互动课堂）
 - `counselor._collect_teaching_context`（CPM 课程上下文）
 
 规则（学生）：

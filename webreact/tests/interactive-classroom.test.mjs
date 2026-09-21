@@ -1,5 +1,5 @@
 /**
- * 课程智能辅导空间（OpenMAIC 学生互动课堂）行为测试。
+ * 课程智能辅导空间（magic class 学生互动课堂）行为测试。
  *
  * 关键点：成功课堂能否打开、不可信 Origin 是否降级，用**真实 React 渲染**
  * （vite ssrLoadModule + renderToStaticMarkup）验证，而不是读源码做正则断言。
@@ -51,7 +51,7 @@ const enabledStatus = (overrides = {}) => ({
   available: true,
   unavailable: false,
   loading: false,
-  service: "openmaic",
+  service: "magicclass",
   version: "1.0.0",
   embed_origin: TRUSTED,
   browser_embed_available: true,
@@ -92,7 +92,7 @@ test("提供 9 种学生生成意图且枚举合法", () => {
   });
 });
 
-test("step 文案覆盖 OpenMAIC 真实生成步骤与 queued/failed", () => {
+test("step 文案覆盖 magicclass 真实生成步骤与 queued/failed", () => {
   const real = [
     "queued",
     "initializing",
@@ -231,7 +231,7 @@ test("Origin 不匹配时真实渲染为降级态且不出现 iframe", () => {
 
 test("后端未下发可信 Origin 时真实渲染为降级态（fail-closed）", () => {
   const markup = renderPanel({
-    status: { enabled: true, loading: false, service: "openmaic" },
+    status: { enabled: true, loading: false, service: "magicclass" },
     session: { session_id: "s1", status: "succeeded", step: "completed", url: CLASSROOM_URL },
   });
   assert.doesNotMatch(markup, /<iframe/);
@@ -372,8 +372,8 @@ test("status 请求失败返回 enabled:false 而不抛错，不影响其它标�
   const mock = createMockClient(apiModule.default);
   mock.reset();
   mock.onError("get", `/courses/c1/interactive-classroom/status`, 503, {
-    detail: "OPENMAIC_NOT_ENABLED",
-    code: "OPENMAIC_NOT_ENABLED",
+    detail: "MAGICCLASS_NOT_ENABLED",
+    code: "MAGICCLASS_NOT_ENABLED",
   });
   const status = await apiModule.getInteractiveClassroomStatus("c1");
   assert.equal(status.enabled, false);
@@ -467,7 +467,7 @@ test("互动课堂后端接口路径符合契约", async () => {
     enabled: true,
     configured: true,
     available: true,
-    service: "openmaic",
+    service: "magicclass",
     version: "v1",
     embed_origin: TRUSTED,
   });

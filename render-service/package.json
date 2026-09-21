@@ -1,5 +1,5 @@
 {
-  "name": "@campusmate/openmaic-render-service",
+  "name": "@campusmate/magicclass-render-service",
   "private": true,
   "type": "module",
   "scripts": {

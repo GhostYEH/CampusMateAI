@@ -1,7 +1,7 @@
 /**
  * MaicSlideSurface —— 移植层的集成入口。
  *
- * 接收一张 OpenMAIC 幻灯片画布（`SlideContent.canvas`：
+ * 接收一张 magic class 幻灯片画布（`SlideContent.canvas`：
  * `{ width, height, elements, background?, theme? }`），渲染成一块自适应的
  * 播放画布。渲染管线与参考项目一致：
  *

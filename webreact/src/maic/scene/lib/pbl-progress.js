@@ -7,7 +7,7 @@ import {
 
 /**
  * 移植自参考项目
- * `packages/@openmaic/generation/src/pbl/operations/kernel/progress.ts`
+ * `packages/@magicclass/generation/src/pbl/operations/kernel/progress.ts`
  * 的**必要子集**（参考项目通过 `lib/pbl/v2/operations/kernel/progress.ts`
  * 的 barrel 再导出）。
  *

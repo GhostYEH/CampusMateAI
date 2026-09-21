@@ -1,7 +1,7 @@
 """极简 semver 解析与范围判断。
 
-放在 `app/core/` 而不是 `app/services/openmaic/`，是为了让 `app/core/config.py`
-能在配置校验期直接引用它而不触发 `app.services.openmaic` 包的导入（否则会与
+放在 `app/core/` 而不是 `app/services/magicclass/`，是为了让 `app/core/config.py`
+能在配置校验期直接引用它而不触发 `app.services.magicclass` 包的导入（否则会与
 `core.config` 形成循环导入）。
 
 只支持本仓库实际需要的语法，不引入第三方依赖：
@@ -76,7 +76,7 @@ def version_satisfies(version: Any, spec: str) -> Optional[bool]:
     """判断版本是否落在范围内。
 
     返回 None 表示**无法判定**（版本缺失或不是 semver）——调用方不得把
-    "无法判定" 当成 "不兼容"：OpenMAIC 在容器里 `npm_package_version` 取不到，
+    "无法判定" 当成 "不兼容"：magicclass 在容器里 `npm_package_version` 取不到，
     `/api/health` 会回落成硬编码值，版本字符串本身不可信。
     """
     parsed = parse_semver(version)

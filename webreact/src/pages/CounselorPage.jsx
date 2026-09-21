@@ -127,8 +127,8 @@ export default function CounselorPage() {
   useEffect(() => {
     const carried = typeof window !== "undefined" ? window.history?.state?.usr : null;
     if (!carried) return;
-    if (carried.openmaicWebSearch) setWebSearchEnabled(true);
-    if (carried.openmaicAttachment) setAttachment(carried.openmaicAttachment);
+    if (carried.magicclassWebSearch) setWebSearchEnabled(true);
+    if (carried.magicclassAttachment) setAttachment(carried.magicclassAttachment);
     if (typeof window !== "undefined" && window.history?.replaceState) {
       window.history.replaceState({ ...window.history.state, usr: null }, "");
     }
