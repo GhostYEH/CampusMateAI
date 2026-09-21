@@ -101,7 +101,7 @@ PostgreSQL のデータは `magicclass-postgres` ボリュームに保存され�
 docker compose --profile video-export up --build
 ```
 
-Compose は `RENDER_SERVICE_URL` を通じて magic class とレンダリングサービスを接続します。このプロファイルを有効にしないか、レンダリングサービスが利用できない場合は、エクスポートはプロジェクト ZIP のダウンロードにフォールバックし、ローカル CLI でのレンダリングを想定します。レンダリングサービスは分離されたネットワークで動作し、起動時に `NET_ADMIN` 権限が必要です。詳細や独立デプロイ方法はリポジトリの [`render-service/README.md`](https://github.com/THU-MAIC/magicclass/blob/main/render-service/README.md) を参照してください。
+Compose は `RENDER_SERVICE_URL` を通じて magic class とレンダリングサービスを接続します。このプロファイルを有効にしないか、レンダリングサービスが利用できない場合は、エクスポートはプロジェクト ZIP のダウンロードにフォールバックし、ローカル CLI でのレンダリングを想定します。レンダリングサービスは分離されたネットワークで動作し、起動時に `NET_ADMIN` 権限が必要です。詳細や独立デプロイ方法はリポジトリの [`render-service/README.md`](https://github.com/THU-MAIC/OpenMAIC/blob/main/render-service/README.md) を参照してください。
 
 ## 環境変数
 

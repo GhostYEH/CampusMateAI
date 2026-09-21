@@ -23,7 +23,7 @@ describe('searchWithDoubao', () => {
             WebResults: [
               {
                 Title: 'magic class',
-                Url: 'https://github.com/THU-MAIC/magicclass',
+                Url: 'https://github.com/THU-MAIC/OpenMAIC',
                 Snippet: 'short blurb',
                 Summary: 'a longer, query-relevant summary',
                 Content: 'full article body',
@@ -74,7 +74,7 @@ describe('searchWithDoubao', () => {
     expect(result.sources).toEqual([
       {
         title: 'magic class',
-        url: 'https://github.com/THU-MAIC/magicclass',
+        url: 'https://github.com/THU-MAIC/OpenMAIC',
         content: 'a longer, query-relevant summary',
         score: 0.95,
       },

@@ -101,7 +101,7 @@ docker compose --profile server-persistence up --build
 docker compose --profile video-export up --build
 ```
 
-Compose передаёт magic class URL рендер-сервиса через `RENDER_SERVICE_URL`. Если профиль не включён или сервис недоступен, экспорт возвращается к скачиванию ZIP проекта для локального рендеринга через CLI. Рендер-сервис работает в изолированной сети и требует capability `NET_ADMIN` при запуске; подробности и отдельные варианты развертывания — в [`render-service/README.md`](https://github.com/THU-MAIC/magicclass/blob/main/render-service/README.md).
+Compose передаёт magic class URL рендер-сервиса через `RENDER_SERVICE_URL`. Если профиль не включён или сервис недоступен, экспорт возвращается к скачиванию ZIP проекта для локального рендеринга через CLI. Рендер-сервис работает в изолированной сети и требует capability `NET_ADMIN` при запуске; подробности и отдельные варианты развертывания — в [`render-service/README.md`](https://github.com/THU-MAIC/OpenMAIC/blob/main/render-service/README.md).
 
 ## Переменные окружения
 

@@ -101,7 +101,7 @@ PostgreSQL 数据保存在 `magicclass-postgres` volume 中。`PERSISTENCE_POSTG
 docker compose --profile video-export up --build
 ```
 
-Compose 会通过 `RENDER_SERVICE_URL` 让 magic class 连接渲染服务。未启用该 profile，或渲染服务不可用时，导出会退化为下载项目 ZIP，供本地 CLI 渲染。渲染服务使用隔离网络，启动时需要 `NET_ADMIN` capability；更多限制和独立部署方式见仓库的 [`render-service/README.md`](https://github.com/THU-MAIC/magicclass/blob/main/render-service/README.md)。
+Compose 会通过 `RENDER_SERVICE_URL` 让 magic class 连接渲染服务。未启用该 profile，或渲染服务不可用时，导出会退化为下载项目 ZIP，供本地 CLI 渲染。渲染服务使用隔离网络，启动时需要 `NET_ADMIN` capability；更多限制和独立部署方式见仓库的 [`render-service/README.md`](https://github.com/THU-MAIC/OpenMAIC/blob/main/render-service/README.md)。
 
 ## 环境变量
 

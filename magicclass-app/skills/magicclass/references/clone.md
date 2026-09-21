@@ -21,7 +21,7 @@ Establish which magic class checkout will be used for setup and runtime actions.
 Clone:
 
 ```bash
-git clone https://github.com/THU-MAIC/magicclass.git
+git clone https://github.com/THU-MAIC/OpenMAIC.git
 cd magic class
 ```
 

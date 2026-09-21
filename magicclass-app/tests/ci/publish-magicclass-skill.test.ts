@@ -55,7 +55,7 @@ function runPublish(options: RunOptions = {}) {
     PUBLISH_VERSION: options.publishVersion ?? '',
     RUNNER_TEMP: fixtureRoot,
     SEMVER_PACKAGE_JSON: semverPackageJsonPath,
-    SOURCE_REPO: options.sourceRepo ?? 'THU-MAIC/magicclass',
+    SOURCE_REPO: options.sourceRepo ?? 'THU-MAIC/OpenMAIC',
     STUB_CALLS: callsPath,
   });
   if (options.preflight !== undefined) {

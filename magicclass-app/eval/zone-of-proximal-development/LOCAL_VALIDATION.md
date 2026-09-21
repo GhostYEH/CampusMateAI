@@ -48,7 +48,7 @@ These checks verify loading/integration and repository consistency, not instruct
 
 ## CI follow-up: workbench names (2026-09-08)
 
-The initial [CI job](https://github.com/THU-MAIC/magicclass/actions/runs/33969660170/job/101315805424) failed one root unit test: `workbench-i18n.test.ts` reported that `zone-of-proximal-development` had no `zh-CN` display title. Skill frontmatter discovery had passed, but the built-in menu uses a separate workbench translation registry. The earlier four-file check did not cover that registry, and the general i18n key-alignment check did not detect a key absent from every locale.
+The initial [CI job](https://github.com/THU-MAIC/OpenMAIC/actions/runs/33969660170/job/101315805424) failed one root unit test: `workbench-i18n.test.ts` reported that `zone-of-proximal-development` had no `zh-CN` display title. Skill frontmatter discovery had passed, but the built-in menu uses a separate workbench translation registry. The earlier four-file check did not cover that registry, and the general i18n key-alignment check did not detect a key absent from every locale.
 
 The repair adds the title to both base languages and all ten locale overlays. It preserves the chosen Simplified Chinese name, the skill id, and the existing translation fallback behavior. The skill-specific regression now checks each locale's own copy and the actual menu-title resolver, so a missing overlay cannot pass by falling back to English or Simplified Chinese.
 

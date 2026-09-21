@@ -101,7 +101,7 @@ Enable the `video-export` profile:
 docker compose --profile video-export up --build
 ```
 
-Compose connects magic class to the rendering service through `RENDER_SERVICE_URL`. If the profile is disabled or the rendering service is unavailable, export falls back to downloading the project ZIP for rendering with the local CLI. The rendering service uses an isolated network and requires the `NET_ADMIN` capability at startup. See [`render-service/README.md`](https://github.com/THU-MAIC/magicclass/blob/main/render-service/README.md) for more limitations and standalone deployment instructions.
+Compose connects magic class to the rendering service through `RENDER_SERVICE_URL`. If the profile is disabled or the rendering service is unavailable, export falls back to downloading the project ZIP for rendering with the local CLI. The rendering service uses an isolated network and requires the `NET_ADMIN` capability at startup. See [`render-service/README.md`](https://github.com/THU-MAIC/OpenMAIC/blob/main/render-service/README.md) for more limitations and standalone deployment instructions.
 
 ## Environment variables
 

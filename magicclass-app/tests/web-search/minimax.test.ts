@@ -20,7 +20,7 @@ describe('searchWithMiniMax', () => {
           organic: [
             {
               title: 'magic class',
-              link: 'https://github.com/THU-MAIC/magicclass',
+              link: 'https://github.com/THU-MAIC/OpenMAIC',
               snippet: 'magic class project repository.',
               date: '2026-05-31',
             },
@@ -64,7 +64,7 @@ describe('searchWithMiniMax', () => {
     expect(result.sources).toEqual([
       {
         title: 'magic class',
-        url: 'https://github.com/THU-MAIC/magicclass',
+        url: 'https://github.com/THU-MAIC/OpenMAIC',
         content: 'magic class project repository.',
         score: 0,
       },

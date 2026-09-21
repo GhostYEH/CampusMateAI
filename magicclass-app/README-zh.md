@@ -23,7 +23,7 @@
   <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FTHU-MAIC%2FMagicClass&envDescription=Configure%20at%20least%20one%20LLM%20provider%20API%20key%20(e.g.%20OPENAI_API_KEY%2C%20ANTHROPIC_API_KEY).%20All%20providers%20are%20optional.&envLink=https%3A%2F%2Fgithub.com%2FTHU-MAIC%2FMagicClass%2Fblob%2Fmain%2F.env.example&project-name=magicclass&framework=nextjs"><img src="https://vercel.com/button" alt="Deploy with Vercel" height="20"/></a>
   <a href="#-agent-工作台集成"><img src="https://img.shields.io/badge/OpenClaw-集成-F4511E?style=flat-square" alt="OpenClaw 集成"/></a>
   <a href="#lemonade-local-ai"><img src="https://img.shields.io/badge/Lemonade-Local_AI-FFD43B?style=flat-square" alt="Lemonade Local AI"/></a>
-  <a href="https://github.com/THU-MAIC/magicclass/stargazers"><img src="https://img.shields.io/github/stars/THU-MAIC/MagicClass?style=flat-square" alt="Stars"/></a>
+  <a href="https://github.com/THU-MAIC/OpenMAIC/stargazers"><img src="https://img.shields.io/github/stars/THU-MAIC/MagicClass?style=flat-square" alt="Stars"/></a>
   <br/>
   <a href="https://discord.gg/p8Pf2r3SaG"><img src="https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord"/></a>
   &nbsp;
@@ -45,14 +45,14 @@
 
 ## 🗞️ 动态
 
-- **2026-08-14** — [v0.3.2 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.3.2) 视频导出加固（确定性 Quiz/PBL 封面、保真度打磨、交互 HTML 捕获、CPU 资源配置）；服务端持久化完成（文档全量切换、一条命令 Postgres 栈、增量保存）并落地资产注册中心；新增 `@magicclass/generation` 包；四种新语言（fr-FR / es-MX / vi-VN 及 432 条审校 zh-TW）；新增 Amazon Bedrock / Atlas Cloud / Claude 搜索与 FunASR 语音识别。查看[更新日志](CHANGELOG.md)。
-- **2026-07-21** — [v0.3.1 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.3.1) 一键导出 MP4 课程视频；服务端课堂运行时存储（含 Postgres 参考服务）；编辑器直接操作幻灯片元素（拖拽、缩放、旋转、框选多选）；“Edit with AI”升级（校验式 JSON Patch 编辑、多会话历史）；文档解析扩展（多格式上传、音视频抽取、阿里 DocMind、MinerU）；新增 Azure OpenAI / SearXNG / ComfyUI 与 GPT-5.6 系列模型；动作级播放导航；SSRF 安全加固。查看[更新日志](CHANGELOG.md)。
-- **2026-06-28** — [v0.3.0 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.3.0) 项目式学习（PBL）v2 与课堂界面；“Edit with AI”专业模式编辑智能体；`@magicclass/*` SDK 系列（DSL/渲染器/导入器）发布至 npm；可选的分阶段模型路由；新增 GLM-5.2 / Kimi K2.7 Code / Qwen3.7 Plus·Max 等模型；职业学习任务引擎；新增韩语（ko-KR）；并将开源协议由 AGPL-3.0 调整为 MIT。查看[更新日志](CHANGELOG.md)。
-- **2026-06-02** — [v0.2.2 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.2.2) MAIC Editor（v0）专业模式，可轻量编辑生成的幻灯片；生成前可编辑大纲；交互课堂离线导出；新增 Brave/百度/博查/MiniMax 搜索与 Azure STT；新增 Claude Opus 4.8 / MiniMax M3 / Gemini 3.5 Flash 等模型；新增繁体中文（zh-TW）与巴西葡萄牙语（pt-BR）。查看[更新日志](CHANGELOG.md)。
-- **2026-04-26** — [v0.2.1 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.2.1) 接入 [VoxCPM2](https://github.com/OpenBMB/VoxCPM) TTS，支持音色克隆与自动生成音色；新增按模型思考配置；新增课程完成页与作答状态持久化；新增 DeepSeek-V4 / GPT-5.5 / GPT-Image-2 / 小米 MiMo / Hy3 等最新发布的模型。查看[更新日志](CHANGELOG.md)。
+- **2026-08-14** — [v0.3.2 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.3.2) 视频导出加固（确定性 Quiz/PBL 封面、保真度打磨、交互 HTML 捕获、CPU 资源配置）；服务端持久化完成（文档全量切换、一条命令 Postgres 栈、增量保存）并落地资产注册中心；新增 `@magicclass/generation` 包；四种新语言（fr-FR / es-MX / vi-VN 及 432 条审校 zh-TW）；新增 Amazon Bedrock / Atlas Cloud / Claude 搜索与 FunASR 语音识别。查看[更新日志](CHANGELOG.md)。
+- **2026-07-21** — [v0.3.1 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.3.1) 一键导出 MP4 课程视频；服务端课堂运行时存储（含 Postgres 参考服务）；编辑器直接操作幻灯片元素（拖拽、缩放、旋转、框选多选）；“Edit with AI”升级（校验式 JSON Patch 编辑、多会话历史）；文档解析扩展（多格式上传、音视频抽取、阿里 DocMind、MinerU）；新增 Azure OpenAI / SearXNG / ComfyUI 与 GPT-5.6 系列模型；动作级播放导航；SSRF 安全加固。查看[更新日志](CHANGELOG.md)。
+- **2026-06-28** — [v0.3.0 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.3.0) 项目式学习（PBL）v2 与课堂界面；“Edit with AI”专业模式编辑智能体；`@magicclass/*` SDK 系列（DSL/渲染器/导入器）发布至 npm；可选的分阶段模型路由；新增 GLM-5.2 / Kimi K2.7 Code / Qwen3.7 Plus·Max 等模型；职业学习任务引擎；新增韩语（ko-KR）；并将开源协议由 AGPL-3.0 调整为 MIT。查看[更新日志](CHANGELOG.md)。
+- **2026-06-02** — [v0.2.2 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.2.2) MAIC Editor（v0）专业模式，可轻量编辑生成的幻灯片；生成前可编辑大纲；交互课堂离线导出；新增 Brave/百度/博查/MiniMax 搜索与 Azure STT；新增 Claude Opus 4.8 / MiniMax M3 / Gemini 3.5 Flash 等模型；新增繁体中文（zh-TW）与巴西葡萄牙语（pt-BR）。查看[更新日志](CHANGELOG.md)。
+- **2026-04-26** — [v0.2.1 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.2.1) 接入 [VoxCPM2](https://github.com/OpenBMB/VoxCPM) TTS，支持音色克隆与自动生成音色；新增按模型思考配置；新增课程完成页与作答状态持久化；新增 DeepSeek-V4 / GPT-5.5 / GPT-Image-2 / 小米 MiMo / Hy3 等最新发布的模型。查看[更新日志](CHANGELOG.md)。
 - **2026-04-20** — **v0.2.0 发布！** 深度交互模式 — 3D 可视化、模拟实验、游戏、思维导图、在线编程，动手学习新体验。详见[功能特性](#-功能特性)。
-- **2026-04-14** — [v0.1.1 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.1.1) 自动语言推断、ACCESS_CODE 站点认证、课堂 ZIP 导入导出、自定义 TTS/ASR、Ollama 支持等。查看[更新日志](CHANGELOG.md)。
-- **2026-03-26** — [v0.1.0 发布！](https://github.com/THU-MAIC/magicclass/releases/tag/v0.1.0) 讨论语音、沉浸模式、键盘快捷键、白板增强、新 provider 等。查看[更新日志](CHANGELOG.md)。
+- **2026-04-14** — [v0.1.1 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.1.1) 自动语言推断、ACCESS_CODE 站点认证、课堂 ZIP 导入导出、自定义 TTS/ASR、Ollama 支持等。查看[更新日志](CHANGELOG.md)。
+- **2026-03-26** — [v0.1.0 发布！](https://github.com/THU-MAIC/OpenMAIC/releases/tag/v0.1.0) 讨论语音、沉浸模式、键盘快捷键、白板增强、新 provider 等。查看[更新日志](CHANGELOG.md)。
 
 ## 📖 项目简介
 
@@ -98,7 +98,7 @@ https://github.com/user-attachments/assets/f4a2f1be-6615-4330-aea1-b86ccf42045e
 ### 1. 克隆 & 安装
 
 ```bash
-git clone https://github.com/THU-MAIC/magicclass.git
+git clone https://github.com/THU-MAIC/OpenMAIC.git
 cd magic class
 pnpm install
 ```

@@ -17,7 +17,7 @@ We currently provide security updates for the latest major release and the activ
 If you discover a security vulnerability in magic class, **please do not create a public GitHub issue.** Publicly disclosing a vulnerability can put other users and self-hosted instances at risk.
 
 Instead, please report it privately using one of the following methods:
-**GitHub Private Vulnerability Reporting:** Go to the [Security tab](https://github.com/THU-MAIC/magicclass/security) of the repository, click on "Advisories", and select "Report a vulnerability".
+**GitHub Private Vulnerability Reporting:** Go to the [Security tab](https://github.com/THU-MAIC/OpenMAIC/security) of the repository, click on "Advisories", and select "Report a vulnerability".
 
 
 **What to include in your report:**
@@ -31,7 +31,7 @@ We will acknowledge receipt of your vulnerability report within 48 hours and str
 ## Before You Report
 
 * Reproduce the issue on the latest release or on `main`. A report that only affects a version already fixed by a published release is closed as a duplicate.
-* Search the published [security advisories](https://github.com/THU-MAIC/magicclass/security/advisories). Variants of a published advisory are welcome; explain what the existing fix misses.
+* Search the published [security advisories](https://github.com/THU-MAIC/OpenMAIC/security/advisories). Variants of a published advisory are welcome; explain what the existing fix misses.
 * Where possible, demonstrate the issue against the default deployment (the shipped `Dockerfile`, `docker-compose.yml`, and `.env.example`). If the finding depends on a non-default setting or a different network topology, name that setting in the report.
 
 ## Deployment Assumptions

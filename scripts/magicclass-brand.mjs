@@ -56,8 +56,21 @@ export const DISPLAY_EDITS = [
 export const I18N_DIRS = ['lib/i18n/locales', 'lib/i18n/workbench-locales'];
 export const I18N_TOKENS = [['OpenMAIC', BRAND], ['MAIC Agent', `${BRAND} Agent`]];
 
-const TEXT_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.css', '.html', '.yaml', '.yml', '.toml']);
-const TEXT_NAME = new Set(['Dockerfile', 'docker-compose.yml', 'pnpm-workspace.yaml', '.npmrc']);
+/**
+ * 参与文本还原的文件类型。
+ * 这里漏一种类型不会报错，只会让 verify 对它**跳过还原**再拿原始字节去比哈希，
+ * 于是纯改名造成的差异被误报成"品牌补丁之外的改动"。所以宁可宽，不可漏。
+ */
+const TEXT_EXT = new Set([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.css', '.html', '.yaml', '.yml', '.toml',
+  // 文档与说明：上游的品牌词大量出现在这些文件里，必须参与还原
+  '.md', '.mdx', '.markdown', '.txt', '.rst',
+  // 快照、脚本与配置
+  '.snap', '.sh', '.bash', '.zsh', '.sql', '.ini', '.cfg', '.conf', '.xml', '.csv', '.patch', '.diff',
+  // 点开头的忽略/属性文件（basename 里含 '.'，会被解析成这些"扩展名"）
+  '.gitignore', '.prettierignore', '.gitattributes', '.dockerignore', '.editorconfig', '.npmrc', '.env',
+]);
+const TEXT_NAME = new Set(['Dockerfile', 'docker-compose.yml', 'pnpm-workspace.yaml', '.npmrc', '.env.example', '.gitkeep']);
 const SKIP_DIRS = new Set(['node_modules', '.next', '.git', 'dist', 'out', 'coverage', 'build', '__pycache__', '.swc', '.turbo']);
 /** 不参与 sweep 的子树：render-service 依赖 npm 上的已发布包，public/vendor 是构建产物。 */
 const SKIP_PREFIX = ['render-service/', 'public/vendor/'];
@@ -94,9 +107,35 @@ const TECHNICAL_RENAMES = [
   ['openmaic', 'magicclass'],
 ];
 
+/**
+ * 上游仓库自身的地址。
+ *
+ * 它指向的是 GitHub 上的 THU-MAIC/OpenMAIC，是**来源出处**而不是品牌词：
+ * CHANGELOG / CONTRIBUTING / README / issue 模板里的 PR、Discussion、部署链接
+ * 都属于上游历史，指向的是上游那个仓库。改名时如果把它一起改掉，这些链接
+ * 就会指向一个并不存在的仓库（实测被改了 34 个文件 589 处），
+ * 而且 verify 也再也无法还原回上游。
+ *
+ * 所以正反两个方向都先把它遮起来：既不被品牌/技术替换误伤，也不被 audit 误报。
+ */
+const UPSTREAM_REPO = 'THU-MAIC/OpenMAIC';
+const UPSTREAM_REPO_MASK = '\u0001UPSTREAM_REPO\u0001';
+
+function maskUpstreamRepo(text) {
+  return text.split(UPSTREAM_REPO).join(UPSTREAM_REPO_MASK);
+}
+
+function unmaskUpstreamRepo(text) {
+  return text.split(UPSTREAM_REPO_MASK).join(UPSTREAM_REPO);
+}
+
 function renameTechnical(text, invert = false) {
   const edits = invert ? [...TECHNICAL_RENAMES].reverse() : TECHNICAL_RENAMES;
-  return edits.reduce((value, [from, to]) => value.split(invert ? to : from).join(invert ? from : to), text);
+  const out = edits.reduce(
+    (value, [from, to]) => value.split(invert ? to : from).join(invert ? from : to),
+    maskUpstreamRepo(text),
+  );
+  return unmaskUpstreamRepo(out);
 }
 
 function currentPath(path) {
@@ -309,7 +348,8 @@ export function audit() {
     }
   }
   for (const file of walk(APP)) {
-    const text = readFileSync(file, 'utf8');
+    // 上游仓库地址按设计保留原名，不算"旧技术标识"（见 UPSTREAM_REPO）。
+    const text = maskUpstreamRepo(readFileSync(file, 'utf8'));
     const path = rel(file);
     const remaining = TECHNICAL_RENAMES
       .map(([from]) => from)

@@ -21,7 +21,7 @@ describe('searchWithExa', () => {
           results: [
             {
               title: 'magic class',
-              url: 'https://github.com/THU-MAIC/magicclass',
+              url: 'https://github.com/THU-MAIC/OpenMAIC',
               highlights: ['First relevant excerpt.', 'Second relevant excerpt.'],
               score: 0.94,
             },
@@ -69,7 +69,7 @@ describe('searchWithExa', () => {
       sources: [
         {
           title: 'magic class',
-          url: 'https://github.com/THU-MAIC/magicclass',
+          url: 'https://github.com/THU-MAIC/OpenMAIC',
           content: 'First relevant excerpt.\n\nSecond relevant excerpt.',
           score: 0.94,
         },
