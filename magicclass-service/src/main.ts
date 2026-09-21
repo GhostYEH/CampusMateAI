@@ -85,7 +85,7 @@ const server = createServer({
 });
 
 server.on('error', (error) => {
-  process.stderr.write(`MagicClass internal service failed to start: ${error.message}\n`);
+  process.stderr.write(`magic class internal service failed to start: ${error.message}\n`);
   process.exitCode = 1;
 });
 
@@ -105,5 +105,5 @@ process.on('SIGTERM', () => { void shutdown(); });
 
 server.listen(config.port, config.host, () => {
   worker.start();
-  process.stdout.write(`MagicClass internal service listening on ${config.host}:${config.port}\n`);
+  process.stdout.write(`magic class internal service listening on ${config.host}:${config.port}\n`);
 });

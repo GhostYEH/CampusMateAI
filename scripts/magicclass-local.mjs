@@ -408,10 +408,10 @@ async function cmdDoctor() {
   // 以为自己的第四个进程起来了，而「学习空间」内嵌的是别人的界面。
   const appHealth = await appHealthVersion();
   const expectedAppVersion = appVersion();
-  if (appHealth === null) warn(`magicclass-app :${APP_PORT} 未就绪（没在跑，或不是 MagicClass）`);
+  if (appHealth === null) warn(`magicclass-app :${APP_PORT} 未就绪（没在跑，或不是 magic class）`);
   else if (appHealth === expectedAppVersion) ok(`magicclass-app :${APP_PORT} 健康（v${appHealth}）`);
   else {
-    bad(`:${APP_PORT} 自报版本是 v${appHealth}，不是入库的 v${expectedAppVersion} —— 端口被另一份 MagicClass 占用`);
+    bad(`:${APP_PORT} 自报版本是 v${appHealth}，不是入库的 v${expectedAppVersion} —— 端口被另一份 magic class 占用`);
     problems += 1;
   }
 
@@ -519,7 +519,7 @@ async function cmdStart() {
     // magic class，此时 next dev 根本没绑上，而健康检查照样通过。
     const servedVersion = await appHealthVersion();
     if (servedVersion !== appVersion()) {
-      bad(`:${APP_PORT} 上响应的是另一份 MagicClass（自报 v${servedVersion ?? '未知'}，期望 v${appVersion()}），入库应用并没有起来`);
+      bad(`:${APP_PORT} 上响应的是另一份 magic class（自报 v${servedVersion ?? '未知'}，期望 v${appVersion()}），入库应用并没有起来`);
       bad(`请先停掉占用 :${APP_PORT} 的那个开发服务器；或换 CAMPUSMATE_LEARNING_SPACE_PORT 并同步 backend/.env 里 MAGICCLASS_BASE_URL / MAGICCLASS_EMBED_ORIGIN`);
       throw new Error('端口被另一份 magic class 占用');
     }
