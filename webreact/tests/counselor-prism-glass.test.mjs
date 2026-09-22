@@ -55,8 +55,8 @@ test("counselor layout enlarges the title and uses translucent glass surfaces", 
 
 test("counselor workbench keeps the global AppShell controls", () => {
   assert.match(appShell, /import \{ Avatar, IconButton, SearchField \} from "open-glass-ui"/);
-  assert.match(appShell, /<SearchBox tone=\{topbarGlassTone\} disableEffects=\{motionPaused\} \/>/);
-  assert.match(appShell, /<LiquidMetalSurface[\s\S]*className="topbar-info-surface"/);
+  assert.match(appShell, /<SearchBox disableEffects=\{motionPaused\} \/>/);
+  assert.match(appShell, /<TopbarGlass[\s\S]*className="topbar-info-surface"/);
   assert.match(counselorPage, /counselor-study-status/);
   assert.match(counselorPage, /counselor-reminders/);
   assert.match(counselorPage, /DigitalHumanPanel/);

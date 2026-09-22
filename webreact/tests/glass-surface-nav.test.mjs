@@ -17,6 +17,11 @@ test("floating navigation uses the React Bits glass surface", () => {
   assert.match(glassSource, /backdropFilter = `url\(#\$\{filterId\}\)`/);
 });
 
+test("glass surface forwards semantic attributes to its outer element", () => {
+  assert.match(glassSource, /style = \{\},\s*\.\.\.props/);
+  assert.match(glassSource, /<div \{\.\.\.props\} ref=\{containerRef\}/);
+});
+
 test("navigation shell stays transparent while the glass surface owns the material", () => {
   assert.match(layoutStyles, /\.floating-nav\s*\{[^}]*background:\s*transparent/s);
   assert.match(navStyles, /\.floating-nav-glass\s*\{[\s\S]*linear-gradient/);

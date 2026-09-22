@@ -7,22 +7,25 @@ const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "ut
 const shellSource = await readFile(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const navSource = await readFile(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 
-test("shell keeps OpenGlass side controls while navigation uses React Bits liquid glass", () => {
+test("shell keeps OpenGlass content controls inside React Bits liquid glass", () => {
   assert.equal(packageJson.dependencies["open-glass-ui"], "^0.3.0");
   assert.match(appSource, /GlassSystemProvider/);
   assert.match(shellSource, /SearchField/);
   assert.match(shellSource, /Avatar/);
   assert.match(shellSource, /IconButton/);
+  assert.match(shellSource, /import GlassSurface from "\.\/GlassSurface\.jsx"/);
+  assert.doesNotMatch(shellSource, /LiquidMetalSurface/);
   assert.doesNotMatch(navSource, /import \{ Glass \} from "open-glass-ui"/);
   assert.match(navSource, /import GlassSurface from "\.\.\/GlassSurface\.jsx"/);
   assert.match(navSource, /className="floating-nav floating-nav--primary"/);
 });
 
-test("side-control material follows its scene without branching the global navigation", () => {
+test("side controls share one scene-independent glass material with navigation", () => {
   assert.match(appSource, /theme=\{\{ appearance: "light"/);
-  assert.match(shellSource, /const topbarGlassTone = isHome \|\| isStudy \? "dark" : "light";/);
-  assert.match(shellSource, /className="topbar-search-surface"[\s\S]*data-tone=\{tone\}/);
-  assert.match(shellSource, /className="topbar-info-surface"[\s\S]*data-tone=\{topbarGlassTone\}/);
+  assert.match(shellSource, /function TopbarGlass\([\s\S]*<GlassSurface/);
+  assert.match(shellSource, /className="topbar-search-surface"/);
+  assert.match(shellSource, /className="topbar-info-surface"/);
+  assert.doesNotMatch(shellSource, /topbarGlassTone|data-tone/);
   assert.doesNotMatch(shellSource, /<FloatingNav tone=/);
 });
 

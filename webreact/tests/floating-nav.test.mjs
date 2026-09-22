@@ -49,7 +49,7 @@ test("floating navigation uses a readable cool-glass palette globally", () => {
 });
 
 test("counselor uses the same global floating navigation as other routes", () => {
-  assert.match(appShell, /const topbarGlassTone = isHome \|\| isStudy \? "dark" : "light";/);
+  assert.doesNotMatch(appShell, /topbarGlassTone|data-tone/);
   assert.match(appShell, /<FloatingNav pendingCount=\{pendingCount\}/);
   assert.doesNotMatch(appShell, /<FloatingNav tone=/);
   assert.doesNotMatch(counselorStyles, /\.app-layout\.counselor-mode \.floating-nav\{/);
@@ -58,10 +58,11 @@ test("counselor uses the same global floating navigation as other routes", () =>
 });
 
 test("topbar side controls keep the global search and profile implementation", () => {
-  assert.match(appShell, /import LiquidMetalSurface from ["']\.\/LiquidMetalSurface\.jsx["']/);
-  assert.match(appShell, /<LiquidMetalSurface[\s\S]*className="topbar-search-surface"/);
+  assert.match(appShell, /import GlassSurface from ["']\.\/GlassSurface\.jsx["']/);
+  assert.match(appShell, /<TopbarGlass[\s\S]*className="topbar-search-surface"/);
   assert.match(appShell, /<SearchField[\s\S]*name="global-search"/);
-  assert.match(appShell, /<LiquidMetalSurface[\s\S]*className="topbar-info-surface"/);
+  assert.match(appShell, /<TopbarGlass[\s\S]*className="topbar-info-surface"/);
+  assert.doesNotMatch(appShell, /LiquidMetalSurface/);
   assert.match(appShell, /<IconButton[\s\S]*aria-label="通知"/);
   assert.match(appShell, /<Avatar[\s\S]*name=\{displayName\}/);
   assert.match(appShell, /<div className="topbar-info">[\s\S]*<span className="topbar-date">/);
@@ -70,11 +71,11 @@ test("topbar side controls keep the global search and profile implementation", (
   assert.match(styles, /\.topbar-info-surface[^}]*position:\s*fixed/);
 });
 
-test("counselor shares the global OpenGlass topbar wrappers", () => {
-  assert.match(appShell, /function SearchBox\(\{ tone, disableEffects = false \}\)/);
-  assert.match(appShell, /<SearchBox tone=\{topbarGlassTone\} disableEffects=\{motionPaused\} \/>/);
-  assert.match(appShell, /topbar-search-surface/);
-  assert.match(appShell, /topbar-info-surface/);
+test("counselor shares the global React Bits topbar wrappers", () => {
+  assert.match(appShell, /function TopbarGlass\(/);
+  assert.match(appShell, /function SearchBox\(\{ disableEffects = false \}\)/);
+  assert.match(appShell, /<SearchBox disableEffects=\{motionPaused\} \/>/);
+  assert.match(styles, /\.topbar-chrome-glass\s*\{[\s\S]*linear-gradient/);
 });
 
 test("Sylva home keeps the shared side controls and navigation baseline", () => {
