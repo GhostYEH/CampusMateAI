@@ -120,12 +120,12 @@ test("the fixed background layer does not move or transform with scroll", async 
   assert.doesNotMatch(sylvaStyles, /scrollY/);
 });
 
-test("global navigation keeps one liquid-metal state system across page scenes", async () => {
+test("global navigation keeps one liquid-glass state system across page scenes", async () => {
   const navStyles = await readFile(new URL("src/styles/floating-layout.css", webRoot), "utf8");
   const studyStyles = await readFile(new URL("src/styles/study-summer.css", webRoot), "utf8");
 
-  assert.match(navStyles, /--floating-nav-foreground:\s*#f7f8f2/);
-  assert.match(navStyles, /--floating-nav-active-foreground:\s*#ffffff/);
+  assert.match(navStyles, /--floating-nav-foreground:\s*#17304f/);
+  assert.match(navStyles, /--floating-nav-active-foreground:\s*#073b70/);
   assert.match(navStyles, /background:\s*transparent/);
   assert.doesNotMatch(navStyles, /data-(?:ogui-tone|contrast)/);
   assert.doesNotMatch(navStyles, /--floating-nav-active-background/);

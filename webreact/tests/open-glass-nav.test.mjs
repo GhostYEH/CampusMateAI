@@ -7,13 +7,14 @@ const appSource = await readFile(new URL("../src/App.jsx", import.meta.url), "ut
 const shellSource = await readFile(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const navSource = await readFile(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 
-test("shell keeps OpenGlass side controls while navigation uses the homepage liquid-metal treatment", () => {
+test("shell keeps OpenGlass side controls while navigation uses React Bits liquid glass", () => {
   assert.equal(packageJson.dependencies["open-glass-ui"], "^0.3.0");
   assert.match(appSource, /GlassSystemProvider/);
   assert.match(shellSource, /SearchField/);
   assert.match(shellSource, /Avatar/);
   assert.match(shellSource, /IconButton/);
   assert.doesNotMatch(navSource, /import \{ Glass \} from "open-glass-ui"/);
+  assert.match(navSource, /import GlassSurface from "\.\.\/GlassSurface\.jsx"/);
   assert.match(navSource, /className="floating-nav floating-nav--primary"/);
 });
 
@@ -25,7 +26,8 @@ test("side-control material follows its scene without branching the global navig
   assert.doesNotMatch(shellSource, /<FloatingNav tone=/);
 });
 
-test("navigation no longer depends on the local glass surface", () => {
+test("navigation depends on the shared React Bits glass surface, not the legacy wrapper", () => {
   assert.doesNotMatch(navSource, /LiquidGlassSurface/);
+  assert.match(navSource, /GlassSurface/);
   assert.doesNotMatch(shellSource, /LiquidGlassSurface/);
 });

@@ -48,26 +48,23 @@ test("floating navigation disables proximity scaling when reduced motion is enab
   assert.match(source, /data-reduce-motion/);
 });
 
-test("global navigation opts into stable controls without dock scaling or liquid canvases", () => {
+test("global navigation bypasses the dock runtime and liquid canvases", () => {
   assert.match(source, /staticControls = false/);
   assert.match(source, /function StaticDockItem/);
   assert.match(source, /staticControls \? StaticDockItem : DockItem/);
   assert.match(source, /data-static-controls/);
   assert.match(source, /reduceMotion \|\| staticControls \? 1/);
   assert.match(source, /disableEffects=\{reduceMotion \|\| staticControls\}/);
-  assert.match(floatingNavSource, /staticControls/);
+  assert.doesNotMatch(floatingNavSource, /LiquidMetalNav|LiquidMetalButton/);
+  assert.match(floatingNavSource, /GlassSurface/);
   assert.doesNotMatch(floatingNavSource, /reuseRenderer/);
 });
 
-test("floating navigation keeps the primary-action plate while adding liquid motion", () => {
+test("legacy liquid-metal navigation keeps its primary-action plate for non-global consumers", () => {
   assert.match(buttonStyles, /\.sylva-liquid-plate\s*\{/);
   assert.match(buttonStyles, /\.sylva-liquid-stage\.hot \.sylva-liquid-plate/);
   assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav \.sylva-liquid-plate\s*\{[^}]*opacity:\s*0/s);
   assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav:hover \.sylva-liquid-plate/);
   assert.doesNotMatch(buttonStyles, /\.sylva-liquid-stage--nav\.hot \.sylva-liquid-plate/);
-  assert.doesNotMatch(
-    layoutStyles,
-    /\.floating-nav-button:hover,\s*\.floating-nav-list > li\.active \.floating-nav-button/,
-  );
-  assert.match(layoutStyles, /\.floating-nav-list > li\.active \.floating-nav-button\s*\{/);
+  assert.doesNotMatch(layoutStyles, /sylva-liquid-plate/);
 });

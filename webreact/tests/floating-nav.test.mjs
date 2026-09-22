@@ -5,7 +5,7 @@ import { navItems } from "../src/components/FloatingNav/navItems.js";
 
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const layoutStyles = readFileSync(new URL("../src/styles/floating-layout.css", import.meta.url), "utf8");
-const navStyles = readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.css", import.meta.url), "utf8");
+const navStyles = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.css", import.meta.url), "utf8");
 const floatingNavSource = readFileSync(new URL("../src/components/FloatingNav/FloatingNav.jsx", import.meta.url), "utf8");
 const appShell = readFileSync(new URL("../src/components/AppShell.jsx", import.meta.url), "utf8");
 const counselorStyles = readFileSync(new URL("../src/styles/counselor-reference.css", import.meta.url), "utf8");
@@ -39,11 +39,11 @@ test("global search gets a wider desktop field without changing mobile layout", 
   assert.match(tinyStyles, /\.search-wrap[^}]*width: 174px/);
 });
 
-test("floating navigation foreground uses the homepage primary-action palette globally", () => {
-  assert.match(navStyles, /\.liquid-metal-nav-container nav ul[^}]*color: var\(--floating-nav-foreground, #f7f8f2\)/);
-  assert.doesNotMatch(navStyles, /mix-blend-mode:\s*difference/);
-  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-foreground:\s*#f7f8f2/);
-  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-active-foreground:\s*#ffffff/);
+test("floating navigation uses a readable cool-glass palette globally", () => {
+  assert.match(navStyles, /\.floating-nav-list[^}]*color: var\(--floating-nav-foreground, #17304f\)/);
+  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-foreground:\s*#17304f/);
+  assert.match(layoutStyles, /\.floating-nav[^}]*--floating-nav-active-foreground:\s*#073b70/);
+  assert.match(navStyles, /\.floating-nav-glass[^}]*linear-gradient/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav\[data-(?:ogui-tone|contrast)=/);
   assert.doesNotMatch(layoutStyles, /html\[data-theme="auto"\] \.floating-nav/);
 });
@@ -105,7 +105,7 @@ test("desktop navigation keeps every route label visible without hover resizing"
   assert.doesNotMatch(layoutStyles, /\.floating-nav:hover\s*\{/);
   assert.doesNotMatch(layoutStyles, /--floating-nav-(?:collapsed|expanded)-width/);
   assert.match(layoutStyles, /\.floating-nav \.floating-nav-button\s*\{[^}]*gap:\s*5px[^}]*padding:\s*0 9px/s);
-  assert.match(floatingNavSource, /staticControls/);
+  assert.doesNotMatch(floatingNavSource, /staticControls|LiquidMetalNav/);
 });
 
 test("centered navigation uses balanced fixed insets", () => {
@@ -119,12 +119,10 @@ test("mobile floating navigation keeps its primary controls compact", () => {
   assert.match(mobileStyles, /\.floating-nav[^}]*height:\s*calc\(var\(--floating-nav-item-size\) \+ 16px\)/s);
 });
 
-test("navigation active state uses explicit index comparison so home route stays selected", () => {
-  const navSource = readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
-  assert.doesNotMatch(floatingNavSource, /activeIndex\s*\?/);
-  assert.doesNotMatch(navSource, /activeIndex\s*\?/);
-  assert.match(navSource, /activeIndex === index/);
-  assert.match(navSource, /aria-current=\{active\s*\?\s*"page"\s*:\s*undefined\}/);
+test("navigation active state preserves home and exposes the current page", () => {
+  assert.match(floatingNavSource, /const active = isActive\(key\)/);
+  assert.match(floatingNavSource, /className=\{active \? "active" : undefined\}/);
+  assert.match(floatingNavSource, /aria-current=\{active \? "page" : undefined\}/);
 });
 
 test("navigation removes legacy gooey particle implementation entirely", () => {
@@ -143,17 +141,16 @@ test("navigation removes legacy gooey particle implementation entirely", () => {
   assert.doesNotMatch(navStyles, /@keyframes\s+gooey-point/);
 });
 
-test("navigation reuses the liquid metal button for selected and hover states", () => {
-  const navSource = readFileSync(new URL("../src/components/FloatingNav/LiquidMetalNav.jsx", import.meta.url), "utf8");
-  assert.match(navSource, /LiquidMetalButton/);
-  assert.match(navSource, /variant="nav"/);
-  assert.match(navSource, /active=\{active\}/);
-  assert.match(navSource, /defer/);
+test("global navigation uses semantic buttons inside one glass surface", () => {
+  assert.match(floatingNavSource, /<GlassSurface/);
+  assert.match(floatingNavSource, /<button[\s\S]*type="button"/);
+  assert.doesNotMatch(floatingNavSource, /LiquidMetalButton|LiquidMetalNav/);
 });
 
 test("navigation floating layout drops the legacy active background and underline", () => {
   assert.doesNotMatch(layoutStyles, /\.floating-nav-button\.active::after/);
   assert.doesNotMatch(layoutStyles, /\.floating-nav-button\.active[^}]*background/);
-  assert.doesNotMatch(layoutStyles, /\.floating-nav-button:hover[^}]*background/);
+  assert.match(navStyles, /\.floating-nav-list > li\.active \.floating-nav-button/);
+  assert.match(navStyles, /\.floating-nav-button:hover/);
   assert.doesNotMatch(styles, /\.floating-nav-button:hover[^}]*background/);
 });

@@ -17,7 +17,6 @@ test("floating dock keeps route labels stable without the legacy expansion imple
   assert.match(floatingLayout, /\.floating-nav-label[^}]*max-width:\s*none[^}]*opacity:\s*1/s);
   assert.match(floatingLayout, /@media \(max-width: 1439px\)[\s\S]*\.floating-nav-label[^}]*display:\s*none/);
   assert.match(floatingNav, /<div className="floating-nav floating-nav--primary"/);
-  assert.doesNotMatch(floatingNav, /<Glass|data-contrast/);
-  assert.match(floatingNav, /<LiquidMetalNav/);
-  assert.match(floatingNav, /staticControls/);
+  assert.match(floatingNav, /<GlassSurface/);
+  assert.doesNotMatch(floatingNav, /data-contrast|<LiquidMetalNav|staticControls/);
 });

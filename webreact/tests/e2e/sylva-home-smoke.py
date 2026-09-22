@@ -144,17 +144,19 @@ def run():
         assert page.locator(".sylva-scene-stat").count() == 3
         print("first viewport workbench verified", flush=True)
 
-        # ── global primary-action navigation ─────────────────────────────
+        # ── global liquid-glass navigation ───────────────────────────────
         global_nav = page.locator(".floating-nav")
         global_nav.wait_for(state="visible")
-        assert global_nav.locator(".floating-nav-button").count() == 9
+        assert global_nav.locator(".floating-nav-button").count() == 10
         assert global_nav.get_by_role("button", name="首页").get_attribute("aria-current") == "page"
         assert global_nav.get_attribute("data-contrast") is None
         assert global_nav.get_attribute("data-ogui-tone") is None
-        plate_opacities = global_nav.locator(".sylva-liquid-plate").evaluate_all(
-            "elements => elements.map(element => getComputedStyle(element).opacity)"
+        assert global_nav.locator(".floating-nav-glass").count() == 1
+        assert global_nav.locator(".sylva-liquid-plate, canvas").count() == 0
+        glass_filter = global_nav.locator(".floating-nav-glass").evaluate(
+            "el => getComputedStyle(el).backdropFilter || getComputedStyle(el).webkitBackdropFilter"
         )
-        assert plate_opacities == ["1"] * 9, plate_opacities
+        assert glass_filter and glass_filter != "none", glass_filter
         nav_color = page.locator(".floating-nav-button").first.evaluate("el => getComputedStyle(el).color")
         assert nav_color and nav_color != "rgba(0, 0, 0, 0)", nav_color
         print(f"global primary navigation color={nav_color}", flush=True)

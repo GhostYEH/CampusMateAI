@@ -18,14 +18,13 @@ html {
   padding-top: 0 !important;
 }
 
-/* The global dock is only a positioning shell. Each route control owns the
-   same dark liquid-metal plate as the homepage's primary action. */
+/* The global dock uses one shared liquid-glass surface across every route. */
 
 .floating-nav {
   --floating-nav-item-size: 44px;
   --floating-nav-item-gap: 4px;
-  --floating-nav-foreground: #f7f8f2;
-  --floating-nav-active-foreground: #ffffff;
+  --floating-nav-foreground: #17304f;
+  --floating-nav-active-foreground: #073b70;
   position: fixed;
   top: 14px;
   left: 50vw;
@@ -72,13 +71,6 @@ html {
   height: 24px;
 }
 
-.floating-nav .sylva-liquid-stage--nav,
-.floating-nav .sylva-liquid-stage--nav:hover,
-.floating-nav .sylva-liquid-stage--nav.press {
-  translate: none;
-  transition: none;
-}
-
 .floating-nav-label {
   display: block;
   max-width: none;
@@ -87,21 +79,6 @@ html {
   white-space: nowrap;
   font-size: 12px;
   font-weight: 650;
-}
-
-.floating-nav-list > li.active .floating-nav-button {
-  color: var(--floating-nav-active-foreground);
-}
-
-.floating-nav-list > li.active .sylva-liquid-plate {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 13%), rgb(255 255 255 / 3%) 48%, transparent 70%),
-    rgb(8 10 8 / 58%);
-  box-shadow:
-    0 4px 12px rgb(0 0 0 / 38%),
-    0 12px 24px rgb(0 0 0 / 22%),
-    inset 0 1px 0 rgb(255 255 255 / 22%),
-    inset 0 0 0 1px rgb(255 255 255 / 9%);
 }
 
 @media (prefers-reduced-motion: reduce) {
