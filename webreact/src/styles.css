@@ -2283,6 +2283,7 @@ html[data-theme="auto"] .courses-page .course-card {
   .magicclass-preview__actions { justify-content: stretch; }
   .magicclass-preview__actions .button { flex: 1 1 0; }
 }
+/* 课堂工作台/生成预览需要沉浸式空间；课程入口页仍保留全局搜索和导航。 */
 .app-layout.magicclass-shell .topbar-search-surface, .app-layout.magicclass-shell .floating-nav { display: none; }
 .app-layout.magicclass-shell .page-frame { padding-top: 44px; }
 .app-layout.magicclass-shell .courses-page .page-heading { display: none; }
