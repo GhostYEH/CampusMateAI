@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearStoredSession } from "../app/auth.js";
 import { itemsOf, studySessionPayload } from "./contracts.js";
 
 const viteEnv = import.meta.env || {};
@@ -16,7 +17,7 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
     return config;
   });
 
-  let refreshPromise = null;
+  let refreshRequest = null;
   client.interceptors.response.use((response) => response, async (error) => {
     const original = error.config;
     const url = original?.url || "";
@@ -32,16 +33,34 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
     if (error.response?.status !== 401 || !original || original._retried || chaoxingAuthError
       || url.includes("/auth/login") || url.includes("/auth/refresh")) return Promise.reject(error);
 
+    const authStorage = storageOrDefault(storage);
+    const sentAuthorization = original.headers?.get?.("Authorization") ?? original.headers?.Authorization;
+    const currentAccessToken = authStorage?.getItem("campus_access_token");
+    // A response from an earlier session must never be replayed as the new user.
+    if (sentAuthorization !== (currentAccessToken ? `Bearer ${currentAccessToken}` : undefined)) {
+      return Promise.reject(error);
+    }
+
     original._retried = true;
+    const refreshToken = authStorage?.getItem("campus_refresh_token");
+    if (!refreshRequest || refreshRequest.token !== refreshToken) {
+      refreshRequest = {
+        token: refreshToken,
+        promise: refreshAccessToken(baseUrl, authStorage),
+      };
+    }
+    const pendingRefresh = refreshRequest;
     try {
-      refreshPromise ||= refreshAccessToken(baseUrl, storageOrDefault(storage));
-      const token = await refreshPromise;
-      refreshPromise = null;
+      const token = await pendingRefresh.promise;
+      if (authStorage.getItem("campus_access_token") !== token) {
+        return Promise.reject(error);
+      }
       original.headers.Authorization = `Bearer ${token}`;
       return client(original);
     } catch (refreshError) {
-      refreshPromise = null;
       return Promise.reject(refreshError);
+    } finally {
+      if (refreshRequest === pendingRefresh) refreshRequest = null;
     }
   });
   return client;
@@ -50,27 +69,32 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
 async function refreshAccessToken(baseUrl, storage) {
   const refreshToken = storage.getItem("campus_refresh_token");
   if (!refreshToken) {
-    clearAuth(storage);
+    clearStoredSession(storage);
     redirectToLogin();
     throw new Error("登录已过期，请重新登录");
   }
+  let data;
   try {
-    const { data } = await axios.post(`${baseUrl}/auth/refresh`, { refresh_token: refreshToken });
-    storage.setItem("campus_access_token", data.access_token);
-    storage.setItem("campus_refresh_token", data.refresh_token);
-    return data.access_token;
+    ({ data } = await axios.post(`${baseUrl}/auth/refresh`, { refresh_token: refreshToken }));
   } catch {
-    clearAuth(storage);
+    // A later logout or login owns storage now; this request must not erase it.
+    if (storage.getItem("campus_refresh_token") !== refreshToken) {
+      throw new Error("登录状态已变更，请重试");
+    }
+    clearStoredSession(storage);
     redirectToLogin();
     throw new Error("登录已过期，请重新登录");
   }
+  // The same guard also prevents a late successful refresh from restoring a
+  // logged-out session or replacing the tokens of a different account.
+  if (storage.getItem("campus_refresh_token") !== refreshToken) {
+    throw new Error("登录状态已变更，请重试");
+  }
+  saveTokenPair(data, storage);
+  return data.access_token;
 }
 
 export { refreshAccessToken };
-
-function clearAuth(storage = globalThis.localStorage) {
-  ["campus_access_token", "campus_refresh_token", "campus_session"].forEach((key) => storage?.removeItem(key));
-}
 
 function redirectToLogin() {
   if (typeof location !== "undefined" && location.pathname !== "/login") location.href = "/login";
