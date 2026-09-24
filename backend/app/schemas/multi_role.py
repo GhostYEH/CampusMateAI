@@ -93,7 +93,20 @@ class TokenPair(BaseModel):
     user: UserPublic
 
 
-class UserCreate(BaseModel):
+class _UserCreationFields(BaseModel):
+    """两个建号入口共用的字段约束。"""
+    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
+    password: str = Field(..., min_length=8, max_length=128)
+    role: str
+    display_name: Optional[str] = Field(None, max_length=128)
+    student_number: Optional[str] = Field(None, max_length=32)
+    teacher_number: Optional[str] = Field(None, max_length=32, description="已废弃,仅为兼容旧数据保留")
+    college: Optional[str] = Field(None, max_length=64)
+    major: Optional[str] = Field(None, max_length=64)
+    grade: Optional[str] = Field(None, max_length=32)
+
+
+class UserCreate(_UserCreationFields):
     """管理员创建用户请求(仅 admin 角色可调用)。
 
     约束:
@@ -103,15 +116,7 @@ class UserCreate(BaseModel):
     - student_number: 仅 student 角色携带
     """
 
-    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
-    password: str = Field(..., min_length=8, max_length=128)
     role: str = Field(..., pattern="^(student|admin)$")
-    display_name: Optional[str] = Field(None, max_length=128)
-    student_number: Optional[str] = Field(None, max_length=32)
-    teacher_number: Optional[str] = Field(None, max_length=32, description="已废弃,仅为兼容旧数据保留")
-    college: Optional[str] = Field(None, max_length=64)
-    major: Optional[str] = Field(None, max_length=64)
-    grade: Optional[str] = Field(None, max_length=32)
 
 
 class UserAdminUpdate(BaseModel):
@@ -123,7 +128,7 @@ class UserAdminUpdate(BaseModel):
     is_active: Optional[bool] = None
 
 
-class RegisterRequest(BaseModel):
+class RegisterRequest(_UserCreationFields):
     """公开注册请求(无需鉴权,仅限 student 自注册)。
 
     约束:
@@ -135,15 +140,7 @@ class RegisterRequest(BaseModel):
     - college / major / grade: 选填,学生常用
     """
 
-    username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
-    password: str = Field(..., min_length=8, max_length=128)
     role: str = Field("student", pattern="^(student)$")
-    display_name: Optional[str] = Field(None, max_length=128)
-    student_number: Optional[str] = Field(None, max_length=32)
-    teacher_number: Optional[str] = Field(None, max_length=32, description="已废弃,仅为兼容旧数据保留")
-    college: Optional[str] = Field(None, max_length=64)
-    major: Optional[str] = Field(None, max_length=64)
-    grade: Optional[str] = Field(None, max_length=32)
 
 
 class AuthMeResponse(BaseModel):

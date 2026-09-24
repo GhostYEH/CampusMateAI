@@ -5,6 +5,7 @@ export { BASE_URL, client, createClient, refreshAccessToken, saveTokenPair, appl
 export { probeBackend, login, getDeviceId, qrCreate, qrStatus, qrExchange, trustedDeviceAutoLogin, revokeTrustedDevice } from "./api/authEndpoints.js";
 
 const dataOf = (response) => response.data;
+const revisionHeaders = (revision) => ({ "If-Match": String(revision) });
 
 export async function getDashboard() { return dataOf(await client.get("/dashboard/student")); }
 /**
@@ -44,16 +45,19 @@ export async function getCourseKnowledgeGraph(courseId) {
   return dataOf(await client.get(`/courses/${courseId}/knowledge-graph`));
 }
 export async function openCourseResource(courseId, itemId) { return dataOf(await client.get(`/courses/${courseId}/resources/${itemId}/open`)); }
-export async function downloadCourseResource(courseId, itemId, filename = "课程资料") {
-  const response = await client.get(`/courses/${courseId}/resources/${itemId}/download`, { responseType: "blob" });
-  const url = URL.createObjectURL(response.data);
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename || response.headers["content-disposition"] || "课程资料";
+  link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+export async function downloadCourseResource(courseId, itemId, filename = "课程资料") {
+  const response = await client.get(`/courses/${courseId}/resources/${itemId}/download`, { responseType: "blob" });
+  triggerBlobDownload(response.data, filename || response.headers["content-disposition"] || "课程资料");
 }
 
 export async function getAssignments(params = {}) { return dataOf(await client.get("/student/assignments", { params: { page_size: 100, ...params } })); }
@@ -312,7 +316,7 @@ export async function updateMagicClassWorkspace(courseId, workspaceId, { revisio
   if (folderId !== undefined) payload.folder_id = folderId;
   return dataOf(
     await client.patch(`/courses/${courseId}/workspaces/${workspaceId}`, payload, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -320,7 +324,7 @@ export async function updateMagicClassWorkspace(courseId, workspaceId, { revisio
 export async function deleteMagicClassWorkspace(courseId, workspaceId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/workspaces/${workspaceId}`, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -352,7 +356,7 @@ export async function replaceMagicClassStage(courseId, workspaceId, stageId, { r
     await client.put(
       `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`,
       { document, ...(title === undefined ? {} : { title }) },
-      { headers: { "If-Match": String(revision) } },
+      { headers: revisionHeaders(revision) },
     ),
   );
 }
@@ -360,7 +364,7 @@ export async function replaceMagicClassStage(courseId, workspaceId, stageId, { r
 export async function deleteMagicClassStage(courseId, workspaceId, stageId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -460,7 +464,7 @@ export async function addMagicClassWhiteboard(courseId, workspaceId, stageId, { 
   return dataOf(await client.post(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/whiteboard`,
     { board },
-    { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+    { headers: { "Idempotency-Key": idempotencyKey, ...revisionHeaders(revision) } },
   ));
 }
 
@@ -498,7 +502,7 @@ export async function updateMagicClassFolder(courseId, folderId, { revision, nam
   if (parentId !== undefined) payload.parent_id = parentId;
   return dataOf(
     await client.patch(`/courses/${courseId}/folders/${folderId}`, payload, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -506,7 +510,7 @@ export async function updateMagicClassFolder(courseId, folderId, { revision, nam
 export async function deleteMagicClassFolder(courseId, folderId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/folders/${folderId}`, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -551,7 +555,7 @@ export async function getMagicClassMaterial(courseId, materialId) {
 export async function deleteMagicClassMaterial(courseId, materialId, { revision }) {
   return dataOf(
     await client.delete(`/courses/${courseId}/materials/${materialId}`, {
-      headers: { "If-Match": String(revision) },
+      headers: revisionHeaders(revision),
     }),
   );
 }
@@ -570,11 +574,7 @@ export async function resolveMagicClassMaterials(courseId, { materialIds }) {
 // （中文走 RFC 5987 的 filename*），前端只解析、不自己拼。
 // 导入用多部分表单：学生选的是文件，网关负责把它编码成内部调用需要的形状。
 
-export async function exportMagicClassStage(courseId, workspaceId, stageId) {
-  const response = await client.get(
-    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export`,
-    { responseType: "blob" },
-  );
+function archiveResult(response) {
   return {
     blob: response.data,
     disposition: response.headers?.["content-disposition"] || "",
@@ -582,16 +582,20 @@ export async function exportMagicClassStage(courseId, workspaceId, stageId) {
   };
 }
 
+export async function exportMagicClassStage(courseId, workspaceId, stageId) {
+  const response = await client.get(
+    `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export`,
+    { responseType: "blob" },
+  );
+  return archiveResult(response);
+}
+
 export async function exportMagicClassStageFormat(courseId, workspaceId, stageId, format) {
   const response = await client.get(
     `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/export/${format}`,
     { responseType: "blob" },
   );
-  return {
-    blob: response.data,
-    disposition: response.headers?.["content-disposition"] || "",
-    sha256: response.headers?.["x-archive-sha256"] || "",
-  };
+  return archiveResult(response);
 }
 
 export async function importMagicClassStage(courseId, workspaceId, { file, idempotencyKey }) {
@@ -656,7 +660,7 @@ export async function applyMagicClassStageCommands(courseId, workspaceId, stageI
     await client.post(
       `/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}/commands`,
       { commands },
-      { headers: { "Idempotency-Key": idempotencyKey, "If-Match": String(revision) } },
+      { headers: { "Idempotency-Key": idempotencyKey, ...revisionHeaders(revision) } },
     ),
   );
 }
@@ -762,14 +766,7 @@ export async function extractNotice(text) { return dataOf(await client.post("/no
 
 export async function downloadAssignmentAttachment(assignmentId, attachmentId, filename = "作业附件") {
   const response = await client.get(`/assignments/${assignmentId}/attachments/${attachmentId}`, { responseType: "blob" });
-  const url = URL.createObjectURL(response.data);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename || "作业附件";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  triggerBlobDownload(response.data, filename || "作业附件");
 }
 
 export default client;

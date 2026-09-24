@@ -26,7 +26,6 @@ from ...core.config import Settings, get_settings
 from ...core.exceptions import (
     InvalidCredentials,
     StudentNumberExists,
-    TeacherNumberExists,
     Unauthorized,
     UserNotFound,
     UsernameExists,
@@ -75,6 +74,30 @@ def _enrich_user_public(user: UserRow, container: ServiceContainer) -> UserPubli
     return public_user
 
 
+def _create_user(req: RegisterRequest | UserCreate, container: ServiceContainer) -> UserPublic:
+    """两种创建入口共用校验和持久化；入口各自负责角色权限。"""
+    if req.role == "student" and req.teacher_number:
+        raise ValidationFailed("学生角色不应携带 teacher_number")
+
+    user_repo = container.user_repository
+    if user_repo.get_user_by_username(req.username):
+        raise UsernameExists()
+    if req.student_number and user_repo.get_user_by_student_number(req.student_number):
+        raise StudentNumberExists()
+    created = user_repo.create_user(
+        username=req.username,
+        password_hash=hash_password(req.password),
+        role=req.role,
+        display_name=req.display_name,
+        student_number=req.student_number,
+        teacher_number=req.teacher_number,
+        college=req.college,
+        major=req.major,
+        grade=req.grade,
+    )
+    return UserPublic(**created.to_public_dict())
+
+
 @router.post("/login", response_model=TokenPair)
 def login(
     req: LoginRequest,
@@ -106,32 +129,7 @@ def register(
     - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希。
     - 返回 UserPublic(不含 password_hash)。
     """
-    # 角色一致性校验(student 不应携带 teacher_number)
-    if req.role == "student" and req.teacher_number:
-        raise ValidationFailed("学生角色不应携带 teacher_number")
-
-    user_repo = container.user_repository
-    # 唯一性校验
-    if user_repo.get_user_by_username(req.username):
-        raise UsernameExists()
-    if req.student_number and user_repo.get_user_by_student_number(req.student_number):
-        raise StudentNumberExists()
-    if req.teacher_number and user_repo.get_user_by_teacher_number(req.teacher_number):
-        raise TeacherNumberExists()
-
-    hashed = hash_password(req.password)
-    created = user_repo.create_user(
-        username=req.username,
-        password_hash=hashed,
-        role=req.role,
-        display_name=req.display_name,
-        student_number=req.student_number,
-        teacher_number=req.teacher_number,
-        college=req.college,
-        major=req.major,
-        grade=req.grade,
-    )
-    return UserPublic(**created.to_public_dict())
+    return _create_user(req, container)
 
 
 @router.post("/refresh", response_model=TokenPair)
@@ -224,34 +222,10 @@ def admin_create_user(
     - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希
     - 返回 UserPublic(不含 password_hash)
     """
-    # 一致性校验: 角色与学号匹配
-    if req.role == "student" and req.teacher_number:
-        raise ValidationFailed("学生角色不应携带 teacher_number")
+    # 管理员账号不能带学号/工号；学生校验由共同创建流程处理。
     if req.role == "admin" and (req.student_number or req.teacher_number):
         raise ValidationFailed("管理员角色不应携带学号或工号")
-
-    user_repo = container.user_repository
-    # 唯一性校验
-    if user_repo.get_user_by_username(req.username):
-        raise UsernameExists()
-    if req.student_number and user_repo.get_user_by_student_number(req.student_number):
-        raise StudentNumberExists()
-    if req.teacher_number and user_repo.get_user_by_teacher_number(req.teacher_number):
-        raise TeacherNumberExists()
-
-    hashed = hash_password(req.password)
-    created = user_repo.create_user(
-        username=req.username,
-        password_hash=hashed,
-        role=req.role,
-        display_name=req.display_name,
-        student_number=req.student_number,
-        teacher_number=req.teacher_number,
-        college=req.college,
-        major=req.major,
-        grade=req.grade,
-    )
-    return UserPublic(**created.to_public_dict())
+    return _create_user(req, container)
 
 
 @router.get("/admin/users", response_model=Page)
