@@ -89,6 +89,7 @@ backend/backend.txt
 **/verify_notice_output.txt
 # 汇报/答辩交付物(PPTX 等二进制,本地保留,不入库)
 deliverables/
+/*.pptx
 *.mp4
 !android/app/src/main/res/raw/login_campus.mp4
 !harmony/entry/src/main/resources/base/media/login_campus.mp4
@@ -136,6 +137,7 @@ backend/data/*.db-journal
 backend/data/*.db-wal
 backend/data/*.db-shm
 backend/data/uploads/
+backend/data/discovery_batches/
 backend/data/magicclass_quiz_attempts/
 
 # magic class 受管服务自有数据库(断言重放记录 / workspace / stage)
@@ -155,24 +157,10 @@ ml/expression_recognition/manifests/
 ml/expression_recognition/manifests_v2/
 ml/expression_recognition/reports/generated/
 ml/expression_recognition/runs/
-ml/expression_recognition/exports/*.tflite
-ml/expression_recognition/exports/*.pt
-ml/expression_recognition/exports/*.pth
-ml/expression_recognition/exports/*.log
-ml/expression_recognition/exports/**/*.tflite
-ml/expression_recognition/exports/**/*.pt
-ml/expression_recognition/exports/**/*.pth
-ml/expression_recognition/exports/**/*.log
+ml/expression_recognition/exports/
 ml/expression_recognition/**/litert_verification.json
-# exports_v2 与 exports 同为模型导出目录,同样不入库
-ml/expression_recognition/exports_v2/*.tflite
-ml/expression_recognition/exports_v2/*.pt
-ml/expression_recognition/exports_v2/*.pth
-ml/expression_recognition/exports_v2/*.log
-ml/expression_recognition/exports_v2/**/*.tflite
-ml/expression_recognition/exports_v2/**/*.pt
-ml/expression_recognition/exports_v2/**/*.pth
-ml/expression_recognition/exports_v2/**/*.log
+# v2 导出物由导出脚本生成,部署资产存放在 Android 工程中
+ml/expression_recognition/exports_v2/
 
 # SDK / 工具下载(非项目代码)
 jdk17.zip
