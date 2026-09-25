@@ -87,6 +87,8 @@ tmp/
 structure.txt
 backend/backend.txt
 **/verify_notice_output.txt
+# 汇报/答辩交付物(PPTX 等二进制,本地保留,不入库)
+deliverables/
 *.mp4
 !android/app/src/main/res/raw/login_campus.mp4
 !harmony/entry/src/main/resources/base/media/login_campus.mp4
@@ -162,6 +164,15 @@ ml/expression_recognition/exports/**/*.pt
 ml/expression_recognition/exports/**/*.pth
 ml/expression_recognition/exports/**/*.log
 ml/expression_recognition/**/litert_verification.json
+# exports_v2 与 exports 同为模型导出目录,同样不入库
+ml/expression_recognition/exports_v2/*.tflite
+ml/expression_recognition/exports_v2/*.pt
+ml/expression_recognition/exports_v2/*.pth
+ml/expression_recognition/exports_v2/*.log
+ml/expression_recognition/exports_v2/**/*.tflite
+ml/expression_recognition/exports_v2/**/*.pt
+ml/expression_recognition/exports_v2/**/*.pth
+ml/expression_recognition/exports_v2/**/*.log
 
 # SDK / 工具下载(非项目代码)
 jdk17.zip

@@ -251,6 +251,18 @@ interface ExpressionRecognitionService {
 
 ## 运行
 
+根目录的四个启动脚本职责不重叠，按需要选用：
+
+| 脚本 | 作用 | 何时用 |
+|------|------|--------|
+| `start_all.bat` | 按依赖顺序拉起完整链路：magicclass-service(4010) → FastAPI(8000) → magicclass-app(3000) → Vite Web(5174)，启动前先做本地配置初始化与体检 | 需要 magic class 融合链路或导航栏「学习空间」时必须用它 |
+| `start_backend.bat` | 只启动 FastAPI(8000)：自动准备 `.env`、安装依赖、清理占用 8000 的残留进程 | 只调后端接口 |
+| `startreact.bat` | 只启动 Vite Web(5174)，缺依赖时自动 `npm install` | 只调前端页面 |
+
+`start_backend.bat` + `startreact.bat` 即「后端 + Web」最小组合，适合不涉及 magic class 的日常开发。
+
+> 只起 Web + 后端时，magic class 相关页面会提示连不上受管服务、导航栏「学习空间」会提示应用进程未运行——这是预期行为，不是故障。
+
 ### 一、后端启动(FastAPI)
 
 ```bash

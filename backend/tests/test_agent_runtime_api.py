@@ -200,8 +200,7 @@ class TestArtifacts:
 class TestNoticesManual:
     """POST /notices/manual 由 notices.py 提供,返回 notice_id 供后续 workflow 创建。
 
-    早期 agent_runtime.notices_manual_router 返回 job_id/status 的占位实现已被
-    notices.py 的 canonical 实现(§8.3)取代:先持久化通知文本再返回 notice_id。
+    canonical 实现(§8.3):先持久化通知文本再返回 notice_id。
     """
 
     def test_create_manual_notice(self):

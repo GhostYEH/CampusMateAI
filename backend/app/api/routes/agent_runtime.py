@@ -45,7 +45,6 @@ from ...schemas.agent_runtime import (
     AgentRunOut,
     AgentSkillsOut,
     AgentSkillOut,
-    NoticeManualIn,
 )
 from ..deps import current_user, student_only
 from ..deps import ServiceContainer, get_container
@@ -55,7 +54,6 @@ jobs_router = APIRouter(prefix="/agent-jobs", tags=["agent-runtime"])
 runs_router = APIRouter(prefix="/agent-runs", tags=["agent-runtime"])
 approvals_router = APIRouter(prefix="/agent-approvals", tags=["agent-runtime"])
 artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["agent-runtime"])
-notices_manual_router = APIRouter(prefix="/notices", tags=["agent-runtime"])
 memories_router = APIRouter(prefix="/agent-memories", tags=["agent-runtime"])
 
 # SSE 注释心跳间隔:只用于维持连接,不写库、不推进事件序列。
@@ -693,32 +691,6 @@ async def get_artifact(
     })
 
 
-# ===== notices manual =====
-
-
-@notices_manual_router.post("/manual")
-async def create_manual_notice(
-    body: NoticeManualIn,
-    user: UserRow = Depends(student_only),
-    container: ServiceContainer = Depends(get_container),
-    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
-) -> dict:
-    """手动提交通知文本,创建 notice_workflow job。"""
-    repo = _repo(container)
-    effective_key = body.idempotency_key or idempotency_key
-    if effective_key:
-        existing = repo.find_job_by_idempotency(user.id, effective_key)
-        if existing:
-            return {"job_id": existing["job_id"], "status": existing["status"]}
-    job_id = repo.create_job(
-        user_id=user.id,
-        job_kind="notice_workflow",
-        input_ref={"title": body.title, "source_name": body.source_name},
-        idempotency_key=effective_key,
-    )
-    return {"job_id": job_id, "status": "QUEUED"}
-
-
 __all__ = [
     "router",
     "jobs_router",
@@ -726,5 +698,4 @@ __all__ = [
     "approvals_router",
     "artifacts_router",
     "memories_router",
-    "notices_manual_router",
 ]

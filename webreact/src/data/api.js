@@ -1,8 +1,8 @@
 import { itemsOf, studySessionPayload } from "./contracts.js";
-import { BASE_URL, client } from "./api/client.js";
+import { BASE_URL, client } from "./http/client.js";
 
-export { BASE_URL, client, createClient, refreshAccessToken, saveTokenPair, applyTokenPair } from "./api/client.js";
-export { probeBackend, login, getDeviceId, qrCreate, qrStatus, qrExchange, trustedDeviceAutoLogin, revokeTrustedDevice } from "./api/authEndpoints.js";
+export { BASE_URL, client, createClient, refreshAccessToken, saveTokenPair, applyTokenPair } from "./http/client.js";
+export { probeBackend, login, getDeviceId, qrCreate, qrStatus, qrExchange, trustedDeviceAutoLogin, revokeTrustedDevice } from "./http/authEndpoints.js";
 
 const dataOf = (response) => response.data;
 const revisionHeaders = (revision) => ({ "If-Match": String(revision) });
