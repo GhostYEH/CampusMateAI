@@ -79,6 +79,28 @@ if (-not $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT) { throw 'Set CAMPUSMATE_EXPRES
 
 ## 目标域高精度提升流程
 
+### 遮挡训练论文思路的离线对照
+
+在已有 ResNet18 检查点和 `manifests_v2/included.csv` 可用时，可以比较
+仅用遮挡图像微调与保留清晰图像监督、冻结教师参考的微调。两组从同一个
+检查点启动，使用固定的验证集遮挡掩码，并分别报告正常和遮挡图像的
+Macro-F1、准确率及每类 F1。该实验借鉴 [CA-HOFT](https://doi.org/10.3390/s26175500) 的训练思路，不声称
+复现论文的 RAF-DB 数值，也不会自动更新手机部署资产。
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m expression_recognition.occlusion_experiment `
+  --checkpoint runs_v2/full_resnet18/best.pt `
+  --manifest manifests_v2/included.csv `
+  --output-dir runs/paper_occlusion `
+  --epochs 5
+```
+
+输出在 `runs/paper_occlusion/comparison.json`。若提供的是目标域清单，
+应以该清单的 train/validation 两个分组运行；严禁以 test 调参。
+
+### CPM 前摄目标域训练
+
 CPM 场景的新数据必须先提供 `annotations.csv`，字段为
 `path,label,subject_id,session_id,device,platform,lighting,pose,occlusion,consent`。
 `target_manifest.build_target_manifest` 会拒绝未授权或元数据不完整的样本、隔离跨标签重复图片，并按人物整体分配

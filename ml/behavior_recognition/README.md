@@ -73,6 +73,26 @@ Run full training:
 
 The pipeline performs environment preflight, data audit, grouped manifest creation, tests, ROI cache generation, training, calibration, V3.2 comparison, and ONNX parity export.
 
+### Paper-inspired local-region ablation (offline only)
+
+Inspired by [CPViG-Net](https://doi.org/10.11896/jsjkx.250500100), the
+`local_cue` variant shares a MobileNetV3 encoder between the full student
+ROI and a lower-central crop where hands, books and a phone may appear. It is
+an experimental image prior, not a phone detector or a deployment model.
+Train it against the unchanged ROI baseline using the same manifests and seed:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m behavior_recognition.cli train --config configs/mobilenet_v3_small_roi_paper_baseline.yaml --manifests manifests --run-dir runs/paper_full_roi
+python -m behavior_recognition.cli train --config configs/mobilenet_v3_small_roi_local_cue.yaml --manifests manifests --run-dir runs/paper_local_cue
+python -m behavior_recognition.local_cue_experiment --baseline runs/paper_full_roi/best.pt --local-cue runs/paper_local_cue/best.pt --manifests manifests --output reports/generated/local_cue_validation.json
+```
+
+The comparison uses validation only and reports four-class and product
+Macro-F1, PHONE_INTERACTION AUPRC/precision/recall, and confusion matrices.
+Both paper experiment configs use batch size 32 and the same training settings.
+The existing ONNX export path supports only the single-view baseline.
+
 ### Temporal MobileNetV3 + GRU candidate
 
 Build 16-frame windows from the three ordered university frame sequences. The builder merges the original image-level folders, tracks same-label boxes across adjacent frames, and assigns each complete four-digit video prefix to exactly one split:

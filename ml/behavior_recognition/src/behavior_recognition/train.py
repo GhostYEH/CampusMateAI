@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 
 from .constants import CLASS_NAMES
 from .data import BehaviorDataset, materialize_roi_cache
-from .models import build_model
+from .models import build_experiment_model
 
 
 def select_best_epoch(rows: list[dict]) -> int:
@@ -132,7 +132,7 @@ def train_model(
     }
     train_loader = DataLoader(train_dataset, shuffle=True, **loader_kwargs)
     val_loader = DataLoader(val_dataset, shuffle=False, **loader_kwargs)
-    model = build_model(len(CLASS_NAMES), bool(config.get("pretrained", True))).to(device)
+    model = build_experiment_model(config, len(CLASS_NAMES)).to(device)
     criterion = nn.CrossEntropyLoss(
         weight=_class_weights(train_rows).to(device),
         label_smoothing=float(config.get("label_smoothing", 0.0)),
