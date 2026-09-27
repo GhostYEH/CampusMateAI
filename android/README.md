@@ -1,6 +1,6 @@
 # CampusMate AI — Android 移动端
 
-大学生校园事务智能陪伴助手的原生 Android 客户端。
+CampusMate AI 的原生 Android 客户端，面向个人学习、消息整理和日常事务。AI 对话的产品定位是通用助手；当前后端聊天接口仍保留历史知识库检索，见[主 README](../README.md)。
 
 ## 技术栈
 
@@ -26,7 +26,7 @@ app/src/main/java/com/example/campusai/
 ├── ui/
 │   ├── components/          # 通用组件与动效(EnterAnimation/CampusVideoBackground/ext.)
 │   ├── navigation/          # AppNavHost(Navigation Compose 路由图)
-│   ├── screens/             # 业务页面(17 个模块, 34 个 Screen 文件)
+│   ├── screens/             # 业务页面
 │   ├── strings/             # 字符串资源
 │   └── theme/               # Material 3 主题(Color/Type/Motion)
 └── MainActivity.kt          # 入口 Activity
@@ -40,14 +40,19 @@ app/src/main/java/com/example/campusai/
 | 登录 | `ui/screens/login/` |
 | 通知 | `ui/screens/notifications/` |
 | 待办任务 | `ui/screens/tasks/` |
-| AI 导员 | `ui/screens/counselor/` |
+| AI 助手 | `ui/screens/counselor/` |
 | 专注自习 | `ui/screens/focus/` |
 | 课程 | `ui/screens/courses/` |
 | 考试 | `ui/screens/exams/` |
 | 个人中心 | `ui/screens/profile/` |
 | 设置 | `ui/screens/profile/SettingsScreen.kt` |
-| 教师端 | `ui/screens/teacher/` |
 | 管理员 | `ui/screens/admin/` |
+
+## 通知整理与学习通
+
+用户在系统设置中授权通知访问后，`data/notification/CampusNotificationListenerService.kt` 接收**系统通知栏实际展示**的消息。当前识别微信、企业微信、QQ/TIM、学习通；微信、企业微信和 QQ 群聊分别使用来源开关与群名白名单，普通闲聊会被过滤。捕获结果进入 Room 本地队列，WorkManager 批量上传到后端分类、去重，并从可执行通知中生成待办。通知页面也提供手动粘贴提取入口。这不读取聊天记录或任何应用私有数据库。
+
+学习通还有独立的账号连接与同步链路：后端同步课程、课程通知、作业和考试；Android 可定期触发同步，并提示登录态失效或需重新验证。学习通系统通知监听只是辅助来源，不等同于账号同步。
 
 ## 构建配置
 
@@ -62,16 +67,21 @@ app/src/main/java/com/example/campusai/
 
 ### 构建命令
 
-```bash
-# 调试构建
-gradlew.bat :app:assembleDebug        # Windows
-./gradlew :app:assembleDebug          # Linux / macOS
+从仓库根目录设置捆绑 JDK 21 后再执行任何 Gradle/JVM 命令：
 
-# 发布构建
-gradlew.bat :app:assembleRelease
+```powershell
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+$env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+& "$env:JAVA_HOME\bin\java.exe" -version
+```
 
-# 自定义后端地址(真机调试)
-gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
+```powershell
+Set-Location (Join-Path $repoRoot 'android')
+.\gradlew.bat :app:assembleDebug
+
+# 真机调试时按本机网络环境传入后端地址
+.\gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/
 ```
 
 ## 表情识别
@@ -174,7 +184,7 @@ Debug 构建可在专注页的开发者工具中采集 `idle` 与 `visible_study
 - 默认不保存原始实时摄像头画面
 - Debug 导出有 24 张图片、24 条待写预测、512 KB CSV、每个 session 180 张图片且每个标签最多 8 个 session 的上限；长期开发采集仍应定期清理 app-private debug/dataset 目录
 
-详见专项研究文档：[`../docs/behavior-recognition.md`](../docs/behavior-recognition.md)
+模型训练与评估说明见 [`../ml/behavior_recognition/README.md`](../ml/behavior_recognition/README.md)。
 
 ## 运行要求
 

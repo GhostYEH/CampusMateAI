@@ -1,500 +1,68 @@
-# CampusMate AI Backend
+# CampusMate AI 后端
 
-> Python FastAPI 后端 — 校园通知结构化抽取 / 校园知识库 RAG 问答 /
-> **教师-课程-班级-学生协同平台**
+`backend/` 使用 FastAPI、SQLite 提供认证、个人事务、课程、通知、学习通同步、AI 对话和在线课堂服务。系统角色为 `student` 与 `admin`；历史 `teacher` 命名和测试数据不代表有独立教师角色。
 
-本后端为原生 Android(Kotlin Compose)移动端与 React 18 Web 前端提供真实业务能力。
-**正式 Release 默认连接真实 FastAPI 接口与持久化数据库**;所有教师、学生、课程、班级、通知、任务、提交、已读状态和统计数据均以服务端数据为准。
+## 能力与接口
 
-## 当前能力
+| 能力 | 主要入口 | 当前实现 |
+| --- | --- | --- |
+| 健康检查 | `GET /api/v1/health` | 返回后端、知识库和 LLM 等运行状态 |
+| 通知提取 | `POST /api/v1/notices/extract` | 手动输入通知原文，优先用已配置的 LLM，失败时规则降级；不确定字段标记需确认 |
+| 手机消息整理 | `POST /api/v1/notices/ingest-batch` | 接收客户端筛选后的消息，去重，规则优先分类；模糊消息可批量交给 LLM，再生成通知和可执行待办 |
+| 学习通 | `/api/v1/chaoxing/login`、`/status`、`/sync`、`/disconnect` | 连接账号并同步课程、通知、作业、考试等；登录态失效或需要验证时返回对应状态 |
+| 可选教务连接 | `/api/v1/edu/*` | 学校系统探测、用户绑定与课表、成绩、考试同步；真实数据取决于学校适配器及用户授权 |
+| AI 对话 | `POST /api/v1/counselor/chat`，兼容别名 `/api/v1/assistant/chat` | SSE / 非流式回答，可带经过校验的个人任务、课程和学习状态上下文；课堂建议须用户确认后才执行 |
+| 知识库 | `/api/v1/knowledge/*` | MD/TXT/PDF/DOCX 导入、去重、BM25 检索与管理；当前聊天链路仍会使用它 |
+| 课程内互动课堂 | `/api/v1/courses/{course_id}/interactive-classroom/*` 及课程 workspace 路由 | 按课程权限读取上下文、生成、查询进度和真实内容组成；由 `magicclass-service` 提供受管能力 |
+| 学习空间状态 | `GET /api/v1/magicclass/learning-space/status` | 返回独立 `magicclass-app` 的可用性与公开 Origin，供 Web 导航入口使用 |
+| Agent Runtime | `/api/v1/agent-jobs`、`/agent-runs` 等 | 持久化任务、运行事件、审批及产物接口；与普通聊天接口不同 |
 
-| 能力 | 实现状态 | 说明 |
-|------|----------|------|
-| 健康检查 | 已实现 | `GET /api/v1/health` 返回运行模式、知识库状态、LLM 可用性 |
-| 通知结构化抽取 | 已实现 | LLM 优先 + 规则降级,缺少年份/对象/方式时标记 `needs_confirmation` |
-| 校园知识库导入 | 已实现 | 支持 Markdown / TXT / PDF / DOCX,基于内容哈希去重 |
-| BM25 中文检索 | 已实现 | jieba 分词 + rank_bm25,与向量数据库解耦,预留 hybrid 接口 |
-| 知识库状态 | 已实现 | 文档/分块数量、索引状态、检索方式 |
-| RAG 问答 | 已实现 | SSE 流式输出 + 来源引用 + 冲突提示 + 无依据时人工兜底 |
-| LLM 降级 | 已实现 | 未配置或调用失败时返回检索摘要模式(明确标注,不伪装 LLM 结果) |
-| **JWT 认证** | **已实现** | access + refresh token,PBKDF2 密码哈希 |
-| **多角色 RBAC** | **已实现** | student / teacher / admin 三角色,后端真实执行 |
-| **课程 / 班级 / 选课** | **已实现** | 教师-课程-班级-学生协同,邀请码加入 |
-| **通知发布与已读回执** | **已实现** | 草稿 / 发布 / 已读统计 |
-| **任务发布与提交** | **已实现** | 草稿 / 提交 / 重新提交 / 逾期 / 评分 |
-| **附件上传** | **已实现** | 安全校验 + 路径穿越防御 |
-| **教师 / 学生工作台** | **已实现** | 聚合 SQL,一次返回所有摘要,无写死数字 |
-| **AI 导员上下文融合** | **已实现** | 任务/通知/课程/班级 可注入 RAG,草稿对学生不可见 |
-| **数据库迁移** | **已实现** | 旧库兼容 + 幂等 |
-| **production 强约束** | **已实现** | `app_env=production` 禁止启用测试开关(详见下文) |
-| **Focus 实时语音基础** | **已实现** | Android RTC 进房、后端短期 Token 与 VoiceChat 会话生命周期；需配置火山资源后启用 |
+完整路径以 [`app/api/router.py`](app/api/router.py) 中实际注册的路由为准；请求/响应契约以 FastAPI `/docs` 和对应 schema 为准。
 
-## Focus Realtime Voice（V4.0-B）
+## AI 对话的现状
 
-Android 只请求 CampusMate 后端创建和结束实时语音会话。后端生成短期 RTC Token，并以服务端凭证调用 VoiceChat；Android 不保存 RTC AppKey、火山 AK/SK、LLM Key 或 VoiceChat 配置。
+CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。**当前实现还不是纯通用聊天**：Web 和 Android 仍调用 `counselor/chat`，该路由在非问候问题上调用 `RagService.stream_answer()`，后者执行 `RetrievalService.search()`。配置 LLM 后，普通问题可以借助模型知识作答；有检索结果时也会传入校园资料。未配置 LLM 时走 `retrieval_summary` 降级，资料不足时可能提示人工核实。
 
-本地真机验证前，将 `.env.example` 中的以下变量复制到未追踪的 `.env` 并填入真实值：
+因此，知识库只应被描述为**现存后端能力和历史聊天链路**，不能说它是整个产品的定位，也不能声称当前聊天已经完全停止检索。若要实现纯通用助手，需要修改聊天编排、提示词、降级行为及测试。
 
-```text
-VOLC_RTC_APP_ID=
-VOLC_RTC_APP_KEY=
-VOLC_ACCESS_KEY_ID=
-VOLC_SECRET_ACCESS_KEY=
-VOLC_RTC_VOICECHAT_CONFIG_JSON=
-```
+项目没有内置真实学校的正式制度资料。可选教务连接属于用户授权的数据同步，不是聊天的前置条件。涉及具体学校的规定、截止时间、地点或材料时，当前检索结果和普通模型回答都不能替代官方信息。
 
-其中 `VOLC_RTC_VOICECHAT_CONFIG_JSON` 是 RTC VoiceChat 控制台所需的端到端实时语音配置 JSON；CampusMate 后端会填充房间、任务、目标用户与 Focus AI Prompt。未配置时接口会安全返回“实时语音尚未配置”，不会使用假 Token 或泄露配置。
+## 通知数据流
 
-## 不在本后端范围
+1. Android 在用户授予通知访问权限后，从系统通知栏接收微信、企业微信、QQ/TIM 和学习通等来源实际展示的消息；端侧按来源开关、群白名单、内容规则过滤并存入本地队列。
+2. Android 的 WorkManager 将通过筛选的消息批量发往 `/notices/ingest-batch`。后端先去重与规则分类，再对模糊内容使用可用的 LLM；普通聊天会被忽略，可执行通知可转成待办。
+3. 学习通账号同步通过独立的 `/chaoxing/*` 路由获取课程、通知、作业和考试；它与系统通知监听不是同一种接入。手动粘贴通知继续走 `/notices/extract` 等页面流程。
 
-- PostgreSQL / Redis / Docker(SQLite 单机,预留 PG 迁移)
-- 真实学校内部系统接入
-- CNN 训练与 LiteRT 推理
-- 向量数据库(预留接口)
-- 用户注册接口(生产由管理员创建;dev/test 可通过 seeder 或仓库创建验收账号)
-- 附件下载接口(当前仅上传 + 列表)
-- 任务提醒推送(由客户端轮询 dashboard)
-- **任何一键重置测试数据等生产接口**(已下线)
+服务端接收的是客户端提交的文本，不具备读取微信、QQ 私有聊天记录的能力。Android、HarmonyOS 和小程序的系统权限也不相同，详见[主 README](../README.md)。
 
-## 目录结构
+## 在线课堂
 
-```
-backend/
-├── app/
-│   ├── main.py                   # FastAPI 应用入口 + lifespan
-│   ├── api/
-│   │   ├── router.py            # 路由聚合(prefix /api/v1)
-│   │   ├── deps.py              # 认证依赖 / RBAC / 权限校验
-│   │   └── routes/              # 各业务路由
-│   │       ├── health.py        # GET /health
-│   │       ├── notices.py       # POST /notices/extract
-│   │       ├── knowledge.py     # 文档 CRUD / rebuild / status
-│   │       ├── counselor.py     # POST /counselor/chat (SSE)
-│   │       ├── auth.py          # POST /auth/login / refresh / logout / me
-│   │       ├── courses.py       # 课程 CRUD
-│   │       ├── classes.py       # 班级 CRUD / 加入 / 成员管理
-│   │       ├── announcements.py # 通知 CRUD / 发布 / 已读
-│   │       ├── assignments.py   # 任务 CRUD / 发布 / 统计 / 学生状态
-│   │       ├── submissions.py   # 提交 CRUD / 评分 / 附件
-│   │       └── dashboard.py     # 教师 / 学生工作台
-│   ├── core/                    # 配置 / 异常 / 日志 / 安全(JWT/密码/文件名)
-│   ├── database/                # SQLite 包装(线程安全,内存模式共享连接)
-│   ├── models/                  # 数据行模型(含多角色 multi_role.py)
-│   ├── repositories/            # DocumentRepository + multi_role_repository.py
-│   ├── schemas/                 # Pydantic 请求/响应模型(含 multi_role.py)
-│   ├── services/
-│   │   ├── notice_extraction_service.py  # LLM + 规则抽取
-│   │   ├── knowledge_ingestion_service.py # 文件解析→分块→入库
-│   │   ├── retrieval_service.py          # BM25 检索 + 元数据排序
-│   │   ├── rag_service.py                # RAG 编排 + SSE 流式
-│   │   ├── demo_seeder.py                 # 多角色演示数据 seeding
-│   │   ├── container.py                  # ServiceContainer(依赖注入)
-│   │   └── llm/                          # LLM 抽象 + OpenAI 兼容实现
-│   └── utils/                   # 文件解析 / 中文分词
-├── data/
-│   ├── knowledge_base/
-│   │   └── knowledge_base/      # 管理员上传或外部同步的校园资料
-│   ├── submission_attachments/  # 学生提交附件(运行后自动生成)
-│   └── app.db                   # SQLite 数据库文件(运行后自动生成)
-├── scripts/
-│   ├── rebuild_index.py         # 重建索引命令行
-│   ├── check_llm_provider.py    # LLM 连通性检查(支持 Fake Provider)
-│   └── evaluate_retrieval.py    # 检索评测(Hit@1/Hit@3/MRR/拒答率/失败样例)
-├── tests/                       # pytest 测试(含多角色测试)
-├── .env.example
-├── pytest.ini
-├── requirements.txt
-└── README.md
-```
+课程内互动课堂会先检查课程访问权限及受管服务状态，生成前可查看计划，提交后可查询进度、内容组成和历史会话。Web 的课堂工作台还通过课程 workspace 接口管理场景、播放、编辑与导出。导航栏“学习空间”则承载以独立进程运行的上游 `magicclass-app`。
 
-## 快速开始
+这些入口依赖 `magicclass-service` 和相应模型提供方。服务未启用、不可达或缺少所需配置时，接口会返回真实的不可用状态；仓库中的页面和测试并不等于每台机器都能生成课堂。
 
-### 1. 安装依赖
+## 本地启动
 
-```bash
+在仓库根目录运行 `start_backend.bat`，或手动进入本目录：
+
+```powershell
 cd backend
 python -m venv .venv
-
-# Windows PowerShell(推荐)
-.venv\Scripts\Activate.ps1
-# 若提示执行策略受限,可临时放开(仅当前会话):
-# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-
-# Windows cmd / Git Bash
-.venv\Scripts\activate.bat
-
-# macOS / Linux
-# source .venv/bin/activate
-
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-> Windows 上若 jieba / PyPDF2 / python-docx 安装失败,可加 `--no-build-isolation`。
-
-### 2. 配置环境
-
-```bash
-cp .env.example .env
-# 默认无需 LLM 即可运行(规则模式 + 检索摘要模式)
-```
-
-如需启用 LLM 抽取/回答,编辑 `.env`:
-
-```env
-LLM_PROVIDER=openai_compatible
-LLM_BASE_URL=https://api.deepseek.com/v1   # 或其它兼容端点
-LLM_API_KEY=sk-xxxxxxxxxxxx
-LLM_MODEL=deepseek-chat
-```
-
-### 3. 启动后端
-
-```bash
+Copy-Item .env.example .env
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-启动后访问:
-- 健康检查: http://localhost:8000/api/v1/health
-- Swagger 文档: http://localhost:8000/docs
+默认 `LLM_PROVIDER=none`；配置示例和其他变量见 [`.env.example`](.env.example)。不要把包含密钥的 `.env` 提交到仓库。接口文档位于 `http://localhost:8000/docs`，健康检查位于 `http://localhost:8000/api/v1/health`。
 
-### 4. 运行测试
+仅启动后端无法运行在线课堂的受管服务与独立“学习空间”；在 Windows 仓库根目录运行 `start_all.bat` 可按依赖顺序启动完整链路。
 
-```bash
+## 验证
+
+```powershell
+cd backend
 pytest
 ```
 
-### 5. 重建索引
-
-```bash
-python scripts/rebuild_index.py
-```
-
-### 6. LLM 连通性检查与检索评测
-
-```bash
-# LLM Provider 连通性检查 — 验证 LLM 配置完整性 / 连接可用性 / 响应耗时
-# 未配置 LLM 时返回 not_enabled 并退出码 0,不阻断后续操作
-python scripts/check_llm_provider.py
-python scripts/check_llm_provider.py --json   # JSON 输出(便于 CI 解析)
-
-# 检索评测 — 真实调用 RetrievalService,计算 Hit@1 / Hit@3 / MRR / 正确拒答率 / 错误接受率
-python scripts/evaluate_retrieval.py
-python scripts/evaluate_retrieval.py --json   # JSON 输出
-```
-
-> 检索评测的 fixtures(44 条样例)、指标含义与最新结果说明见 [`../docs/retrieval_evaluation.md`](../docs/retrieval_evaluation.md)。
-> 未配置 LLM 时,系统仍使用规则抽取与检索摘要模式正常运行,详见下方"降级模式"。
->
-> **`retrieval_summary` vs `llm_rag` 区别**:
-> - `retrieval_summary`:LLM 不可用时,直接拼接 BM25 检索段落 + 来源元数据,标注 `evidence_level="retrieval_only"`,不调用 LLM
-> - `llm_rag`:LLM 可用时,基于检索段落调用 LLM 生成自然语言回答,标注 `evidence_level="llm_rag"`
-> - 两者都严格基于知识库,不编造政策/截止时间/材料要求
-
-## 通知抽取说明
-
-`POST /api/v1/notices/extract` 接受中文校园通知原文,返回结构化 JSON。
-
-**LLM 模式**(`LLM_PROVIDER=openai_compatible` 且 API Key 已配置):
-- 调用 LLM 输出结构化 JSON
-- 失败/超时自动降级到规则模式
-
-**规则模式**(默认,无 LLM 也能用):
-- 正则匹配:截止日期、面向对象、材料、提交方式、地点
-- 支持缺失年份推断(基于 `published_at` 或当前时间)
-- 不确定时设置 `needs_confirmation=true` 并在 `warnings` 中说明
-- 永不编造通知中不存在的材料
-
-规则模式已覆盖的语法:
-- `2026年7月30日前` / `7月30日前` / `截止时间为...` / `截至...`
-- `第8周周五17:00` / `本周五` / `下周一`
-- `提交至/交到/上传到/通过...提交`
-- `2024级本科生` / `XX学院学生` / `XX专业` / `XX班`
-- `行政楼XX办公室` / `学院办公室` / `学生事务中心` 等
-- 申请表/证明材料/成绩单/开题报告/创新创业材料 等 20+ 材料关键词
-
-## 知识库说明
-
-### 上传文档
-
-```bash
-curl -X POST http://localhost:8000/api/v1/knowledge/documents \
-  -F "file=@doc.md" \
-  -F "title=测试文档" \
-  -F "source_department=XX学院" \
-  -F "is_official=true"
-```
-
-支持格式: `.md .txt .pdf .docx`(可在 `ALLOWED_EXTENSIONS` 调整)
-单文件上限: 10 MB(可在 `MAX_UPLOAD_MB` 调整)
-
-### 检索排序
-
-文档与分块的元数据用于优先级排序(元数据加权合计上限 +0.30,不覆盖明显更高的语义相关性):
-
-1. 未过期 > 过期(+0.15)
-2. 官方 > 非官方(+0.10)
-3. 新鲜度 bonus:30 天内满额 +0.05,30~365 天线性衰减,超过 365 天归零
-4. BM25 相关度作为主体分(标题/小节字段加权 ×2,正文 ×1)
-5. 校园术语同义词对称扩展(奖助学金↔奖学金、暑期实践↔社会实践、政策↔办法 等)
-6. 短查询回退:1 token 短查询 min_overlap=1,2 token 短查询 min_overlap=2,含未知 token 时 +1
-7. 多路召回:复杂查询按标点拆分为子查询,合并去重
-
-## RAG 问答说明
-
-`POST /api/v1/counselor/chat` 支持 SSE 流式输出,严格基于知识库回答:
-
-- 检索证据不足 → `sources=[]`, `needs_human_confirmation=true`,回答"建议咨询辅导员"
-- 检索到冲突资料 → 明确指出冲突,展示两份来源,建议人工复核
-- 过期资料 → 降权但仍可显示,标注 `is_expired=true`
-- LLM 不可用 → 检索摘要模式,直接拼接关键段落,标注"检索摘要模式"
-- 恶意 Prompt → 系统消息强制约束"只能基于知识库回答",不绕过
-
-## 降级模式
-
-未配置 LLM(`LLM_PROVIDER=none`)时,接口显式降级,并**明确标注**返回结果来自规则或检索摘要,不伪装为 LLM 输出:
-
-| 接口 | 降级行为 | 标注字段 |
-|------|----------|----------|
-| `/notices/extract` | 规则抽取 | `extractor_mode="rules"` |
-| `/counselor/chat` | 检索摘要 + 模板整理 | `evidence_level="retrieval_only"`, `mode="retrieval_summary"` |
-| `/health` | 真实返回 `llm_available=false`, `fallback_enabled=true` | — |
-
-降级模式保证无 LLM Key 时仍可运行真实业务流程,但绝不返回伪造的 LLM 结果或 Mock 业务数据。
-
-## API 概览
-
-完整请求/响应字段、错误码、SSE 事件格式、RBAC 权限矩阵参见 [`../docs/api_overview.md`](../docs/api_overview.md)。
-
-## 知识库使用指南
-
-导入格式、冲突处理、过期文档等参见 [`../docs/knowledge_base_guide.md`](../docs/knowledge_base_guide.md)。
-
-## 安全边界
-
-- 后端不保存、不记录 LLM API Key(仅运行时读取环境变量)
-- 日志不记录完整用户对话内容、摄像头数据、表情数据
-- 上传文件名经过 `sanitize_filename`,防止路径穿越
-- 文件类型/大小/空文件/重复内容均校验
-- RAG 不得编造学校政策/截止时间/办理地点/材料要求
-- 密码仅以 PBKDF2-HMAC-SHA256 哈希存储,日志不记录 token 与密码
-- 错误响应不泄露用户名是否存在(`INVALID_CREDENTIALS` 统一返回)
-- 教师只能访问与教学直接相关的学生信息,不得跨课程读取(详见下方 RBAC 矩阵)
-
-## 多角色协同平台
-
-### 角色与权限矩阵
-
-| 资源 | student | teacher | admin |
-|------|---------|---------|-------|
-| 课程 — 列表/详情 | 仅自己已加入班级所属课程 | 仅自己负责的课程 | 全部 |
-| 课程 — 创建/修改 | ❌ | ✅(仅自己负责的) | ✅ |
-| 班级 — 列表/详情 | 仅自己加入的 | 仅自己课程下的 | 全部 |
-| 班级 — 创建/修改/成员管理 | ❌ | ✅(仅自己课程) | ✅ |
-| 班级 — 加入(邀请码) | ✅ | ❌ | ❌ |
-| 通知 — 查看 | 已加入班级且已发布 | 自己班级内 | 全部 |
-| 通知 — 创建/发布 | ❌ | ✅(自己班级) | ✅ |
-| 通知 — 已读回执 | ✅(自己) | 查看(自己班级聚合) | 查看 |
-| 任务 — 查看 | 已加入班级且已发布 | 自己班级内 | 全部 |
-| 任务 — 创建/发布/关闭 | ❌ | ✅(自己班级) | ✅ |
-| 任务 — 提交 | ✅(自己,只能自己) | ❌ | ❌ |
-| 任务 — 学生状态 | 仅自己 | 自己班级(全部学生) | 全部 |
-| 提交 — 查看 | 仅自己 | 自己班级所有学生 | 全部 |
-| 提交 — 修改 | 仅自己(未截止) | ❌ | ❌ |
-| 提交 — 评分/评论 | ❌ | ✅(自己课程) | ✅ |
-| 全校活动 — 查看 | 仅已发布 | 仅已发布 | 全部状态 |
-| 全校活动 — 创建/发布/结束 | ❌ | ❌ | ✅ |
-| 平台账号 — 查询/创建/停用 | ❌ | ❌ | ✅ |
-| 工作台 | `/student/dashboard` | `/teacher/dashboard` | 两者均可 |
-
-### 教师可见的学生信息边界(强制)
-
-允许:姓名 / 学号 / 学院 / 专业 / 年级 / 所属班级 / 通知已读状态 / 任务提交状态 / 提交时间 /
-是否逾期 / 成绩 / 教师评论 / 当前课程完成率。
-
-**禁止** 教师访问:学生私人 AI 对话、私人待办、个人学习陪伴记录、摄像头画面、表情识别结果、
-与当前课程无关的信息、密码和 token。详见
-[`../docs/api_overview.md` §RBAC 权限矩阵](../docs/api_overview.md#rbac-权限矩阵简表)。
-
-### AI 导员上下文融合
-
-`POST /api/v1/counselor/chat` 新增可选上下文字段 `course_id` / `class_id` / `assignment_id` /
-`announcement_id`。携带任一字段时必须携带有效 access token,后端会真实校验访问权限,
-草稿对学生不可见。详见
-[`../docs/api_overview.md` §4 AI 导员](../docs/api_overview.md#4-ai-导员-counselor)。
-
-### 验收账号(dev/test 环境)
-
-> 正式 Release 不提供任何"演示账号"或绕过认证的特殊账号。
-> 验收账号为**普通用户**,走完整真实业务流程(JWT 登录 / RBAC 校验 / 真实 SQL),
-> 不持有任何特殊权限或 Mock 数据开关。
-
-dev/test 环境可通过 `AUTO_SEED_DEMO_USERS=true` 显式启用 seeding(默认关闭,
-production 已被 config 校验拦截):
-
-| 用户名 | 密码 | 角色 |
-|--------|------|------|
-| `teacher_demo` | `Demo123456` | teacher |
-| `student_demo` | `Demo123456` | student |
-| `admin_demo` | `Demo123456` | admin |
-
-完整 seeding 规模:2 教师 / 3 课程 / 4 班级 / 31 学生 / 6 通知 / 8 任务 / 3 全校活动,
-覆盖已读/未读/已交/未交/逾期/已评分等不同状态。所有 seeding 数据明确标注
-(display_name 含"(演示)"后缀,文档 `is_demo=true`),不冒充真实学校数据。
-正式生产环境中,验收账号应由管理员通过真实业务流程在数据库中创建。
-
-### 性能策略
-
-- 教师统计使用聚合 SQL(`COUNT` / `GROUP BY`),不逐个学生循环查询
-- `student-status` 接口支持分页、状态筛选(`read_status` / `submission_status`)与姓名/学号搜索
-- `dashboard` 接口一次返回所有摘要,避免客户端连续请求十几个接口
-- 附件列表不返回文件内容,仅返回元数据
-- `Enrollment` / `Receipt` / `Submission` 写入使用 `INSERT OR IGNORE` / 唯一约束防重复
-- 长列表均分页,默认 page_size=20,最大 100
-- SQLite 启用 WAL 模式,写操作避免长时间持锁
-
-### 数据库迁移
-
-- 沿用现有 SQLite 封装,不重建 `app.db`,不破坏知识库 / 通知抽取 / RAG 表
-- 新增多角色表(users / courses / class_groups / enrollments / announcements /
-  announcement_read_receipts / assignments / submissions / submission_attachments)
-- 索引: `users.username` / `users.student_number` / `users.teacher_number` /
-  `courses.teacher_id` / `class_groups.course_id` / `enrollments.class_group_id` /
-  `enrollments.user_id` / `announcements.class_group_id` / `assignments.class_group_id` /
-  `assignments.deadline` / `submissions.assignment_id` / `submissions.student_id` /
-  `submissions.status` / `read_receipts.announcement_id` / `read_receipts.student_id`
-- 旧库迁移幂等:重复启动不重复创建数据,不破坏索引；历史校园活动及报名表会被永久删除
-
-### 附件限制
-
-- 文件类型:与知识库一致(`.md .txt .pdf .docx`,可在 `ALLOWED_EXTENSIONS` 调整)
-- 单文件上限: 10 MB(`MAX_UPLOAD_MB`)
-- 文件名: `sanitize_filename` 处理,拒绝路径穿越(`../` / 绝对路径等)
-- 空文件拒绝,文件大小必须 > 0
-- 附件列表不返回文件内容,仅返回元数据(`original_filename` / `mime_type` / `size_bytes` 等)
-
-### 当前限制
-
-- 任务提醒推送未实现(由客户端轮询 dashboard)
-- 活动报名目前只提供信息发布与学生可见链路,正式报名需对接学校报名系统
-- 多角色权限测试不覆盖 SSE 流式 AI 上下文(仅覆盖非流式)
-
-## 正式 Release 强约束
-
-正式 Release 不得启用任何 Mock 业务开关。`Settings._normalize` 在 `app_env=production` 下强制校验:
-
-| 配置 | dev/test 默认 | production 强制 |
-|------|--------------|------------------|
-| `AUTO_SEED_DEMO_USERS` | False | **True 抛 ValidationError** |
-| `DEMO_MODE` / `USE_MOCK_BACKEND` / `MOCK_BACKEND` | (不存在) | 扫描测试 `test_no_demo_mode_or_mock_backend_flags_in_app` 保证不引入 |
-
-新增 13 个强约束测试(`tests/test_production_hardening.py`):
-- production 禁用 AUTO_SEED / AUTO_IMPORT(2 个)
-- 生产代码无 Mock 业务开关(1 个)
-- `/knowledge/restore-demo` 接口已下线(1 个)
-- `/knowledge/manage/restore_demo` action 已下线(1 个)
-- 合法数据管理 action 仍可用(1 个)
-- 学生工作台空数据返回真实 0(1 个)
-- 教师工作台数字与 SQL 聚合一致(1 个)
-- 后端不可用返回真实 401/403,不返回 Mock 数据(3 个)
-- production 启动不调用 demo_seeder(1 个)
-- production 启动不导入测试环境资料(1 个)
-
-## 已知限制
-
-- SQLite 单机文件存储,不支持多实例横向扩展(预留 PostgreSQL 迁移)
-- BM25 关键词检索 + 校园术语同义词扩展(对称),未引入向量数据库 / Embedding 模型,语义检索能力有限
-- 测试环境资料非真实学校制度,仅用于 dev/test 验证检索/RAG 链路
-- 扫描型 PDF 不支持 OCR(仅提取文本层)
-- CNN 仍为 Mock(后端不涉及 CNN 推理,此限制仅说明项目整体状态)
-- 多角色附件仅上传 + 列表,未实现下载接口
-- 多角色权限测试不覆盖 SSE 流式 AI 上下文
-
-
-## Agent Runtime v2（持久化队列与控制平面）
-
-Agent 工作流**不再在 HTTP 请求内执行**。`POST /api/v1/agent-jobs` 只做认证、能力准入、
-幂等声明与原子入队,真正的执行由带租约的 `AgentWorker` 完成。
-
-### 运行模式
-
-| `AGENT_RUNTIME_MODE` | 行为 |
-| --- | --- |
-| `worker`（默认） | 接单并执行,同时恢复过期租约 |
-| `drain` | 拒绝新任务(503 `AGENT_RUNTIME_UNAVAILABLE`),但排空已有队列 |
-| `disabled` | 拒绝新任务且不领取任务 |
-
-```bash
-AGENT_RUNTIME_MODE=worker
-AGENT_WORKER_CONCURRENCY=1          # 单进程并发
-AGENT_WORKER_LEASE_SECONDS=30       # 租约时长
-AGENT_WORKER_HEARTBEAT_SECONDS=10   # 心跳间隔,必须小于租约
-AGENT_WORKER_POLL_MS=500            # 空队列轮询间隔
-```
-
-### 核心不变量
-
-- `agent_runs.status/phase` 的每次变化与对应 `agent_events` 在**同一事务**提交;
-  状态事件只能走仓储的原子方法,`AgentEventStore.append()` 仅用于不伴随状态变化的进度事件。
-- 同一 `run_id` 的 `sequence` 严格递增;SSE 以持久化事件为唯一真源。
-- 领取任务必须持有有期限租约;只有持有者可续租、写 checkpoint 或完成运行。
-- 处理器可能重复执行,因此副作用必须由 `idempotency_key + request_hash` 防重;
-  目标是 at-least-once + 幂等副作用,**不宣称 exactly-once**。
-- `AWAITING_APPROVAL` 不占 Worker,审批通过后重新排入 `QUEUED` 并从 checkpoint 继续。
-
-### 恢复与重试
-
-- 默认最多 3 次尝试,退避 1s / 5s / 15s;可重试错误回 `QUEUED` 并追加
-  `RUN_RETRY_SCHEDULED`,不可重试错误直接 `FAILED`。
-- Worker 崩溃后,另一个 Worker 在租约过期后调用 Handler 的 `recover()` 决定重排还是明确失败;
-  **不会**无条件把中断运行标记失败。
-- 进程重启不会让运行长期伪装成 `RUNNING`。
-
-### 工具调用
-
-所有注册工具都必须经过 `ToolInvocationGateway`,校验顺序固定为:
-
-```
-运行/用户有效性 → Handler capability → Role permission → 参数 Schema
-→ 资源归属 → Hard Deny → RiskEngine → ApprovalGate → 幂等原子声明
-→ 领域 Service 执行 → 安全事件/审计
-```
-
-任何工作流都不得绕过该入口直接执行注册工具。
-
-### 事件流恢复
-
-- `Last-Event-ID` 通过 `(run_id, event_id)` 索引直接定位,不扫描历史事件列表。
-- 游标无效或不属于该 Run 返回 `409 AGENT_CURSOR_INVALID`,客户端应丢弃游标重连并做一次
-  REST 全量归并。
-- 每 15 秒发送注释心跳维持连接;非终态运行不会因空闲被断流,流只在客户端断开、
-  终态事件发送完毕或服务端关闭时结束。
-
-### 管理员观测(只读)
-
-```bash
-GET /api/v1/admin/agent-runtime/overview?since_hours=24
-GET /api/v1/admin/agent-runtime/runs/{run_id}/trace
-```
-
-仅 `admin` 可访问(未登录 401,学生/教师 403)。响应只包含计数、耗时、Token、状态与安全业务标识,
-**不含** prompt、完整模型内容、凭据、记忆正文或原始工具参数。所有查询都带时间窗与行数上限。
-
-### 故障处理与回滚
-
-1. 常规回滚先切 `AGENT_RUNTIME_MODE=drain`,拒绝新任务并把队列排空;
-2. 再回滚应用版本;
-3. 若无法排空,保持新版本 `disabled` 并修复前滚——**不要**让旧版启动逻辑把新队列任务统一标记 FAILED。
-
-回滚不删除新表、不降级数据库、不恢复 `inline` 双路径。切换模式、排空状态、剩余队列数与版本兼容性
-应记录在发布检查单中。
-
-故障演练见 `tests/test_agent_runtime_failure_drills.py`。
-
-## 下一阶段
-
-- 接入 PostgreSQL + Redis(从 SQLite 迁移;触发门槛见 Agent Runtime v2 章节:持续需要 2 个以上副本且写锁等待 P95 > 100ms、活跃 Run 持续 > 20、队列深度 > 100 持续 15 分钟,或单机调度延迟 P95 连续 3 天 > 2s)
-- 引入向量检索 + Embedding 模型(中文友好)
-- 接入真实学校通知源
-- 增加限流与缓存
-- 实现附件下载接口
-- 增加用户注册流程
+学习通同步需要可用的外部登录态；LLM 回答和课堂生成需要相应服务配置。自动化测试中的假提供方与演示资料只验证代码路径，不代表已连接真实学校或已完成移动设备验收。

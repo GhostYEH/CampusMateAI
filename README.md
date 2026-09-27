@@ -1,587 +1,79 @@
-# 大学生校园事务智能陪伴助手 (CampusMate AI)
+# CampusMate AI · 个人 AI 学习与事务助手
 
-一款面向大学生的智能助手,解决校园通知分散、事务流程不清、学习状态难追踪、缺乏有温度的陪伴体验等问题。
+CampusMate AI 面向个人的学习与日常事务管理：把分散的消息和课程信息整理成可查看的通知、待办与学习计划，并提供对话、专注辅助和互动课堂。AI 对话的产品定位是**通用助手**，不以绑定某所学校作为聊天前提，也不能把演示资料当作真实学校规定。
 
-> 计算机设计大赛参赛项目 · 当前阶段: 原生 Android(Kotlin + Jetpack Compose)移动端 + React 18 Web 前端 + 微信小程序 + FastAPI 真实后端(Mock 与 Real 双模式可切换) + 表情识别训练与 LiteRT 部署
+> 本文区分产品定位与当前实现。现有 Web、Android 聊天仍调用后端 `/api/v1/counselor/chat`（别名 `/assistant/chat`）；除问候等短对话外，后端目前仍执行 BM25 校园知识库检索。普通问题在配置 LLM 后可以回答，但“聊天完全不检索知识库”尚未由当前代码实现。详情见[后端说明](backend/README.md)。
 
-## 学习状态辅助：V3.2-A 行为模型与 V3.3.1 Presence
+## 当前功能
 
-原有的 `READING / WRITING / PHONE_USE` 细粒度动作识别方案已调整为更符合 CampusMate 使用场景的学习状态辅助方案。当前默认行为模型为 V3.2-A：
+| 功能 | 实际实现与边界 |
+| --- | --- |
+| AI 助手 | Web、Android 等端接入流式对话；可结合用户授权的个人待办、课程和学习状态上下文，支持可选的网页搜索及互动课堂建议。当前聊天接口仍保留历史知识库检索链路；学校制度问题不能把通用回答当作官方结论。 |
+| 消息与通知整理 | **Android** 经用户开启系统通知访问权限后，接收通知栏中已展示的微信、企业微信、QQ/TIM、学习通消息；按来源开关、群名白名单和内容规则过滤，经本地队列上传，后端分类、去重、提取可执行事项并生成通知或待办。也可手动粘贴通知。这里不读取聊天记录或应用私有数据库。 |
+| 学习通同步 | 用户连接学习通账号后，后端可同步课程、课程通知、作业和考试等信息；Android 有定期同步任务。它与“读取学习通系统通知”是两条独立来源，外部登录状态失效或需要验证时须重新连接。同步的作业、考试状态由学习通决定，CampusMate 中按只读处理。 |
+| 可选教务连接 | 后端提供学校系统探测、账号绑定和课表、成绩、考试同步接口。能否获取真实数据取决于用户选择的学校、适配器和有效授权；聊天不要求先绑定学校。 |
+| 个人事务与学习 | 待办、日程、课程、考试、专注计时、学习状态和个人学习计划等页面及后端能力。各端功能覆盖不同，以各端说明为准。 |
+| 在线课堂 | Web 课程内的互动课堂可按课程上下文生成内容、查看进度与组成、进入工作台编辑和播放；导航栏“学习空间”打开独立运行的上游 magic class 应用。生成、语音等能力取决于受管服务和模型配置，未启动时页面会显示真实不可用状态。 |
+| 本地学习辅助 | Android 专注页使用 CameraX、LiteRT 和 ONNX Runtime 做本地表情、可见学习行为与在席观察；HarmonyOS 端也接入本地模型。结果是辅助观察，不代表专注程度、心理状态或学习效果。 |
+| 知识库管理 | 后端仍提供文档导入、BM25 检索与管理接口，供现存聊天链路及相关管理功能使用；它不是通用助手的产品定位，也不自带某所学校的正式制度资料。 |
 
-- `VISIBLE_STUDY`：检测到明确可观察学习行为
-- `IDLE`：暂未检测到明确学习行为
+### 在线课堂的两个入口
 
-在模型输出之上新增学习连续性状态机，短暂思考、翻页、姿势调整或视觉遮挡不会立即中断学习状态。
+- **课程内互动课堂**：从课程页“进入课堂”创建或复用工作台，以课程内容为上下文生成幻灯片、测验或互动场景等内容；可查看生成进度、编辑场景、播放并导出。请求中的内容类型是生成意图，实际产出以服务返回的组成信息为准。
+- **导航栏“学习空间”**：Web 经后端确认服务和公开 Origin 后，内嵌独立运行的 `magicclass-app`。它与课程内工作台是两个入口，完整使用需要启动 `magicclass-service`、后端、`magicclass-app` 和 Web。
 
-Focus 页面已完成产品化升级，包括：
+### 通知来源的端侧差异
 
-- 4:5 前置摄像头观察窗口
-- 当前学习状态
-- 最近 5 分钟学习节奏
-- 本次观察摘要
-- 表情辅助信息
-- Debug-only 目标域数据采集与本地视觉测试工具
-- V3.1、V2 模型回滚能力
-- 独立的 Presence（在席）状态：`PRESENT` / `OBSERVING` / `ABSENT`
+| 客户端 | 当前能力 |
+| --- | --- |
+| Android | `NotificationListenerService` 读取**已展示的系统通知**；微信、企业微信、QQ/TIM 的群消息需要分别配置白名单，学习通系统通知可作为消息来源；另支持学习通账号同步。 |
+| HarmonyOS | 有通知来源解析、筛选与订阅扩展代码，但系统通知订阅需要相应系统资质。普通应用不能据此承诺读取同机微信、QQ 等通知；可使用后端通知、学习通同步和手动粘贴。 |
+| Web | 使用后端聚合后的通知与待办，没有手机系统通知监听能力。 |
+| 微信小程序 | 提供通知查看、手动提取等演示流程，默认 Mock；不具备读取手机微信或 QQ 通知的权限。 |
 
-V3.2-A 在保持 V3.1 原始 validation / normal test 独立不变的前提下，以 V3.1 checkpoint 微调，并加入真实目标域的 hard-case visible-study 与 matched-idle 训练样本；normal test 的 accuracy / macro-F1 约为 `97.55%`。V3.1 曾在 588 张 hard-case 历史诊断集上的 visible-study recall 为 `29.59%`；该批样本后来已转入 V3.2-A 训练，因此不能作为 V3.2-A 的独立 benchmark。
+## 工程组成
 
-Presence 与学习行为是两个独立维度：`IDLE` 不等于离席，`VISIBLE_STUDY` 不等于正在学习，`ABSENT` 也不等于用户停止学习。Presence 优先使用本地 person detector 证据，并以稳定行为与 ML Kit 人脸检测作为辅助证据。
+| 目录 | 作用 |
+| --- | --- |
+| [`backend/`](backend/README.md) | FastAPI、SQLite、认证、通知处理、学习通同步、AI 对话和互动课堂网关 |
+| [`webreact/`](webreact/README.md) | 唯一 Web 客户端，React 18 + Vite；包含课程内互动课堂及“学习空间”入口 |
+| [`android/`](android/README.md) | Kotlin + Jetpack Compose；系统通知接入、学习通、专注辅助等移动端能力 |
+| [`harmony/`](harmony/README.md) | ArkTS / ArkUI 客户端；部分系统能力受 HarmonyOS 权限资质限制 |
+| [`wx/`](wx/README.md) | TypeScript 微信小程序；部分功能为 Mock 演示 |
+| [`ml/`](ml/) | 行为与表情模型训练、评估和导出 |
+| `magicclass-service/` | CampusMate 互动课堂的受管服务 |
+| `magicclass-app/` | 导航栏“学习空间”使用的上游独立应用；仅允许仓库规定的品牌补丁 |
 
-### 已知限制
+系统角色为 `student` 和 `admin`；部分旧目录或示例数据仍保留 `teacher` 命名，不表示存在独立教师端。前端实际功能应以路由和权限校验为准。
 
-- 侧面书写且手臂明显遮挡时，识别可能不稳定
-- 电脑学习无法仅依靠单帧视觉可靠判断
-- 表情识别仍需进一步优化
-- 尚未完成多人、多环境泛化验证
+## 本地运行
 
-下一阶段路线为：V4 Focus AI 语音助手、V4.1 Session Context、V4.2 专注结束摘要、V4.3 个性化学习陪伴；电脑学习等单帧语义模糊场景的进一步研究不阻塞上述产品路线。
+在 Windows 仓库根目录按需要选择：
 
-## 核心功能
+| 脚本 | 启动内容 |
+| --- | --- |
+| `start_all.bat` | `magicclass-service` (4010) → FastAPI (8000) → `magicclass-app` (3000) → Vite Web (5174)；使用在线课堂与“学习空间”时运行 |
+| `start_backend.bat` | 仅 FastAPI (8000) |
+| `startreact.bat` | 仅 Web (5174) |
 
-| 模块 | 说明 |
-|------|------|
-| 校园通知智能整理 | 粘贴通知原文 → 分步骤动态提取任务名/截止时间/材料/地点 → 人工修正 → 保存为待办(支持真实后端 LLM 抽取 + 规则降级) |
-| 个人待办与截止提醒 | 今日/即将截止/已完成/全部/日历视图,优先级、倒计时、滑动操作、撤销删除 |
-| AI 校园助手 | 流式回答、参考来源引用、快捷问题、建议操作、停止/重新生成、无资料时提示咨询辅导员(支持真实 RAG) |
-| 学习陪伴 | 学习计时、目标管理、表情识别(预留)、状态指示、休息提醒 |
-| 校园知识库 | 文档导入(MD/TXT/PDF/DOCX)、BM25 中文检索、过期/官方/版本优先级、内容哈希去重 |
-| 我的 | 用户信息、通知/提醒/权限设置、深色模式、减少动态效果、后端连接状态、清除数据、隐私政策 |
+仅开发后端和普通 Web 页面时可组合运行 `start_backend.bat` 与 `startreact.bat`。在线课堂受管服务未启动或未配置时，相关入口会显示不可用；不会生成假的课堂内容。
 
-## 科学边界
+手动启动与测试命令见各端 README。Android/JVM 命令必须使用仓库捆绑的 JDK 21：
 
-CNN 识别的是**可观察到的面部表情**,不进行心理诊断。界面文案使用:
-- "系统观察到当前表情可能偏低落"
-- "识别结果仅供辅助参考"
-- "你好像有些疲惫,需要休息一下吗?"
-
-禁止出现"检测出你患有焦虑症"等诊断性表述。疲劳状态结合连续学习时长、用户主观反馈和后续生理信号综合判断,不简单等同于 FER2013 表情类别。
-
-## 项目组成
-
-CampusMate AI 只存在两类系统角色:**学生(student)** 与 **管理员(admin)**,不存在教师端。
-
-```
-CampusMate AI
-├── 学生端
-│   ├── Android(Kotlin Compose)
-│   ├── 微信小程序
-│   ├── 校园通知聚合(Android NotificationListenerService)
-│   ├── 微信通知(系统通知栏)
-│   ├── 学习通通知(系统通知栏)
-│   ├── AI 校园助手(RAG)
-│   ├── 待办
-│   └── 学习陪伴(专注 / CameraX / 表情识别)
-│
-├── 管理员端
-│   └── Web(React 18)
-│       ├── 知识库管理
-│       ├── 文档维护
-│       ├── RAG 索引维护
-│       └── 系统状态
-│
-└── FastAPI 后端
-    ├── Auth(注册仅 student,admin 由管理员创建)
-    ├── Notice
-    ├── Task
-    ├── RAG
-    ├── Knowledge
-    └── Admin
+```powershell
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+$env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+& "$env:JAVA_HOME\bin\java.exe" -version
 ```
 
-| 模块 | 路径 | 技术 |
-|------|------|------|
-| 移动端 | `android/` | Kotlin + Jetpack Compose(Material 3) |
-| Web 前端 | `webreact/` | React 18 + Vite + React Router + axios |
-| 微信小程序 | `wx/` | TypeScript + 原生小程序框架 |
-| 后端 | `backend/` | Python / FastAPI / SQLite / RAG / JWT / BM25 |
-| 机器学习 | `ml/` | PyTorch / FER2013 / LiteRT 部署 |
+后端环境变量从 [`backend/.env.example`](backend/.env.example) 复制；默认 `LLM_PROVIDER=none`，通知可走规则抽取，聊天会走现有检索摘要降级。若要测试真实模型回答或课堂生成，须按对应服务配置模型提供方；不要提交 `.env` 或密钥。
 
-## 技术栈
+## 已知边界
 
-**移动端(Android)**
+- 当前聊天**仍有知识库检索**，与“纯通用、无知识库检索”的目标不一致；这需要单独调整后端聊天编排及相关测试，不能只改 README 宣称已经完成。
+- 仓库不自带任何学校的正式通知或教务数据。可选教务连接和学习通同步都依赖用户实际绑定、适配器及外部登录态；手机消息接入仅限系统实际展示、用户授权且通过筛选的通知。
+- HarmonyOS 的跨应用通知读取受系统资质限制；微信小程序的 AI、知识库和表情相关演示内容标注为 Mock。
+- 本地视觉模型输出不能用于医学、心理诊断；跨设备和环境效果仍需验证。
 
-- **Kotlin** + **Jetpack Compose**(Material 3)
-- **Navigation Compose** 路由
-- **Retrofit** + **Moshi** + **OkHttp** 网络(Mock 与 Real 双模式)
-- **DataStore**(`androidx.datastore.preferences`)本地持久化
-- **Media3 ExoPlayer** 视频背景
-- **Kotlin Coroutines + Flow** 异步
-
-**Web 前端(独立仓库子目录 `webreact/`)**
-
-- React 18 + Vite + React Router + axios
-
-**Python 后端**(位于 [`backend/`](backend/))
-
-- **FastAPI** + **Pydantic v2**(数据校验与 API 契约)
-- **SQLite**(原型数据存储,预留 PostgreSQL 迁移)
-- **jieba** + **rank_bm25**(中文分词与 BM25 检索)
-- **PyPDF2** / **python-docx**(PDF / DOCX 解析)
-- **OpenAI 兼容协议**(LLM Provider 抽象,支持 DeepSeek/通义/Kimi/本地 vLLM)
-- **SSE**(AI 校园助手流式响应)
-- **pytest** 后端测试
-- **uvicorn** ASGI 服务器
-
-**微信小程序**(位于 [`wx/`](wx/))
-
-- TypeScript + 原生小程序框架
-- 复用 FastAPI 接口
-
-**机器学习**(位于 [`ml/`](ml/))
-
-- **PyTorch** + **torchvision**(FER2013 表情识别训练)
-- **ResNet18 / MobileNetV3-Small / EfficientNet-B0** 多模型对比
-- **LiteRT** 模型导出与 Android 部署(`expression_model.tflite`)
-- 训练审计、评估指标复现、数据清单管理
-
-## 项目结构
-
-```
-campus_mate_ai/
-├── android/                              # 原生 Android 应用(Kotlin Compose)
-│   └── app/src/main/java/com/example/campusai/
-│       ├── data/model/                  # 数据模型(User/Notice/Task/Course/ChatMessage/ExtractResult)
-│       ├── data/local/                   # AppDataStore(DataStore 持久化)
-│       ├── data/remote/                  # ApiClient / ApiService(Retrofit 封装)
-│       ├── data/repository/              # AppRepository(统一数据入口,Mock/Real 可切换)
-│       ├── ui/screens/                   # 各业务页面(login/shell/dashboard/tasks/counselor/study/...)
-│       ├── ui/navigation/                # AppNavHost(Navigation Compose)
-│       ├── ui/theme/                     # Color / Theme / Type(Material 3 主题)
-│       └── ui/components/                # 通用组件与动效
-├── webreact/                              # React 18 前端
-├── wx/                                   # 微信小程序(TypeScript)
-├── backend/                              # Python FastAPI 后端
-│   ├── app/
-│   │   ├── api/routes/                   # health / notices / knowledge / counselor 路由
-│   │   ├── core/                         # config / exceptions / logging / security
-│   │   ├── database/                     # SQLite 包装(线程安全)
-│   │   ├── models/                       # 数据行模型
-│   │   ├── repositories/                 # DocumentRepository
-│   │   ├── schemas/                      # Pydantic 请求/响应模型
-│   │   ├── services/                     # 抽取 /  ingestion / 检索 / RAG / LLM
-│   │   └── utils/                        # 文件解析 / 中文分词
-│   ├── data/
-│   │   ├── knowledge_base/               # 管理员上传或外部同步的校园资料
-│   │   └── app.db                        # SQLite 数据库文件(运行后自动生成)
-│   ├── scripts/rebuild_index.py          # 重建索引命令行
-│   ├── tests/                            # pytest 测试
-│   ├── .env.example
-│   ├── pytest.ini
-│   ├── requirements.txt
-│   └── README.md                         # 后端专属文档
-├── ml/                                   # 表情识别训练/评估/部署
-│   └── expression_recognition/           # 模型训练、审计、评估与 LiteRT 导出
-├── .github/workflows/                    # GitHub Actions CI(Backend CI)
-├── AGENTS.md                             # 项目长期规范
-└── README.md                             # 本文件
-```
-
-## 抽象服务层
-
-移动端通过 `AppRepository` 统一对外提供数据,内部可在 Mock 实现与 `ApiService`(Retrofit)真实实现之间切换,UI 不直接依赖写死数据:
-
-- 通知智能提取 → `AppRepository.extractNotice(...)`(→ `POST /api/v1/notices/extract`)
-- AI 校园助手聊天 → 走真实 RAG(`POST /api/v1/counselor/chat` 或 `/assistant/chat`,SSE 流式)
-- 校园知识库 → (`GET /api/v1/knowledge/documents`)
-- 待办 / 学习记录 / 设置 → 本地 `DataStore` 持久化
-
-后端不可用时 UI 显示"未连接"并提供重试与降级入口。
-
-## 本地数据持久化
-
-- `AppDataStore`(`androidx.datastore.preferences`)持久化登录态、设置、后端地址等
-- 个人中心提供"清除本地数据"入口,带二次确认
-- 损坏数据自动降级,启动失败也不阻断应用
-
-## Design System(移动端)
-
-- **色彩**: 低饱和青蓝色为主强调色,暖色(琥珀)表达截止/关怀/提醒;自动适配深色模式
-- **字号**: 统一排版层级(display/title/subtitle/body/label/caption)
-- **间距**: 8pt 网格
-- **圆角 / 阴影**: 低饱和、不堆叠
-- **动画**: 进入分层出现、卡片淡入位移、状态切换过渡;全局支持"减少动态效果"(无障碍)
-
-## 深色模式
-
-- `Theme.kt` 提供完整的浅色 / 深色 Material 3 主题
-- 通过 `context` 主题色板自动选择变体
-- 个人中心提供深色模式开关
-
-## 动态交互
-
-- 页面进入分层出现动画
-- 卡片淡入 + 位移
-- 待办完成勾选 + 进度变化 + 列表重排
-- 截止时间倒计时实时更新
-- 通知提取分步骤处理过程(动态反馈)
-- AI 校园助手打字中动画 + 逐字流式输出
-- 学习计时器实时变化
-- 空状态/加载/错误/成功完整反馈
-- 按钮按下/禁用/加载多状态
-- 列表筛选/排序/搜索实时反馈
-
-## CNN 接口设计(Kotlin 契约)
-
-```kotlin
-enum class ExpressionLabel {
-    HAPPY, NEUTRAL, SAD, ANGRY, FEAR, SURPRISE, DISGUST, UNKNOWN, NO_FACE
-}
-
-data class ExpressionResult(
-    val label: ExpressionLabel,
-    val confidence: Double,
-    val probabilities: Map<ExpressionLabel, Double>,
-    val timestamp: Long,
-    val isStable: Boolean,
-    val modelVersion: String
-)
-
-interface ExpressionRecognitionService {
-    fun results(): Flow<ExpressionResult>
-    suspend fun initialize()
-    suspend fun start()
-    suspend fun pause()
-    suspend fun stop()
-    suspend fun dispose()
-}
-```
-
-实现要求: 多帧概率平滑、置信度阈值过滤、状态持续时间判断、建议冷却时间。低置信度显示"暂时无法稳定判断当前表情",且**不**触发情绪安慰。已通过 CameraX + ML Kit 人脸检测 + LiteRT 实现,详见下文"CNN 面部表情识别"章节。
-
-## 运行
-
-根目录的四个启动脚本职责不重叠，按需要选用：
-
-| 脚本 | 作用 | 何时用 |
-|------|------|--------|
-| `start_all.bat` | 按依赖顺序拉起完整链路：magicclass-service(4010) → FastAPI(8000) → magicclass-app(3000) → Vite Web(5174)，启动前先做本地配置初始化与体检 | 需要 magic class 融合链路或导航栏「学习空间」时必须用它 |
-| `start_backend.bat` | 只启动 FastAPI(8000)：自动准备 `.env`、安装依赖、清理占用 8000 的残留进程 | 只调后端接口 |
-| `startreact.bat` | 只启动 Vite Web(5174)，缺依赖时自动 `npm install` | 只调前端页面 |
-
-`start_backend.bat` + `startreact.bat` 即「后端 + Web」最小组合，适合不涉及 magic class 的日常开发。
-
-> 只起 Web + 后端时，magic class 相关页面会提示连不上受管服务、导航栏「学习空间」会提示应用进程未运行——这是预期行为，不是故障。
-
-### 一、后端启动(FastAPI)
-
-```bash
-cd backend
-
-# 1. 创建虚拟环境
-python -m venv .venv
-
-# Windows PowerShell(推荐)
-.venv\Scripts\Activate.ps1
-# 若提示执行策略受限,可临时放开(仅当前会话):
-# Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-
-# Windows cmd / Git Bash
-.venv\Scripts\activate.bat
-
-# macOS / Linux
-# source .venv/bin/activate
-
-# 2. 安装依赖
-pip install -r requirements.txt
-
-# 3. 配置环境变量
-cp .env.example .env
-# 默认无需 LLM 即可运行(规则模式 + 检索摘要模式)
-
-# 4. 启动后端
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-启动后访问:
-- 健康检查: http://localhost:8000/api/v1/health
-- Swagger 文档: http://localhost:8000/docs
-
-### 二、移动端运行(Android / Kotlin Compose)
-
-```bash
-# 方式一: Android Studio
-# 用 Android Studio 打开 android/ 目录 → Sync Project with Gradle Files → 运行 app 模块到模拟器 / 真机
-
-# 方式二: 命令行构建
-cd android
-./gradlew :app:assembleDebug        # Linux / macOS
-gradlew.bat :app:assembleDebug      # Windows
-```
-
-- 默认连接本地后端:`http://10.0.2.2:8000`(Android 模拟器映射到本机)
-- 真机调试: 构建时传入电脑局域网地址，例如 `gradlew.bat :app:assembleDebug -PAPI_BASE_URL=http://<LAN_IP>:8000/api/v1/`，并确保手机与电脑同网、端口可访问。使用 USB 调试时也可在本机 `local.properties` 配置 `API_BASE_URL=http://127.0.0.1:8000/api/v1/`，然后执行 `adb reverse tcp:8000 tcp:8000`；拔掉 USB 后 reverse 会失效，仅适用于开发调试。
-- 发布或跨网络使用: 将 `API_BASE_URL` 指向云服务器的 HTTPS API 地址；安卓端不需要把 FastAPI 打包进 APK
-- 后端不可用时使用本地缓存并明确提示服务状态;开发构建可通过环境配置启用 Mock 数据
-
-### 三、Web 前端运行(React 18)
-
-```bash
-cd webreact
-npm install
-npm run dev        # 默认 http://127.0.0.1:5174
-```
-
-Web 端优先作为管理员管理端,同时兼容学生端;默认连接 `http://localhost:8000`。CampusMate AI 只存在学生与管理员两类系统角色,不存在教师端。
-
-### 四、可选:启用 LLM(增强抽取与回答质量)
-
-编辑 `backend/.env`:
-
-```env
-LLM_PROVIDER=openai_compatible
-LLM_BASE_URL=https://api.deepseek.com/v1   # 或其它兼容端点
-LLM_API_KEY=sk-xxxxxxxxxxxx                  # 禁止提交到 Git
-LLM_MODEL=deepseek-chat
-```
-
-未配置 LLM 时:
-- 通知抽取走规则模式(正则匹配 + 日期推断)
-- AI 校园助手走检索摘要模式(直接拼接关键段落)
-- 健康检查返回 `llm_available=false`, `mode=rules_only`
-
-### 五、后端工程命令
-
-```bash
-cd backend
-
-# 运行测试
-pytest
-
-# 重建知识库索引
-python scripts/rebuild_index.py
-
-# 启动后端(开发模式,自动重载)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 六、本地提醒 / 检索评测 / LLM 连通性检查
-
-```bash
-cd backend
-
-# LLM Provider 连通性检查
-python scripts/check_llm_provider.py
-python scripts/check_llm_provider.py --json
-
-# 检索评测
-python scripts/evaluate_retrieval.py
-python scripts/evaluate_retrieval.py --json
-```
-
-> **未配置 LLM 时**:系统仍使用**规则抽取**与**检索摘要模式**正常运行。详见 [`backend/README.md`](backend/README.md)。
-
-## 测试覆盖
-
-### Python 后端(pytest)
-
-| 文件 | 说明 |
-|------|------|
-| `backend/tests/test_health.py` | 健康检查 / 知识库状态 / LLM 可用性 |
-| `backend/tests/test_notice_extraction.py` | 15+ 真实校园通知场景 |
-| `backend/tests/test_knowledge.py` | 上传 / 查询 / 删除 / 重建 / 状态 / 去重 |
-| `backend/tests/test_counselor.py` | RAG 问答 / SSE 流式 / 无资料兜底 / 冲突提示 / 过期降权 / 恶意 Prompt 防御 |
-| `backend/tests/test_expression_contributions.py` | CNN 共建样本的同意校验、上传保存与用户删除 |
-| `backend/tests/test_services.py` | 检索服务 / RAG 编排 / 文档解析 |
-| `backend/tests/test_llm.py` | LLM Stub / 降级模式 / 超时处理 |
-| `backend/tests/test_check_llm_provider.py` | LLM 连通性检查脚本 |
-| `backend/tests/test_retrieval_evaluation.py` | 检索评测脚本 |
-| `backend/tests/test_retrieval_ranking.py` | 检索排序逻辑 |
-| `backend/tests/conftest.py` | 临时数据库 + 临时知识库目录 + FakeLLM |
-
-### 移动端(Android)
-
-- 关键仓库与 UI 交互测试(JUnit / Compose UI test),见 `android/app/src/androidTest`、`android/app/src/test`
-
-## 持续集成
-
-CI 在 push / PR 到 `main` / `master` 时触发:
-
-### Backend CI — [`.github/workflows/backend_ci.yml`](.github/workflows/backend_ci.yml)
-
-1. **backend-test**: 安装 Python 3.11 + 依赖 → 导入 FastAPI app(语法检查) → `pytest` → `evaluate_retrieval` → `check_llm_provider`(LLM_PROVIDER=none 验证降级)
-2. **backend-llm-stub**: 单独运行 LLM / RAG / 检索评测相关测试,验证 Fake/Stub Provider 与 `retrieval_summary` 降级路径
-
-> Backend CI 不调用真实外部 LLM,不要求保存真实 API Key;任一后端测试失败时 CI 失败。
-
-## 质量指标
-
-**Python 后端**
-
-- `pytest` — 测试通过
-- API 启动健康检查通过
-- 通知抽取覆盖 15+ 真实校园通知场景
-- 知识库导入/检索/删除全链路测试通过
-- RAG 问答(无资料/冲突/过期/恶意 Prompt)全部覆盖
-- 检索评测: Hit@1=90.62%, Hit@3=100%, MRR=0.9479, 正确拒答率=100%, 错误接受率=0%
-- LLM 降级模式: CI 中 `LLM_PROVIDER=none` 验证 `retrieval_summary` 与 fallback 行为,退出码 0
-
-## 已知限制与下一阶段
-
-### 当前阶段已完成
-
-**Python 后端**
-
-- FastAPI 基础工程(健康检查 / 统一异常处理 / 结构化错误响应)
-- 通知结构化抽取(LLM 优先 + 规则降级 + 不确定时 `needs_confirmation=true`)
-- 校园知识库导入(MD/TXT/PDF/DOCX + 内容哈希去重 + 安全限制)
-- BM25 中文检索(jieba 分词 + 元数据优先级排序)
-- RAG 问答(SSE 流式 + 来源引用 + 冲突提示 + 过期降权 + 恶意 Prompt 防御)
-- LLM 降级模式(无 API Key 时走检索摘要模式)
-- JWT 认证 + 角色权限(student / admin,历史 teacher 在运行时降级为 student)
-- 课程 / 班级 / 通知 / 任务 / 提交 全 CRUD + 状态机
-- 管理员 Web 后台(知识库管理 / 文档维护 / RAG 索引维护 / 账号管理 / 系统状态)
-- 附件上传与下载(安全校验 + 路径穿越防御)
-- 数据库迁移(旧库兼容 + 幂等)
-- 正式 Release 强约束(`production` 禁止启用任何 Mock 业务开关)
-
-**移动端 / Web**
-
-- 原生 Android(Kotlin Compose)完整业务页面与导航、DataStore 持久化、深色模式、减少动态效果
-- Android 已支持用户主动授权后的系统通知监听，当前优先接入微信与学习通；捕获内容仅本地保存，"读取微信通知"指通过 Android NotificationListenerService 合法读取系统通知栏中已展示的通知,不是读取微信聊天记录或私有数据库;学习通通知同样来自系统通知栏,未接入学习通官方 API,不保存账号密码
-- React 18 Web 前端复用 FastAPI 接口
-
-### 当前阶段尚未完成(真实限制)
-
-- **模型训练与导出**: 已保留 PyTorch / FER2013 训练与 LiteRT 导出工程；仓库内 Android 资产使用已导出的 `expression_model.tflite`。本文不声明未独立复验的准确率、延迟或设备性能。
-- **LiteRT / 原生真实推理**: Android 已集成 CameraX、ML Kit 本机人脸检测与 LiteRT 表情分类；若设备、权限或模型加载不可用，界面会如实显示不可用状态。
-- **真实学校系统接入**: 未连接真实学校通知源 / 教务系统
-- **真实学校正式数据**: 知识库内容需要由管理员上传或通过受控外部同步提供
-- **PostgreSQL / Redis**: 当前 SQLite 单机文件存储
-- **向量检索**: 当前 BM25 关键词检索 + 校园术语同义词扩展,未引入向量数据库 / Embedding 模型
-- **本地提醒调度**: 系统层定时推送尚未实现
-
-### 下一阶段建议
-
-- 接入 PostgreSQL + Redis
-- 引入向量检索 + 中文 Embedding 模型
-- 在更多真实设备上开展经过同意的可用性与稳定性验证（不把辅助观察作为心理或医疗结论）
-- 接入真实学校通知源(若可获得授权)
-- 完善本地提醒调度与主要页面自动化测试
-
-## 环境变量说明
-
-### Python 后端(见 [`backend/.env.example`](backend/.env.example))
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `APP_ENV` | `development` | 运行环境 |
-| `APP_HOST` | `0.0.0.0` | 监听地址 |
-| `APP_PORT` | `8000` | 监听端口 |
-| `APP_VERSION` | `0.2.0` | 后端版本号 |
-| `DATABASE_URL` | `sqlite:///./data/app.db` | SQLite 数据库路径 |
-| `KNOWLEDGE_BASE_PATH` | `./data/knowledge_base` | 知识库根目录 |
-| `EXPRESSION_CONTRIBUTION_PATH` | `./data/expression_contributions` | CNN 共建样本存储目录 |
-| `MAX_EXPRESSION_CONTRIBUTION_MB` | `3` | 单张 CNN 共建图片最大体积 |
-| `MAX_UPLOAD_MB` | `10` | 单文件最大体积 |
-| `ALLOWED_EXTENSIONS` | `md,txt,pdf,docx` | 允许上传的扩展名 |
-| `LLM_PROVIDER` | `none` | LLM Provider(`none` / `openai_compatible`) |
-| `LLM_BASE_URL` | (空) | LLM API 端点 |
-| `LLM_API_KEY` | (空) | LLM API Key(禁止提交到 Git) |
-| `LLM_MODEL` | (空) | LLM 模型名 |
-| `LLM_TIMEOUT_SECONDS` | `30` | LLM 调用超时 |
-| `ENABLE_FALLBACK_MODE` | `true` | LLM 不可用时是否启用降级 |
-| `CORS_ORIGINS` | `http://localhost:*,http://127.0.0.1:*` | CORS 允许源 |
-| `LOG_LEVEL` | `INFO` | 日志级别 |
-| `LOG_REQUESTS` | `true` | 是否记录 HTTP 请求日志 |
-| `AUTO_SEED_DEMO_USERS` | `false` | 启动时是否 seed 演示账号(仅 dev/test) |
-
-> 移动端通过 `BuildConfig.API_BASE_URL` 配置后端地址(Web 端使用 Vite proxy + axios)，默认指向 `http://localhost:8000`(Web)或 `http://10.0.2.2:8000`(Android 模拟器)。
-
-## 本地后端开发（Local backend development）
-
-后端必须监听所有网卡：`uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`（仓库 `start_backend.bat` 已是此配置）。
-
-| 客户端 | Debug 地址 | 说明 |
-|--------|------------|------|
-| Windows 浏览器 / Web | `http://localhost:8000` / `http://127.0.0.1:8000` | 同机直连 |
-| Android Studio Emulator | `http://10.0.2.2:8000/api/v1/` | `10.0.2.2` 是 Android Emulator 专属宿主机映射 |
-| HarmonyOS DevEco Previewer | `http://127.0.0.1:8000/api/v1` | Previewer 与后端同机 |
-| HarmonyOS DevEco Emulator | `http://<PC_IPV4>:8000/api/v1` | Emulator 无 `10.0.2.2` 映射，需 Windows 局域网 IPv4 |
-| 真机（Android / HarmonyOS） | `http://<PC_IPV4>:8000/api/v1` | 手机与电脑同网 |
-
-- `<PC_IPV4>` 通过 PowerShell `ipconfig` 查询（无线网卡 IPv4 地址）。不要把具体 `192.168.x.x` 写死到仓库。
-- Windows 防火墙需允许 Private 网络 TCP 8000 入站。
-- Release 必须使用正式 `https://...` API，禁止 HTTP 明文，禁止保留开发 IP。
-  - Android Release：`app/build.gradle.kts` 中 release buildType 已覆盖 `API_BASE_URL` 为 HTTPS 占位符；`main/res/xml/network_security_config.xml` 保持 `cleartextTrafficPermitted="false"`。
-  - HarmonyOS Release：`entry/src/main/ets/core/ApiConfig.ets` 中 `RELEASE_API_BASE_URL` 为 HTTPS 占位符。
-
-## 常见错误排查
-
-### Q1: 后端连接失败(未连接)
-
-**症状**: 移动端 / Web 显示"未连接"。
-
-**排查**:
-1. 确认后端已启动: 浏览器访问 `http://localhost:8000/api/v1/health`
-2. 确认客户端后端地址正确:
-   - Android 模拟器: `http://10.0.2.2:8000`(不是 `localhost`)
-   - HarmonyOS Emulator: `http://<PC_IPV4>:8000`（不是 `127.0.0.1` 或 `10.0.2.2`）
-   - Web: `http://localhost:8000`(同源)
-   - 真机: `http://<电脑局域网 IP>:8000`
-3. 确认后端监听 `0.0.0.0:8000`（不是 `127.0.0.1:8000`）
-4. 确认 Windows 防火墙放行 TCP 8000 入站
-5. 确认后端 CORS 配置(`CORS_ORIGINS`)允许当前源（仅浏览器场景需要，原生 App 不受 CORS 限制）
-
-### Q2: AI 校园助手回答"建议咨询辅导员"
-
-**症状**: 所有问题都返回"当前知识库无法确认..."。
-
-**排查**:
-1. 检查知识库状态: `GET /api/v1/knowledge/status`
-2. 若 `document_count=0`,请先上传或同步学校正式资料,再运行 `python scripts/rebuild_index.py`
-3. 若 `index_status=error`,查看后端日志,可能是文件解析失败
-
-### Q3: 后端启动报错 `ModuleNotFoundError`
-
-**症状**: `ModuleNotFoundError: No module named 'jieba'` 等。
-
-**排查**:
-1. 确认已激活虚拟环境(PowerShell: `.venv\Scripts\Activate.ps1`)
-2. 重新安装依赖: `pip install -r requirements.txt`
-3. Windows 上若 jieba/PyPDF2 安装失败: `pip install --no-build-isolation jieba`
-
-### Q4: 通知抽取结果中 `needs_confirmation=true`
-
-**说明**: 这不是错误,而是温和的"需要确认"提示。
-
-**原因**:
-- 通知原文缺少年份(规则模式基于 `published_at` 或当前时间推断,但会标注 `warnings`)
-- 面向对象不明确
-- 提交方式不明确
-
-**处理**: 客户端 UI 会显示"需要确认"徽章,用户可在表单中手动修正。
-
-## 项目规范
-
-参见 [AGENTS.md](AGENTS.md)。
-
-## CNN 面部表情识别（已接入）
-
-Android 的**专注自习（Focus）**是唯一正式入口，已接入 CameraX、ML Kit 本地人脸检测和 LiteRT 表情分类，保留 Mock/Real 双模式。只有用户主动开启“学习状态辅助”、明确授予相机权限、专注计时运行且页面在前台时，才在本机内存分析；暂停、关闭、离开页面或进入后台会立即暂停并解绑摄像头。画面不保存、不上传、不写日志。
-
-表情只作为视觉辅助信息，不用于精确情绪、心理或健康判断。Presence 由独立的 person / 稳定行为 / 人脸正向证据融合：任一证据可确认在席，已确认后连续 12 秒没有任何证据才显示 `ABSENT`，不会因单帧 `faceDetected=false` 直接改变在席状态。专注结束可保存本地学习记录；只有用户主动请求分析时才会发送结构化摘要，且不会发送照片、视频或逐帧结果。
-
-训练、审计、评估、导出复现命令和真实指标见 [`ml/expression_recognition/README.md`](ml/expression_recognition/README.md)。该能力仅描述画面中可观察到的面部表情，不用于推断心理状态、疲劳、疾病或危机，也不替代用户自述或专业咨询。低置信度与不稳定结果输出 `UNKNOWN`，不触发安慰。
-
-## Android 本地学习状态辅助与 Presence
-
-CampusMateAI Android 专注模式当前默认使用 V3.2-A「学习状态辅助」模型：
-
-- **VISIBLE_STUDY（可见学习行为）**：画面中存在明确可观察的阅读、书写或操作学习材料等行为
-- **IDLE（暂未观察到明确学习行为）**：人在画面中，但当前单帧未观察到明确学习动作；这不等同于“不专注”或“没有学习”
-- 当前模型为 `campusmate_visible_study_v32.onnx`（RGB ResNet18，ONNX Runtime 本地推理）；`campusmate_visible_study_v31.onnx` 与 `rgb_resnet18_v2.onnx` 均保留为回退资产
-- 模型稳定结果还会经过会话级连续性处理：短暂的遮挡、思考或姿势调整不会立刻切换为“暂时停顿”
-- V3.3.1 Presence 独立于学习行为：本地 EfficientDet-Lite0 int8 person detector 是主要 evidence，稳定 `VISIBLE_STUDY` 与 ML Kit 人脸检测为辅助；任一正向 evidence 会进入 `PRESENT`，已确认后连续 12 秒无 evidence 才进入 `ABSENT`
-- 表情识别、V3.2 行为识别与 person detector 共享同一条 CameraX pipeline，摄像头原始画面**不上传、不保存**
-
-相关文档：
-
-- Android 客户端说明：[`android/README.md`](android/README.md)
-- 动作识别专项研究文档：[`docs/behavior-recognition.md`](docs/behavior-recognition.md)
-
-## CNN 模型共建（用户主动参与）
-
-设置页的“CNN 模型共建”提供单帧采集流程：用户明确同意后授予相机权限，主动拍摄一张照片，自己选择可观察到的表情标签，确认后通过鉴权接口上传。图片在上传前只暂存在 Android `cacheDir`，上传成功后删除本地文件；用户可以删除自己上传到服务器的样本。
-
-后端接口为 `POST /api/v1/contributions/expression-samples` 和 `DELETE /api/v1/contributions/expression-samples/{sample_id}`。默认保存到 `backend/data/expression_contributions/`，可通过 `EXPRESSION_CONTRIBUTION_PATH` 配置；单张图片默认上限为 3 MB。当前接口只负责收集和保存经用户确认的标注数据，供后续人工复核、数据审计和离线 CNN 训练使用，不代表模型已经自动更新。正式部署前应迁移到对象存储、配置访问控制、加密、保留期限和管理员复核流程。
+仓库开发与提交约定见 [`AGENTS.md`](AGENTS.md)。
