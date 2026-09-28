@@ -67,11 +67,12 @@ app/src/main/java/com/example/campusai/
 
 ### 构建命令
 
-从仓库根目录设置捆绑 JDK 21 后再执行任何 Gradle/JVM 命令：
+从仓库根目录设置项目约定的本地 JDK 21 后再执行任何 Gradle/JVM 命令。`android/.tools/` 被 Git 忽略，不随源码分发；若本地不存在该 JDK，应停止 JVM 操作：
 
 ```powershell
 $repoRoot = (git rev-parse --show-toplevel).Trim()
 $env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
+if (-not (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\java.exe'))) { throw '项目约定的本地 JDK 21 不存在，停止 JVM 操作' }
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 & "$env:JAVA_HOME\bin\java.exe" -version
 ```

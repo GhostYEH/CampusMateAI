@@ -31,24 +31,25 @@
 
 ## JDK 21
 
-Android/JVM 命令必须使用仓库内捆绑的 `android/.tools/jdk21-full/jdk-21.0.12+8`，禁止回退到系统 `java` 或已有 `JAVA_HOME`。
+Android/JVM 命令必须使用仓库目录下本地预置的 `android/.tools/jdk21-full/jdk-21.0.12+8`。`android/.tools/` 被 Git 忽略，不随源码分发；禁止回退到系统 `java` 或已有 `JAVA_HOME`。
 
 PowerShell 中从仓库根目录解析，避免硬编码本机绝对路径：
 
 ```pwsh
 $repoRoot = (git rev-parse --show-toplevel).Trim()
 $env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
+if (-not (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\java.exe'))) { throw '项目约定的本地 JDK 21 不存在，停止 JVM 操作' }
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 & "$env:JAVA_HOME\bin\java.exe" -version
 ```
 
-预期版本包含 `21.0.12`。若捆绑 JDK 不存在，停止 JVM 相关操作并报告，不要建议安装或切换系统 JDK。生成 `.bat`、`.cmd` 或 `.ps1` 时同样从脚本/仓库位置解析该目录。
+预期版本包含 `21.0.12`。若本地预置 JDK 不存在，停止 JVM 相关操作并报告，不要建议安装或切换系统 JDK。生成 `.bat`、`.cmd` 或 `.ps1` 时同样从脚本/仓库位置解析该目录。
 
 ## 修改与验证
 
 - 先阅读目标模块 README、现有实现与测试，再做最小范围修改；不要顺手重构无关代码。
 - 后端修改运行相关 `pytest`；Web 修改运行项目现有 lint/typecheck/test/build；移动端修改运行对应平台的最小相关测试或构建。
-- JVM 构建前必须按上节设置捆绑 JDK。无法运行某项验证时，明确说明原因和未验证风险。
+- JVM 构建前必须按上节设置本地预置 JDK。无法运行某项验证时，明确说明原因和未验证风险。
 - 完成前检查 `git diff`、`git diff --cached`、`git status`，确认没有业务源码被意外修改，也没有密钥或本机绝对路径进入变更。
 - **做完工作一定要提交**：任务完成后，必须将本次会话产生的业务源码改动精确暂存并创建一次提交。只提交本次任务相关的文件，不要纳入其他会话遗留的未提交改动。提交信息聚焦"why"。若用户明确要求暂不提交，则例外。
 
