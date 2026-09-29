@@ -28,7 +28,8 @@ function checkDir(dir) {
         }
     }
 }
-checkDir('f:/demo1/wx/miniprogram/pages');
-checkDir('f:/demo1/wx/miniprogram/components');
-checkDir('f:/demo1/wx/miniprogram/custom-tab-bar');
+const miniprogramDir = path.join(__dirname, 'miniprogram');
+checkDir(path.join(miniprogramDir, 'pages'));
+checkDir(path.join(miniprogramDir, 'components'));
+checkDir(path.join(miniprogramDir, 'custom-tab-bar'));
 console.log('Check finished.');

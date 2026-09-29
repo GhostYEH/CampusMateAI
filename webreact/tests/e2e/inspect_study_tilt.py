@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
@@ -27,19 +28,21 @@ def mock_api(route):
 
 
 def run():
+    screenshot_path = Path(__file__).resolve().parent / "shots" / "study-tilted-card.png"
+    screenshot_path.parent.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 1000}, device_scale_factor=1)
         page.route("**/api/v1/**", mock_api)
-        page.goto("http://127.0.0.1:5173/login", wait_until="networkidle")
+        page.goto("http://127.0.0.1:5174/login", wait_until="networkidle")
         page.evaluate("""() => {
             localStorage.setItem('campus_access_token', 'tilt-test-token');
             localStorage.setItem('campus_session', JSON.stringify({role: 'student', name: '测试同学'}));
         }""")
-        page.goto("http://127.0.0.1:5173/study", wait_until="networkidle")
+        page.goto("http://127.0.0.1:5174/study", wait_until="networkidle")
         page.wait_for_selector(".study-page .study-focus-card")
         assert page.locator(".study-page .study-tilted-card").count() == 9
-        page.screenshot(path="C:/Users/32883/.codex/visualizations/2026/09/06/01a07680-c684-7af1-8e61-2fa8bd036a80/study-tilted-card.png", full_page=True)
+        page.screenshot(path=str(screenshot_path), full_page=True)
         target = page.locator(".study-focus-card .tilted-card-figure")
         box = target.bounding_box()
         assert box
@@ -51,7 +54,7 @@ def run():
             "tiltedCardCount": page.locator(".study-page .study-tilted-card").count(),
             "focusCardBox": box,
             "focusTransform": transform,
-            "screenshot": "C:/Users/32883/.codex/visualizations/2026/09/06/01a07680-c684-7af1-8e61-2fa8bd036a80/study-tilted-card.png",
+            "screenshot": str(screenshot_path),
         })
         browser.close()
 

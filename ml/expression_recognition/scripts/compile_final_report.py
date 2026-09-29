@@ -202,7 +202,7 @@ def main() -> None:
         "- `:app:lintDebug`: PASS（0 errors；有 warnings/hints）",
         f"- APK: `{android_apk.resolve()}` ({android_apk.stat().st_size} bytes)",
         "- ADB/真机 benchmark: 未执行；系统 PATH 与常见 Android SDK 路径均未发现 adb.exe，因此不虚构设备性能数据。",
-        "- 构建 JDK：`F:/demo1/android/.tools/jdk21-full/jdk-21.0.12+8`；Gradle cache：`F:/demo1/android/.gradle-user-home`。",
+        "- 构建 JDK：`android/.tools/jdk21-full/jdk-21.0.12+8`；Gradle cache：`android/.gradle-user-home`（路径相对仓库根目录）。",
     ]
     (REPORT / "android_validation.md").write_text("\n".join(android_lines) + "\n", encoding="utf-8")
 
