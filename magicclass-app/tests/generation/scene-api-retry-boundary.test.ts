@@ -288,7 +288,10 @@ describe('scene API retry boundary', () => {
 
   it('preserves the provider status carried by a PBLGenerationError', async () => {
     vi.resetModules();
-    const providerError = Object.assign(new Error('provider rate limited'), { statusCode: 429 });
+    const providerError = Object.assign(new Error('provider rate limited'), {
+      statusCode: 429,
+      responseHeaders: { 'Retry-After': '2' },
+    });
     const { PBLGenerationError } = await import('@magicclass/generation');
     mocks.generateSceneContent.mockRejectedValueOnce(
       new PBLGenerationError('PBL planners failed', {
@@ -302,6 +305,7 @@ describe('scene API retry boundary', () => {
     const body = await response.json();
 
     expect(response.status).toBe(429);
+    expect(response.headers.get('Retry-After')).toBe('2');
     expect(body).toMatchObject({
       success: false,
       errorCode: 'RATE_LIMITED',

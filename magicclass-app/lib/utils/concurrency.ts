@@ -29,6 +29,83 @@ function createSemaphore(size: number) {
   };
 }
 
+/** Limits individual requests and lowers the cap when a provider rejects a burst. */
+export function createAdaptiveConcurrencyLimiter(initialLimit: number) {
+  let limit = Number.isFinite(initialLimit) ? Math.max(1, Math.floor(initialLimit)) : 1;
+  let active = 0;
+  let cooldownUntil = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const queue: Array<{
+    start: () => void;
+    signal?: AbortSignal;
+    abort: () => void;
+  }> = [];
+
+  const pump = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    if (queue.length === 0) return;
+    const delay = cooldownUntil - Date.now();
+    if (delay > 0) {
+      timer = setTimeout(pump, delay);
+      return;
+    }
+    while (active < limit && queue.length > 0) {
+      const entry = queue.shift()!;
+      entry.signal?.removeEventListener('abort', entry.abort);
+      if (entry.signal?.aborted) {
+        entry.abort();
+        continue;
+      }
+      active++;
+      entry.start();
+    }
+  };
+
+  return {
+    run<R>(fn: () => Promise<R>, signal?: AbortSignal): Promise<R> {
+      if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+      return new Promise<R>((resolve, reject) => {
+        const entry = {
+          signal,
+          abort: () => {
+            const index = queue.indexOf(entry);
+            if (index >= 0) queue.splice(index, 1);
+            reject(new DOMException('Aborted', 'AbortError'));
+            pump();
+          },
+          start: () => {
+            Promise.resolve()
+              .then(fn)
+              .then(resolve, reject)
+              .finally(() => {
+                active--;
+                pump();
+              });
+          },
+        };
+        queue.push(entry);
+        signal?.addEventListener('abort', entry.abort, { once: true });
+        pump();
+      });
+    },
+    rateLimited(retryAfterMs?: number) {
+      // Several 429s from one burst describe one limit, not several successive limits.
+      if (Date.now() >= cooldownUntil) limit = Math.max(1, Math.floor(limit / 2));
+      const delay = Number.isFinite(retryAfterMs)
+        ? Math.max(1_000, Math.min(60_000, retryAfterMs!))
+        : 1_000;
+      cooldownUntil = Math.max(cooldownUntil, Date.now() + delay);
+      pump();
+    },
+    get limit() {
+      return limit;
+    },
+  };
+}
+
 /**
  * Start `fn` over every item with at most `limit` calls in flight at once, and
  * return one promise per item **immediately**, in input order — without awaiting

@@ -1020,16 +1020,16 @@ export function resolveServerWebSearchProviderId(preferredProviderId?: string): 
 }
 
 /**
- * Opt-in concurrency for parallel scene-content generation (#572).
+ * Concurrency for parallel scene-content generation (#572).
  *
  * Returns the server-configured `PARALLEL_SCENE_CONCURRENCY`, clamped to
- * [0, 10]. `0` (the default) means the client keeps the original serial
- * generation loop; a value `> 1` enables the hybrid two-phase path. Kept
- * server-side because many deployments use API keys with low per-key
- * concurrency quotas, where a bursty default would surface as 429s.
+ * [0, 10]. Unset or invalid values default to 8; an explicit `0` keeps serial
+ * generation. The client lowers its in-flight request cap when a provider
+ * responds with HTTP 429.
  */
 export function getParallelSceneConcurrency(): number {
   const raw = Number.parseInt(process.env.PARALLEL_SCENE_CONCURRENCY ?? '', 10);
-  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  if (!Number.isFinite(raw)) return 8;
+  if (raw <= 0) return 0;
   return Math.min(raw, 10);
 }

@@ -159,9 +159,9 @@ describe('provider-config', () => {
       delete process.env.PARALLEL_SCENE_CONCURRENCY;
     });
 
-    it('defaults to 0 (serial) when unset', async () => {
+    it('defaults to 8 when unset', async () => {
       const { getParallelSceneConcurrency } = await import('@/lib/server/provider-config');
-      expect(getParallelSceneConcurrency()).toBe(0);
+      expect(getParallelSceneConcurrency()).toBe(8);
     });
 
     it('reads a positive integer from the env var', async () => {
@@ -176,13 +176,19 @@ describe('provider-config', () => {
       expect(getParallelSceneConcurrency()).toBe(10);
     });
 
-    it('treats zero, negative, and non-numeric values as off', async () => {
-      for (const value of ['0', '-2', 'abc']) {
+    it('treats zero and negative values as off', async () => {
+      for (const value of ['0', '-2']) {
         vi.resetModules();
         vi.stubEnv('PARALLEL_SCENE_CONCURRENCY', value);
         const { getParallelSceneConcurrency } = await import('@/lib/server/provider-config');
         expect(getParallelSceneConcurrency(), `value=${value}`).toBe(0);
       }
+    });
+
+    it('uses the default for an invalid value', async () => {
+      vi.stubEnv('PARALLEL_SCENE_CONCURRENCY', 'abc');
+      const { getParallelSceneConcurrency } = await import('@/lib/server/provider-config');
+      expect(getParallelSceneConcurrency()).toBe(8);
     });
   });
 

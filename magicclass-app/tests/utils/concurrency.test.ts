@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { lazyBoundedMap, mapWithConcurrency } from '@/lib/utils/concurrency';
+import {
+  createAdaptiveConcurrencyLimiter,
+  lazyBoundedMap,
+  mapWithConcurrency,
+} from '@/lib/utils/concurrency';
 
 const tick = (ms = 5) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -66,6 +70,59 @@ describe('mapWithConcurrency', () => {
     expect(await mapWithConcurrency([], 4, async (n) => n)).toEqual([]);
   });
 });
+
+describe('createAdaptiveConcurrencyLimiter', () => {
+  it('starts eight requests, lowers the cap once per rate-limit wave, and drains in order', async () => {
+    vi.useFakeTimers();
+    try {
+      const limiter = createAdaptiveConcurrencyLimiter(8);
+      const releases: Array<() => void> = [];
+      const requests = Array.from({ length: 12 }, (_, i) =>
+        limiter.run(async () => {
+          await new Promise<void>((resolve) => releases.push(resolve));
+          return i;
+        }),
+      );
+      await Promise.resolve();
+      expect(releases).toHaveLength(8);
+
+      limiter.rateLimited();
+      limiter.rateLimited(); // Both responses belong to the first burst.
+      expect(limiter.limit).toBe(4);
+      releases.splice(0).forEach((release) => release());
+      await vi.advanceTimersByTimeAsync(999);
+      expect(releases).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(releases).toHaveLength(4);
+      releases.splice(0).forEach((release) => release());
+      expect(await Promise.all(requests)).toEqual(Array.from({ length: 12 }, (_, i) => i));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lowers the cap again after a later 429 and cancels queued requests', async () => {
+    vi.useFakeTimers();
+    try {
+      const limiter = createAdaptiveConcurrencyLimiter(4);
+      limiter.rateLimited();
+      expect(limiter.limit).toBe(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      limiter.rateLimited();
+      expect(limiter.limit).toBe(1);
+
+      const controller = new AbortController();
+      const blocked = limiter.run(async () => 'unexpected', controller.signal);
+      controller.abort();
+      await expect(blocked).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await limiter.run(async () => 'ready')).toBe('ready');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 
 describe('lazyBoundedMap', () => {
   it('returns promises immediately and resolves them without a barrier', async () => {

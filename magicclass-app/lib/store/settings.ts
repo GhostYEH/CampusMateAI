@@ -986,8 +986,8 @@ export const useSettingsStore = create<SettingsState>()(
         ttsEnabled: false,
         asrEnabled: true,
 
-        // Off until the server reports a concurrency via fetchServerProviders.
-        parallelSceneConcurrency: 0,
+        // The server may override this during provider initialization.
+        parallelSceneConcurrency: 8,
 
         autoConfigApplied: false,
 
@@ -1937,9 +1937,9 @@ export const useSettingsStore = create<SettingsState>()(
                 // Already clamped server-side (getParallelSceneConcurrency); this
                 // re-clamp is intentional belt-and-suspenders against a malformed
                 // response. The consumer (use-scene-generator) clamps once more.
-                parallelSceneConcurrency: Math.max(
-                  0,
-                  Math.floor(data.generation?.parallelSceneConcurrency ?? 0),
+                parallelSceneConcurrency: Math.min(
+                  10,
+                  Math.max(0, Math.floor(data.generation?.parallelSceneConcurrency ?? 8)),
                 ),
                 autoConfigApplied: true,
                 // Validated selections

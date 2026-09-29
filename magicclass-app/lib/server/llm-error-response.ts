@@ -46,6 +46,31 @@ function statusFromError(error: unknown, seen = new Set<unknown>()): number | un
   return statusFromError(error.cause, seen) ?? statusFromError(error.lastError, seen);
 }
 
+function retryAfterFromError(error: unknown, seen = new Set<unknown>()): string | undefined {
+  if (!error || seen.has(error)) return undefined;
+  seen.add(error);
+  if (!isRecord(error)) return undefined;
+
+  const headers = error.responseHeaders;
+  if (isRecord(headers)) {
+    const value = Object.entries(headers).find(([name]) => name.toLowerCase() === 'retry-after')?.[1];
+    if (typeof value === 'string') {
+      const seconds = Number(value);
+      if ((Number.isFinite(seconds) && seconds >= 0) || Number.isFinite(Date.parse(value))) {
+        return value;
+      }
+    }
+  }
+
+  return (
+    retryAfterFromError(error.lastError, seen) ??
+    (Array.isArray(error.errors)
+      ? error.errors.map((nested) => retryAfterFromError(nested, seen)).find(Boolean)
+      : undefined) ??
+    retryAfterFromError(error.cause, seen)
+  );
+}
+
 function messageForStatus(status: number): string {
   if (status === 401 || status === 403) {
     return 'Upstream authentication or authorization failed.';
@@ -66,9 +91,14 @@ export function llmApiError(error: unknown) {
     return apiError('INTERNAL_ERROR', 500, 'Scene generation failed. Please try again.');
   }
 
-  return apiError(
+  const response = apiError(
     status === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR',
     status,
     messageForStatus(status),
   );
+  if (status === 429) {
+    const retryAfter = retryAfterFromError(error);
+    if (retryAfter) response.headers.set('Retry-After', retryAfter);
+  }
+  return response;
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { SceneOutline } from '@/lib/types/generation';
+import { createAdaptiveConcurrencyLimiter } from '@/lib/utils/concurrency';
 
 const mocks = vi.hoisted(() => ({
   getCurrentModelConfig: vi.fn(),
@@ -78,11 +79,12 @@ const retryOptions = {
   random: () => 0,
 };
 
-function jsonResponse(status: number, body: unknown) {
+function jsonResponse(status: number, body: unknown, headers?: Record<string, string>) {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 429 ? 'Too Many Requests' : status === 401 ? 'Unauthorized' : 'OK',
+    headers: new Headers(headers),
     json: async () => body,
   };
 }
@@ -140,6 +142,39 @@ describe('browser scene generation retry wrappers', () => {
 
     expect(result).toMatchObject({ success: true, content: { elements: [] } });
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('reduces content request concurrency and honors Retry-After on HTTP 429', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchSceneContent } = await import('@/lib/hooks/use-scene-generator');
+      const limiter = createAdaptiveConcurrencyLimiter(8);
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, { error: 'rate limited' }, { 'Retry-After': '2' }))
+        .mockResolvedValueOnce(jsonResponse(200, { success: true, content: { elements: [] } }));
+
+      const generation = fetchSceneContent(
+        {
+          outline,
+          allOutlines: [outline],
+          stageId: 'stage-1',
+          stageInfo: { name: 'Retry Course' },
+        },
+        undefined,
+        retryOptions,
+        limiter,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(limiter.limit).toBe(4);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(generation).resolves.toMatchObject({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not retry permanent scene action HTTP failures', async () => {

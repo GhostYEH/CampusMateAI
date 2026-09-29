@@ -31,7 +31,7 @@ import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { putAsset } from '@/lib/media/asset-pool';
 import { mayGenerateForStage } from '@/lib/classroom/generation-permission';
 import { isServerBackedMediaPersistence } from '@/lib/persistence/media-persistence';
-import { lazyBoundedMap } from '@/lib/utils/concurrency';
+import { createAdaptiveConcurrencyLimiter, lazyBoundedMap } from '@/lib/utils/concurrency';
 import { createLogger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { getClientTranslation } from '@/lib/i18n';
@@ -142,6 +142,15 @@ function errorMeta(error: unknown): Pick<SceneContentResult, 'errorCode' | 'stat
   };
 }
 
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers?.get('Retry-After');
+  if (!value) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
 /** Call POST /api/generate/scene-content (step 1) */
 export async function fetchSceneContent(
   params: {
@@ -162,23 +171,28 @@ export async function fetchSceneContent(
   },
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<SceneContentResult>,
+  limiter?: ReturnType<typeof createAdaptiveConcurrencyLimiter>,
 ): Promise<SceneContentResult> {
   try {
     return await withGenerationRetry(
       async () => {
-        const response = await fetch('/api/generate/scene-content', {
-          method: 'POST',
-          headers: getApiHeaders(),
-          body: JSON.stringify(withThinkingConfig(params)),
-          signal,
-        });
+        const request = async () => {
+          const response = await fetch('/api/generate/scene-content', {
+            method: 'POST',
+            headers: getApiHeaders(),
+            body: JSON.stringify(withThinkingConfig(params)),
+            signal,
+          });
 
-        const data = await readJsonResponse(response);
-        if (!response.ok) {
-          throw createHttpError(response, data, 'Scene content request failed');
-        }
+          const data = await readJsonResponse(response);
+          if (!response.ok) {
+            if (response.status === 429) limiter?.rateLimited(retryAfterMs(response));
+            throw createHttpError(response, data, 'Scene content request failed');
+          }
 
-        return data as unknown as SceneContentResult;
+          return data as unknown as SceneContentResult;
+        };
+        return limiter ? limiter.run(request, signal) : request();
       },
       {
         label: `scene content "${params.outline.title}"`,
@@ -778,20 +792,21 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           .map((a) => a.text);
       }
 
-      // #572: opt-in parallel content fetch. Concurrency is server-configured
-      // (PARALLEL_SCENE_CONCURRENCY), default 0 = off, so out-of-box behaviour is
-      // unchanged.
-      const parallelConcurrency = Math.max(
-        0,
-        // Belt-and-suspenders: the value is already clamped server-side and again
-        // in the settings store; re-clamp here so a stale/garbage store value can
-        // never spawn an unbounded fetch fan-out.
-        Math.floor(useSettingsStore.getState().parallelSceneConcurrency ?? 0),
-      );
+      // Parallel content fetches start at the server cap (8 by default), then
+      // individual HTTP attempts share a limiter that shrinks on provider 429s.
+      const configuredConcurrency = useSettingsStore.getState().parallelSceneConcurrency ?? 8;
+      // The store is normally clamped server-side; also guard stale browser state.
+      const parallelConcurrency = Number.isFinite(configuredConcurrency)
+        ? Math.min(10, Math.max(0, Math.floor(configuredConcurrency)))
+        : 8;
       const useParallelContent = parallelConcurrency > 1 && pending.length > 1;
+      const contentLimiter = useParallelContent
+        ? createAdaptiveConcurrencyLimiter(parallelConcurrency)
+        : undefined;
 
       // Pipelined generation loop (#572). When parallelism is on, scene *content*
       // fetches are kicked off up front with bounded concurrency (lazyBoundedMap)
+      // and each HTTP attempt passes through the adaptive request limiter,
       // but CONSUMED IN ORDER inside the serial loop below — there is no barrier.
       // So the first scene paints after content(1)+actions(1)+TTS(1) (same as
       // serial) while later content fetches run hidden behind earlier scenes'
@@ -813,6 +828,8 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               languageDirective: params.languageDirective,
             },
             signal,
+            undefined,
+            contentLimiter,
           );
 
         // Pre-warm content fetches (<= parallelConcurrency in flight), keyed by
