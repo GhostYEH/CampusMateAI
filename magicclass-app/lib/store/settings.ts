@@ -526,6 +526,7 @@ const getDefaultAudioConfig = () => ({
     // configured (API key or server-managed), so "enabled" is a user opt-OUT,
     // not the visibility gate. A server-configured provider must not be hidden
     // by a stale default (#665).
+    'mimo-tts': { apiKey: '', baseUrl: '', modelId: 'mimo-v2.5-tts', enabled: true },
     'openai-tts': { apiKey: '', baseUrl: '', enabled: true },
     'azure-tts': { apiKey: '', baseUrl: '', enabled: true },
     'glm-tts': { apiKey: '', baseUrl: '', enabled: true },

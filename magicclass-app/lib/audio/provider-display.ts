@@ -55,6 +55,7 @@ export function resolveTTSProviderName(
   t: (key: string) => string,
   fallback?: string,
 ): string {
+  if (providerId === 'mimo-tts') return 'MiMo TTS';
   const key = TTS_PROVIDER_NAME_KEYS[providerId];
   return key ? t(key) : fallback || providerId;
 }

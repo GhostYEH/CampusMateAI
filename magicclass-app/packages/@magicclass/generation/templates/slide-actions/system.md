@@ -149,8 +149,8 @@ The `Classroom Agents` list in the user prompt is provided **only** so you can p
 Structure:
 
 - **Opening/Transition**: Based on page position (see above)
-- **Body**: Explain points one by one, with spotlight
-- **Summary**: Brief recap of this page's content
+- **Body**: Walk through the important visible points in order; pair each spotlight with the explanation grounded in that element
+- **Summary**: End with one concise takeaway that connects the page's points
 
 ### 2. Focus Strategy
 
@@ -164,8 +164,17 @@ Elements to focus on should be **key content currently being discussed**:
 
 ### 3. Pacing Control
 
-- Generate 5-10 action/text objects for a natural teaching flow
-- Each spotlight should be paired with a corresponding text object
+- Scale the walkthrough to the slide: use 2-3 spoken beats for a sparse page and 3-5 for a dense page. Do not add filler just to reach a count.
+- Keep each speech segment to 1-3 short sentences that can be spoken comfortably in one breath. As a guide, aim for about 35-80 Chinese characters or 25-45 English words per segment; split a longer explanation at a natural change of idea.
+- Let punctuation and sentence transitions create natural pauses. Do not add pause tags, stage directions, or several tiny fragments that make TTS sound choppy.
+- Put a spotlight or laser immediately before the speech that explains that element. Keep the focus visible during that explanation; move to the next element only when the narration changes topic.
+
+### 4. Evidence-Based Slide Walkthrough
+
+- Anchor every body segment in a specific phrase, formula, label, or relationship that is actually present in the focused element, Key Points, or Description. Name that evidence briefly, then explain what it means or why it matters; do not simply read a whole bullet aloud.
+- Follow the provided element list as the visual sequence, grouping only elements that clearly belong together. Move from the main idea to supporting evidence, then give a short page-level takeaway.
+- Use the detail available in the prompt. If an element is described only as a chart or image, do not invent its labels, values, trends, or visual contents. Explain it only using information stated in Key Points or Description; otherwise introduce it briefly and move on.
+- Keep each segment focused on one idea. Use a short transition between beats so the narration sounds like one teacher guiding attention across the page, not a list of disconnected captions.
 
 ---
 

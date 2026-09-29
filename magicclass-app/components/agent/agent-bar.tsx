@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
@@ -621,6 +622,7 @@ export function AgentBar() {
   const setAgentSelectionIsUserSet = useSettingsStore((s) => s.setAgentSelectionIsUserSet);
   const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
   const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
+  const setTTSEnabled = useSettingsStore((s) => s.setTTSEnabled);
 
   const [open, setOpen] = useState(false);
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -858,6 +860,15 @@ export function AgentBar() {
             className="absolute right-0 top-full mt-1 z-50 w-96"
           >
             <div className="rounded-2xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm ring-1 ring-black/[0.04] dark:ring-white/[0.06] shadow-[0_1px_8px_-2px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_8px_-2px_rgba(0,0,0,0.3)] px-2 py-1.5">
+              <div className="flex items-center justify-between gap-3 px-2.5 py-2">
+                <span className="text-xs font-medium">{t('settings.enableTTS')}</span>
+                <Switch
+                  checked={ttsEnabled}
+                  disabled={availableProviders.length === 0}
+                  onCheckedChange={setTTSEnabled}
+                  aria-label={t('settings.enableTTS')}
+                />
+              </div>
               {/* Teacher — always visible */}
               {teacherAgent && (
                 <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-primary/5 mb-2">

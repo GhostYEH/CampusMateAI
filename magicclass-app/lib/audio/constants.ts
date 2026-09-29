@@ -1067,6 +1067,27 @@ export const TTS_PROVIDERS: Record<BuiltInTTSProviderId, TTSProviderConfig> = {
     supportedFormats: ['wav'],
     speedRange: { min: 0.25, max: 4.0, default: 1.0 },
   },
+  'mimo-tts': {
+    id: 'mimo-tts',
+    name: 'MiMo TTS',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
+    icon: '/logos/xiaomi.svg',
+    models: [{ id: 'mimo-v2.5-tts', name: 'MiMo V2.5 TTS' }],
+    defaultModelId: 'mimo-v2.5-tts',
+    voices: [
+      { id: '冰糖', name: '冰糖', language: 'zh-CN', gender: 'female' },
+      { id: '茉莉', name: '茉莉', language: 'zh-CN', gender: 'female' },
+      { id: '苏打', name: '苏打', language: 'zh-CN', gender: 'male' },
+      { id: '白桦', name: '白桦', language: 'zh-CN', gender: 'male' },
+      { id: 'Mia', name: 'Mia', language: 'en', gender: 'female' },
+      { id: 'Chloe', name: 'Chloe', language: 'en', gender: 'female' },
+      { id: 'Milo', name: 'Milo', language: 'en', gender: 'male' },
+      { id: 'Dean', name: 'Dean', language: 'en', gender: 'male' },
+    ],
+    supportedFormats: ['wav'],
+    speedRange: { min: 0.75, max: 1.5, default: 1 },
+  },
 };
 
 /**
@@ -1334,6 +1355,7 @@ export const ASR_PROVIDERS: Record<BuiltInASRProviderId, ASRProviderConfig> = {
  * Used when switching providers or testing a non-active provider.
  */
 export const DEFAULT_TTS_VOICES: Record<BuiltInTTSProviderId, string> = {
+  'mimo-tts': '苏打',
   'openai-tts': 'alloy',
   'azure-tts': 'zh-CN-XiaoxiaoNeural',
   'glm-tts': 'tongtong',
@@ -1347,6 +1369,7 @@ export const DEFAULT_TTS_VOICES: Record<BuiltInTTSProviderId, string> = {
 };
 
 export const DEFAULT_TTS_MODELS: Record<BuiltInTTSProviderId, string> = {
+  'mimo-tts': 'mimo-v2.5-tts',
   'openai-tts': 'gpt-4o-mini-tts',
   'azure-tts': '',
   'glm-tts': 'glm-tts',

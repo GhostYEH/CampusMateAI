@@ -190,11 +190,17 @@ export class TTSInvalidResponseError extends Error {
  * wedging the session.
  */
 const DEFAULT_TTS_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_MIMO_REQUEST_TIMEOUT_MS = 120_000;
 
-function ttsRequestTimeoutMs(): number {
-  const raw = process.env.TTS_REQUEST_TIMEOUT_MS?.trim();
+function ttsRequestTimeoutMs(providerId?: TTSModelConfig['providerId']): number {
+  const raw = (providerId === 'mimo-tts' ? process.env.TTS_MIMO_TIMEOUT_MS : undefined)?.trim() ||
+    process.env.TTS_REQUEST_TIMEOUT_MS?.trim();
   const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTS_REQUEST_TIMEOUT_MS;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : providerId === 'mimo-tts'
+      ? DEFAULT_MIMO_REQUEST_TIMEOUT_MS
+      : DEFAULT_TTS_REQUEST_TIMEOUT_MS;
 }
 
 /**
@@ -213,8 +219,8 @@ export class TTSRequestTimeoutError extends Error {
 }
 
 /** Combine the caller's cancel signal with the per-request timeout. */
-function ttsRequestSignal(callerSignal?: AbortSignal): AbortSignal {
-  const timeout = AbortSignal.timeout(ttsRequestTimeoutMs());
+function ttsRequestSignal(callerSignal?: AbortSignal, providerId?: TTSModelConfig['providerId']): AbortSignal {
+  const timeout = AbortSignal.timeout(ttsRequestTimeoutMs(providerId));
   return callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout;
 }
 
@@ -255,9 +261,11 @@ export async function generateTTS(
     throw new Error(`API key required for TTS provider: ${config.providerId}`);
   }
 
-  const signal = ttsRequestSignal(config.signal);
+  const signal = ttsRequestSignal(config.signal, config.providerId);
   try {
     switch (config.providerId) {
+      case 'mimo-tts':
+        return await generateMiMoTTS(config, text, signal);
       case 'openai-tts':
         return await generateOpenAITTS(config, text, signal);
 
@@ -301,11 +309,61 @@ export async function generateTTS(
     if (isTimeoutSignal(signal)) {
       throw new TTSRequestTimeoutError(
         config.providerId,
-        `TTS request timed out after ${ttsRequestTimeoutMs()}ms (provider ${config.providerId}) — the provider did not respond. Retry the tool call.`,
+        `TTS request timed out after ${ttsRequestTimeoutMs(config.providerId)}ms (provider ${config.providerId}) — the provider did not respond. Retry the tool call.`,
       );
     }
     throw error;
   }
+}
+
+/** MiMo expects spoken text as an assistant message and the speaking style as a user message. */
+async function generateMiMoTTS(
+  config: TTSModelConfig,
+  text: string,
+  signal: AbortSignal,
+): Promise<TTSGenerationResult> {
+  const baseUrl = (config.baseUrl || TTS_PROVIDERS['mimo-tts'].defaultBaseUrl || '').replace(/\/$/, '');
+  const speed = Math.min(1.5, Math.max(0.75, config.speed || 1));
+  const pace = speed < 0.9 ? '语速稍慢' : speed > 1.1 ? '语速稍快' : '语速适中';
+  const response = await ttsFetch(config.publicOnly, `${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      model: config.modelId || 'mimo-v2.5-tts',
+      messages: [
+        { role: 'user', content: `自然、清晰地说话，${pace}，在句子之间适当停顿，准确读出术语和数字。` },
+        { role: 'assistant', content: text },
+      ],
+      audio: { format: 'wav', voice: config.voice || '苏打' },
+    }),
+    signal,
+  });
+  if (!response.ok) {
+    throwIfTtsRateLimited('MiMo', response.status);
+    throw new Error(`MiMo TTS API error: HTTP ${response.status}`);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new TTSInvalidResponseError('MiMo', 'MiMo TTS returned malformed JSON');
+  }
+  const choices = (payload as { choices?: Array<{ message?: { audio?: { data?: unknown } } }> })?.choices;
+  const encoded = choices?.[0]?.message?.audio?.data;
+  if (typeof encoded !== 'string' || encoded.length > 35_000_000 ||
+      encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new TTSInvalidResponseError('MiMo', 'MiMo TTS returned invalid audio data');
+  }
+  const audio = Buffer.from(encoded, 'base64');
+  if (audio.length < 44 || audio.length > 25 * 1024 * 1024 ||
+      audio.toString('ascii', 0, 4) !== 'RIFF' || audio.toString('ascii', 8, 12) !== 'WAVE') {
+    throw new TTSInvalidResponseError('MiMo', 'MiMo TTS returned an invalid WAV file');
+  }
+  return { audio, format: 'wav' };
 }
 
 /**

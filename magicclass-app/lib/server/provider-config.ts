@@ -85,6 +85,7 @@ export const LLM_ENV_MAP: Record<string, string> = {
 };
 
 const TTS_ENV_MAP: Record<string, string> = {
+  TTS_MIMO: 'mimo-tts',
   TTS_OPENAI: 'openai-tts',
   TTS_AZURE: 'azure-tts',
   TTS_GLM: 'glm-tts',

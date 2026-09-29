@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * magic class 品牌与技术迁移 —— 可重放、可校验，不是一次性 sed。
+ * magic class 品牌迁移与已批准的功能补丁 —— 可重放、可校验，不是一次性 sed。
  *
  * `magicclass-app/` 来自上游 OpenMAIC v1.0.3（见 third_party/magicclass/NOTICE.md）。
  * 改名是一次**有意的偏离**，所以偏离必须写成脚本：将来同步上游新版本时原样重放，
- * 而不是靠人回忆当初改了哪几千处。
+ * 功能差异同样记录在 magicclass-feature.patch.mjs，防止上游来源校验漏过手工改动。
  *
  * 三种模式：
  *   apply    应用补丁（幂等）
  *   check    只报告补丁是否已生效，不写文件
- *   verify   把迁移**逆向**回去，逐文件比对 third_party/magicclass/source-manifest.sha256，
- *            证明"这份树 = 上游 v1.0.3 + 本文件定义的改动"，不需要重新下载上游
+ *   verify   把品牌与功能补丁**逆向**回去，逐文件比对 third_party/magicclass/source-manifest.sha256，
+ *            证明"这份树 = 上游 v1.0.3 + 已记录补丁"，不需要重新下载上游
  *
  * 三层规则，以及刻意**不做**的部分：
  *   1. 展示层：用户看得见的品牌词 `OpenMAIC` → `magic class`。逐条精确替换，保留字形与布局。
@@ -18,9 +18,10 @@
  *   3. 来源层：保留上游许可证、来源链接和校验清单；verify 会将上两层完整逆向后校验哈希。
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FEATURE_ADDED_FILES, FEATURE_EDITS } from './magicclass-feature.patch.mjs';
 
 const REPO = dirname(dirname(fileURLToPath(import.meta.url)));
 export const APP = join(REPO, 'magicclass-app');
@@ -80,7 +81,10 @@ const SKIP_PREFIX = ['render-service/', 'public/vendor/'];
  * （开头是 `<!-- BEGIN:nextjs-agent-rules -->`），上游审计时的检出里没有它们，
  * 因此不属于上游内容，也不该被当成"清单里没有的新文件"。
  */
-const GENERATED = ['pnpm-lock.yaml', 'public/vendor/', 'next-env.d.ts', 'AGENTS.md', 'CLAUDE.md'];
+const GENERATED = [
+  'pnpm-lock.yaml', 'public/vendor/', 'next-env.d.ts', 'AGENTS.md', 'CLAUDE.md',
+  'test-results/', // Playwright writes run metadata here; this output is ignored by the app.
+];
 /** 刻意没有入库的上游文件（见 docs/magicclass-deployment.md）。 */
 const NOT_VENDORED = ['assets/', '.codegraph/.gitignore'];
 /** 补丁之外我们自己加进这份树的文件。 */
@@ -298,6 +302,212 @@ function applyOurEdits(dryRun) {
   return { changes, problems };
 }
 
+function countOccurrences(text, needle) {
+  if (!needle) return 0;
+  let count = 0;
+  let offset = 0;
+  while ((offset = text.indexOf(needle, offset)) !== -1) {
+    count += 1;
+    offset += needle.length;
+  }
+  return count;
+}
+
+function featureEditCount(edit) {
+  return edit.count ?? 1;
+}
+
+function featureState(text, edit) {
+  const expected = featureEditCount(edit);
+  const fromCount = countOccurrences(text, edit.from);
+  const toCount = countOccurrences(text, edit.to);
+  if (fromCount === expected && toCount === 0) return 'unapplied';
+  if (fromCount === 0 && toCount === expected) return 'applied';
+  return 'invalid';
+}
+
+function replaceFeatureText(text, from, to, count) {
+  let remaining = count;
+  let offset = 0;
+  let out = '';
+  while (remaining > 0) {
+    const found = text.indexOf(from, offset);
+    if (found === -1) throw new Error(`预期出现 ${count} 次，只找到 ${count - remaining} 次`);
+    out += text.slice(offset, found) + to;
+    offset = found + from.length;
+    remaining -= 1;
+  }
+  return out + text.slice(offset);
+}
+
+function featureFilePath(filePath) {
+  if (typeof filePath !== 'string' || !filePath || filePath.includes('\\') || filePath.startsWith('/')) {
+    throw new Error('file 必须是 magicclass-app 内使用正斜杠的相对路径');
+  }
+  const file = resolve(APP, filePath.split('/').join(sep));
+  const escaped = relative(APP, file);
+  if (escaped === '..' || escaped.startsWith(`..${sep}`) || !escaped) {
+    throw new Error(`路径必须位于 magicclass-app 内：${filePath}`);
+  }
+  return file;
+}
+
+function featureEditPath(edit) {
+  const file = featureFilePath(edit.file);
+  if (typeof edit.from !== 'string' || !edit.from || typeof edit.to !== 'string' || !edit.to || edit.from === edit.to) {
+    throw new Error('from / to 必须是不同的非空文本');
+  }
+  const count = featureEditCount(edit);
+  if (!Number.isInteger(count) || count < 1) throw new Error('count 必须是正整数');
+  return file;
+}
+
+/** Apply one reversible text edit; exported so the invariant has isolated tests. */
+export function applyFeatureText(text, edit) {
+  featureEditPath(edit);
+  const state = featureState(text, edit);
+  if (state === 'applied') return { text, changed: false };
+  if (state === 'invalid') {
+    throw new Error(`from/to 状态不明确（from ${countOccurrences(text, edit.from)} 次，to ${countOccurrences(text, edit.to)} 次）`);
+  }
+  return {
+    text: replaceFeatureText(text, edit.from, edit.to, featureEditCount(edit)),
+    changed: true,
+  };
+}
+
+/** Invert one edit when present; an unpatched source remains untouched. */
+export function restoreFeatureText(text, edit) {
+  featureEditPath(edit);
+  const state = featureState(text, edit);
+  if (state === 'unapplied') return text;
+  if (state === 'invalid') {
+    throw new Error(`from/to 状态不明确（from ${countOccurrences(text, edit.from)} 次，to ${countOccurrences(text, edit.to)} 次）`);
+  }
+  return replaceFeatureText(text, edit.to, edit.from, featureEditCount(edit));
+}
+
+function applyFeatureEdits(dryRun) {
+  const changes = [];
+  const problems = [];
+  for (const edit of FEATURE_EDITS) {
+    try {
+      const file = featureEditPath(edit);
+      if (!existsSync(file)) {
+        problems.push(`缺少功能补丁目标文件：${edit.file}`);
+        continue;
+      }
+      const text = readFileSync(file, 'utf8');
+      const result = applyFeatureText(text, edit);
+      if (result.changed) {
+        changes.push(edit.file);
+        if (!dryRun) writeFileSync(file, result.text, 'utf8');
+      }
+    } catch (error) {
+      problems.push(`${edit.file || '(未命名功能补丁)'}：${error.message}`);
+    }
+  }
+  return { changes, problems };
+}
+
+function applyFeatureFiles(dryRun) {
+  const changes = [];
+  const problems = [];
+  for (const entry of FEATURE_ADDED_FILES) {
+    try {
+      const file = featureFilePath(entry.file);
+      if (typeof entry.content !== 'string' || !entry.content) throw new Error('content 必须是非空文本');
+      if (existsSync(file)) {
+        const current = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+        if (current !== entry.content.replace(/\r\n/g, '\n')) {
+          throw new Error('目标文件已存在但内容与补丁清单不同');
+        }
+        continue;
+      }
+      changes.push(entry.file);
+      if (!dryRun) {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, entry.content, 'utf8');
+      }
+    } catch (error) {
+      problems.push(`${entry.file || '(未命名新增文件)'}：${error.message}`);
+    }
+  }
+  return { changes, problems };
+}
+
+/** Every functional patch must be present on a manifest-tracked upstream text file. */
+export function auditFeature() {
+  const problems = [];
+  const manifestPaths = new Set(readFileSync(MANIFEST, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.slice(line.indexOf('  ') + 2).replace(/^\.\//, '')));
+
+  for (const edit of FEATURE_EDITS) {
+    try {
+      const file = featureEditPath(edit);
+      const upstreamPath = renameTechnical(edit.file, true);
+      if (!isText(file)) problems.push(`${edit.file} 不是可逆文本文件`);
+      if (!manifestPaths.has(upstreamPath) && !startsWithAny(edit.file, ADDED_BY_US)) {
+        problems.push(`${edit.file} 既不属于上游来源清单，也不在本站已有文件白名单中`);
+      }
+      if (!existsSync(file)) {
+        problems.push(`缺少功能补丁目标文件：${edit.file}`);
+        continue;
+      }
+      const text = readFileSync(file, 'utf8');
+      if (featureState(text, edit) !== 'applied') {
+        problems.push(`${edit.file} 的功能补丁未完整应用（from ${countOccurrences(text, edit.from)} 次，to ${countOccurrences(text, edit.to)} 次）`);
+      }
+    } catch (error) {
+      problems.push(`${edit.file || '(未命名功能补丁)'}：${error.message}`);
+    }
+  }
+  const addedPaths = new Set();
+  for (const entry of FEATURE_ADDED_FILES) {
+    try {
+      const file = featureFilePath(entry.file);
+      if (typeof entry.content !== 'string' || !entry.content) {
+        problems.push(`${entry.file} 的功能补丁 content 必须是非空文本`);
+        continue;
+      }
+      if (!isText(file)) problems.push(`${entry.file} 不是可审计文本文件`);
+      const upstreamPath = renameTechnical(entry.file, true);
+      if (manifestPaths.has(upstreamPath)) problems.push(`${entry.file} 已属于上游来源清单，不能声明为新增文件`);
+      if (addedPaths.has(entry.file)) problems.push(`${entry.file} 在新增文件补丁中重复声明`);
+      addedPaths.add(entry.file);
+      if (!existsSync(file)) {
+        problems.push(`缺少功能补丁新增文件：${entry.file}`);
+        continue;
+      }
+      const actual = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+      if (actual !== entry.content.replace(/\r\n/g, '\n')) {
+        problems.push(`${entry.file} 与功能补丁记录的新增文件内容不一致`);
+      }
+    } catch (error) {
+      problems.push(`${entry.file || '(未命名新增文件)'}：${error.message}`);
+    }
+  }
+  return problems;
+}
+
+function restoreFeatureEdits(upstreamPath, text) {
+  const brandedPath = treePathFor(upstreamPath);
+  let out = text;
+  for (const edit of [...FEATURE_EDITS].reverse()) {
+    if (edit.file !== brandedPath) continue;
+    try {
+      out = restoreFeatureText(out, edit);
+    } catch {
+      // auditFeature and the upstream hash comparison will report an incomplete
+      // or ambiguous patch. Keep verify diagnostic instead of throwing early.
+    }
+  }
+  return out;
+}
+
 function applyI18n(dryRun) {
   const changes = [];
   const problems = [];
@@ -414,6 +624,7 @@ export function audit() {
   if (existsSync(rootManifest) && /"name":\s*"openmaic"/.test(readFileSync(rootManifest, 'utf8'))) {
     problems.push('根 package.json 的 name 仍是 openmaic');
   }
+  problems.push(...auditFeature().map((problem) => `功能补丁：${problem}`));
   return problems;
 }
 
@@ -452,6 +663,7 @@ export function verify() {
   const known = new Set(entries.map((e) => e.path));
   const problems = [];
   const declared = [];
+  for (const problem of auditFeature()) problems.push(`功能补丁：${problem}`);
   /** 已声明的偏离单独收集：它们是已知且已核对的，不该和未知偏离混在一起。 */
   const report = (path, message) => {
     if (DECLARED_DEVIATIONS.has(path)) declared.push(`${message}：${path}`);
@@ -488,7 +700,10 @@ export function verify() {
   const extra = walk(APP)
     .map(rel)
     .map(upstreamOf)
-    .filter((path) => !known.has(path) && !startsWithAny(path, ADDED_BY_US) && !startsWithAny(path, GENERATED));
+    .filter((path) => !known.has(path)
+      && !FEATURE_ADDED_FILES.some((entry) => renameTechnical(entry.file, true) === path)
+      && !startsWithAny(path, ADDED_BY_US)
+      && !startsWithAny(path, GENERATED));
   for (const path of extra) report(path, '清单里没有的新文件（不是上游内容）');
   // 声明表里长期用不上的条目说明它已不再偏离（或已被上游同步掉），应清理。
   const declaredPaths = new Set([...declared].map((line) => line.slice(line.lastIndexOf('：') + 1)));
@@ -498,7 +713,7 @@ export function verify() {
 
 /** verify 用的逆变换：与 apply 严格互逆。 */
 function restore(path, text) {
-  let out = text;
+  let out = restoreFeatureEdits(path, text);
   if (inI18n(path) && path.endsWith('.json')) {
     out = i18nReplace(out, true);
   } else {
@@ -532,7 +747,7 @@ function main(argv) {
       for (const path of result.unusedDeclarations.slice(0, 8)) console.log(`  · ${path}`);
     }
     if (result.problems.length === 0) {
-      console.log('结论：这份树 = 上游 v1.0.3 + 本文件定义的改动 + 上列已声明偏离');
+      console.log('结论：这份树 = 上游 v1.0.3 + 品牌补丁 + 功能补丁 + 上列已声明偏离');
       return 0;
     }
     console.error(`发现 ${result.problems.length} 处无法用品牌补丁解释的差异：`);
@@ -542,14 +757,21 @@ function main(argv) {
   if (mode === 'check') {
     const problems = audit();
     if (problems.length === 0) {
-      console.log(`品牌补丁已生效：展示层与 npm 身份均已是 ${BRAND} / ${PKG}`);
+      console.log(`品牌与功能补丁已生效：展示层与 npm 身份均已是 ${BRAND} / ${PKG}`);
       return 0;
     }
     console.error(`品牌补丁不完整（${problems.length} 项）：`);
     for (const line of problems.slice(0, 30)) console.error(`  - ${line}`);
     return 1;
   }
-  const steps = [applyDisplayEdits(false), applyOurEdits(false), applyI18n(false), applyTechnicalRename(false)];
+  const steps = [
+    applyDisplayEdits(false),
+    applyOurEdits(false),
+    applyI18n(false),
+    applyTechnicalRename(false),
+    applyFeatureEdits(false),
+    applyFeatureFiles(false),
+  ];
   const changed = steps.flatMap((s) => s.changes);
   const problems = steps.flatMap((s) => s.problems || []);
   console.log(`已应用 ${changed.length} 处改动：`);

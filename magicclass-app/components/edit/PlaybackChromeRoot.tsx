@@ -239,15 +239,17 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const ttsMuted = useSettingsStore((s) => s.ttsMuted);
     const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
 
+    // Subscribe to agent changes so participants can resolve agents loaded after mount
+    const agentsRecord = useAgentRegistry((s) => s.agents);
+
     // Generate participants from selected agents
     const participants = useMemo(
-      () => agentsToParticipants(selectedAgentIds, t),
-      [selectedAgentIds, t],
+      () => agentsToParticipants(selectedAgentIds, t, agentsRecord),
+      [agentsRecord, selectedAgentIds, t],
     );
 
     // Resolved AgentConfig array for hooks that need full agent objects
     // Subscribe to the agents record so voiceConfig changes trigger re-resolution
-    const agentsRecord = useAgentRegistry((s) => s.agents);
     const selectedAgents = useMemo(
       () =>
         selectedAgentIds.map((id) => agentsRecord[id]).filter((a): a is AgentConfig => a != null),

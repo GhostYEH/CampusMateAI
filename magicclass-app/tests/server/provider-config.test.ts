@@ -28,6 +28,7 @@ const ENV_PREFIXES_TO_CLEAR = [
   'OLLAMA',
   'BEDROCK',
   'TTS_OPENAI',
+  'TTS_MIMO',
   'TTS_AZURE',
   'TTS_GLM',
   'TTS_QWEN',
@@ -733,6 +734,15 @@ video:
   });
 
   describe('getServerTTSProviders force-disable (#665)', () => {
+    it('serves MiMo from a server key without exposing that key to clients', async () => {
+      vi.stubEnv('TTS_MIMO_API_KEY', 'server-only-key');
+      const { getServerTTSProviders, resolveTTSApiKey, resolveTTSBaseUrl } =
+        await import('@/lib/server/provider-config');
+      expect(getServerTTSProviders()['mimo-tts']).toEqual({});
+      expect(resolveTTSApiKey('mimo-tts', 'client-key')).toBe('server-only-key');
+      expect(resolveTTSBaseUrl('mimo-tts')).toBe('https://api.xiaomimimo.com/v1');
+    });
+
     it('reports nothing when no TTS provider is configured or disabled', async () => {
       const { getServerTTSProviders } = await import('@/lib/server/provider-config');
       expect(getServerTTSProviders()).toEqual({});

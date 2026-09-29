@@ -20,6 +20,10 @@ const mocks = vi.hoisted(() => ({
       }
     | undefined,
   handleUserInterrupt: vi.fn(),
+  agentRegistryAgents: {} as Record<
+    string,
+    { id: string; name: string; role: string; avatar?: string }
+  >,
 }));
 
 const textElement = {
@@ -123,7 +127,7 @@ const settingsState = {
   setChatAreaCollapsed: vi.fn(),
   setTTSMuted: vi.fn(),
   setTTSVolume: vi.fn(),
-  selectedAgentIds: [],
+  selectedAgentIds: [] as string[],
   ttsMuted: false,
   ttsEnabled: false,
   ttsVolume: 1,
@@ -335,10 +339,21 @@ vi.mock('@/lib/store/widget-iframe', () => ({
   useWidgetIframeStore: { getState: () => ({ getSendMessage: () => undefined }) },
 }));
 vi.mock('@/lib/orchestration/registry/store', () => ({
-  agentsToParticipants: () => [],
+  agentsToParticipants: (agentIds: string[], ...args: unknown[]) => {
+    const agentsRecord = args[1] as typeof mocks.agentRegistryAgents | undefined;
+    return agentIds.flatMap((id) => {
+      const agent = agentsRecord?.[id];
+      return agent
+        ? [{ id: agent.id, name: agent.name, role: agent.role, avatar: agent.avatar }]
+        : [];
+    });
+  },
   useAgentRegistry: Object.assign(
-    (selector: (state: { agents: Record<string, unknown> }) => unknown) => selector({ agents: {} }),
-    { getState: () => ({ getAgent: () => undefined }) },
+    (selector: (state: { agents: Record<string, unknown> }) => unknown) =>
+      selector({ agents: mocks.agentRegistryAgents }),
+    {
+      getState: () => ({ getAgent: (id: string) => mocks.agentRegistryAgents[id] }),
+    },
   ),
 }));
 vi.mock('@/lib/config/feature-flags', () => ({
@@ -367,9 +382,11 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
     mocks.engineMode = 'idle';
     mocks.engineOptions = undefined;
     mocks.handleUserInterrupt.mockReset();
+    mocks.agentRegistryAgents = {};
     stageState.scenes = [scene, secondScene];
     stageState.currentSceneId = scene.id;
     stageState.setCurrentSceneId.mockClear();
+    settingsState.selectedAgentIds = [];
     settingsState.autoPlayLecture = false;
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -405,6 +422,32 @@ describe('PlaybackChromeRoot element-reference ownership', () => {
       await Promise.resolve();
     });
   }
+
+  it('shows selected classmates whose agent records load after playback mounts', async () => {
+    settingsState.selectedAgentIds = ['student-1'];
+    await renderOwner();
+
+    expect(mocks.roundtableProps?.initialParticipants).toEqual([]);
+
+    mocks.agentRegistryAgents = {
+      'student-1': {
+        id: 'student-1',
+        name: 'Curious student',
+        role: 'student',
+        avatar: '/avatars/curious.png',
+      },
+    };
+    await rerenderOwner();
+
+    expect(mocks.roundtableProps?.initialParticipants).toEqual([
+      {
+        id: 'student-1',
+        name: 'Curious student',
+        role: 'student',
+        avatar: '/avatars/curious.png',
+      },
+    ]);
+  });
 
   it('owns pick state, freezes one request snapshot, and clears only on an accepted receipt', async () => {
     await renderOwner();

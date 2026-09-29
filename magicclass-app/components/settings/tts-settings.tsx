@@ -222,6 +222,8 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
   const endpointPath = (() => {
     if (isCustom) return '/audio/speech';
     switch (selectedProviderId) {
+      case 'mimo-tts':
+        return '/chat/completions';
       case 'openai-tts':
       case 'glm-tts':
       case 'lemonade-tts':

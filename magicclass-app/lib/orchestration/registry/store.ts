@@ -280,14 +280,17 @@ export const useAgentRegistry = create<AgentRegistryState>()(
 export function agentsToParticipants(
   agentIds: string[],
   t?: (key: string) => string,
+  agentsRecord?: Record<string, AgentConfig>,
 ): Participant[] {
-  const registry = useAgentRegistry.getState();
+  const resolveAgent = agentsRecord
+    ? (id: string) => agentsRecord[id]
+    : (id: string) => useAgentRegistry.getState().getAgent(id);
   const participants: Participant[] = [];
   let hasTeacher = false;
 
   // Resolve agents and sort: teacher first (by role then priority desc)
   const resolved = agentIds
-    .map((id) => registry.getAgent(id))
+    .map(resolveAgent)
     .filter((a): a is AgentConfig => a != null);
   resolved.sort((a, b) => {
     if (a.role === 'teacher' && b.role !== 'teacher') return -1;
