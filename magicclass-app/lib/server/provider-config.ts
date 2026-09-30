@@ -1020,7 +1020,7 @@ export function resolveServerWebSearchProviderId(preferredProviderId?: string): 
 }
 
 /**
- * Concurrency for parallel scene-content generation (#572).
+ * Concurrency for classic scene generation (#572).
  *
  * Returns the server-configured `PARALLEL_SCENE_CONCURRENCY`, clamped to
  * [0, 10]. Unset or invalid values default to 8; an explicit `0` keeps serial

@@ -225,23 +225,28 @@ export async function fetchSceneActions(
   },
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<SceneActionsResult>,
+  limiter?: ReturnType<typeof createAdaptiveConcurrencyLimiter>,
 ): Promise<SceneActionsResult> {
   try {
     return await withGenerationRetry(
       async () => {
-        const response = await fetch('/api/generate/scene-actions', {
-          method: 'POST',
-          headers: getApiHeaders(),
-          body: JSON.stringify(withThinkingConfig(params)),
-          signal,
-        });
+        const request = async () => {
+          const response = await fetch('/api/generate/scene-actions', {
+            method: 'POST',
+            headers: getApiHeaders(),
+            body: JSON.stringify(withThinkingConfig(params)),
+            signal,
+          });
 
-        const data = await readJsonResponse(response);
-        if (!response.ok) {
-          throw createHttpError(response, data, 'Scene actions request failed');
-        }
+          const data = await readJsonResponse(response);
+          if (!response.ok) {
+            if (response.status === 429) limiter?.rateLimited(retryAfterMs(response));
+            throw createHttpError(response, data, 'Scene actions request failed');
+          }
 
-        return data as unknown as SceneActionsResult;
+          return data as unknown as SceneActionsResult;
+        };
+        return limiter ? limiter.run(request, signal) : request();
       },
       {
         label: `scene actions "${params.outline.title}"`,
@@ -293,6 +298,7 @@ export async function generateAndStoreTTS(
   // QWEN_VC_VOICE_NOT_FOUND retry so a chain of dead voices can never loop
   // /api/generate/tts beyond a single fallback hop.
   fallbackHops = 0,
+  limiter?: ReturnType<typeof createAdaptiveConcurrencyLimiter>,
 ): Promise<string | null> {
   const settings = useSettingsStore.getState();
   // A generated roster's explicit voice binding is the course voice source of truth.
@@ -374,31 +380,35 @@ export async function generateAndStoreTTS(
   try {
     data = await withGenerationRetry(
       async () => {
-        const response = await fetch('/api/generate/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            audioId: requestId,
-            ttsProviderId,
-            ttsModelId,
-            ttsVoice,
-            ttsSpeed: settings.ttsSpeed,
-            ttsApiKey: ttsProviderConfig?.apiKey || undefined,
-            // Managed providers resolve their base URL server-side; only send the
-            // client's own base URL (custom providers).
-            ttsBaseUrl:
-              ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl || undefined,
-            ttsProviderOptions: providerOptions,
-          }),
-          signal,
-        });
+        const request = async () => {
+          const response = await fetch('/api/generate/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text,
+              audioId: requestId,
+              ttsProviderId,
+              ttsModelId,
+              ttsVoice,
+              ttsSpeed: settings.ttsSpeed,
+              ttsApiKey: ttsProviderConfig?.apiKey || undefined,
+              // Managed providers resolve their base URL server-side; only send the
+              // client's own base URL (custom providers).
+              ttsBaseUrl:
+                ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl || undefined,
+              ttsProviderOptions: providerOptions,
+            }),
+            signal,
+          });
 
-        const data = (await readJsonResponse(response)) as TTSApiResponse;
-        if (!response.ok) {
-          throw createHttpError(response, data, 'TTS request failed');
-        }
-        return data;
+          const data = (await readJsonResponse(response)) as TTSApiResponse;
+          if (!response.ok) {
+            if (response.status === 429) limiter?.rateLimited(retryAfterMs(response));
+            throw createHttpError(response, data, 'TTS request failed');
+          }
+          return data;
+        };
+        return limiter ? limiter.run(request, signal) : request();
       },
       {
         label: `tts "${requestId}"`,
@@ -444,6 +454,7 @@ export async function generateAndStoreTTS(
             stageId,
             undefined,
             fallbackHops + 1,
+            limiter,
           );
         }
         // Bound == global (pinned narrator): a retry would hit the same missing
@@ -462,6 +473,7 @@ export async function generateAndStoreTTS(
               stageId,
               fallbackVoice,
               fallbackHops + 1,
+              limiter,
             );
           }
         }
@@ -602,6 +614,7 @@ export async function generateTTSForScene(
   language?: string,
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
+  limiter?: ReturnType<typeof createAdaptiveConcurrencyLimiter>,
 ): Promise<{ success: boolean; failedCount: number; error?: string }> {
   const providerId = useSettingsStore.getState().ttsProviderId;
   scene.actions = splitLongSpeechActions(scene.actions || [], providerId);
@@ -617,6 +630,12 @@ export async function generateTTSForScene(
   // Scene order keeps the provider request correlation label unique. Storage
   // identity is allocated by the pool and is never derived from this value.
   const sceneOrder = scene.order;
+  const configuredTtsConcurrency = useSettingsStore.getState().parallelSceneConcurrency ?? 8;
+  const ttsConcurrency = Number.isFinite(configuredTtsConcurrency)
+    ? Math.min(10, Math.max(0, Math.floor(configuredTtsConcurrency)))
+    : 8;
+  const ttsLimiter =
+    limiter ?? (ttsConcurrency > 1 ? createAdaptiveConcurrencyLimiter(ttsConcurrency) : undefined);
 
   // Generate + store one action's audio. Failures are counted, not thrown, so
   // one bad clip never aborts the rest of the scene.
@@ -631,6 +650,9 @@ export async function generateTTSForScene(
         retryOptions,
         undefined,
         scene.stageId,
+        undefined,
+        0,
+        ttsLimiter,
       );
       if (assetId) {
         action.audioId = assetId;
@@ -656,11 +678,7 @@ export async function generateTTSForScene(
   // its own audio under its own audioId, with no cross-action ordering — so when
   // the server opts into parallel generation, render them with bounded
   // concurrency (reusing the PARALLEL_SCENE_CONCURRENCY knob) instead of one at a
-  // time. Default (0 / unset) keeps the original strictly-serial behaviour.
-  const ttsConcurrency = Math.max(
-    0,
-    Math.floor(useSettingsStore.getState().parallelSceneConcurrency ?? 0),
-  );
+  // time. An explicit 0 keeps the original strictly-serial behaviour.
   try {
     if (ttsConcurrency > 1 && speechActions.length > 1) {
       const settled = await Promise.allSettled(
@@ -792,21 +810,23 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           .map((a) => a.text);
       }
 
-      // Parallel content fetches start at the server cap (8 by default), then
-      // individual HTTP attempts share a limiter that shrinks on provider 429s.
+      // Parallel content fetches start at the server cap (8 by default). Both
+      // content and actions share an HTTP attempt limiter that shrinks on 429s.
       const configuredConcurrency = useSettingsStore.getState().parallelSceneConcurrency ?? 8;
       // The store is normally clamped server-side; also guard stale browser state.
       const parallelConcurrency = Number.isFinite(configuredConcurrency)
         ? Math.min(10, Math.max(0, Math.floor(configuredConcurrency)))
         : 8;
       const useParallelContent = parallelConcurrency > 1 && pending.length > 1;
-      const contentLimiter = useParallelContent
+      const llmLimiter = useParallelContent
         ? createAdaptiveConcurrencyLimiter(parallelConcurrency)
         : undefined;
+      const ttsLimiter =
+        parallelConcurrency > 1 ? createAdaptiveConcurrencyLimiter(parallelConcurrency) : undefined;
 
       // Pipelined generation loop (#572). When parallelism is on, scene *content*
       // fetches are kicked off up front with bounded concurrency (lazyBoundedMap)
-      // and each HTTP attempt passes through the adaptive request limiter,
+      // and both content and action HTTP attempts share the adaptive LLM limiter,
       // but CONSUMED IN ORDER inside the serial loop below — there is no barrier.
       // So the first scene paints after content(1)+actions(1)+TTS(1) (same as
       // serial) while later content fetches run hidden behind earlier scenes'
@@ -829,7 +849,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             },
             signal,
             undefined,
-            contentLimiter,
+            llmLimiter,
           );
 
         // Pre-warm content fetches (<= parallelConcurrency in flight), keyed by
@@ -854,7 +874,9 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
                 },
                 {
                   shouldContinue: () =>
-                    !abortRef.current && store.getState().generationEpoch === startEpoch,
+                    !signal.aborted &&
+                    !abortRef.current &&
+                    store.getState().generationEpoch === startEpoch,
                 },
               ).map((promise, i) => [pending[i].id, promise] as const),
             )
@@ -925,6 +947,8 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               languageDirective: params.languageDirective,
             },
             signal,
+            undefined,
+            llmLimiter,
           );
 
           if (actionsResult.success && actionsResult.scene) {
@@ -944,6 +968,8 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
                 scene,
                 params.languageDirective || params.stageInfo.language,
                 signal,
+                undefined,
+                ttsLimiter,
               );
               if (!ttsResult.success) {
                 if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
@@ -1003,6 +1029,9 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           throw err;
         }
       } finally {
+        // A failed actions/TTS phase may leave later content requests in flight.
+        // Cancel them before a resumed run can start a fresh request pool.
+        fetchAbortRef.current?.abort();
         generatingRef.current = false;
         fetchAbortRef.current = null;
       }

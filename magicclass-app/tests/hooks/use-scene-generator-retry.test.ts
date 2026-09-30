@@ -177,6 +177,96 @@ describe('browser scene generation retry wrappers', () => {
     }
   });
 
+  it('shares the eight-request cap between scene content and actions', async () => {
+    const { fetchSceneContent, fetchSceneActions } =
+      await import('@/lib/hooks/use-scene-generator');
+    const limiter = createAdaptiveConcurrencyLimiter(8);
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let peak = 0;
+    mockFetch.mockImplementation(
+      (url: string) =>
+        new Promise((resolve) => {
+          active++;
+          peak = Math.max(peak, active);
+          releases.push(() => {
+            active--;
+            resolve(
+              url.endsWith('scene-actions')
+                ? jsonResponse(200, { success: true, scene: {} })
+                : jsonResponse(200, { success: true, content: { elements: [] } }),
+            );
+          });
+        }),
+    );
+
+    const contents = Array.from({ length: 8 }, (_, index) =>
+      fetchSceneContent(
+        {
+          outline: { ...outline, id: `outline-${index}` },
+          allOutlines: [outline],
+          stageId: 'stage-1',
+          stageInfo: { name: 'Retry Course' },
+        },
+        undefined,
+        { ...retryOptions, maxRetries: 0 },
+        limiter,
+      ),
+    );
+    const actions = fetchSceneActions(
+      {
+        outline,
+        allOutlines: [outline],
+        content: { elements: [] },
+        stageId: 'stage-1',
+      },
+      undefined,
+      { ...retryOptions, maxRetries: 0 },
+      limiter,
+    );
+
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(8));
+    expect(peak).toBe(8);
+    releases.shift()!();
+    await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(9));
+    expect(peak).toBe(8);
+    releases.splice(0).forEach((release) => release());
+    await expect(Promise.all([...contents, actions])).resolves.toHaveLength(9);
+  });
+
+  it('reduces the shared cap when scene actions receive HTTP 429', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchSceneActions } = await import('@/lib/hooks/use-scene-generator');
+      const limiter = createAdaptiveConcurrencyLimiter(8);
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, { error: 'rate limited' }, { 'Retry-After': '2' }))
+        .mockResolvedValueOnce(jsonResponse(200, { success: true, scene: {} }));
+
+      const generation = fetchSceneActions(
+        {
+          outline,
+          allOutlines: [outline],
+          content: { elements: [] },
+          stageId: 'stage-1',
+        },
+        undefined,
+        retryOptions,
+        limiter,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(limiter.limit).toBe(4);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(generation).resolves.toMatchObject({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not retry permanent scene action HTTP failures', async () => {
     const { fetchSceneActions } = await import('@/lib/hooks/use-scene-generator');
     mockFetch.mockResolvedValue(jsonResponse(401, { error: 'unauthorized' }));
@@ -292,6 +382,67 @@ describe('browser scene generation retry wrappers', () => {
     ).rejects.toBe(abort);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps reduced TTS concurrency for later scenes in the course', async () => {
+    vi.useFakeTimers();
+    try {
+      const { generateTTSForScene } = await import('@/lib/hooks/use-scene-generator');
+      const limiter = createAdaptiveConcurrencyLimiter(8);
+      const makeScene = (order: number, count: number) =>
+        ({
+          id: `scene-${order}`,
+          stageId: 'stage-1',
+          order,
+          actions: Array.from({ length: count }, (_, index) => ({
+            id: `speech-${index}`,
+            type: 'speech',
+            text: 'Hello class',
+          })),
+        }) as Parameters<typeof generateTTSForScene>[0];
+      const audioResponse = () =>
+        jsonResponse(200, { success: true, base64: btoa('audio-data'), format: 'wav' });
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(429, { error: 'rate limited' }))
+        .mockResolvedValueOnce(audioResponse());
+
+      const generation = generateTTSForScene(
+        makeScene(1, 1),
+        undefined,
+        undefined,
+        retryOptions,
+        limiter,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(limiter.limit).toBe(4);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(generation).resolves.toMatchObject({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const releases: Array<() => void> = [];
+      mockFetch.mockImplementation(
+        () => new Promise((resolve) => releases.push(() => resolve(audioResponse()))),
+      );
+      const nextScene = generateTTSForScene(
+        makeScene(2, 5),
+        undefined,
+        undefined,
+        retryOptions,
+        limiter,
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      expect(releases).toHaveLength(4);
+      releases.splice(0).forEach((release) => release());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(releases).toHaveLength(1);
+      releases.splice(0).forEach((release) => release());
+      await expect(nextScene).resolves.toMatchObject({ success: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('retries transient TTS failures before storing audio', async () => {
