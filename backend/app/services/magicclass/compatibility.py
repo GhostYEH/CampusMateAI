@@ -1,6 +1,6 @@
 """magicclass 部署兼容性判定。
 
-设计要点（见 `docs/magicclass-student-integration-design.md` §7.3）：
+设计要点：
 
 - 兼容性由**契约指纹**决定，不由版本字符串决定。
 - 版本字符串**只用于记录与告警**：即使它越界，也不会单独把部署判成

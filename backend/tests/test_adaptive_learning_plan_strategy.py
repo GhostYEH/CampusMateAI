@@ -66,10 +66,10 @@ def _context(
     )
 
 
-def _generate(container, user_id: str, *, key: str, context=None):
+def _generate(container, user_id: str, *, key: str, context=None, as_of=None):
     return container.learning_planner_service.generate(
         user_id=user_id, available_minutes=AVAILABLE_MINUTES, force_new=True,
-        idempotency_key=key, strategy_context=context,
+        idempotency_key=key, strategy_context=context, as_of=as_of,
     )
 
 
@@ -154,10 +154,13 @@ def test_strategy_version_enters_input_digest() -> None:
 def test_identical_strategy_context_is_reusable() -> None:
     container, student = _setup()
     _seed_tasks(container, student.id)
-    first = _generate(container, student.id, key="reuse-1", context=_context("a"))
+    # 两次调用必须钉住同一个 as_of：CORE 投影在 as_of 前进一秒后就会生成新的 run，
+    # run_id 进 digest，跨秒时"输入未变"会被误判成"输入已变"，测试随之随机失败。
+    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    first = _generate(container, student.id, key="reuse-1", context=_context("a"), as_of=as_of)
     second = container.learning_planner_service.generate(
         user_id=student.id, available_minutes=AVAILABLE_MINUTES, force_new=False,
-        idempotency_key="reuse-2", strategy_context=_context("a"),
+        idempotency_key="reuse-2", strategy_context=_context("a"), as_of=as_of,
     )
     assert second.plan_id == first.plan_id
 

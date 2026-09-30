@@ -1,7 +1,7 @@
 /**
  * The DSL surface this service exposes to the rest of the runtime.
  *
- * Ported from `@magicclass/dsl` v1.0.3 (MIT) — see `docs/magicclass-capability-matrix.md`
+ * Ported from `@magicclass/dsl` v1.0.3 (MIT) — see `third_party/magicclass/`
  * for the exact rows and the evidence behind them. The port is a documented
  * subset: the closed vocabularies, the version/migration mechanism with its
  * cross-line guard, the legacy line-geometry transform, and the write-path

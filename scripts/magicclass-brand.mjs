@@ -85,7 +85,7 @@ const GENERATED = [
   'pnpm-lock.yaml', 'public/vendor/', 'next-env.d.ts', 'AGENTS.md', 'CLAUDE.md',
   'test-results/', // Playwright writes run metadata here; this output is ignored by the app.
 ];
-/** 刻意没有入库的上游文件（见 docs/magicclass-deployment.md）。 */
+/** 刻意没有入库的上游文件。 */
 const NOT_VENDORED = ['assets/', '.codegraph/.gitignore'];
 /** 补丁之外我们自己加进这份树的文件。 */
 const ADDED_BY_US = ['.env.example'];

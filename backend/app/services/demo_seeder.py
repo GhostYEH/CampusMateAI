@@ -58,6 +58,21 @@ def _demo_students() -> list[tuple[str, str, str, str, str, str, str, str]]:
     return rows
 
 
+_DEMO_PASSWORD_HASH: Optional[str] = None
+
+
+def _demo_password_hash() -> str:
+    """DEMO_PASSWORD 的哈希只计算一次。
+
+    演示账号共用同一个公开密码，而 hash_password 每次固定跑 100k 次 PBKDF2。
+    逐账号重算会把一次 seed 从毫秒级推到约 1 秒，测试套件里 seed 上百次就是上百秒。
+    """
+    global _DEMO_PASSWORD_HASH
+    if _DEMO_PASSWORD_HASH is None:
+        _DEMO_PASSWORD_HASH = hash_password(DEMO_PASSWORD)
+    return _DEMO_PASSWORD_HASH
+
+
 def _ensure_user(
     user_repo: UserRepository,
     username: str,
@@ -74,7 +89,7 @@ def _ensure_user(
         return existing
     return user_repo.create_user(
         username=username,
-        password_hash=hash_password(DEMO_PASSWORD),
+        password_hash=_demo_password_hash(),
         role=role,
         display_name=display_name,
         student_number=student_number,

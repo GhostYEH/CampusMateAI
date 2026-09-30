@@ -324,7 +324,7 @@ async function cmdDoctor() {
 
   const python = resolvePython();
   if (python) ok(`后端解释器 ${path.relative(REPO, python)}`);
-  else { bad('缺少 backend/.venv，先按 docs/magicclass-deployment.md 创建'); problems += 1; }
+  else { bad('缺少 backend/.venv，先按 backend/README.md 创建'); problems += 1; }
 
   if (existsSync(path.join(WEB_DIR, 'node_modules', 'vite'))) ok('webreact 依赖已安装');
   else { bad('缺少 webreact/node_modules，先在 webreact 执行 npm install'); problems += 1; }

@@ -13,7 +13,7 @@
  * foreign field and, once a real transform lands, mangle the payload. The
  * cross-line guard in {@link runLadder} throws instead of guessing.
  *
- * Ported subset (documented as such in `docs/magicclass-capability-matrix.md`):
+ * Ported subset (documented as such in `third_party/magicclass/`):
  * the ladder mechanism, the cross-line guard, the version comparison, and the
  * three shipped migrations. The upstream runtime-session shape is not ported —
  * only its *version line mechanism* is, because this service needs a place to
