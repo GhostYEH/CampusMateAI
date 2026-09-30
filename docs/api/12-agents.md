@@ -108,6 +108,8 @@ Web 封装：`getAgentSkills`（[webreact/src/data/agentRuntimeApi.js](../../web
 
 Web 封装：`createAgentJob`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）；`createAgentJob`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
 
+运行时成功状态：首次创建返回 **202**，同一幂等键与相同输入重放返回 **200**；两者均为 AgentJobOut。body.idempotency_key 优先于 Idempotency-Key 头。input_ref 还必须通过对应 Handler 校验，注册能力与嵌套字段见 [Agent 创建规则](integration.md#agent-input)。
+
 参数：
 
 | 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
@@ -136,6 +138,7 @@ Web 封装：`createAgentJob`（[webreact/src/data/agentRuntimeApi.js](../../web
 | --- | --- | --- |
 | 200 | application/json | [AgentJobOut](schemas.md#schema-agentjobout) |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 202 | application/json | [AgentJobOut](schemas.md#schema-agentjobout) |
 
 200 响应顶层字段：
 

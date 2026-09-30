@@ -275,6 +275,7 @@
 | [webreact/src/data/http/authEndpoints.js:27](../../webreact/src/data/http/authEndpoints.js) | qrExchange | POST | `/auth/qr/exchange` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:29](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:32](../../webreact/src/data/http/authEndpoints.js) | revokeTrustedDevice | POST | `/auth/trusted-device/revoke` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/client.js:77](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/learnerStateApi.js:52](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
 | [webreact/src/data/learnerStateApi.js:56](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
 | [webreact/src/data/learnerStateApi.js:67](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
@@ -330,3 +331,19 @@
 | POST | `/api/quiz-grade` | gradeShortAnswerQuestion | maic 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用课程场景 quiz-attempts 契约 |
 
 覆盖方式：310 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+
+## 动态地址与流式调用补充
+
+以下请求的地址由返回字段或局部变量构造，不能仅靠字面量列表覆盖。
+
+| Web 位置 | 请求 | 地址与解析 |
+| --- | --- | --- |
+| [data/http/client.js](../../webreact/src/data/http/client.js) | Axios POST 刷新令牌 | baseUrl + /auth/refresh；已纳入上表与认证模块 |
+| [data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js) | client.get/post/patch(path) 共 3 个内部包装调用 | 实际地址来自本文件 _get/_post/_patch 调用点，已逐项纳入上表；不是额外接口 |
+| [data/learnerStateApi.js](../../webreact/src/data/learnerStateApi.js) | client.get/post/put/patch(path) 共 4 个内部包装调用 | 实际地址来自本文件 _get/_post/_put/_patch 调用点，已逐项纳入上表 |
+| [pages/CourseResearchPage.jsx](../../webreact/src/pages/CourseResearchPage.jsx) | client.get(target.download_url) / client.get(art.download_url) | 研究产物 download_url，分别 text / blob；返回路径为 /agent-artifacts/{artifact_id}/content，Axios 按 baseURL 拼接 /api/v1 并沿用 Bearer 拦截器 |
+| [pages/FinalReviewPage.jsx](../../webreact/src/pages/FinalReviewPage.jsx) | client.get(art.download_url) | 复习产物下载，responseType=blob；按 mime_type 展示或保存 |
+| [data/agentSseStream.js](../../webreact/src/data/agentSseStream.js) | fetch_ 别名请求 | Agent /events/stream；续传、错误与终态见 [Agent 协议](integration.md#agents) |
+| [data/api.js](../../webreact/src/data/api.js) | fetch 动态 API 地址 | 聊天 SSE / assistant/tts；见 [聊天与音频协议](integration.md#chat) |
+
+当前 Web 未创建实时语音 WebSocket；后端已经注册的 /focus/realtime-voice/ws/{session_id} 仍完整列入 [实时语音协议](response-contracts.md#voice)。

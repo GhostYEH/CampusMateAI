@@ -108,6 +108,8 @@ Web 封装：`updateDailyStudyGoal`（[webreact/src/data/api.js](../../webreact/
 
 Web 封装：`createStudyCheckin`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
 
+运行时成功状态：本日首次签到为 **201**（created=true），重复签到为 **200**（created=false），结构相同。不能只接受 201。
+
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
 请求体：`application/json`，必填；[StudyCheckinCreate](schemas.md#schema-studycheckincreate)。
@@ -129,6 +131,7 @@ Web 封装：`createStudyCheckin`（[webreact/src/data/api.js](../../webreact/sr
 | --- | --- | --- |
 | 201 | application/json | [StudyCheckinResponse](schemas.md#schema-studycheckinresponse) |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 200 | application/json | [StudyCheckinResponse](schemas.md#schema-studycheckinresponse) |
 
 201 响应顶层字段：
 

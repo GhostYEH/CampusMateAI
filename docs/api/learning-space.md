@@ -8,19 +8,19 @@
 
 Web 导航 /learning-space 先调用本站 GET /api/v1/magicclass/learning-space/status，取可信 embed_origin 并加载 iframe。iframe 内的下列 /api 路径发往独立应用 Origin，不能拼在 CampusMate /api/v1 后面，也不使用 magicclass-service 的 /internal 路径。本站 JWT 不会自动转换成这里的身份。
 
-若服务设置 ACCESS_CODE，中间件除 /api/access-code/* 与 /api/health 外要求 magicclass_access 签名 cookie，否则返回 HTTP 401。持久化路由通过 request owner cookie 隔离资源；ACCESS_CODE 不是 CampusMate 账号。以实际部署 cookie/CORS 与 iframe 访问条件为准。参见 [中间件](../../magicclass-app/middleware.ts)、[响应封装](../../magicclass-app/lib/server/api-response.ts)。
+若服务设置 ACCESS_CODE，中间件除 /api/access-code/* 与 /api/health 外要求 magicclass_access 签名 cookie，否则返回 HTTP 401。stages/folders/materials 等工作台资源采用 request owner cookie；persistence 的 documents/assets/runtime 分别使用不同授权规则，见 [持久化子路由](#persistence-contract)。ACCESS_CODE 不是 CampusMate 账号。以实际部署 cookie/CORS 与 iframe 访问条件为准。参见 [中间件](../../magicclass-app/middleware.ts)、[响应封装](../../magicclass-app/lib/server/api-response.ts)。
 
-常见成功对象为 {success:true,...业务字段}；失败为 {success:false,errorCode,error,details?}，个别 handler 返回自己的 JSON、文件、流或代理响应，下表保留实际构造。健康检查只声明 webSearch/imageGeneration/videoGeneration/tts，不表示全部能力可用。
+apiSuccess 返回 {success:true,...业务字段}，apiError 返回 {success:false,errorCode,error,details?}；ownerJson 直接返回传入的业务对象，不增加 success/data 包装，ownerNotFound 为 404 纯文本。文件、流、持久化和代理响应按各节实际构造解析。健康检查只声明 webSearch/imageGeneration/videoGeneration/tts，不表示全部能力可用。
 
 功能开关：[feature-flags.ts](../../magicclass-app/lib/config/feature-flags.ts)。stages/folders/materials/Agent 持久化路由通常要求 MAGICCLASS_AGENT_RUNTIME_ENABLED 和 DATABASE_URL；stage-meta 使用较弱的服务端持久化条件（DATABASE_URL）。工作台还受 NEXT_PUBLIC_PRO_WORKBENCH_ENABLED 控制；未开启可能返回 404。其余生成、媒体、语音、ASR、搜索、PBL、导入/导出等以各 handler 的前置条件及提供方配置为准。
 
-很多生成 / 评分 / 媒体接口读取 x-model、x-api-key、x-base-url、x-provider-type 等模型配置头，具体以接口章节为准；后续前端优先使用服务器已有提供方配置，示例不得包含真实密钥。资料文件与持久化 ID 需由当前 owner 创建，不应复用本站 course_id/stage_id。
+很多生成 / 评分 / 媒体接口读取 x-model、x-api-key、x-base-url、x-provider-type 等模型配置头，具体以接口章节为准；后续前端优先使用服务器已有提供方配置，示例不得包含真实密钥。工作台资源的写入与私有列表以当前 owner 为准，可读取资源的范围见授权规则；独立应用 ID 不应复用本站 course_id/stage_id。
 
 ## 功能流程
 
 - 普通生成：输入需求或解析上传资料 → generate/outline → 逐场景 generate/content 与 generate/actions → 浏览器课堂状态、播放、编辑及本地导出。此过程由上游界面编排，不能仅调用一个整课端点就替代所有界面逻辑。
 - 服务端整课生成：POST /api/generate-classroom → HTTP 202 与 jobId/pollUrl/pollIntervalMs → GET /api/generate-classroom/{jobId} → 读取生成课堂。
-- 持久化工作台：owner / 功能开关满足后管理 stages/folders/materials，使用对应版本与幂等请求约定；Agent sessions 的事件和审批另有自己的协议。
+- 持久化工作台：owner / 功能开关满足后管理 stages/folders/materials，按当前接口的资源归属与字段校验执行；不要套用课程网关的 If-Match / Idempotency-Key。Agent sessions 的事件和审批另有自己的协议。
 - 教师问答、圆桌、测验、PBL v2 导师/模拟器/评价/状态、搜索、图像/视频、TTS/ASR/音色克隆等是独立路由；由本节后面的完整 handler 索引查找。
 - 本应用课堂 DSL 包含 slide/quiz/interactive/pbl 四类；Canvas、Action、Widget 和 PBL 数据由 [packages/@magicclass/dsl/src](../../magicclass-app/packages/@magicclass/dsl/src) 与 [lib/types](../../magicclass-app/lib/types) 定义。服务端动态开放内容不表示无须按 DSL 组织。
 
@@ -30,104 +30,104 @@ Web 导航 /learning-space 先调用本站 GET /api/v1/magicclass/learning-space
 
 | 方法 | 路径（相对独立 Origin） | 实现 |
 | --- | --- | --- |
-| GET | `/app/api/access-code/status` | [magicclass-app/app/api/access-code/status/route.ts](../../magicclass-app/app/api/access-code/status/route.ts) |
-| POST | `/app/api/access-code/verify` | [magicclass-app/app/api/access-code/verify/route.ts](../../magicclass-app/app/api/access-code/verify/route.ts) |
-| GET | `/app/api/agent/owner-events` | [magicclass-app/app/api/agent/owner-events/route.ts](../../magicclass-app/app/api/agent/owner-events/route.ts) |
-| GET | `/app/api/agent/runtime` | [magicclass-app/app/api/agent/runtime/route.ts](../../magicclass-app/app/api/agent/runtime/route.ts) |
-| POST | `/app/api/agent/sessions/{id}/cancel` | [magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts) |
-| GET | `/app/api/agent/sessions/{id}/events` | [magicclass-app/app/api/agent/sessions/[id]/events/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/events/route.ts) |
-| POST | `/app/api/agent/sessions/{id}/messages` | [magicclass-app/app/api/agent/sessions/[id]/messages/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/messages/route.ts) |
-| GET | `/app/api/agent/sessions/{id}` | [magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts) |
-| PATCH | `/app/api/agent/sessions/{id}` | [magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts) |
-| POST | `/app/api/agent/sessions` | [magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts) |
-| GET | `/app/api/agent/sessions` | [magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts) |
-| GET | `/app/api/agent/sessions/status` | [magicclass-app/app/api/agent/sessions/status/route.ts](../../magicclass-app/app/api/agent/sessions/status/route.ts) |
-| GET | `/app/api/agent/skills/{id}` | [magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts) |
-| DELETE | `/app/api/agent/skills/{id}` | [magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts) |
-| GET | `/app/api/agent/skills` | [magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts) |
-| POST | `/app/api/agent/skills` | [magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts) |
-| POST | `/app/api/azure-voices` | [magicclass-app/app/api/azure-voices/route.ts](../../magicclass-app/app/api/azure-voices/route.ts) |
-| POST | `/app/api/chat/pi` | [magicclass-app/app/api/chat/pi/route.ts](../../magicclass-app/app/api/chat/pi/route.ts) |
-| POST | `/app/api/chat/pi/whiteboard-visibility` | [magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts) |
-| POST | `/app/api/chat` | [magicclass-app/app/api/chat/route.ts](../../magicclass-app/app/api/chat/route.ts) |
-| GET | `/app/api/classroom-media/{classroomId}/{...path}` | [magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts](../../magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts) |
-| POST | `/app/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
-| GET | `/app/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
-| GET | `/app/api/comfyui-workflows` | [magicclass-app/app/api/comfyui-workflows/route.ts](../../magicclass-app/app/api/comfyui-workflows/route.ts) |
-| GET | `/app/api/export-video/capability` | [magicclass-app/app/api/export-video/capability/route.ts](../../magicclass-app/app/api/export-video/capability/route.ts) |
-| GET | `/app/api/export-video/render/{jobId}/download` | [magicclass-app/app/api/export-video/render/[jobId]/download/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/download/route.ts) |
-| GET | `/app/api/export-video/render/{jobId}` | [magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts) |
-| DELETE | `/app/api/export-video/render/{jobId}` | [magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts) |
-| POST | `/app/api/export-video/render` | [magicclass-app/app/api/export-video/render/route.ts](../../magicclass-app/app/api/export-video/render/route.ts) |
-| POST | `/app/api/extract-document` | [magicclass-app/app/api/extract-document/route.ts](../../magicclass-app/app/api/extract-document/route.ts) |
-| PATCH | `/app/api/folders/{id}` | [magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts) |
-| DELETE | `/app/api/folders/{id}` | [magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts) |
-| POST | `/app/api/folders/members` | [magicclass-app/app/api/folders/members/route.ts](../../magicclass-app/app/api/folders/members/route.ts) |
-| GET | `/app/api/folders` | [magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts) |
-| POST | `/app/api/folders` | [magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts) |
-| GET | `/app/api/generate-classroom/{jobId}` | [magicclass-app/app/api/generate-classroom/[jobId]/route.ts](../../magicclass-app/app/api/generate-classroom/[jobId]/route.ts) |
-| POST | `/app/api/generate-classroom` | [magicclass-app/app/api/generate-classroom/route.ts](../../magicclass-app/app/api/generate-classroom/route.ts) |
-| POST | `/app/api/generate/agent-profiles` | [magicclass-app/app/api/generate/agent-profiles/route.ts](../../magicclass-app/app/api/generate/agent-profiles/route.ts) |
-| POST | `/app/api/generate/image` | [magicclass-app/app/api/generate/image/route.ts](../../magicclass-app/app/api/generate/image/route.ts) |
-| POST | `/app/api/generate/scene-actions` | [magicclass-app/app/api/generate/scene-actions/route.ts](../../magicclass-app/app/api/generate/scene-actions/route.ts) |
-| POST | `/app/api/generate/scene-content` | [magicclass-app/app/api/generate/scene-content/route.ts](../../magicclass-app/app/api/generate/scene-content/route.ts) |
-| POST | `/app/api/generate/scene-outlines-stream` | [magicclass-app/app/api/generate/scene-outlines-stream/route.ts](../../magicclass-app/app/api/generate/scene-outlines-stream/route.ts) |
-| POST | `/app/api/generate/tts` | [magicclass-app/app/api/generate/tts/route.ts](../../magicclass-app/app/api/generate/tts/route.ts) |
-| POST | `/app/api/generate/video` | [magicclass-app/app/api/generate/video/route.ts](../../magicclass-app/app/api/generate/video/route.ts) |
-| POST | `/app/api/generate/voice` | [magicclass-app/app/api/generate/voice/route.ts](../../magicclass-app/app/api/generate/voice/route.ts) |
-| GET | `/app/api/health` | [magicclass-app/app/api/health/route.ts](../../magicclass-app/app/api/health/route.ts) |
-| GET | `/app/api/materials/{id}` | [magicclass-app/app/api/materials/[id]/route.ts](../../magicclass-app/app/api/materials/[id]/route.ts) |
-| GET | `/app/api/materials` | [magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts) |
-| POST | `/app/api/materials` | [magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts) |
-| POST | `/app/api/parse-pdf` | [magicclass-app/app/api/parse-pdf/route.ts](../../magicclass-app/app/api/parse-pdf/route.ts) |
-| POST | `/app/api/pbl/v2/evaluate` | [magicclass-app/app/api/pbl/v2/evaluate/route.ts](../../magicclass-app/app/api/pbl/v2/evaluate/route.ts) |
-| POST | `/app/api/pbl/v2/instructor` | [magicclass-app/app/api/pbl/v2/instructor/route.ts](../../magicclass-app/app/api/pbl/v2/instructor/route.ts) |
-| POST | `/app/api/pbl/v2/open-task` | [magicclass-app/app/api/pbl/v2/open-task/route.ts](../../magicclass-app/app/api/pbl/v2/open-task/route.ts) |
-| POST | `/app/api/pbl/v2/simulator` | [magicclass-app/app/api/pbl/v2/simulator/route.ts](../../magicclass-app/app/api/pbl/v2/simulator/route.ts) |
-| POST | `/app/api/pbl/v2/task/update` | [magicclass-app/app/api/pbl/v2/task/update/route.ts](../../magicclass-app/app/api/pbl/v2/task/update/route.ts) |
-| GET | `/app/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
-| POST | `/app/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
-| PUT | `/app/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
-| PATCH | `/app/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
-| DELETE | `/app/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
-| POST | `/app/api/provider/probe-models` | [magicclass-app/app/api/provider/probe-models/route.ts](../../magicclass-app/app/api/provider/probe-models/route.ts) |
-| POST | `/app/api/proxy-media` | [magicclass-app/app/api/proxy-media/route.ts](../../magicclass-app/app/api/proxy-media/route.ts) |
-| POST | `/app/api/quiz-grade` | [magicclass-app/app/api/quiz-grade/route.ts](../../magicclass-app/app/api/quiz-grade/route.ts) |
-| GET | `/app/api/server-providers` | [magicclass-app/app/api/server-providers/route.ts](../../magicclass-app/app/api/server-providers/route.ts) |
-| GET | `/app/api/skills/{id}` | [magicclass-app/app/api/skills/[id]/route.ts](../../magicclass-app/app/api/skills/[id]/route.ts) |
-| GET | `/app/api/stage-meta/{stageId}` | [magicclass-app/app/api/stage-meta/[stageId]/route.ts](../../magicclass-app/app/api/stage-meta/[stageId]/route.ts) |
-| GET | `/app/api/stages/{id}/freshness` | [magicclass-app/app/api/stages/[id]/freshness/route.ts](../../magicclass-app/app/api/stages/[id]/freshness/route.ts) |
-| POST | `/app/api/stages/{id}/generation-complete` | [magicclass-app/app/api/stages/[id]/generation-complete/route.ts](../../magicclass-app/app/api/stages/[id]/generation-complete/route.ts) |
-| GET | `/app/api/stages/{id}/manifest` | [magicclass-app/app/api/stages/[id]/manifest/route.ts](../../magicclass-app/app/api/stages/[id]/manifest/route.ts) |
-| POST | `/app/api/stages/{id}/publish` | [magicclass-app/app/api/stages/[id]/publish/route.ts](../../magicclass-app/app/api/stages/[id]/publish/route.ts) |
-| GET | `/app/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
-| PATCH | `/app/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
-| PUT | `/app/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
-| DELETE | `/app/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
-| GET | `/app/api/stages/{id}/scenes` | [magicclass-app/app/api/stages/[id]/scenes/route.ts](../../magicclass-app/app/api/stages/[id]/scenes/route.ts) |
-| GET | `/app/api/stages/{id}/status` | [magicclass-app/app/api/stages/[id]/status/route.ts](../../magicclass-app/app/api/stages/[id]/status/route.ts) |
-| POST | `/app/api/stages/{id}/unpublish` | [magicclass-app/app/api/stages/[id]/unpublish/route.ts](../../magicclass-app/app/api/stages/[id]/unpublish/route.ts) |
-| GET | `/app/api/stages` | [magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts) |
-| POST | `/app/api/stages` | [magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts) |
-| POST | `/app/api/transcription` | [magicclass-app/app/api/transcription/route.ts](../../magicclass-app/app/api/transcription/route.ts) |
-| GET | `/app/api/usage` | [magicclass-app/app/api/usage/route.ts](../../magicclass-app/app/api/usage/route.ts) |
-| POST | `/app/api/verify-image-provider` | [magicclass-app/app/api/verify-image-provider/route.ts](../../magicclass-app/app/api/verify-image-provider/route.ts) |
-| POST | `/app/api/verify-model` | [magicclass-app/app/api/verify-model/route.ts](../../magicclass-app/app/api/verify-model/route.ts) |
-| POST | `/app/api/verify-pdf-provider` | [magicclass-app/app/api/verify-pdf-provider/route.ts](../../magicclass-app/app/api/verify-pdf-provider/route.ts) |
-| POST | `/app/api/verify-video-provider` | [magicclass-app/app/api/verify-video-provider/route.ts](../../magicclass-app/app/api/verify-video-provider/route.ts) |
-| POST | `/app/api/web-search` | [magicclass-app/app/api/web-search/route.ts](../../magicclass-app/app/api/web-search/route.ts) |
+| GET | `/api/access-code/status` | [magicclass-app/app/api/access-code/status/route.ts](../../magicclass-app/app/api/access-code/status/route.ts) |
+| POST | `/api/access-code/verify` | [magicclass-app/app/api/access-code/verify/route.ts](../../magicclass-app/app/api/access-code/verify/route.ts) |
+| GET | `/api/agent/owner-events` | [magicclass-app/app/api/agent/owner-events/route.ts](../../magicclass-app/app/api/agent/owner-events/route.ts) |
+| GET | `/api/agent/runtime` | [magicclass-app/app/api/agent/runtime/route.ts](../../magicclass-app/app/api/agent/runtime/route.ts) |
+| POST | `/api/agent/sessions/{id}/cancel` | [magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts) |
+| GET | `/api/agent/sessions/{id}/events` | [magicclass-app/app/api/agent/sessions/[id]/events/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/events/route.ts) |
+| POST | `/api/agent/sessions/{id}/messages` | [magicclass-app/app/api/agent/sessions/[id]/messages/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/messages/route.ts) |
+| GET | `/api/agent/sessions/{id}` | [magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts) |
+| PATCH | `/api/agent/sessions/{id}` | [magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts) |
+| POST | `/api/agent/sessions` | [magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts) |
+| GET | `/api/agent/sessions` | [magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts) |
+| GET | `/api/agent/sessions/status` | [magicclass-app/app/api/agent/sessions/status/route.ts](../../magicclass-app/app/api/agent/sessions/status/route.ts) |
+| GET | `/api/agent/skills/{id}` | [magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts) |
+| DELETE | `/api/agent/skills/{id}` | [magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts) |
+| GET | `/api/agent/skills` | [magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts) |
+| POST | `/api/agent/skills` | [magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts) |
+| POST | `/api/azure-voices` | [magicclass-app/app/api/azure-voices/route.ts](../../magicclass-app/app/api/azure-voices/route.ts) |
+| POST | `/api/chat/pi` | [magicclass-app/app/api/chat/pi/route.ts](../../magicclass-app/app/api/chat/pi/route.ts) |
+| POST | `/api/chat/pi/whiteboard-visibility` | [magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts) |
+| POST | `/api/chat` | [magicclass-app/app/api/chat/route.ts](../../magicclass-app/app/api/chat/route.ts) |
+| GET | `/api/classroom-media/{classroomId}/{...path}` | [magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts](../../magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts) |
+| POST | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
+| GET | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
+| GET | `/api/comfyui-workflows` | [magicclass-app/app/api/comfyui-workflows/route.ts](../../magicclass-app/app/api/comfyui-workflows/route.ts) |
+| GET | `/api/export-video/capability` | [magicclass-app/app/api/export-video/capability/route.ts](../../magicclass-app/app/api/export-video/capability/route.ts) |
+| GET | `/api/export-video/render/{jobId}/download` | [magicclass-app/app/api/export-video/render/[jobId]/download/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/download/route.ts) |
+| GET | `/api/export-video/render/{jobId}` | [magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts) |
+| DELETE | `/api/export-video/render/{jobId}` | [magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts) |
+| POST | `/api/export-video/render` | [magicclass-app/app/api/export-video/render/route.ts](../../magicclass-app/app/api/export-video/render/route.ts) |
+| POST | `/api/extract-document` | [magicclass-app/app/api/extract-document/route.ts](../../magicclass-app/app/api/extract-document/route.ts) |
+| PATCH | `/api/folders/{id}` | [magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts) |
+| DELETE | `/api/folders/{id}` | [magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts) |
+| POST | `/api/folders/members` | [magicclass-app/app/api/folders/members/route.ts](../../magicclass-app/app/api/folders/members/route.ts) |
+| GET | `/api/folders` | [magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts) |
+| POST | `/api/folders` | [magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts) |
+| GET | `/api/generate-classroom/{jobId}` | [magicclass-app/app/api/generate-classroom/[jobId]/route.ts](../../magicclass-app/app/api/generate-classroom/[jobId]/route.ts) |
+| POST | `/api/generate-classroom` | [magicclass-app/app/api/generate-classroom/route.ts](../../magicclass-app/app/api/generate-classroom/route.ts) |
+| POST | `/api/generate/agent-profiles` | [magicclass-app/app/api/generate/agent-profiles/route.ts](../../magicclass-app/app/api/generate/agent-profiles/route.ts) |
+| POST | `/api/generate/image` | [magicclass-app/app/api/generate/image/route.ts](../../magicclass-app/app/api/generate/image/route.ts) |
+| POST | `/api/generate/scene-actions` | [magicclass-app/app/api/generate/scene-actions/route.ts](../../magicclass-app/app/api/generate/scene-actions/route.ts) |
+| POST | `/api/generate/scene-content` | [magicclass-app/app/api/generate/scene-content/route.ts](../../magicclass-app/app/api/generate/scene-content/route.ts) |
+| POST | `/api/generate/scene-outlines-stream` | [magicclass-app/app/api/generate/scene-outlines-stream/route.ts](../../magicclass-app/app/api/generate/scene-outlines-stream/route.ts) |
+| POST | `/api/generate/tts` | [magicclass-app/app/api/generate/tts/route.ts](../../magicclass-app/app/api/generate/tts/route.ts) |
+| POST | `/api/generate/video` | [magicclass-app/app/api/generate/video/route.ts](../../magicclass-app/app/api/generate/video/route.ts) |
+| POST | `/api/generate/voice` | [magicclass-app/app/api/generate/voice/route.ts](../../magicclass-app/app/api/generate/voice/route.ts) |
+| GET | `/api/health` | [magicclass-app/app/api/health/route.ts](../../magicclass-app/app/api/health/route.ts) |
+| GET | `/api/materials/{id}` | [magicclass-app/app/api/materials/[id]/route.ts](../../magicclass-app/app/api/materials/[id]/route.ts) |
+| GET | `/api/materials` | [magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts) |
+| POST | `/api/materials` | [magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts) |
+| POST | `/api/parse-pdf` | [magicclass-app/app/api/parse-pdf/route.ts](../../magicclass-app/app/api/parse-pdf/route.ts) |
+| POST | `/api/pbl/v2/evaluate` | [magicclass-app/app/api/pbl/v2/evaluate/route.ts](../../magicclass-app/app/api/pbl/v2/evaluate/route.ts) |
+| POST | `/api/pbl/v2/instructor` | [magicclass-app/app/api/pbl/v2/instructor/route.ts](../../magicclass-app/app/api/pbl/v2/instructor/route.ts) |
+| POST | `/api/pbl/v2/open-task` | [magicclass-app/app/api/pbl/v2/open-task/route.ts](../../magicclass-app/app/api/pbl/v2/open-task/route.ts) |
+| POST | `/api/pbl/v2/simulator` | [magicclass-app/app/api/pbl/v2/simulator/route.ts](../../magicclass-app/app/api/pbl/v2/simulator/route.ts) |
+| POST | `/api/pbl/v2/task/update` | [magicclass-app/app/api/pbl/v2/task/update/route.ts](../../magicclass-app/app/api/pbl/v2/task/update/route.ts) |
+| GET | `/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
+| POST | `/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
+| PUT | `/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
+| PATCH | `/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
+| DELETE | `/api/persistence/{...path}` | [magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts) |
+| POST | `/api/provider/probe-models` | [magicclass-app/app/api/provider/probe-models/route.ts](../../magicclass-app/app/api/provider/probe-models/route.ts) |
+| POST | `/api/proxy-media` | [magicclass-app/app/api/proxy-media/route.ts](../../magicclass-app/app/api/proxy-media/route.ts) |
+| POST | `/api/quiz-grade` | [magicclass-app/app/api/quiz-grade/route.ts](../../magicclass-app/app/api/quiz-grade/route.ts) |
+| GET | `/api/server-providers` | [magicclass-app/app/api/server-providers/route.ts](../../magicclass-app/app/api/server-providers/route.ts) |
+| GET | `/api/skills/{id}` | [magicclass-app/app/api/skills/[id]/route.ts](../../magicclass-app/app/api/skills/[id]/route.ts) |
+| GET | `/api/stage-meta/{stageId}` | [magicclass-app/app/api/stage-meta/[stageId]/route.ts](../../magicclass-app/app/api/stage-meta/[stageId]/route.ts) |
+| GET | `/api/stages/{id}/freshness` | [magicclass-app/app/api/stages/[id]/freshness/route.ts](../../magicclass-app/app/api/stages/[id]/freshness/route.ts) |
+| POST | `/api/stages/{id}/generation-complete` | [magicclass-app/app/api/stages/[id]/generation-complete/route.ts](../../magicclass-app/app/api/stages/[id]/generation-complete/route.ts) |
+| GET | `/api/stages/{id}/manifest` | [magicclass-app/app/api/stages/[id]/manifest/route.ts](../../magicclass-app/app/api/stages/[id]/manifest/route.ts) |
+| POST | `/api/stages/{id}/publish` | [magicclass-app/app/api/stages/[id]/publish/route.ts](../../magicclass-app/app/api/stages/[id]/publish/route.ts) |
+| GET | `/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
+| PATCH | `/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
+| PUT | `/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
+| DELETE | `/api/stages/{id}` | [magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts) |
+| GET | `/api/stages/{id}/scenes` | [magicclass-app/app/api/stages/[id]/scenes/route.ts](../../magicclass-app/app/api/stages/[id]/scenes/route.ts) |
+| GET | `/api/stages/{id}/status` | [magicclass-app/app/api/stages/[id]/status/route.ts](../../magicclass-app/app/api/stages/[id]/status/route.ts) |
+| POST | `/api/stages/{id}/unpublish` | [magicclass-app/app/api/stages/[id]/unpublish/route.ts](../../magicclass-app/app/api/stages/[id]/unpublish/route.ts) |
+| GET | `/api/stages` | [magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts) |
+| POST | `/api/stages` | [magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts) |
+| POST | `/api/transcription` | [magicclass-app/app/api/transcription/route.ts](../../magicclass-app/app/api/transcription/route.ts) |
+| GET | `/api/usage` | [magicclass-app/app/api/usage/route.ts](../../magicclass-app/app/api/usage/route.ts) |
+| POST | `/api/verify-image-provider` | [magicclass-app/app/api/verify-image-provider/route.ts](../../magicclass-app/app/api/verify-image-provider/route.ts) |
+| POST | `/api/verify-model` | [magicclass-app/app/api/verify-model/route.ts](../../magicclass-app/app/api/verify-model/route.ts) |
+| POST | `/api/verify-pdf-provider` | [magicclass-app/app/api/verify-pdf-provider/route.ts](../../magicclass-app/app/api/verify-pdf-provider/route.ts) |
+| POST | `/api/verify-video-provider` | [magicclass-app/app/api/verify-video-provider/route.ts](../../magicclass-app/app/api/verify-video-provider/route.ts) |
+| POST | `/api/web-search` | [magicclass-app/app/api/web-search/route.ts](../../magicclass-app/app/api/web-search/route.ts) |
 
 ## 接口契约
 
 下面的请求解析、约束与返回构造直接摘自当前 handler，使用 TypeScript 而非伪造统一 JSON 模型。变量表示运行时结果；动态代理 / 流式响应需要按响应 Content-Type 解析。导入的请求类型一并展开，开放 DSL / Provider 类型保留源码链接。错误构造中的 status 为实际返回状态，apiSuccess 默认 200。
 
-### `GET /app/api/access-code/status`
+### `GET /api/access-code/status`
 
 实现：[magicclass-app/app/api/access-code/status/route.ts](../../magicclass-app/app/api/access-code/status/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -135,7 +135,7 @@ Web 导航 /learning-space 先调用本站 GET /api/v1/magicclass/learning-space
 apiSuccess({ enabled, authenticated })
 ```
 
-### `POST /app/api/access-code/verify`
+### `POST /api/access-code/verify`
 
 实现：[magicclass-app/app/api/access-code/verify/route.ts](../../magicclass-app/app/api/access-code/verify/route.ts)。
 
@@ -169,7 +169,7 @@ apiError('INVALID_REQUEST', 401, 'Invalid access code')
 response
 ```
 
-### `GET /app/api/agent/owner-events`
+### `GET /api/agent/owner-events`
 
 实现：[magicclass-app/app/api/agent/owner-events/route.ts](../../magicclass-app/app/api/agent/owner-events/route.ts)。
 
@@ -192,7 +192,7 @@ Query 读取：
 url.searchParams.get('lastEventId')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -223,7 +223,7 @@ Promise.resolve()
 pollInFlight
 ```
 
-### `GET /app/api/agent/runtime`
+### `GET /api/agent/runtime`
 
 实现：[magicclass-app/app/api/agent/runtime/route.ts](../../magicclass-app/app/api/agent/runtime/route.ts)。
 
@@ -234,7 +234,7 @@ isAgentRuntimeConfigured()
 isAgentRuntimeEnabled()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -245,7 +245,7 @@ Response.json({
   })
 ```
 
-### `POST /app/api/agent/sessions/{id}/cancel`
+### `POST /api/agent/sessions/{id}/cancel`
 
 实现：[magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/cancel/route.ts)。
 
@@ -255,7 +255,7 @@ Response.json({
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -308,7 +308,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/agent/sessions/{id}/events`
+### `GET /api/agent/sessions/{id}/events`
 
 实现：[magicclass-app/app/api/agent/sessions/[id]/events/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/events/route.ts)。
 
@@ -331,7 +331,7 @@ Query 读取：
 url.searchParams.get('lastEventId')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -355,7 +355,7 @@ Promise.resolve()
 pollInFlight
 ```
 
-### `POST /app/api/agent/sessions/{id}/messages`
+### `POST /api/agent/sessions/{id}/messages`
 
 实现：[magicclass-app/app/api/agent/sessions/[id]/messages/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/messages/route.ts)。
 
@@ -520,7 +520,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 response
 ```
 
-### `GET /app/api/agent/sessions/{id}`
+### `GET /api/agent/sessions/{id}`
 
 实现：[magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts)。
 
@@ -530,7 +530,7 @@ response
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -556,7 +556,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `PATCH /app/api/agent/sessions/{id}`
+### `PATCH /api/agent/sessions/{id}`
 
 实现：[magicclass-app/app/api/agent/sessions/[id]/route.ts](../../magicclass-app/app/api/agent/sessions/[id]/route.ts)。
 
@@ -630,7 +630,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 response
 ```
 
-### `POST /app/api/agent/sessions`
+### `POST /api/agent/sessions`
 
 实现：[magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts)。
 
@@ -825,7 +825,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/agent/sessions`
+### `GET /api/agent/sessions`
 
 实现：[magicclass-app/app/api/agent/sessions/route.ts](../../magicclass-app/app/api/agent/sessions/route.ts)。
 
@@ -835,7 +835,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -855,7 +855,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/agent/sessions/status`
+### `GET /api/agent/sessions/status`
 
 实现：[magicclass-app/app/api/agent/sessions/status/route.ts](../../magicclass-app/app/api/agent/sessions/status/route.ts)。
 
@@ -865,7 +865,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -886,7 +886,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/agent/skills/{id}`
+### `GET /api/agent/skills/{id}`
 
 实现：[magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts)。
 
@@ -896,7 +896,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -923,7 +923,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `DELETE /app/api/agent/skills/{id}`
+### `DELETE /api/agent/skills/{id}`
 
 实现：[magicclass-app/app/api/agent/skills/[id]/route.ts](../../magicclass-app/app/api/agent/skills/[id]/route.ts)。
 
@@ -933,7 +933,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -973,7 +973,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/agent/skills`
+### `GET /api/agent/skills`
 
 实现：[magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts)。
 
@@ -983,7 +983,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1022,7 +1022,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `POST /app/api/agent/skills`
+### `POST /api/agent/skills`
 
 实现：[magicclass-app/app/api/agent/skills/route.ts](../../magicclass-app/app/api/agent/skills/route.ts)。
 
@@ -1036,6 +1036,7 @@ isAgentRuntimeConfigured()
 
 ```ts
 form = await req.formData()
+upload = form.get('file')
 ```
 
 成功 / 直接响应构造：
@@ -1133,7 +1134,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `POST /app/api/azure-voices`
+### `POST /api/azure-voices`
 
 实现：[magicclass-app/app/api/azure-voices/route.ts](../../magicclass-app/app/api/azure-voices/route.ts)。
 
@@ -1179,7 +1180,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/chat/pi`
+### `POST /api/chat/pi`
 
 实现：[magicclass-app/app/api/chat/pi/route.ts](../../magicclass-app/app/api/chat/pi/route.ts)。
 
@@ -1391,7 +1392,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/chat/pi/whiteboard-visibility`
+### `POST /api/chat/pi/whiteboard-visibility`
 
 实现：[magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts)。
 
@@ -1401,6 +1402,14 @@ apiError(
 
 ```ts
 req.json()
+```
+
+handler 使用的业务字段：`body.queryId`、`body.queryId.length`、`body.stageId`、`body.stageId.length`、`body.visibility`。
+
+请求 / 局部契约 `BODY_KEYS`（[magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts)）：
+
+```ts
+BODY_KEYS = new Set(['queryId', 'stageId', 'visibility'])
 ```
 
 成功 / 直接响应构造：
@@ -1419,7 +1428,7 @@ apiError('INVALID_REQUEST', 400, 'Invalid whiteboard visibility response')
 apiError('INVALID_REQUEST', 404, 'Whiteboard visibility query is not pending here')
 ```
 
-### `POST /app/api/chat`
+### `POST /api/chat`
 
 实现：[magicclass-app/app/api/chat/route.ts](../../magicclass-app/app/api/chat/route.ts)。
 
@@ -1653,7 +1662,7 @@ apiError(
     )
 ```
 
-### `GET /app/api/classroom-media/{classroomId}/{...path}`
+### `GET /api/classroom-media/{classroomId}/{...path}`
 
 实现：[magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts](../../magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts)。
 
@@ -1665,7 +1674,7 @@ apiError(
 req.headers.get('range')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1710,7 +1719,7 @@ new NextResponse(toWebStream(createReadStream(realPath)), {
 NextResponse.json({ error: 'Internal error' }, { status: 500 })
 ```
 
-### `POST /app/api/classroom`
+### `POST /api/classroom`
 
 实现：[magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts)。
 
@@ -1764,7 +1773,7 @@ apiError(
     )
 ```
 
-### `GET /app/api/classroom`
+### `GET /api/classroom`
 
 实现：[magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts)。
 
@@ -1776,7 +1785,7 @@ Query 读取：
 request.nextUrl.searchParams.get('id')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1805,13 +1814,13 @@ apiError(
     )
 ```
 
-### `GET /app/api/comfyui-workflows`
+### `GET /api/comfyui-workflows`
 
 实现：[magicclass-app/app/api/comfyui-workflows/route.ts](../../magicclass-app/app/api/comfyui-workflows/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1821,13 +1830,13 @@ NextResponse.json({ workflows: await listComfyuiWorkflows() })
 NextResponse.json({ workflows: [] })
 ```
 
-### `GET /app/api/export-video/capability`
+### `GET /api/export-video/capability`
 
 实现：[magicclass-app/app/api/export-video/capability/route.ts](../../magicclass-app/app/api/export-video/capability/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1835,20 +1844,13 @@ NextResponse.json({ workflows: [] })
 apiSuccess({ ...capability })
 ```
 
-### `GET /app/api/export-video/render/{jobId}/download`
+### `GET /api/export-video/render/{jobId}/download`
 
 实现：[magicclass-app/app/api/export-video/render/[jobId]/download/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/download/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求头读取：
-
-```ts
-upstream.headers.get('location')
-upstream.headers.get('content-length')
-```
-
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1882,13 +1884,13 @@ apiError('UPSTREAM_ERROR', 502, 'Failed to reach render service')
 NextResponse.redirect(location, 302)
 ```
 
-### `GET /app/api/export-video/render/{jobId}`
+### `GET /api/export-video/render/{jobId}`
 
 实现：[magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1906,13 +1908,13 @@ apiError('UPSTREAM_ERROR', status, 'Render job lookup failed')
 apiError('UPSTREAM_ERROR', 502, 'Failed to reach render service')
 ```
 
-### `DELETE /app/api/export-video/render/{jobId}`
+### `DELETE /api/export-video/render/{jobId}`
 
 实现：[magicclass-app/app/api/export-video/render/[jobId]/route.ts](../../magicclass-app/app/api/export-video/render/[jobId]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -1930,7 +1932,7 @@ apiError('UPSTREAM_ERROR', 502, 'Failed to cancel render job')
 apiError('UPSTREAM_ERROR', 502, 'Failed to reach render service')
 ```
 
-### `POST /app/api/export-video/render`
+### `POST /api/export-video/render`
 
 实现：[magicclass-app/app/api/export-video/render/route.ts](../../magicclass-app/app/api/export-video/render/route.ts)。
 
@@ -1943,7 +1945,7 @@ req.headers.get('content-length')
 req.headers.get('content-type')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：multipart/form-data 的导出 ZIP，原始流直接转发渲染服务；最大 300 MiB，不能使用 JSON。成功 202 返回 jobId 与 pollIntervalMs=3000；未配置服务为 501。
 
 成功 / 直接响应构造：
 
@@ -1970,7 +1972,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/extract-document`
+### `POST /api/extract-document`
 
 实现：[magicclass-app/app/api/extract-document/route.ts](../../magicclass-app/app/api/extract-document/route.ts)。
 
@@ -1986,6 +1988,7 @@ req.headers.get('content-type')
 
 ```ts
 formData = await req.formData()
+documentFile = (formData.get('file') || formData.get('pdf')) as File | null
 req.json()
 ```
 
@@ -2045,7 +2048,81 @@ export type ServerAssetResolution =
   | { status: 'too_large' };
 ```
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+请求 / 局部契约 `ParsedPdfContent`（[magicclass-app/lib/types/pdf.ts](../../magicclass-app/lib/types/pdf.ts)）：
+
+```ts
+export interface ParsedPdfContent {
+  /** Extracted text content from the PDF */
+  text: string;
+
+  /** Array of images as base64 data URLs */
+  images: string[];
+
+  /** Extracted tables (MinerU feature) */
+  tables?: Array<{
+    page: number;
+    data: string[][];
+    caption?: string;
+  }>;
+
+  /** Extracted formulas (MinerU feature) */
+  formulas?: Array<{
+    page: number;
+    latex: string;
+    position?: { x: number; y: number; width: number; height: number };
+  }>;
+
+  /** Layout analysis (MinerU feature) */
+  layout?: Array<{
+    page: number;
+    type: 'title' | 'text' | 'image' | 'table' | 'formula';
+    content: string;
+    position?: { x: number; y: number; width: number; height: number };
+  }>;
+
+  /** Metadata about the PDF */
+  metadata?: {
+    fileName?: string;
+    fileSize?: number;
+    pageCount: number;
+    parser?: string; // 'unpdf' | 'mineru'
+    processingTime?: number;
+    taskId?: string; // MinerU task ID
+    /** Image ID to base64 URL mapping (used in generation pipeline) */
+    imageMapping?: Record<string, string>; // e.g., { "img_1": "data:image/png;base64,..." }
+    /** PdfImage array with page numbers (used in generation pipeline) */
+    pdfImages?: Array<{
+      id: string;
+      src: string;
+      pageNumber: number;
+      description?: string;
+      width?: number;
+      height?: number;
+      /**
+       * Pool asset id of the image bytes. Present only on cache-rebuilt
+       * results in asset-id mode (RFC #1153 part 2 C): a server-backed cache
+       * hit names the image's pool asset instead of materializing its bytes.
+       */
+      assetId?: string;
+    }>;
+    [key: string]: unknown;
+  };
+}
+```
+
+请求 / 局部契约 `PDFProviderId`（[magicclass-app/lib/pdf/types.ts](../../magicclass-app/lib/pdf/types.ts)）：
+
+```ts
+export type PDFProviderId = 'unpdf' | 'mineru' | 'mineru-cloud' | 'alidocmind';
+```
+
+成功 / 直接响应构造：
+
+```ts
+apiSuccess({ data: mediaResult })
+
+apiSuccess({ data: resultWithMetadata })
+```
 
 显式异常响应：
 
@@ -2111,6 +2188,60 @@ apiError(
       )
 
 apiError('PARSE_FAILED', 500, error instanceof Error ? error.message : 'Unknown error')
+
+apiError(
+        'INVALID_REQUEST',
+        400,
+        'The requested extractor cannot process this course material.',
+      )
+
+apiError(
+      'INVALID_REQUEST',
+      400,
+      'The requested document extractor cannot process this course material.',
+    )
+
+apiError(
+        'INVALID_REQUEST',
+        400,
+        `Provider "${requestConfig.providerId}" cannot extract ${mimeType}. Choose a media-capable provider (AliDocMind or local ffmpeg).`,
+      )
+
+apiError('INVALID_URL', 403, ssrfError)
+
+apiError(
+        'PARSE_FAILED',
+        422,
+        isAssetIdForm
+          ? 'No transcript, keyframes, or synopsis could be extracted from this course material.'
+          : `No transcript, keyframes, or synopsis could be extracted from "${fileName}".`,
+      )
+
+apiError(
+      'INVALID_REQUEST',
+      400,
+      `Unknown document extractor provider: ${requestConfig.providerId}`,
+    )
+
+apiError(
+      'INVALID_REQUEST',
+      400,
+      isAssetIdForm
+        ? 'The requested document extractor cannot process this course material.'
+        : error instanceof Error
+          ? error.message
+          : `Unsupported course material type "${mimeType}"`,
+    )
+
+apiError(
+        'INVALID_REQUEST',
+        422,
+        `${requestedTypeLabel(mimeType)} extraction requires a configured MinerU document extractor. ` +
+          `Self-hosted MinerU was selected, but no self-hosted MinerU base URL is configured, so it is ` +
+          `unavailable. Documents are not sent to MinerU Cloud automatically: configure a self-hosted MinerU ` +
+          `base URL in PDF provider settings, or set ALLOW_MINERU_CLOUD_FALLBACK=1 to explicitly allow the ` +
+          `MinerU Cloud fallback.`,
+      )
 ```
 
 共享实现返回 / 转发表达式：
@@ -2121,7 +2252,7 @@ providerValidationError
 await runExtraction(source, requestConfig, logState, isAssetIdForm)
 ```
 
-### `PATCH /app/api/folders/{id}`
+### `PATCH /api/folders/{id}`
 
 实现：[magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts)。
 
@@ -2147,6 +2278,35 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ folder: folderResponse(updated, ownerId) }, 200, responseHeaders)
+
+NextResponse.json({ error: { code, message } }, { status, headers })
+```
+
+显式异常响应：
+
+```ts
+jsonError(400, 'INVALID_BODY', 'request body must be JSON')
+
+jsonError(400, 'FOLDER_NAME_INVALID', 'name must be a string')
+
+jsonError(
+      400,
+      check.kind === 'empty' ? 'FOLDER_NAME_EMPTY' : 'FOLDER_NAME_TOO_LONG',
+      check.kind === 'empty' ? 'folder name must not be empty' : 'folder name is too long',
+    )
+
+jsonError(
+          409,
+          'FOLDER_NAME_DUPLICATE',
+          'a folder with this name already exists',
+          responseHeaders,
+        )
+
+jsonError(404, 'FOLDER_NOT_FOUND', 'folder not found', responseHeaders)
+
+jsonError(500, 'FOLDER_RENAME_FAILED', 'Failed to rename folder', responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -2214,7 +2374,7 @@ nameError
 jsonError(500, 'FOLDER_RENAME_FAILED', 'Failed to rename folder', responseHeaders)
 ```
 
-### `DELETE /app/api/folders/{id}`
+### `DELETE /api/folders/{id}`
 
 实现：[magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts)。
 
@@ -2230,7 +2390,7 @@ Query 读取：
 req.nextUrl.searchParams.get('mode')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/folders/[id]/route.ts](../../magicclass-app/app/api/folders/[id]/route.ts)）：
 
@@ -2242,6 +2402,18 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ ok: true, removedStageIds: result.removedStageIds }, 200, responseHeaders)
+
+NextResponse.json({ error: { code, message } }, { status, headers })
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'FOLDER_NOT_FOUND', 'folder not found', responseHeaders)
+
+jsonError(500, 'FOLDER_DELETE_FAILED', 'Failed to delete folder', responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -2269,7 +2441,7 @@ ownerJson({ ok: true, removedStageIds: result.removedStageIds }, 200, responseHe
 jsonError(500, 'FOLDER_DELETE_FAILED', 'Failed to delete folder', responseHeaders)
 ```
 
-### `POST /app/api/folders/members`
+### `POST /api/folders/members`
 
 实现：[magicclass-app/app/api/folders/members/route.ts](../../magicclass-app/app/api/folders/members/route.ts)。
 
@@ -2289,6 +2461,29 @@ req.json()
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ ok: true }, 200, responseHeaders)
+
+NextResponse.json({ error: { code, message } }, { status, headers })
+```
+
+显式异常响应：
+
+```ts
+jsonError(400, 'INVALID_BODY', 'request body must be JSON')
+
+jsonError(400, 'MISSING_STAGE_ID', 'stageId must be a non-empty string')
+
+jsonError(400, 'INVALID_FOLDER_ID', 'folderId must be a non-empty string or null')
+
+jsonError(404, 'FOLDER_NOT_FOUND', 'folder not found', responseHeaders)
+
+jsonError(
+        500,
+        'FOLDER_MEMBER_FAILED',
+        'Failed to set folder membership',
+        responseHeaders,
+      )
 ```
 
 共享实现返回 / 转发表达式：
@@ -2334,7 +2529,7 @@ jsonError(
       )
 ```
 
-### `GET /app/api/folders`
+### `GET /api/folders`
 
 实现：[magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts)。
 
@@ -2344,12 +2539,26 @@ jsonError(
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson(
+        { folders: folders.map((folder) => folderResponse(folder, ownerId)) },
+        200,
+        responseHeaders,
+      )
+
+NextResponse.json({ error: { code, message } }, { status, headers })
+```
+
+显式异常响应：
+
+```ts
+jsonError(500, 'FOLDER_LIST_FAILED', 'Failed to list folders', responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -2379,7 +2588,7 @@ ownerJson(
 jsonError(500, 'FOLDER_LIST_FAILED', 'Failed to list folders', responseHeaders)
 ```
 
-### `POST /app/api/folders`
+### `POST /api/folders`
 
 实现：[magicclass-app/app/api/folders/route.ts](../../magicclass-app/app/api/folders/route.ts)。
 
@@ -2399,6 +2608,26 @@ req.json()
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ folder: folderResponse(folder, ownerId) }, 200, responseHeaders)
+
+NextResponse.json({ error: { code, message } }, { status, headers })
+```
+
+显式异常响应：
+
+```ts
+jsonError(400, 'INVALID_BODY', 'request body must be JSON')
+
+jsonError(400, 'FOLDER_NAME_INVALID', 'name must be a string')
+
+jsonError(
+      400,
+      check.kind === 'empty' ? 'FOLDER_NAME_EMPTY' : 'FOLDER_NAME_TOO_LONG',
+      check.kind === 'empty' ? 'folder name must not be empty' : 'folder name is too long',
+    )
+
+jsonError(500, 'FOLDER_CREATE_FAILED', 'Failed to create folder', responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -2440,13 +2669,13 @@ nameError
 jsonError(500, 'FOLDER_CREATE_FAILED', 'Failed to create folder', responseHeaders)
 ```
 
-### `GET /app/api/generate-classroom/{jobId}`
+### `GET /api/generate-classroom/{jobId}`
 
 实现：[magicclass-app/app/api/generate-classroom/[jobId]/route.ts](../../magicclass-app/app/api/generate-classroom/[jobId]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -2482,7 +2711,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/generate-classroom`
+### `POST /api/generate-classroom`
 
 实现：[magicclass-app/app/api/generate-classroom/route.ts](../../magicclass-app/app/api/generate-classroom/route.ts)。
 
@@ -2543,11 +2772,17 @@ apiError(
     )
 ```
 
-### `POST /app/api/generate/agent-profiles`
+### `POST /api/generate/agent-profiles`
 
 实现：[magicclass-app/app/api/generate/agent-profiles/route.ts](../../magicclass-app/app/api/generate/agent-profiles/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -2588,6 +2823,12 @@ interface VoiceBinding {
   modelId?: string;
   voiceId: string;
 }
+```
+
+请求 / 局部契约 `AdvertisedVoice`（[magicclass-app/app/api/generate/agent-profiles/route.ts](../../magicclass-app/app/api/generate/agent-profiles/route.ts)）：
+
+```ts
+type AdvertisedVoice = NonNullable<RequestBody['availableVoices']>[number];
 ```
 
 成功 / 直接响应构造：
@@ -2643,7 +2884,7 @@ apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(
       }
 ```
 
-### `POST /app/api/generate/image`
+### `POST /api/generate/image`
 
 实现：[magicclass-app/app/api/generate/image/route.ts](../../magicclass-app/app/api/generate/image/route.ts)。
 
@@ -2737,11 +2978,17 @@ apiError('CONTENT_SENSITIVE', 400, message)
 apiError('INTERNAL_ERROR', 500, message)
 ```
 
-### `POST /app/api/generate/scene-actions`
+### `POST /api/generate/scene-actions`
 
 实现：[magicclass-app/app/api/generate/scene-actions/route.ts](../../magicclass-app/app/api/generate/scene-actions/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -2877,11 +3124,17 @@ result.text
 llmApiError(error)
 ```
 
-### `POST /app/api/generate/scene-content`
+### `POST /api/generate/scene-content`
 
 实现：[magicclass-app/app/api/generate/scene-content/route.ts](../../magicclass-app/app/api/generate/scene-content/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -3029,7 +3282,7 @@ result.text
 llmApiError(error)
 ```
 
-### `POST /app/api/generate/scene-outlines-stream`
+### `POST /api/generate/scene-outlines-stream`
 
 实现：[magicclass-app/app/api/generate/scene-outlines-stream/route.ts](../../magicclass-app/app/api/generate/scene-outlines-stream/route.ts)。
 
@@ -3044,6 +3297,7 @@ ensureUniqueOutlineId(normalized, usedOutlineIds)
 请求头读取：
 
 ```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
 req.headers.get('x-image-generation-enabled')
 req.headers.get('x-video-generation-enabled')
 ```
@@ -3173,7 +3427,7 @@ apiError('INTERNAL_ERROR', 500, 'Prompt template not found')
 apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error))
 ```
 
-### `POST /app/api/generate/tts`
+### `POST /api/generate/tts`
 
 实现：[magicclass-app/app/api/generate/tts/route.ts](../../magicclass-app/app/api/generate/tts/route.ts)。
 
@@ -3245,7 +3499,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/generate/video`
+### `POST /api/generate/video`
 
 实现：[magicclass-app/app/api/generate/video/route.ts](../../magicclass-app/app/api/generate/video/route.ts)。
 
@@ -3333,7 +3587,7 @@ apiError('CONTENT_SENSITIVE', 400, message)
 apiError('INTERNAL_ERROR', 500, message)
 ```
 
-### `POST /app/api/generate/voice`
+### `POST /api/generate/voice`
 
 实现：[magicclass-app/app/api/generate/voice/route.ts](../../magicclass-app/app/api/generate/voice/route.ts)。
 
@@ -3448,13 +3702,13 @@ apiError(
     )
 ```
 
-### `GET /app/api/health`
+### `GET /api/health`
 
 实现：[magicclass-app/app/api/health/route.ts](../../magicclass-app/app/api/health/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -3473,7 +3727,7 @@ apiSuccess({
   })
 ```
 
-### `GET /app/api/materials/{id}`
+### `GET /api/materials/{id}`
 
 实现：[magicclass-app/app/api/materials/[id]/route.ts](../../magicclass-app/app/api/materials/[id]/route.ts)。
 
@@ -3489,7 +3743,7 @@ Query 读取：
 new URL(req.url).searchParams.get('sessionId')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/materials/[id]/route.ts](../../magicclass-app/app/api/materials/[id]/route.ts)）：
 
@@ -3501,6 +3755,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ material: publicMaterialView(material) }, 200, responseHeaders)
 ```
 
 显式异常响应：
@@ -3526,7 +3782,7 @@ ownerNotFound(responseHeaders)
 ownerJson({ material: publicMaterialView(material) }, 200, responseHeaders)
 ```
 
-### `GET /app/api/materials`
+### `GET /api/materials`
 
 实现：[magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts)。
 
@@ -3544,12 +3800,18 @@ url.searchParams.get('limit')
 url.searchParams.get('before')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson(
+      { materials: materials.map((material) => publicMaterialView(material)) },
+      200,
+      responseHeaders,
+    )
 ```
 
 显式异常响应：
@@ -3590,7 +3852,7 @@ ownerJson(
     )
 ```
 
-### `POST /app/api/materials`
+### `POST /api/materials`
 
 实现：[magicclass-app/app/api/materials/route.ts](../../magicclass-app/app/api/materials/route.ts)。
 
@@ -3605,9 +3867,11 @@ isAgentRuntimeConfigured()
 ```ts
 req.headers.get('content-type')
 req.headers.get('content-length')
+req.headers.get('x-request-id')
+req.headers.get('x-material-filename')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：原始文件二进制流（不是 FormData）；Content-Type 为文件媒体类型，X-Material-Filename 为必需文件名（可 encodeURIComponent），Content-Length 可选。文档/图片上限 min(maxDocumentBytes,maxUploadBytes)，音视频上限 maxUploadBytes，声明长度和实际流字节均校验；超限 413、类型不支持 415、owner 配额不足 429。成功 201 返回 materialId/originalName/bytes/mime/extraction；响应回传 X-Request-ID。
 
 成功 / 直接响应构造：
 
@@ -3938,7 +4202,7 @@ reject(
 res
 ```
 
-### `POST /app/api/parse-pdf`
+### `POST /api/parse-pdf`
 
 实现：[magicclass-app/app/api/parse-pdf/route.ts](../../magicclass-app/app/api/parse-pdf/route.ts)。
 
@@ -3954,6 +4218,10 @@ req.headers.get('content-type')
 
 ```ts
 formData = await req.formData()
+pdfFile = formData.get('pdf') as File | null
+providerId = formData.get('providerId') as PDFProviderId | null
+apiKey = formData.get('apiKey') as string | null
+baseUrl = formData.get('baseUrl') as string | null
 ```
 
 请求 / 局部契约 `PDFProviderId`（[magicclass-app/lib/pdf/types.ts](../../magicclass-app/lib/pdf/types.ts)）：
@@ -4046,11 +4314,17 @@ apiError('INVALID_URL', 403, ssrfError)
 apiError('PARSE_FAILED', 500, error instanceof Error ? error.message : 'Unknown error')
 ```
 
-### `POST /app/api/pbl/v2/evaluate`
+### `POST /api/pbl/v2/evaluate`
 
 实现：[magicclass-app/app/api/pbl/v2/evaluate/route.ts](../../magicclass-app/app/api/pbl/v2/evaluate/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4070,6 +4344,33 @@ interface EvaluateRequest {
   microtaskId?: string;
   recentChatSummary?: string;
 }
+```
+
+请求 / 局部契约 `PBLProjectV2`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export type PBLProjectV2 = RuntimeOverlay<
+  ContractPBLProject,
+  {
+    milestones: PBLMilestone[];
+    submissions: PBLSubmission[];
+    evaluations: PBLEvaluation[];
+    threads: PBLAgentThread[];
+    engagementEvents: PBLEngagementEvent[];
+    proficiencyAssessment?: PBLProficiencyAssessment;
+    runtimeEvents?: PBLRuntimeEvent[];
+    runtimeResetEpoch?: number;
+    pendingHandover?: PBLHandover;
+    pendingTaskCompletion?: PBLPendingTaskCompletion;
+    pendingOpenTaskPriorQuizResults?: PriorQuizResult[];
+  }
+>;
+```
+
+请求 / 局部契约 `EvalKind`（[magicclass-app/app/api/pbl/v2/evaluate/route.ts](../../magicclass-app/app/api/pbl/v2/evaluate/route.ts)）：
+
+```ts
+type EvalKind = 'task' | 'milestone' | 'final';
 ```
 
 响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
@@ -4135,11 +4436,17 @@ createSSEResponse(
   )
 ```
 
-### `POST /app/api/pbl/v2/instructor`
+### `POST /api/pbl/v2/instructor`
 
 实现：[magicclass-app/app/api/pbl/v2/instructor/route.ts](../../magicclass-app/app/api/pbl/v2/instructor/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4158,6 +4465,33 @@ interface InstructorRequest {
   /** Optional override; defaults to 'instructing'. */
   phase?: InstructorPhase;
 }
+```
+
+请求 / 局部契约 `PBLProjectV2`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export type PBLProjectV2 = RuntimeOverlay<
+  ContractPBLProject,
+  {
+    milestones: PBLMilestone[];
+    submissions: PBLSubmission[];
+    evaluations: PBLEvaluation[];
+    threads: PBLAgentThread[];
+    engagementEvents: PBLEngagementEvent[];
+    proficiencyAssessment?: PBLProficiencyAssessment;
+    runtimeEvents?: PBLRuntimeEvent[];
+    runtimeResetEpoch?: number;
+    pendingHandover?: PBLHandover;
+    pendingTaskCompletion?: PBLPendingTaskCompletion;
+    pendingOpenTaskPriorQuizResults?: PriorQuizResult[];
+  }
+>;
+```
+
+请求 / 局部契约 `InstructorPhase`（[magicclass-app/lib/pbl/v2/agents/instructor.ts](../../magicclass-app/lib/pbl/v2/agents/instructor.ts)）：
+
+```ts
+export type InstructorPhase = 'greeting' | 'setup' | 'instructing';
 ```
 
 响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
@@ -4190,11 +4524,17 @@ createSSEResponse(
   )
 ```
 
-### `POST /app/api/pbl/v2/open-task`
+### `POST /api/pbl/v2/open-task`
 
 实现：[magicclass-app/app/api/pbl/v2/open-task/route.ts](../../magicclass-app/app/api/pbl/v2/open-task/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4214,6 +4554,45 @@ interface OpenTaskRequest {
    *  the learner first opens the project. Folded into
    *  `project.proficiencyAssessment` before the Instructor runs. */
   priorQuizResults?: PriorQuizResult[];
+}
+```
+
+请求 / 局部契约 `PBLProjectV2`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export type PBLProjectV2 = RuntimeOverlay<
+  ContractPBLProject,
+  {
+    milestones: PBLMilestone[];
+    submissions: PBLSubmission[];
+    evaluations: PBLEvaluation[];
+    threads: PBLAgentThread[];
+    engagementEvents: PBLEngagementEvent[];
+    proficiencyAssessment?: PBLProficiencyAssessment;
+    runtimeEvents?: PBLRuntimeEvent[];
+    runtimeResetEpoch?: number;
+    pendingHandover?: PBLHandover;
+    pendingTaskCompletion?: PBLPendingTaskCompletion;
+    pendingOpenTaskPriorQuizResults?: PriorQuizResult[];
+  }
+>;
+```
+
+请求 / 局部契约 `PriorQuizResult`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export interface PriorQuizResult {
+  sceneId: string;
+  sceneTitle: string;
+  totalQuestions: number;
+  correctCount: number;
+  incorrectCount: number;
+  /** Short-answer questions without `hasAnswer` cannot be auto-graded
+   *  and are excluded from the accuracy ratio. */
+  unscoredCount: number;
+  /** `correctCount / (correctCount + incorrectCount)`, or null when
+   *  no submitted result was auto-gradable. */
+  accuracy: number | null;
 }
 ```
 
@@ -4247,11 +4626,17 @@ createSSEResponse(
   )
 ```
 
-### `POST /app/api/pbl/v2/simulator`
+### `POST /api/pbl/v2/simulator`
 
 实现：[magicclass-app/app/api/pbl/v2/simulator/route.ts](../../magicclass-app/app/api/pbl/v2/simulator/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4277,6 +4662,27 @@ interface SimulatorRequest {
 
 ```ts
 export type SimulatorPhase = 'greeting' | 'instructing';
+```
+
+请求 / 局部契约 `PBLProjectV2`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export type PBLProjectV2 = RuntimeOverlay<
+  ContractPBLProject,
+  {
+    milestones: PBLMilestone[];
+    submissions: PBLSubmission[];
+    evaluations: PBLEvaluation[];
+    threads: PBLAgentThread[];
+    engagementEvents: PBLEngagementEvent[];
+    proficiencyAssessment?: PBLProficiencyAssessment;
+    runtimeEvents?: PBLRuntimeEvent[];
+    runtimeResetEpoch?: number;
+    pendingHandover?: PBLHandover;
+    pendingTaskCompletion?: PBLPendingTaskCompletion;
+    pendingOpenTaskPriorQuizResults?: PriorQuizResult[];
+  }
+>;
 ```
 
 响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
@@ -4307,7 +4713,7 @@ createSSEResponse(
   )
 ```
 
-### `POST /app/api/pbl/v2/task/update`
+### `POST /api/pbl/v2/task/update`
 
 实现：[magicclass-app/app/api/pbl/v2/task/update/route.ts](../../magicclass-app/app/api/pbl/v2/task/update/route.ts)。
 
@@ -4334,6 +4740,27 @@ interface UpdateRequest {
     | 'complete_pending_task';
   microtaskId?: string;
 }
+```
+
+请求 / 局部契约 `PBLProjectV2`（[magicclass-app/lib/pbl/v2/types.ts](../../magicclass-app/lib/pbl/v2/types.ts)）：
+
+```ts
+export type PBLProjectV2 = RuntimeOverlay<
+  ContractPBLProject,
+  {
+    milestones: PBLMilestone[];
+    submissions: PBLSubmission[];
+    evaluations: PBLEvaluation[];
+    threads: PBLAgentThread[];
+    engagementEvents: PBLEngagementEvent[];
+    proficiencyAssessment?: PBLProficiencyAssessment;
+    runtimeEvents?: PBLRuntimeEvent[];
+    runtimeResetEpoch?: number;
+    pendingHandover?: PBLHandover;
+    pendingTaskCompletion?: PBLPendingTaskCompletion;
+    pendingOpenTaskPriorQuizResults?: PriorQuizResult[];
+  }
+>;
 ```
 
 成功 / 直接响应构造：
@@ -4386,57 +4813,367 @@ apiError('INVALID_REQUEST', 400, `Could not finish act: ${r.error}`)
 apiError('INVALID_REQUEST', 400, `Unknown action: ${String(body.action)}`)
 ```
 
-### `GET /app/api/persistence/{...path}`
+### `GET /api/persistence/{...path}`
 
 实现：[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体与响应：catch-all 下有具体的文档、资源和 RuntimeStore 子路由，见 [持久化子路由](#persistence-contract)；不能对任意路径发送任意 JSON。
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+handler 使用的业务字段：`body.push`、`body.length`。
 
-### `POST /app/api/persistence/{...path}`
+请求 / 局部契约 `PersistenceRequestDeps`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+interface PersistenceRequestDeps {
+  poolFactory?: PersistencePoolFactory;
+}
+```
+
+请求 / 局部契约 `DocumentAccess`（[magicclass-app/lib/persistence/document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)）：
+
+```ts
+export type DocumentAccess = 'allow' | 'forbid' | 'not-found';
+```
+
+请求 / 局部契约 `ResponseCallback`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+type ResponseCallback = () => void;
+```
+
+请求 / 局部契约 `PersistencePoolFactory`（[magicclass-app/lib/persistence/server-provider.ts](../../magicclass-app/lib/persistence/server-provider.ts)）：
+
+```ts
+export type PersistencePoolFactory = (connectionString: string) => Pool;
+```
+
+成功 / 直接响应构造：
+
+```ts
+Response.json({ error: { code, message } }, { status })
+
+new Response(
+            suppressesResponseBody(request, status) || body.length === 0
+              ? undefined
+              : Buffer.concat(body),
+            {
+              status,
+              headers,
+            },
+          )
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'PERSISTENCE_NOT_CONFIGURED', 'server persistence not configured')
+
+jsonError(
+      503,
+      'PERSISTENCE_DEV_TOKEN_MISSING',
+      'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
+    )
+
+jsonError(404, 'DOCUMENT_NOT_FOUND', '@magicclass/storage: document not found')
+
+jsonError(
+        500,
+        'PERSISTENCE_INIT_FAILED',
+        'server persistence initialization failed',
+      )
+```
+
+### `POST /api/persistence/{...path}`
 
 实现：[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体与响应：catch-all 下有具体的文档、资源和 RuntimeStore 子路由，见 [持久化子路由](#persistence-contract)；不能对任意路径发送任意 JSON。
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+handler 使用的业务字段：`body.push`、`body.length`。
 
-### `PUT /app/api/persistence/{...path}`
+请求 / 局部契约 `PersistenceRequestDeps`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+interface PersistenceRequestDeps {
+  poolFactory?: PersistencePoolFactory;
+}
+```
+
+请求 / 局部契约 `DocumentAccess`（[magicclass-app/lib/persistence/document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)）：
+
+```ts
+export type DocumentAccess = 'allow' | 'forbid' | 'not-found';
+```
+
+请求 / 局部契约 `ResponseCallback`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+type ResponseCallback = () => void;
+```
+
+请求 / 局部契约 `PersistencePoolFactory`（[magicclass-app/lib/persistence/server-provider.ts](../../magicclass-app/lib/persistence/server-provider.ts)）：
+
+```ts
+export type PersistencePoolFactory = (connectionString: string) => Pool;
+```
+
+成功 / 直接响应构造：
+
+```ts
+Response.json({ error: { code, message } }, { status })
+
+new Response(
+            suppressesResponseBody(request, status) || body.length === 0
+              ? undefined
+              : Buffer.concat(body),
+            {
+              status,
+              headers,
+            },
+          )
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'PERSISTENCE_NOT_CONFIGURED', 'server persistence not configured')
+
+jsonError(
+      503,
+      'PERSISTENCE_DEV_TOKEN_MISSING',
+      'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
+    )
+
+jsonError(404, 'DOCUMENT_NOT_FOUND', '@magicclass/storage: document not found')
+
+jsonError(
+        500,
+        'PERSISTENCE_INIT_FAILED',
+        'server persistence initialization failed',
+      )
+```
+
+### `PUT /api/persistence/{...path}`
 
 实现：[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体与响应：catch-all 下有具体的文档、资源和 RuntimeStore 子路由，见 [持久化子路由](#persistence-contract)；不能对任意路径发送任意 JSON。
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+handler 使用的业务字段：`body.push`、`body.length`。
 
-### `PATCH /app/api/persistence/{...path}`
+请求 / 局部契约 `PersistenceRequestDeps`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+interface PersistenceRequestDeps {
+  poolFactory?: PersistencePoolFactory;
+}
+```
+
+请求 / 局部契约 `DocumentAccess`（[magicclass-app/lib/persistence/document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)）：
+
+```ts
+export type DocumentAccess = 'allow' | 'forbid' | 'not-found';
+```
+
+请求 / 局部契约 `ResponseCallback`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+type ResponseCallback = () => void;
+```
+
+请求 / 局部契约 `PersistencePoolFactory`（[magicclass-app/lib/persistence/server-provider.ts](../../magicclass-app/lib/persistence/server-provider.ts)）：
+
+```ts
+export type PersistencePoolFactory = (connectionString: string) => Pool;
+```
+
+成功 / 直接响应构造：
+
+```ts
+Response.json({ error: { code, message } }, { status })
+
+new Response(
+            suppressesResponseBody(request, status) || body.length === 0
+              ? undefined
+              : Buffer.concat(body),
+            {
+              status,
+              headers,
+            },
+          )
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'PERSISTENCE_NOT_CONFIGURED', 'server persistence not configured')
+
+jsonError(
+      503,
+      'PERSISTENCE_DEV_TOKEN_MISSING',
+      'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
+    )
+
+jsonError(404, 'DOCUMENT_NOT_FOUND', '@magicclass/storage: document not found')
+
+jsonError(
+        500,
+        'PERSISTENCE_INIT_FAILED',
+        'server persistence initialization failed',
+      )
+```
+
+### `PATCH /api/persistence/{...path}`
 
 实现：[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体与响应：catch-all 下有具体的文档、资源和 RuntimeStore 子路由，见 [持久化子路由](#persistence-contract)；不能对任意路径发送任意 JSON。
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+handler 使用的业务字段：`body.push`、`body.length`。
 
-### `DELETE /app/api/persistence/{...path}`
+请求 / 局部契约 `PersistenceRequestDeps`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+interface PersistenceRequestDeps {
+  poolFactory?: PersistencePoolFactory;
+}
+```
+
+请求 / 局部契约 `DocumentAccess`（[magicclass-app/lib/persistence/document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)）：
+
+```ts
+export type DocumentAccess = 'allow' | 'forbid' | 'not-found';
+```
+
+请求 / 局部契约 `ResponseCallback`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+type ResponseCallback = () => void;
+```
+
+请求 / 局部契约 `PersistencePoolFactory`（[magicclass-app/lib/persistence/server-provider.ts](../../magicclass-app/lib/persistence/server-provider.ts)）：
+
+```ts
+export type PersistencePoolFactory = (connectionString: string) => Pool;
+```
+
+成功 / 直接响应构造：
+
+```ts
+Response.json({ error: { code, message } }, { status })
+
+new Response(
+            suppressesResponseBody(request, status) || body.length === 0
+              ? undefined
+              : Buffer.concat(body),
+            {
+              status,
+              headers,
+            },
+          )
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'PERSISTENCE_NOT_CONFIGURED', 'server persistence not configured')
+
+jsonError(
+      503,
+      'PERSISTENCE_DEV_TOKEN_MISSING',
+      'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
+    )
+
+jsonError(404, 'DOCUMENT_NOT_FOUND', '@magicclass/storage: document not found')
+
+jsonError(
+        500,
+        'PERSISTENCE_INIT_FAILED',
+        'server persistence initialization failed',
+      )
+```
+
+### `DELETE /api/persistence/{...path}`
 
 实现：[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体与响应：catch-all 下有具体的文档、资源和 RuntimeStore 子路由，见 [持久化子路由](#persistence-contract)；不能对任意路径发送任意 JSON。
 
-响应由共享服务 / SSE / 代理方法生成；参见该 handler 的链接与下方转发表达式。
+handler 使用的业务字段：`body.push`、`body.length`。
 
-### `POST /app/api/provider/probe-models`
+请求 / 局部契约 `PersistenceRequestDeps`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+interface PersistenceRequestDeps {
+  poolFactory?: PersistencePoolFactory;
+}
+```
+
+请求 / 局部契约 `DocumentAccess`（[magicclass-app/lib/persistence/document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)）：
+
+```ts
+export type DocumentAccess = 'allow' | 'forbid' | 'not-found';
+```
+
+请求 / 局部契约 `ResponseCallback`（[magicclass-app/app/api/persistence/[...path]/route.ts](../../magicclass-app/app/api/persistence/[...path]/route.ts)）：
+
+```ts
+type ResponseCallback = () => void;
+```
+
+请求 / 局部契约 `PersistencePoolFactory`（[magicclass-app/lib/persistence/server-provider.ts](../../magicclass-app/lib/persistence/server-provider.ts)）：
+
+```ts
+export type PersistencePoolFactory = (connectionString: string) => Pool;
+```
+
+成功 / 直接响应构造：
+
+```ts
+Response.json({ error: { code, message } }, { status })
+
+new Response(
+            suppressesResponseBody(request, status) || body.length === 0
+              ? undefined
+              : Buffer.concat(body),
+            {
+              status,
+              headers,
+            },
+          )
+```
+
+显式异常响应：
+
+```ts
+jsonError(404, 'PERSISTENCE_NOT_CONFIGURED', 'server persistence not configured')
+
+jsonError(
+      503,
+      'PERSISTENCE_DEV_TOKEN_MISSING',
+      'server persistence requires PERSISTENCE_DEV_TOKEN (development auth only)',
+    )
+
+jsonError(404, 'DOCUMENT_NOT_FOUND', '@magicclass/storage: document not found')
+
+jsonError(
+        500,
+        'PERSISTENCE_INIT_FAILED',
+        'server persistence initialization failed',
+      )
+```
+
+### `POST /api/provider/probe-models`
 
 实现：[magicclass-app/app/api/provider/probe-models/route.ts](../../magicclass-app/app/api/provider/probe-models/route.ts)。
 
@@ -4480,19 +5217,11 @@ apiError(
     )
 ```
 
-### `POST /app/api/proxy-media`
+### `POST /api/proxy-media`
 
 实现：[magicclass-app/app/api/proxy-media/route.ts](../../magicclass-app/app/api/proxy-media/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
-
-请求头读取：
-
-```ts
-response.headers.get('location')
-response!.headers.get('content-length')
-response!.headers.get('content-type')
-```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4538,11 +5267,17 @@ apiError('INVALID_URL', 403, blocked.message)
 apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error))
 ```
 
-### `POST /app/api/quiz-grade`
+### `POST /api/quiz-grade`
 
 实现：[magicclass-app/app/api/quiz-grade/route.ts](../../magicclass-app/app/api/quiz-grade/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -4587,13 +5322,13 @@ apiError('INVALID_REQUEST', 400, 'points must be a positive number')
 apiError('INTERNAL_ERROR', 500, 'Failed to grade answer')
 ```
 
-### `GET /app/api/server-providers`
+### `GET /api/server-providers`
 
 实现：[magicclass-app/app/api/server-providers/route.ts](../../magicclass-app/app/api/server-providers/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -4622,7 +5357,7 @@ apiError(
     )
 ```
 
-### `GET /app/api/skills/{id}`
+### `GET /api/skills/{id}`
 
 实现：[magicclass-app/app/api/skills/[id]/route.ts](../../magicclass-app/app/api/skills/[id]/route.ts)。
 
@@ -4632,7 +5367,7 @@ apiError(
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
@@ -4642,6 +5377,8 @@ new Response('Not found', { status: 404 })
 new Response('Invalid skill id', { status: 400 })
 
 new Response('Not found', { status: 404, headers: responseHeaders })
+
+new Response(new Uint8Array(zip), { headers })
 ```
 
 共享实现返回 / 转发表达式：
@@ -4678,7 +5415,7 @@ zipResponse(
     )
 ```
 
-### `GET /app/api/stage-meta/{stageId}`
+### `GET /api/stage-meta/{stageId}`
 
 实现：[magicclass-app/app/api/stage-meta/[stageId]/route.ts](../../magicclass-app/app/api/stage-meta/[stageId]/route.ts)。
 
@@ -4688,7 +5425,7 @@ zipResponse(
 isServerPersistenceConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stage-meta/[stageId]/route.ts](../../magicclass-app/app/api/stage-meta/[stageId]/route.ts)）：
 
@@ -4766,7 +5503,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/stages/{id}/freshness`
+### `GET /api/stages/{id}/freshness`
 
 实现：[magicclass-app/app/api/stages/[id]/freshness/route.ts](../../magicclass-app/app/api/stages/[id]/freshness/route.ts)。
 
@@ -4777,7 +5514,7 @@ isAgentRuntimeConfigured()
 resolveRequestOwnerId(req, responseHeaders)
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/freshness/route.ts](../../magicclass-app/app/api/stages/[id]/freshness/route.ts)）：
 
@@ -4810,7 +5547,7 @@ false
 true
 ```
 
-### `POST /app/api/stages/{id}/generation-complete`
+### `POST /api/stages/{id}/generation-complete`
 
 实现：[magicclass-app/app/api/stages/[id]/generation-complete/route.ts](../../magicclass-app/app/api/stages/[id]/generation-complete/route.ts)。
 
@@ -4820,7 +5557,7 @@ true
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/generation-complete/route.ts](../../magicclass-app/app/api/stages/[id]/generation-complete/route.ts)）：
 
@@ -4887,7 +5624,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/stages/{id}/manifest`
+### `GET /api/stages/{id}/manifest`
 
 实现：[magicclass-app/app/api/stages/[id]/manifest/route.ts](../../magicclass-app/app/api/stages/[id]/manifest/route.ts)。
 
@@ -4897,7 +5634,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/manifest/route.ts](../../magicclass-app/app/api/stages/[id]/manifest/route.ts)）：
 
@@ -4909,6 +5646,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson(manifest, 200, responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -4927,7 +5666,7 @@ ownerNotFound(responseHeaders)
 ownerJson(manifest, 200, responseHeaders)
 ```
 
-### `POST /app/api/stages/{id}/publish`
+### `POST /api/stages/{id}/publish`
 
 实现：[magicclass-app/app/api/stages/[id]/publish/route.ts](../../magicclass-app/app/api/stages/[id]/publish/route.ts)。
 
@@ -4937,7 +5676,7 @@ ownerJson(manifest, 200, responseHeaders)
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/publish/route.ts](../../magicclass-app/app/api/stages/[id]/publish/route.ts)）：
 
@@ -5025,7 +5764,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/stages/{id}`
+### `GET /api/stages/{id}`
 
 实现：[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)。
 
@@ -5035,7 +5774,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)）：
 
@@ -5047,6 +5786,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson(document, 200, responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -5065,7 +5806,7 @@ ownerNotFound(responseHeaders)
 ownerJson(document, 200, responseHeaders)
 ```
 
-### `PATCH /app/api/stages/{id}`
+### `PATCH /api/stages/{id}`
 
 实现：[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)。
 
@@ -5091,6 +5832,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ success: true, name }, 200, responseHeaders)
 ```
 
 显式异常响应：
@@ -5105,6 +5848,16 @@ apiError(
       400,
       `name exceeds the ${STAGE_NAME_MAX_LENGTH} character limit`,
     )
+
+ownerApiError(
+      'INVALID_REQUEST',
+      400,
+      'document was written by a newer client; reload before saving',
+      headers,
+      error.message,
+    )
+
+ownerApiError('INVALID_REQUEST', 400, 'invalid stage document', headers, error.message)
 ```
 
 共享实现返回 / 转发表达式：
@@ -5133,7 +5886,7 @@ mapSaveError(error, responseHeaders)
 ownerJson({ success: true, name }, 200, responseHeaders)
 ```
 
-### `PUT /app/api/stages/{id}`
+### `PUT /api/stages/{id}`
 
 实现：[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)。
 
@@ -5159,6 +5912,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ success: true }, 200, responseHeaders)
 ```
 
 显式异常响应：
@@ -5171,6 +5926,23 @@ apiError(
       400,
       'request body must be a stage document with `stage` and `scenes`',
     )
+
+ownerApiError(
+        'INVALID_REQUEST',
+        400,
+        'document stage id does not match the requested stage',
+        responseHeaders,
+      )
+
+ownerApiError(
+      'INVALID_REQUEST',
+      400,
+      'document was written by a newer client; reload before saving',
+      headers,
+      error.message,
+    )
+
+ownerApiError('INVALID_REQUEST', 400, 'invalid stage document', headers, error.message)
 ```
 
 共享实现返回 / 转发表达式：
@@ -5222,7 +5994,7 @@ mapSaveError(error, responseHeaders)
 ownerJson({ success: true }, 200, responseHeaders)
 ```
 
-### `DELETE /app/api/stages/{id}`
+### `DELETE /api/stages/{id}`
 
 实现：[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)。
 
@@ -5232,7 +6004,7 @@ ownerJson({ success: true }, 200, responseHeaders)
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/route.ts](../../magicclass-app/app/api/stages/[id]/route.ts)）：
 
@@ -5244,6 +6016,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ ok: true }, 200, responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -5259,7 +6033,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 ownerJson({ ok: true }, 200, responseHeaders)
 ```
 
-### `GET /app/api/stages/{id}/scenes`
+### `GET /api/stages/{id}/scenes`
 
 实现：[magicclass-app/app/api/stages/[id]/scenes/route.ts](../../magicclass-app/app/api/stages/[id]/scenes/route.ts)。
 
@@ -5275,7 +6049,7 @@ Query 读取：
 new URL(req.url).searchParams.get('ids')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/scenes/route.ts](../../magicclass-app/app/api/stages/[id]/scenes/route.ts)）：
 
@@ -5287,6 +6061,8 @@ type Params = { params: Promise<{ id: string }> };
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ scenes }, 200, responseHeaders)
 ```
 
 显式异常响应：
@@ -5320,7 +6096,7 @@ ownerNotFound(responseHeaders)
 ownerJson({ scenes }, 200, responseHeaders)
 ```
 
-### `GET /app/api/stages/{id}/status`
+### `GET /api/stages/{id}/status`
 
 实现：[magicclass-app/app/api/stages/[id]/status/route.ts](../../magicclass-app/app/api/stages/[id]/status/route.ts)。
 
@@ -5330,7 +6106,7 @@ ownerJson({ scenes }, 200, responseHeaders)
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/status/route.ts](../../magicclass-app/app/api/stages/[id]/status/route.ts)）：
 
@@ -5350,7 +6126,7 @@ NextResponse.json({ isPublic: access.isPublic, publishedAt: access.publishedAt }
 NextResponse.json({ error: 'internal_error' }, { status: 500 })
 ```
 
-### `POST /app/api/stages/{id}/unpublish`
+### `POST /api/stages/{id}/unpublish`
 
 实现：[magicclass-app/app/api/stages/[id]/unpublish/route.ts](../../magicclass-app/app/api/stages/[id]/unpublish/route.ts)。
 
@@ -5360,7 +6136,7 @@ NextResponse.json({ error: 'internal_error' }, { status: 500 })
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Params`（[magicclass-app/app/api/stages/[id]/unpublish/route.ts](../../magicclass-app/app/api/stages/[id]/unpublish/route.ts)）：
 
@@ -5429,7 +6205,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
   })
 ```
 
-### `GET /app/api/stages`
+### `GET /api/stages`
 
 实现：[magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts)。
 
@@ -5439,12 +6215,14 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 isAgentRuntimeConfigured()
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 成功 / 直接响应构造：
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson({ stages }, 200, responseHeaders)
 ```
 
 共享实现返回 / 转发表达式：
@@ -5459,7 +6237,7 @@ withRequestOwnerId(req, async (ownerId, responseHeaders) => {
 ownerJson({ stages }, 200, responseHeaders)
 ```
 
-### `POST /app/api/stages`
+### `POST /api/stages`
 
 实现：[magicclass-app/app/api/stages/route.ts](../../magicclass-app/app/api/stages/route.ts)。
 
@@ -5509,6 +6287,21 @@ export interface AppDocumentOutline {
 
 ```ts
 new Response('Not found', { status: 404 })
+
+ownerJson(
+      {
+        stage: {
+          id,
+          name: trimmedName,
+          ...(trimmedDescription ? { description: trimmedDescription } : {}),
+          createdAt: now,
+          updatedAt: now,
+          sceneCount: 0,
+        },
+      },
+      201,
+      responseHeaders,
+    )
 ```
 
 显式异常响应：
@@ -5586,7 +6379,7 @@ ownerJson(
     )
 ```
 
-### `POST /app/api/transcription`
+### `POST /api/transcription`
 
 实现：[magicclass-app/app/api/transcription/route.ts](../../magicclass-app/app/api/transcription/route.ts)。
 
@@ -5596,6 +6389,12 @@ ownerJson(
 
 ```ts
 formData = await req.formData()
+audioFile = formData.get('audio') as File
+providerId = formData.get('providerId') as ASRProviderId | null
+modelId = (formData.get('modelId') as string | null)?.trim() || undefined
+language = formData.get('language') as string | null
+apiKey = formData.get('apiKey') as string | null
+baseUrl = formData.get('baseUrl') as string | null
 ```
 
 请求 / 局部契约 `ASRProviderId`（[magicclass-app/lib/audio/types.ts](../../magicclass-app/lib/audio/types.ts)）：
@@ -5631,7 +6430,7 @@ apiError(
     )
 ```
 
-### `GET /app/api/usage`
+### `GET /api/usage`
 
 实现：[magicclass-app/app/api/usage/route.ts](../../magicclass-app/app/api/usage/route.ts)。
 
@@ -5643,7 +6442,7 @@ Query 读取：
 req.nextUrl.searchParams.get('months')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `Bucket`（[magicclass-app/app/api/usage/route.ts](../../magicclass-app/app/api/usage/route.ts)）：
 
@@ -5670,6 +6469,35 @@ interface Bucket {
 export type UsageKind = 'llm' | 'image' | 'video' | 'tts' | 'asr';
 ```
 
+请求 / 局部契约 `UsageUnit`（[magicclass-app/lib/server/usage-storage.ts](../../magicclass-app/lib/server/usage-storage.ts)）：
+
+```ts
+export type UsageUnit = 'token' | 'image' | 'second' | 'character';
+```
+
+请求 / 局部契约 `UsageRecord`（[magicclass-app/lib/server/usage-storage.ts](../../magicclass-app/lib/server/usage-storage.ts)）：
+
+```ts
+export interface UsageRecord {
+  id: string;
+  createdAt: number;
+  kind: UsageKind;
+  source: string;
+  providerId: string;
+  modelId: string;
+  modelString: string;
+  // LLM token counts (0 for non-LLM rows).
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  reasoningTokens: number;
+  // Non-token usage (e.g. image count, video seconds, TTS characters).
+  quantity?: number;
+  unit?: UsageUnit;
+}
+```
+
 成功 / 直接响应构造：
 
 ```ts
@@ -5691,7 +6519,7 @@ apiError(
     )
 ```
 
-### `POST /app/api/verify-image-provider`
+### `POST /api/verify-image-provider`
 
 实现：[magicclass-app/app/api/verify-image-provider/route.ts](../../magicclass-app/app/api/verify-image-provider/route.ts)。
 
@@ -5706,7 +6534,7 @@ request.headers.get('x-api-key')
 request.headers.get('x-base-url')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `ImageProviderId`（[magicclass-app/lib/media/types.ts](../../magicclass-app/lib/media/types.ts)）：
 
@@ -5750,7 +6578,7 @@ apiError('UPSTREAM_ERROR', 500, result.message)
 apiError('INTERNAL_ERROR', 500, `Connectivity test error: ${err}`)
 ```
 
-### `POST /app/api/verify-model`
+### `POST /api/verify-model`
 
 实现：[magicclass-app/app/api/verify-model/route.ts](../../magicclass-app/app/api/verify-model/route.ts)。
 
@@ -5787,7 +6615,7 @@ apiError(
 apiError('INTERNAL_ERROR', 500, errorMessage)
 ```
 
-### `POST /app/api/verify-pdf-provider`
+### `POST /api/verify-pdf-provider`
 
 实现：[magicclass-app/app/api/verify-pdf-provider/route.ts](../../magicclass-app/app/api/verify-pdf-provider/route.ts)。
 
@@ -5849,7 +6677,7 @@ apiError('MISSING_REQUIRED_FIELD', 400, 'Base URL is required')
 apiError('INTERNAL_ERROR', 500, errorMessage)
 ```
 
-### `POST /app/api/verify-video-provider`
+### `POST /api/verify-video-provider`
 
 实现：[magicclass-app/app/api/verify-video-provider/route.ts](../../magicclass-app/app/api/verify-video-provider/route.ts)。
 
@@ -5864,7 +6692,7 @@ request.headers.get('x-api-key')
 request.headers.get('x-base-url')
 ```
 
-请求体：handler 未直接解析请求体；如采用转发或调用共享方法，以链接实现为准。
+请求体：本 handler 及同文件调用的辅助函数未读取 JSON / FormData 请求体；请求头、查询和共享返回表达式见本节。
 
 请求 / 局部契约 `VideoProviderId`（[magicclass-app/lib/media/types.ts](../../magicclass-app/lib/media/types.ts)）：
 
@@ -5906,11 +6734,17 @@ apiError('UPSTREAM_ERROR', 500, result.message)
 apiError('INTERNAL_ERROR', 500, `Connectivity test error: ${err}`)
 ```
 
-### `POST /app/api/web-search`
+### `POST /api/web-search`
 
 实现：[magicclass-app/app/api/web-search/route.ts](../../magicclass-app/app/api/web-search/route.ts)。
 
 鉴权：受上述中间件及 handler 调用的 owner / provider / 业务校验约束；没有 CampusMate Bearer 依赖。
+
+请求头读取：
+
+```ts
+req.headers.get('x-model') / req.headers.get('x-api-key') / req.headers.get('x-base-url') / req.headers.get('x-provider-type') // resolveModelFromRequest 读取；body 与服务器配置优先级见 resolve-model.ts
+```
 
 请求体解析（JSON / FormData / 二进制等以实际调用为准）：
 
@@ -5987,4 +6821,228 @@ apiError('INTERNAL_ERROR', 500, message)
 
 ```ts
 result.text
+```
+
+
+<a id="persistence-contract"></a>
+## 持久化 catch-all 的具体子路由
+
+上述 /api/persistence/{...path} 的五个显式 HTTP 导出委托给 createStorageHttpHandler；下表展开实际 documents/assets/runtime 子路由，计数仍归入 86 个导出 handler。无 KVStore 路由。路径在下表已加 /api/persistence 前缀。
+
+前置条件：DATABASE_URL 缺失返回 404 PERSISTENCE_NOT_CONFIGURED，PERSISTENCE_DEV_TOKEN 缺失返回 503 PERSISTENCE_DEV_TOKEN_MISSING。工作台 owner cookie 与 ACCESS_CODE 中间件仍适用。
+
+| 分支 | 当前应用授权限制（优先于包的通用契约） |
+| --- | --- |
+| documents | 读取已登记且未删除的 stage；创建或修改要求 owner。GET /documents 全局列表当前明确禁止（403），改用 /api/stages。不存在/删除的 stage 读取 404；其他 owner 的写入 403 |
+| assets | 当前采用共享资源分区；可分配新资源、读取内容。PUT 替换和 DELETE 删除被应用层禁止（403），不应作为前端按钮调用 |
+| runtime | Authorization: Bearer <持久化开发凭据> 与 X-Learner-Key；与 CampusMate JWT 不同。身份验证仍为开发验证器，production 默认拒绝，具体开关与含义见 server-auth.ts。merge 与管理员批量删除当前明确禁止（403） |
+
+授权实现：[document-access.ts](../../magicclass-app/lib/persistence/document-access.ts)、[server-auth.ts](../../magicclass-app/lib/persistence/server-auth.ts)、[路由挂载](../../magicclass-app/app/api/persistence/[...path]/route.ts)。
+
+### DocumentStore 子接口
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| `PUT` | `/api/persistence/documents/{stageId}` | Save the full `MaicDocument`; body `stage.id` must match the path. The store migrates stale input, stamps `dslVersion`, replaces stage/outline data, upserts incoming scenes, and removes omitted scenes atomically. | `204` |
+| `GET` | `/api/persistence/documents/{stageId}` | Load and migrate one complete document. | `200` with `MaicDocument`, or `404 DOCUMENT_NOT_FOUND` |
+| `GET` | `/api/persistence/documents` | List version-independent summaries. | `200` with `DocumentSummary[]` |
+| `DELETE` | `/api/persistence/documents/{stageId}` | Cascade-delete a document, its scenes, and its outline. Idempotent and intentionally not version-guarded. | `204` |
+| `PUT` | `/api/persistence/documents/{stageId}/stage` | Validate and replace the stage row of an existing current-version document; body `id` must match the path. | `204` |
+| `PUT` | `/api/persistence/documents/{stageId}/scenes/{sceneId}` | Validate and upsert a scene in an existing current-version document; body `id` and `stageId` must match the path. | `204` |
+| `GET` | `/api/persistence/documents/{stageId}/scenes/{sceneId}` | Read one scene through the parent document's migrate-on-read semantics. | `200` with the scene, or `404` |
+| `DELETE` | `/api/persistence/documents/{stageId}/scenes/{sceneId}` | Delete one scene. Idempotent for an absent scene or document, but version-guarded when the parent exists. | `204` |
+
+完整字段、校验、错误与重试契约：[magicclass-app/packages/@magicclass/storage/docs/document-http-contract.md](../../magicclass-app/packages/@magicclass/storage/docs/document-http-contract.md)。下列应用限制覆盖表内的通用成功状态。
+
+### AssetStore 子接口
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| `POST` | `/api/persistence/assets` | Allocate a new id and store the submitted bytes under it. | `201` with `{ "id": "ast_…" }` and `X-Asset-Revision` |
+| `GET` | `/api/persistence/assets/{id}/content` | Read the bytes stored under an id. | `200` with the bytes |
+| `HEAD` | `/api/persistence/assets/{id}/content` | Read identity headers without reading the byte layer. | `200`, no body |
+| `PUT` | `/api/persistence/assets/{id}/content` | Replace the bytes stored under an existing id. | `204` with `X-Asset-Revision` |
+| `DELETE` | `/api/persistence/assets/{id}` | Remove the registry entry. | `204` for any id the policy admits |
+
+完整字段、校验、错误与重试契约：[magicclass-app/packages/@magicclass/storage/docs/asset-http-contract.md](../../magicclass-app/packages/@magicclass/storage/docs/asset-http-contract.md)。下列应用限制覆盖表内的通用成功状态。
+
+### RuntimeStore 子接口
+
+| Method | Path | Purpose | Success |
+| --- | --- | --- | --- |
+| `POST` | `/api/persistence/runtime/sessions` | Create a session from a `RuntimeSessionInit`. The server stamps `runtimeDslVersion`; a client-submitted value is ignored. | `201` with the full `RuntimeSession` |
+| `GET` | `/api/persistence/runtime/sessions/{sessionId}` | Get one session. | `200` with the `RuntimeSession`, or `404` if absent |
+| `PATCH` | `/api/persistence/runtime/sessions/{sessionId}/status` | Set status from `{ "status", "updatedAt", "expectedLastSeq"? }`. `expectedLastSeq` is a non-negative integer or `null`. | `204` |
+| `DELETE` | `/api/persistence/runtime/sessions/{sessionId}` | Delete a session and all of its records. | `204` |
+| `GET` | `/api/persistence/runtime/stages/{stageId}/learners/{learnerKey}/sessions` | List a partition's sessions, ordered by the instant represented by `createdAt`, then by `id` for deterministic ties. | `200` with `RuntimeSession[]` |
+| `POST` | `/api/persistence/runtime/sessions/{sessionId}/records` | Append a `RuntimeRecordInit` plus optional top-level `expectedLastSeq` and `sessionTransition`; body `sessionId` must match the path. | `201` with the full `RuntimeRecord` |
+| `GET` | `/api/persistence/runtime/sessions/{sessionId}/records` | List records ordered by `seq`. Optional `?sceneId={sceneId}` returns only records anchored to that scene and excludes unanchored records. | `200` with `RuntimeRecord[]` |
+| `POST` | `/api/persistence/runtime/learners/merge` | Atomically re-key all sessions across all stages from `{ "fromLearnerKey", "toLearnerKey" }`. | `200` with `{ "moved": number }` |
+| `DELETE` | `/api/persistence/runtime/stages/{stageId}/learners/{learnerKey}` | Delete one learner's sessions and records on one stage. | `204` |
+| `DELETE` | `/api/persistence/runtime/stages/{stageId}` | Cascade-delete every learner's sessions and records on one stage. | `204` |
+| `DELETE` | `/api/persistence/runtime` | Delete every runtime session and record. Idempotent; an administrative operation — servers MUST gate it behind an operator-level authorization check, never expose it to learner credentials. | `204` |
+
+完整字段、校验、错误与重试契约：[magicclass-app/packages/@magicclass/storage/docs/runtime-http-contract.md](../../magicclass-app/packages/@magicclass/storage/docs/runtime-http-contract.md)。下列应用限制覆盖表内的通用成功状态。
+
+### 子路由请求与响应字段
+
+- DocumentStore：全量 PUT 请求 {stage,scenes,outline?,dslVersion?}，增量 PUT 分别发送完整 Stage / Scene；id、stageId 必须与路径一致，scenes 数组未包含的旧场景会移除。GET 返回迁移后的文档；写入 204 无响应体。document 的时间通常为毫秒数。完整 Stage/Scene 结构与应用校验见 [DSL](../../magicclass-app/packages/@magicclass/dsl/src)、[文档验证器](../../magicclass-app/lib/document-store/validators.ts)。
+- AssetStore：POST multipart 按顺序提供 meta（application/json 文件 part，含 filename）与 bytes（真实媒体 Content-Type 的文件 part）；两部分均带 filename。meta 不回传。成功 201 {id} 与 X-Asset-Revision；GET 为完整二进制、200、无 Range；读取 nosniff、Cache-Control:private,no-store。可选间接出口为 302 signed URL，客户端 follow 后仍依据实际 Content-Type。Next 未显式导出 HEAD，框架从 GET 自动处理；HEAD 内容由路由的 suppressesResponseBody 清空，不能计为新增显式 handler。
+- RuntimeSessionInit：id/kind/stageId/learnerKey/status/createdAt/updatedAt 均必需；status=active/completed/archived，时间 ISO 8601 含时区。服务端赋 runtimeDslVersion，创建 201 返回完整 RuntimeSession。
+- RuntimeRecordInit：id/sessionId/createdAt/payload 必需；sceneId/actionIndex/subAnchor 可选。seq 从 0 开始由服务端分配；append 可带 expectedLastSeq（非负整数或 null）与 sessionTransition:{status,updatedAt}，成功 201 返回完整 RuntimeRecord；尾部不匹配为 409 RUNTIME_APPEND_CONFLICT 且不修改数据。status PATCH 发送 {status,updatedAt,expectedLastSeq?}，成功 204。
+- Runtime payload：chat 要求 ChatMessageSkeleton（role/content），quizAttempt 要求 QuizAttemptSkeleton（phase/answers），whiteboard 使用应用注入的验证器；完整类型见 [runtime.ts](../../magicclass-app/packages/@magicclass/dsl/src/runtime.ts)、[payload-validators.ts](../../magicclass-app/lib/runtime/payload-validators.ts)、[whiteboard 验证器](../../magicclass-app/lib/whiteboard/runtime/validate.ts)。
+
+JSON 读写体默认最大 32 MiB，文档/Runtime 仅接受 JSON 可安全序列化的值。Asset multipart 独立限制见包契约。路径片段按 UTF-8 percent-encode；asset 路由不接受任何 query。失败使用 {error:{code,message,details?}}，与 apiError 的 {success:false,...} 不同；401/403/404/405/409/413 需按当前分支处理，204 不解析 JSON。
+
+## 独立应用的 SSE 分帧与续传
+
+- /api/agent/sessions/{id}/events：Last-Event-ID 请求头或 lastEventId query 是数值 seq，回放 seq 大于游标的事件；与 CampusMate Agent 的 evt 字符串游标不同。帧为 id/event/data；caught_up 表示回放追平，degraded=true 需完整回读。session_end 仅是一次运行结束，连接继续保持。断开不会停止 runner；资源归属由 anonymous_id cookie 控制，陌生或缺失 session 均 404。
+- /api/agent/owner-events：当前 owner 的持久化汇总事件；按 caught_up/degraded/resync_required/owner_moved 等信号回读列表或切换 owner。完整帧与游标见 [owner-events handler](../../magicclass-app/app/api/agent/owner-events/route.ts)。
+- /api/chat 与 /api/chat/pi：客户端传完整 messages/storeState/config，文本与工具事件按 StatelessEvent 解析，不能作为 CampusMate counselor 的 chunk/done 来读。每次请求为一次生成，取消使用 AbortSignal。
+- /api/pbl/v2/instructor、evaluate、simulator：Content-Type=text/event-stream；event=<type>、data=<完整 PBLSSEEvent JSON>，token.delta 累加；project_patch 按 patch.kind 更新项目；done 结束，error 展示失败。共享 SSE helper 默认每 15 秒注释心跳，异常会发 error 后 done，不得把 done 单独当成功。
+
+PBL v2 流事件字段直接列出共享定义：[sse.ts](../../magicclass-app/lib/pbl/v2/api/sse.ts)。嵌套项目/评估类型见 [types.ts](../../magicclass-app/lib/pbl/v2/types.ts)。
+
+```ts
+export interface SSETokenEvent {
+  type: 'token';
+  /** The text chunk to append to the current assistant message. */
+  delta: string;
+}
+```
+
+```ts
+export interface SSEToolCallEvent {
+  type: 'tool_call';
+  toolName: string;
+  args: Record<string, unknown>;
+  toolCallId: string;
+}
+```
+
+```ts
+export interface SSEProjectPatchEvent {
+  type: 'project_patch';
+  /** The shape mirrors the tool effect:
+   *   - 'advance' → microtask id + flags
+   *   - 'closing_check' / 'observation' → engagement event added
+   *   - 'evaluation' → new PBLEvaluation appended (for milestone/final later)
+   *   - 'message' → assistant message that should be appended verbatim
+   */
+  patch:
+    | {
+        kind: 'message';
+        message: PBLChatMessage;
+      }
+    | {
+        kind: 'advance';
+        microtaskId: string;
+        milestoneCompleted: boolean;
+        projectCompleted: boolean;
+        nextMicrotaskId?: string;
+        /** Authoritative server snapshots after advanceMicrotask()
+         *  mutates process data. The client project is the source sent
+         *  to /evaluate, so these fields must cross the SSE boundary
+         *  or milestone/final evaluators lose completion evidence. */
+        completedMicrotask?: PBLMicrotask;
+        nextMicrotask?: PBLMicrotask;
+        milestone?: PBLMilestone;
+        engagementEvents?: PBLEngagementEvent[];
+        runtimeEvents?: PBLRuntimeEvent[];
+        /**
+         * Should the client follow up with /api/pbl/v2/evaluate after
+         * the Instructor stream closes? Three orthogonal flags so the
+         * client can chain them deterministically:
+         *
+         *  - shouldEvaluateTask:      run task eval (only when the
+         *                             microtask has at least one
+         *                             submission — PR 6 D1-B)
+         *  - shouldEvaluateMilestone: run milestone eval (when this
+         *                             advance completed the milestone)
+         *  - shouldEvaluateFinal:     run final eval (when this advance
+         *                             completed the whole project)
+         *
+         * Chaining order is task → milestone → final; each eval's
+         * `done` triggers the next one. The server doesn't know the
+         * client's stream state, so we communicate "what to do next"
+         * declaratively here, not by running the evaluator inline
+         * with the Instructor (that would interleave two LLM streams,
+         * see the design notes in agents/evaluator.ts).
+         */
+        shouldEvaluateTask?: boolean;
+        shouldEvaluateMilestone?: boolean;
+        shouldEvaluateFinal?: boolean;
+      }
+    | {
+        kind: 'engagement_event';
+        /** Authoritative server event. Older patches may only carry
+         *  eventKind/payload; clients keep backward compatibility. */
+        event?: PBLEngagementEvent;
+        eventKind: string;
+        microtaskId?: string;
+        milestoneId?: string;
+        ts?: string;
+        payload?: Record<string, unknown>;
+      }
+    | {
+        kind: 'evaluation';
+        evaluation: PBLEvaluation;
+      }
+    | {
+        kind: 'handover';
+        handover: NonNullable<PBLProjectV2['pendingHandover']>;
+      }
+    /**
+     * Adaptive proficiency engine state update. Replaces the project's
+     * `proficiencyAssessment` wholesale on the client. By product
+     * decision the chat does NOT show this — the patch is only
+     * consumed by the dev badge (`PBL_V2_DEV_PROFICIENCY_BADGE=true`)
+     * and the engagement-event ledger. `tierChanged` is included so
+     * the dev tooling can highlight transitions without diffing the
+     * full assessment.
+     */
+    | {
+        kind: 'proficiency';
+        assessment: PBLProficiencyAssessment;
+        tierChanged: boolean;
+      };
+}
+```
+
+```ts
+export interface SSESimPhaseEvent {
+  type: 'sim_phase';
+  phase: 'narration' | 'character';
+}
+```
+
+```ts
+export interface SSEResetDraftEvent {
+  type: 'reset_draft';
+}
+```
+
+```ts
+export interface SSEErrorEvent {
+  type: 'error';
+  code: string;
+  message: string;
+}
+```
+
+```ts
+export interface SSEDoneEvent {
+  type: 'done';
+}
+```
+
+```ts
+export type PBLSSEEvent =
+  | SSETokenEvent
+  | SSEToolCallEvent
+  | SSEProjectPatchEvent
+  | SSESimPhaseEvent
+  | SSEResetDraftEvent
+  | SSEErrorEvent
+  | SSEDoneEvent;
 ```

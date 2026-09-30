@@ -1446,6 +1446,8 @@ Web 封装：`openCourseResource`（[webreact/src/data/api.js](../../webreact/sr
 
 Web 封装：`downloadCourseResource`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
 
+音视频流支持可选 **Range** 请求头并转发上游；返回 **200 / 206**，范围错误可返回 **416**（http_error_416）。Content-Range、Accept-Ranges、Content-Length 等以实际上游结果为准。必须按二进制解析，并携带本站登录态与有效学习通绑定。
+
 参数：
 
 | 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
@@ -1461,6 +1463,7 @@ Web 封装：`downloadCourseResource`（[webreact/src/data/api.js](../../webreac
 | --- | --- | --- |
 | 200 | 实际资源媒体类型 | 文件 / 上游二进制流 |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 206 | 实际资源媒体类型 | 文件 / 上游二进制流 |
 
 实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
 

@@ -170,7 +170,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 实现：[backend/app/api/routes/auth.py](../../backend/app/api/routes/auth.py)，`refresh`。
 
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
+Web 封装：`refreshAccessToken`（[webreact/src/data/http/client.js](../../webreact/src/data/http/client.js)）
 
 用 refresh token 换发新的 access token + refresh token。
 
@@ -231,6 +231,8 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
 
 撤销当前 refresh token(若有)，并撤销当前浏览器的可信设备凭据。
+
+可信设备凭据由 HttpOnly cookie 携带；默认名 campus_trusted_device，可由配置覆盖，Path=/api/v1/auth。使用 credentials/include 或 Axios withCredentials；JavaScript 不读取 cookie 值。具体清除和撤销流程见 [认证接入](integration.md#auth)。
 
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
@@ -500,6 +502,8 @@ Web 封装：`qrCreate`（[webreact/src/data/http/authEndpoints.js](../../webrea
 
 Web 创建 QR Login Session(无需鉴权)。
 
+可选 User-Agent 由浏览器自动发送；服务端据此生成浏览器与操作系统信息，供扫码确认页展示。
+
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
 请求体：`application/json`，必填；[QrCreateRequest](schemas.md#schema-qrcreaterequest)。
@@ -727,6 +731,8 @@ Web 用 browser_token 查询状态。
 browser_token 通过 Authorization: Bearer 或 X-Browser-Token 头传递。
 不让仅知道 session_id 的人能查询状态。
 
+业务必需专用凭据：请求头 **X-Browser-Token: <创建二维码返回的 browser_token>**；也兼容 Authorization: Bearer <browser_token>。此处 Bearer 值是扫码浏览器凭据。不能使用普通 access_token 或 scan_token 代替；缺少或错误凭据返回 401。
+
 参数：
 
 | 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
@@ -835,6 +841,8 @@ Web 封装：`trustedDeviceAutoLogin`（[webreact/src/data/http/authEndpoints.js
 
 浏览器用可信设备 Cookie 自动登录。
 
+可信设备凭据由 HttpOnly cookie 携带；默认名 campus_trusted_device，可由配置覆盖，Path=/api/v1/auth。使用 credentials/include 或 Axios withCredentials；JavaScript 不读取 cookie 值。具体清除和撤销流程见 [认证接入](integration.md#auth)。
+
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
 请求体：`application/json`，必填；[TrustedDeviceAutoLoginRequest](schemas.md#schema-trusteddeviceautologinrequest)。
@@ -889,6 +897,8 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 列出当前用户的可信设备。
 
+可信设备凭据由 HttpOnly cookie 携带；默认名 campus_trusted_device，可由配置覆盖，Path=/api/v1/auth。使用 credentials/include 或 Axios withCredentials；JavaScript 不读取 cookie 值。具体清除和撤销流程见 [认证接入](integration.md#auth)。
+
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
 请求体：无。
@@ -920,6 +930,8 @@ Web 封装：`revokeTrustedDevice`（[webreact/src/data/http/authEndpoints.js](.
 撤销可信设备。
 
 若 req.device_id 为空，撤销当前 Cookie 对应的设备（即退出登录时撤销本浏览器）。
+
+可信设备凭据由 HttpOnly cookie 携带；默认名 campus_trusted_device，可由配置覆盖，Path=/api/v1/auth。使用 credentials/include 或 Axios withCredentials；JavaScript 不读取 cookie 值。具体清除和撤销流程见 [认证接入](integration.md#auth)。
 
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 

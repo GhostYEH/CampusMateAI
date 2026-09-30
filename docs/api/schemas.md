@@ -4080,6 +4080,33 @@ retry from racing two separate create calls.
 | `mode` | string | 是 | — | 本次评定实际使用模式: llm\|rules |
 | `total` | integer | 否 | default=0 | 本次评定任务数 |
 
+<a id="schema-interactiveclassroominput"></a>
+## InteractiveClassroomInput
+
+模型定义：[backend/app/services/agent_runtime/handlers/interactive_classroom.py](../../backend/app/services/agent_runtime/handlers/interactive_classroom.py)。
+
+`interactive_classroom` 命令输入。未知键保持透传，不破坏旧客户端。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `course_id` | string | 是 | minLength=1; maxLength=128 | 关联课程标识 |
+| `mode` | string | 否 | default="adaptive"; maxLength=32 | — |
+| `learning_objective` | string / null | 否 | default=null; string约束: maxLength=500 | — |
+| `current_difficulty` | string / null | 否 | default=null; string约束: maxLength=500 | — |
+| `desired_duration_minutes` | integer / null | 否 | default=null; integer约束: minimum=5; maximum=180 | — |
+| `difficulty_level` | string / null | 否 | default=null; string约束: maxLength=16 | — |
+| `wants_more_practice` | boolean | 否 | default=false | — |
+| `selected_material_ids` | array<string> | 否 | maxItems=20 | — |
+| `user_id` | string / null | 否 | default=null | 所属用户标识 |
+
+对象级约束：
+
+```json
+{
+  "additionalProperties": true
+}
+```
+
 <a id="schema-knowledgegraphout"></a>
 ## KnowledgeGraphOut
 
@@ -4393,6 +4420,30 @@ def validate_value_for_state(self) -> 'LearnerStateSnapshotOut':
 ```json
 {
   "additionalProperties": false
+}
+```
+
+<a id="schema-learninggoalinput"></a>
+## LearningGoalInput
+
+模型定义：[backend/app/services/agent_runtime/handlers/learning_goal.py](../../backend/app/services/agent_runtime/handlers/learning_goal.py)。
+
+`learning_goal` 的输入模型。未知键保持透传,不破坏旧客户端。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `goal_id` | string | 是 | minLength=1; maxLength=128 | — |
+| `available_minutes` | integer | 否 | default=60; minimum=1; maximum=1440 | — |
+| `course_id` | string / null | 否 | default=null | 关联课程标识 |
+| `window_start` | string / null | 否 | default=null | — |
+| `window_end` | string / null | 否 | default=null | — |
+| `plan_id` | string / null | 否 | default=null | — |
+
+对象级约束：
+
+```json
+{
+  "additionalProperties": true
 }
 ```
 

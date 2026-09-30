@@ -143,20 +143,46 @@ recent_tasks 仅表示当前用户的 PersonalTask，后端重新读取权威字
 <a id="agents"></a>
 ## Agent 运行与事件续传
 
-先读取 `/agent-runtime/capabilities` 与 `/skills`；创建 `/agent-jobs` 得到关联 job/run，然后读取 job/runs/run 与事件。运行终态为 `SUCCEEDED/PARTIAL/FAILED/CANCELLED`，其他状态和阶段见 RunStatus/RunPhase；PAUSED 与 WAITING_APPROVAL 不表示任务完成。
+先读取 `/agent-runtime/capabilities` 与 `/skills`；创建 `/agent-jobs` 得到关联 job/run，然后读取 job/runs/run 与事件。运行终态为 `SUCCEEDED/PARTIAL/FAILED/CANCELLED`，其他状态和阶段见 RunStatus/RunPhase；`PAUSED` 与 `AWAITING_APPROVAL` 不表示任务完成。`WAITING_FOR_APPROVAL` 是 phase，不能作为 status 使用。
+
+<a id="agent-input"></a>
+### 创建任务的嵌套输入与可用入口
+
+`POST /agent-jobs` 要求 student 身份；运行时停止接单返回 `503 AGENT_RUNTIME_UNAVAILABLE`。首次创建返回 202，同一幂等键与同一输入重放返回 200，响应均为 AgentJobOut。body.idempotency_key 优先于 `Idempotency-Key` 请求头；相同键、不同 job_kind/input_ref 返回 `409 AGENT_IDEMPOTENCY_CONFLICT`。
+
+外层 AgentJobCreateIn 的 job_kind 正则允许五个值，但通过格式校验不表示已经注册了 Handler。当前 [容器注册](../../backend/app/services/container.py) 与 [Handler 注册器](../../backend/app/services/agent_runtime/handlers/registry.py) 的实际入口如下：
+
+| job_kind / 功能 | 当前入口与 input_ref |
+| --- | --- |
+| `learning_goal` | 通用 `/agent-jobs` 可创建；input_ref 为 [LearningGoalInput](schemas.md#schema-learninggoalinput)：goal_id 必填，available_minutes 默认 60（1～1440），course_id/window_start/window_end/plan_id 可空 |
+| `interactive_classroom` | 通用 `/agent-jobs` 可创建；input_ref 为 [InteractiveClassroomInput](schemas.md#schema-interactiveclassroominput)：course_id 必填，其余模式、学习目标、难点、时长、难度、练习与资料字段见字段字典；生成仍需审批 |
+| `final_review` | 通用创建接口未注册这个名称，返回 `409 AGENT_CAPABILITY_DISABLED`；使用复习 campaign/plan/activate/adjustment-proposals 的专用接口 |
+| `course_research` | 通用创建接口未注册这个名称，返回同上 409；使用 `POST /course-research/runs` |
+| `notice_workflow` | 通用创建接口未注册这个名称，返回同上 409；使用通知事务与动作 decision/execute 接口 |
+| 内部 `final_review_plan_activate` / `final_review_adjust_apply` | 容器注册了处理器，但名字不符合公开 AgentJobCreateIn 正则，不能通过通用接口提交；由复习专用接口创建 |
+
+`input_ref` 的外层类型虽然是开放字典，路由还会执行对应 Handler 的 Pydantic 校验，失败为 `VALIDATION_FAILED`。这两个 Handler 输入模型均允许未知键透传；未知键不表示会被业务执行。互动课堂不能用客户端 approval_id 替代服务端审批，user_id 的归属以已认证用户为准。学习目标任务生成计划草案并回写 plan_id/intervention_id，成功不等于用户已经接受或执行计划。
+
+```json
+{
+  "job_kind": "learning_goal",
+  "input_ref": {"goal_id": "<当前用户的目标ID>", "available_minutes": 60},
+  "idempotency_key": "<本次动作唯一键>"
+}
+```
 
 事件流 `GET /agent-runs/{run_id}/events/stream` 用 fetch 带 Bearer，Accept 为 text/event-stream。每帧包含 id、event 和完整 [AgentEventOut](schemas.md#schema-agenteventout)：
 
 ```text
 id: evt_example
-event: progress
-data: {"id":"evt_example","sequence":1,"run_id":"run_example", "status":"RUNNING"}
+event: RUN_STARTED
+data: {"id":"evt_example","type":"RUN_STARTED","sequence":1,"run_id":"run_example","status":"RUNNING","phase":"CONTEXT_BUILDING","created_at":"2026-09-30T09:00:00+08:00"}
 
 : keep-alive
 
 ```
 
-示例只展示关键字段，event 的实际枚举见 AgentEventType。重连发送 **Last-Event-ID（event id，不是 sequence）**；按 sequence 去重并保持顺序。心跳注释不改变业务状态；流断开不会取消运行。无效或不属于本 run 的游标返回 AGENT_CURSOR_INVALID，改用 REST `/events?after_sequence=0&limit=...` 归并，再续传。终态事件发送后流会关闭，不能把正常关闭当作任务失败。
+示例包含必需字段，可空的可选字段省略；event 为实际 AgentEventType，且与 data.type 一致。重连发送 **Last-Event-ID（event id，不是 sequence）**；按 sequence 去重并保持顺序。心跳注释不改变业务状态；流断开不会取消运行。无效或不属于本 run 的游标返回 AGENT_CURSOR_INVALID，改用 REST `/events?after_sequence=0&limit=...` 归并，再续传。终态事件发送后流会关闭，不能把正常关闭当作任务失败。
 
 pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运行结果时按新 run_id 追踪。审批决策为 APPROVED/REJECTED；相同决策重放幂等，相反决策冲突，过期不等于批准。产物先读 `/agent-artifacts/{id}`，再 `/content` 获取文本（按 mime_type 读取 Markdown/JSON）；记忆的建立与 withdraw 独立管理。管理员 observability 页面需要 admin，学生不要请求它。
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "CampusMate AI Web API",
     "version": "2026-09-30",
-    "description": "2026-09-30 当前 CampusMate 后端注册路由快照。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充 ChatFinalMeta、通用分页元素和社区 extra 的 7 个模型定义仅供文档引用。"
+    "description": "2026-09-30 当前 CampusMate 后端注册路由快照。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充动态响应、通用分页元素、社区 extra 与 Agent Handler 输入的 9 个模型定义仅供文档引用。"
   },
   "paths": {
     "/api/v1/health": {
@@ -40288,6 +40288,179 @@
           "title"
         ],
         "title": "NoticeOut",
+        "type": "object"
+      },
+      "LearningGoalInput": {
+        "additionalProperties": true,
+        "description": "`learning_goal` 的输入模型。未知键保持透传,不破坏旧客户端。",
+        "properties": {
+          "goal_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "available_minutes": {
+            "default": 60,
+            "maximum": 1440,
+            "minimum": 1,
+            "title": "Available Minutes",
+            "type": "integer"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Course Id"
+          },
+          "window_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Window Start"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Window End"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Plan Id"
+          }
+        },
+        "required": [
+          "goal_id"
+        ],
+        "title": "LearningGoalInput",
+        "type": "object"
+      },
+      "InteractiveClassroomInput": {
+        "additionalProperties": true,
+        "description": "`interactive_classroom` 命令输入。未知键保持透传，不破坏旧客户端。",
+        "properties": {
+          "course_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Course Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "adaptive",
+            "maxLength": 32,
+            "title": "Mode",
+            "type": "string"
+          },
+          "learning_objective": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Learning Objective"
+          },
+          "current_difficulty": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Current Difficulty"
+          },
+          "desired_duration_minutes": {
+            "anyOf": [
+              {
+                "maximum": 180,
+                "minimum": 5,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Desired Duration Minutes"
+          },
+          "difficulty_level": {
+            "anyOf": [
+              {
+                "maxLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Difficulty Level"
+          },
+          "wants_more_practice": {
+            "default": false,
+            "title": "Wants More Practice",
+            "type": "boolean"
+          },
+          "selected_material_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Selected Material Ids",
+            "type": "array"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "InteractiveClassroomInput",
         "type": "object"
       }
     },
