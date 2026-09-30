@@ -11,6 +11,7 @@
 
 行为识别（可见学习行为观察）与表情识别在设备本地推理，画面不上传服务器、不经过后端 HTTP，因此基于后端已注册路由整理的 `api/` 手册不含这两项能力，该手册也未查看 Android、HarmonyOS 与微信小程序。实现说明在 `ml/` 与各端 README：
 
+- 端侧识别链路交接（模型清单与哈希、数据流、类别与校准契约、回退语义、重写检查清单）：[端侧识别链路](on-device-recognition-pipeline.md)
 - 训练、评估与导出：[行为识别](../ml/behavior_recognition/README.md)、[表情识别](../ml/expression_recognition/README.md)
 - Android（CameraX + ML Kit + LiteRT / ONNX Runtime，Mock/Real 双实现与隐私边界）：[android/README.md](../android/README.md) 的“表情识别”与“本地行为识别演进与学习状态辅助”章节
 - HarmonyOS（MindSpore Lite 本地模型）：[harmony/README.md](../harmony/README.md) 的“本地表情与学习行为识别”章节
