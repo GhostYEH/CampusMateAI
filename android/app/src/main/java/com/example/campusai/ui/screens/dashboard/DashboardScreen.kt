@@ -8,5 +8,5 @@ fun DashboardScreen(
     repository: AppRepository,
     onNavigate: (String) -> Unit,
 ) {
-    ClassicDashboardScreen(repository, onNavigate)
+    ModernDashboardScreen(repository, onNavigate)
 }

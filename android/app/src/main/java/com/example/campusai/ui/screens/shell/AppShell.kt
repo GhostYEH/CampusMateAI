@@ -684,15 +684,22 @@ private fun RowScope.LiquidGlassNavItem(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
-                    modifier = Modifier.height(27.dp).width(42.dp),
+                    modifier = Modifier.height(34.dp).width(42.dp),
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (item.route == "counselor") {
+                        Box(
+                            Modifier.size(32.dp).clip(CircleShape).background(
+                                Brush.linearGradient(listOf(Color(0xFF24477B), Color(0xFF536DED))),
+                            ),
+                        )
+                    }
                     Icon(
                         imageVector = item.icon,
                         contentDescription = item.label,
-                        tint = color,
+                        tint = if (item.route == "counselor") Color.White else color,
                         modifier = Modifier
-                            .size(if (item.route == "counselor" && isSelected) 24.dp else 21.dp)
+                            .size(if (item.route == "counselor") 20.dp else 21.dp)
                             .graphicsLayer {
                                 scaleX = iconScale
                                 scaleY = iconScale
@@ -716,7 +723,6 @@ private fun RowScope.LiquidGlassNavItem(
                         }
                     }
                 }
-                Spacer(Modifier.height(1.dp))
                 Text(
                     text = item.label,
                     color = color,

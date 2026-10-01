@@ -147,6 +147,7 @@ fun FocusScreen(
     var showGoalDialog by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
     var guideState by rememberSaveable { mutableStateOf(GuideDialogueState.GREETING) }
+    var showGuide by rememberSaveable { mutableStateOf(false) }
     var arranging by rememberSaveable { mutableStateOf(false) }
     var countdown by rememberSaveable { mutableIntStateOf(0) }
     var planLoading by remember { mutableStateOf(false) }
@@ -287,7 +288,29 @@ fun FocusScreen(
                 }
             }
             item {
+                QuickFocusCard(
+                    taskName = taskName,
+                    selectedMinutes = selectedDurationMinutes,
+                    selectedMode = sessionMode,
+                    canStart = backendOnline && sessionReady,
+                    onSelectMinutes = { minutes ->
+                        selectedDurationMinutes = minutes
+                        selectedSecondsLeft = minutes * 60
+                    },
+                    onSelectMode = { sessionMode = it },
+                    onStart = startFocus,
+                    onOpenHistory = onOpenHistory,
+                )
+            }
+            item {
                 Surface(
+                    onClick = {
+                        showGuide = !showGuide
+                        if (!showGuide) {
+                            guideState = GuideDialogueState.GREETING
+                            arranging = false
+                        }
+                    },
                     modifier = Modifier.campusGlass(
                         shape = RoundedCornerShape(50),
                         role = CampusGlassRole.NAVIGATION,
@@ -297,7 +320,7 @@ fun FocusScreen(
                     shape = RoundedCornerShape(50),
                 ) {
                     Text(
-                        "CampusMate AI 导员",
+                        if (showGuide) "收起 AI 导员引导" else "也可以让 AI 导员陪你安排",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         color = TextPrimary,
                         fontSize = 14.sp,
@@ -305,19 +328,21 @@ fun FocusScreen(
                     )
                 }
             }
-            item {
-                FocusHallDialogue(
-                    state = guideState,
-                    arranging = arranging,
-                    countdown = countdown,
-                    selectedMinutes = selectedDurationMinutes,
-                    selectedMode = sessionMode,
-                    onReady = { if (sessionReady) arranging = true },
-                    onOpenHistory = onOpenHistory,
-                    onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
-                    onCustom = { showCustomDurationDialog = true },
-                    onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
-                )
+            if (showGuide) {
+                item {
+                    FocusHallDialogue(
+                        state = guideState,
+                        arranging = arranging,
+                        countdown = countdown,
+                        selectedMinutes = selectedDurationMinutes,
+                        selectedMode = sessionMode,
+                        onReady = { if (sessionReady) arranging = true },
+                        onOpenHistory = onOpenHistory,
+                        onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
+                        onCustom = { showCustomDurationDialog = true },
+                        onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
+                    )
+                }
             }
             if (effectiveTaskId != null) {
                 item {
@@ -354,6 +379,89 @@ fun FocusScreen(
             confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
             dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
         )
+    }
+}
+
+@Composable
+private fun QuickFocusCard(
+    taskName: String,
+    selectedMinutes: Int,
+    selectedMode: FocusSessionMode,
+    canStart: Boolean,
+    onSelectMinutes: (Int) -> Unit,
+    onSelectMode: (FocusSessionMode) -> Unit,
+    onStart: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(Color(0xFF10243A), Color(0xFF3258A0))))
+            .padding(20.dp),
+    ) {
+        Text("FOCUS  /  学习空间", color = Color(0xFFB8F0DB), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Spacer(Modifier.height(9.dp))
+        Text("从现在开始，专注一件事", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+        Text(taskName, color = Color.White.copy(alpha = .72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(20.dp))
+        Text("专注时长", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(25, 45, 60).forEach { minutes ->
+                val selected = selectedMinutes == minutes
+                Box(
+                    Modifier.weight(1f).clip(CircleShape)
+                        .background(if (selected) Color(0xFFB8F0DB) else Color.White.copy(alpha = .15f))
+                        .clickable { onSelectMinutes(minutes) }
+                        .padding(vertical = 9.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("$minutes 分钟", color = if (selected) Color(0xFF10243A) else Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Spacer(Modifier.height(15.dp))
+        Text("专注方式", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        FocusSessionMode.entries.forEach { option ->
+            val selected = selectedMode == option
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                    .background(if (selected) Color.White.copy(alpha = .2f) else Color.White.copy(alpha = .08f))
+                    .clickable { onSelectMode(option) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(8.dp).background(if (selected) Color(0xFFB8F0DB) else Color.White.copy(alpha = .42f), CircleShape))
+                Spacer(Modifier.width(9.dp))
+                Text(option.title, color = Color.White, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    option.description,
+                    modifier = Modifier.weight(1f),
+                    color = Color.White.copy(alpha = .6f),
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+        Spacer(Modifier.height(9.dp))
+        Button(
+            onClick = onStart,
+            enabled = canStart,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8F0DB), contentColor = Color(0xFF10243A)),
+        ) {
+            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("开始专注", fontWeight = FontWeight.Bold)
+        }
+        TextButton(onClick = onOpenHistory, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("查看专注记录", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
+        }
     }
 }
 
