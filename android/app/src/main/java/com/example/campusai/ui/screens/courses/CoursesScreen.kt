@@ -641,7 +641,7 @@ internal fun CourseDetailSheet(
                     Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Default.List, null, tint = Primary, modifier = Modifier.size(18.dp))
-                            Text("知识点掌握", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("学习通知识图谱", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                         Text(
                             if (graph?.available == true) "${graph?.knowledge_point_count ?: 0} 个知识点" else "尚未同步",
@@ -652,8 +652,13 @@ internal fun CourseDetailSheet(
                     when {
                         graphLoading -> Text("知识点数据加载中…", color = Muted, fontSize = 12.sp)
                         current == null || !current.available -> {
+                            val graphSection = summary?.sections?.firstOrNull { it.section == "knowledge_graph" }
                             Text(
-                                graphError ?: "这门课还没有知识点数据。知识图谱属于深度同步内容，需从学习通课程图谱页拉取。",
+                                graphError ?: when (graphSection?.error_code) {
+                                    "access_denied" -> "学习通拒绝读取这门课的课程图谱，暂时无法展示真实知识点和掌握率。已同步的章节、资料仍可在下方查看。"
+                                    "structure_changed" -> "上次没有读到课程图谱。可重试一次，确认是访问受限还是页面变化。"
+                                    else -> "只有学习通提供并允许读取课程图谱时，才能同步真实知识点和掌握率。"
+                                },
                                 color = Muted, fontSize = 12.sp,
                             )
                             Button(
@@ -670,7 +675,7 @@ internal fun CourseDetailSheet(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                                 enabled = !graphSyncing,
-                            ) { Text(if (graphSyncing) "同步中…" else "同步知识点", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            ) { Text(if (graphSyncing) "同步中…" else if (graphSection?.error_code == "access_denied" || graphError?.contains("拒绝") == true) "重新尝试读取" else "同步知识点", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }
                         else -> {
                             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {

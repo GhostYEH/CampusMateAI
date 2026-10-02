@@ -920,9 +920,27 @@ class ChaoxingClient:
             "https://stat2-ans.chaoxing.com/study-knowledge/index"
             f"?courseId={course_id}&clazzId={clazz_id}"
         )
-        html = await self._get_text(url)
-        if not html:
+        response = None
+        for attempt in range(2):
+            try:
+                response = await self.client.get(url, follow_redirects=True)
+                break
+            except (httpx.RequestError, OSError):
+                if attempt == 0:
+                    await asyncio.sleep(0.8)
+        if response is None:
             return {"status": "failed", "items": [], "graph": {}, "error": "network_error"}
+        # A 403 response is an access-denied page, not a changed knowledge-graph
+        # layout. Never treat its HTML as evidence that the course has no graph.
+        if response.status_code in (401, 403):
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "access_denied"}
+        if response.status_code >= 400:
+            return {"status": "failed", "items": [], "graph": {},
+                    "error": f"http_error_{response.status_code}"}
+        html = response.text or ""
+        if not html:
+            return {"status": "failed", "items": [], "graph": {}, "error": "empty_response"}
         parsed = ChaoxingParser.parse_knowledge_graph(html)
         if not parsed.get("knowledge_points") and not parsed.get("knowledge_point_count"):
             return {"status": "unavailable", "items": [], "graph": {},

@@ -705,6 +705,7 @@ class AppRepository(
             val message = when (section.error) {
                 "missing_course_context" -> "这门课缺少教学班信息，暂时无法读取课程图谱"
                 "structure_changed" -> "学习通未提供可读取的课程图谱，或图谱页面已变化"
+                "access_denied" -> "学习通拒绝读取课程图谱。可先使用已同步的课程章节学习"
                 "network_error" -> "读取学习通课程图谱失败，请检查连接后重试"
                 else -> if (section.status == "unavailable") "这门课暂时没有可读取的课程图谱" else "课程图谱同步失败，请稍后重试"
             }
