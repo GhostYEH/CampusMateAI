@@ -82,6 +82,22 @@ def test_knowledge_status_stays_public() -> None:
         assert resp.status_code == 200, resp.text
 
 
+def test_knowledge_status_does_not_leak_server_path() -> None:
+    """该接口匿名可读，不得返回服务器绝对路径等部署信息。"""
+    with _client() as client:
+        resp = client.get("/api/v1/knowledge/status")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "knowledge_base_path" not in body, body
+        # 兜底：任何字符串字段都不应像服务器绝对路径（如 D:\... 或 /srv/...）
+        for key, value in body.items():
+            if isinstance(value, str):
+                looks_absolute = value.startswith("/") or (
+                    len(value) > 1 and value[1] == ":"
+                )
+                assert not looks_absolute, (key, value)
+
+
 # ===== 已登录学生仍可正常使用 =====
 
 

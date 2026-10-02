@@ -49,7 +49,6 @@ class KnowledgeStatus(BaseModel):
     index_status: str = Field(..., description="ready|empty|error")
     retrieval_method: str = Field(..., description="bm25|vector|hybrid")
     is_available: bool
-    knowledge_base_path: str
     # 知识库类型: demo(仿真) / user(用户导入) / hybrid(混合) / empty(空)
     knowledge_base_type: str = Field(
         ..., description="demo|user|hybrid|empty"

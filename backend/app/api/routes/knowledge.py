@@ -75,7 +75,6 @@ async def knowledge_status() -> KnowledgeStatus:
         index_status="ready" if is_available else "empty",
         retrieval_method="bm25",
         is_available=is_available,
-        knowledge_base_path=str(container.settings.knowledge_base_dir),
         knowledge_base_type=kb_type,
         demo_document_count=demo_count,
         user_document_count=user_count,

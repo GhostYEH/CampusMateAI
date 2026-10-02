@@ -52,7 +52,6 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 | `index_status` | string | 是 | — | ready\|empty\|error |
 | `retrieval_method` | string | 是 | — | bm25\|vector\|hybrid |
 | `is_available` | boolean | 是 | — | — |
-| `knowledge_base_path` | string | 是 | — | — |
 | `knowledge_base_type` | string | 是 | — | demo\|user\|hybrid\|empty |
 | `demo_document_count` | integer | 否 | default=0 | — |
 | `user_document_count` | integer | 否 | default=0 | — |

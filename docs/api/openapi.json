@@ -29282,10 +29282,6 @@
             "type": "boolean",
             "title": "Is Available"
           },
-          "knowledge_base_path": {
-            "type": "string",
-            "title": "Knowledge Base Path"
-          },
           "knowledge_base_type": {
             "type": "string",
             "title": "Knowledge Base Type",
@@ -29320,7 +29316,6 @@
           "index_status",
           "retrieval_method",
           "is_available",
-          "knowledge_base_path",
           "knowledge_base_type"
         ],
         "title": "KnowledgeStatus"
