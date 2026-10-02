@@ -25,6 +25,8 @@ data class FocusRecord(
     val observationSummary: FocusSessionSummary? = null,
     val behaviorSummary: FocusBehaviorSummary? = observationSummary?.behaviorSummary,
     val sourceId: String = id.toString(),
+    val selfReport: String? = null,
+    val goal: String? = null,
 )
 
 /** 番茄钟持久化状态，用于页面退出 / 应用重启后恢复。 */

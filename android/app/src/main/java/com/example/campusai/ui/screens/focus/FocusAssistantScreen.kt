@@ -89,11 +89,10 @@ import java.time.Instant
 
 /** Immutable hand-off data used only while moving from a focus session to its summary. */
 data class FocusSessionCompletion(
+    val sessionId: String,
     val actualSeconds: Int,
     val taskName: String,
     val conversationCount: Int,
-    val aiSummary: String,
-    val observationSummary: String,
     val planTaskId: String? = null,
     val nextStepTitle: String? = null,
     val planComplete: Boolean = false,
@@ -147,6 +146,8 @@ fun FocusSessionScreen(
     var voiceInstance by rememberSaveable { mutableIntStateOf(0) }
     var observationEnabled by rememberSaveable { mutableStateOf(false) }
     var conversationExpanded by rememberSaveable { mutableStateOf(false) }
+    var openingQuestionAsked by rememberSaveable { mutableStateOf(false) }
+    var openingQuestionVisible by rememberSaveable { mutableStateOf(true) }
     var observationDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var showEndConfirmation by rememberSaveable { mutableStateOf(false) }
     var finishingSession by remember { mutableStateOf(false) }
@@ -193,12 +194,32 @@ fun FocusSessionScreen(
             realtimeSession = SeeduplexRealtimeVoiceSession(context),
         )
     }
+    val promptSpeech = remember(context, sessionMode) {
+        if (sessionMode == FocusSessionMode.AI_COMPANION) AndroidTextToSpeechSynthesizer(context) else null
+    }
+    DisposableEffect(promptSpeech) { onDispose { promptSpeech?.shutdown() } }
     var realtimeStatus by remember(voiceController) { mutableStateOf(FocusVoicePhase.IDLE) }
     var voiceError by remember(voiceController) { mutableStateOf<String?>(null) }
     var currentUserText by remember(voiceController) { mutableStateOf("") }
     var currentAiText by remember(voiceController) { mutableStateOf("") }
     var currentResponseCompleted by remember(voiceController) { mutableStateOf(false) }
     var historyMessages by remember { mutableStateOf<List<CompletedConversation>>(emptyList()) }
+    LaunchedEffect(currentUserText) {
+        if (currentUserText.isNotBlank()) openingQuestionVisible = false
+    }
+    LaunchedEffect(realtimeStatus, sessionMode, focusRunning, appForeground, openingQuestionAsked) {
+        if (sessionMode == FocusSessionMode.AI_COMPANION && focusRunning && appForeground &&
+            realtimeStatus == FocusVoicePhase.LISTENING && !openingQuestionAsked
+        ) {
+            openingQuestionAsked = true
+            voiceController.muteRealtime()
+            promptSpeech?.speak(
+                "开始前想问你，这次学习有哪里需要我先帮你理清吗？你可以直接告诉我。",
+                onDone = voiceController::unmuteRealtime,
+                onError = { voiceController.unmuteRealtime() },
+            )
+        }
+    }
     val archiveCurrentConversation = {
         val userText = currentUserText.trim()
         val aiText = currentAiText.trim()
@@ -381,11 +402,10 @@ fun FocusSessionScreen(
             val conversations = historyMessages.size + if (currentUserText.isNotBlank()) 1 else 0
             onSessionCompleted(
                 FocusSessionCompletion(
+                    sessionId = sessionId.orEmpty(),
                     actualSeconds = actualSeconds,
                     taskName = taskName,
                     conversationCount = conversations,
-                    aiSummary = "你完成了“$taskName”的这段专注。${if (conversations > 0) "我们一起交流了 $conversations 次，" else "你保持了安静投入，"}继续保持这个节奏。",
-                    observationSummary = completion.summary.toCompanionSummary(),
                     planTaskId = planTaskId,
                     nextStepTitle = updatedPlan?.currentStep?.title,
                     planComplete = updatedPlan?.isComplete == true,
@@ -442,6 +462,9 @@ fun FocusSessionScreen(
             finishingSession = finishingSession,
             onFinish = { showEndConfirmation = true },
             historyMessages = historyMessages,
+            openingQuestionAsked = openingQuestionAsked,
+            openingQuestionVisible = openingQuestionVisible && sessionMode == FocusSessionMode.AI_COMPANION && currentUserText.isBlank(),
+            onDismissOpeningQuestion = { openingQuestionVisible = false },
             conversationExpanded = conversationExpanded,
             onOpenConversation = { conversationExpanded = true },
             onCloseConversation = { conversationExpanded = false },
@@ -496,6 +519,9 @@ private fun FocusExecutionContent(
     finishingSession: Boolean,
     onFinish: () -> Unit,
     historyMessages: List<CompletedConversation>,
+    openingQuestionAsked: Boolean,
+    openingQuestionVisible: Boolean,
+    onDismissOpeningQuestion: () -> Unit,
     conversationExpanded: Boolean,
     onOpenConversation: () -> Unit,
     onCloseConversation: () -> Unit,
@@ -525,6 +551,25 @@ private fun FocusExecutionContent(
                 settings = sceneSettings,
                 onSettingsChange = onSceneSettingsChange,
             )
+        }
+
+        if (openingQuestionVisible) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp).widthIn(max = 520.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0xE6163231),
+            ) {
+                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (realtimeStatus == FocusVoicePhase.ERROR) "小伴语音暂时未连接，你仍可以安心专注。"
+                        else "小伴想问：这次学习有哪里需要我先帮你理清吗？连接后可以直接说。",
+                        modifier = Modifier.weight(1f), color = Color.White, fontSize = 14.sp, lineHeight = 21.sp,
+                    )
+                    IconButton(onClick = onDismissOpeningQuestion, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "收起提问", tint = Color.White)
+                    }
+                }
+            }
         }
 
         Row(
@@ -559,7 +604,7 @@ private fun FocusExecutionContent(
         }
 
         AnimatedVisibility(
-            visible = observationDetailsExpanded,
+            visible = observationDetailsExpanded && sessionMode == FocusSessionMode.SMART_GUARD,
             modifier = Modifier
                 .align(if (stageLayout == FocusStageLayout.LANDSCAPE) Alignment.BottomStart else Alignment.BottomCenter)
                 .padding(bottom = 66.dp)
@@ -586,11 +631,11 @@ private fun FocusExecutionContent(
             )
         }
 
-        FocusCompanionDock(
+        if (sessionMode != FocusSessionMode.QUIET) FocusCompanionDock(
             phase = realtimeStatus,
             observationEnabled = observationEnabled,
             messageCount = historyMessages.size + if (currentUserText.isNotBlank() || currentAiText.isNotBlank()) 1 else 0,
-            onToggleDetails = onToggleDetails,
+            onToggleDetails = if (sessionMode == FocusSessionMode.SMART_GUARD) onToggleDetails else onOpenConversation,
             onInterrupt = onInterrupt,
             onOpenConversation = onOpenConversation,
             modifier = Modifier.align(Alignment.BottomCenter),
@@ -601,6 +646,7 @@ private fun FocusExecutionContent(
             aiText = currentAiText,
             phase = realtimeStatus,
             history = historyMessages,
+            openingQuestionAsked = sessionMode == FocusSessionMode.AI_COMPANION && openingQuestionAsked,
             onDismiss = onCloseConversation,
         )
     }
@@ -835,6 +881,7 @@ private fun FocusConversationOverlay(
     aiText: String,
     phase: FocusVoicePhase,
     history: List<CompletedConversation>,
+    openingQuestionAsked: Boolean,
     onDismiss: () -> Unit,
 ) {
     AnimatedVisibility(
@@ -844,33 +891,35 @@ private fun FocusConversationOverlay(
         exit = fadeOut(tween(160)) + scaleOut(targetScale = .9f, animationSpec = tween(180)),
     ) {
         Box(Modifier.fillMaxSize()) {
-            Box(Modifier.matchParentSize().background(Color(0xFF18234A).copy(alpha = .20f)).clickable(onClick = onDismiss))
+            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = .42f)).clickable(onClick = onDismiss))
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(16.dp)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .fillMaxWidth()
-                    .heightIn(max = 680.dp),
+                    .heightIn(max = 540.dp),
                 shape = RoundedCornerShape(28.dp),
-                color = Color.White.copy(alpha = .96f),
+                color = Color(0xF016302F),
                 shadowElevation = 12.dp,
             ) {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("本次对话", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.Close, contentDescription = "关闭对话", tint = Muted) }
+                        Text("小伴 · 本次对话", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.Close, contentDescription = "关闭对话", tint = Color.White) }
                     }
                     Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                         if (userText.isNotBlank() || aiText.isNotBlank()) CurrentConversationCard(userText, aiText, phase)
                         history.asReversed().forEach { turn ->
-                            Surface(shape = RoundedCornerShape(16.dp), color = PrimarySoft.copy(alpha = .70f)) {
+                            Surface(shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = .11f)) {
                                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text("我：${turn.userText}", color = TextPrimary, fontSize = 13.sp)
-                                    Text("CampusMate：${turn.aiText}", color = Muted, fontSize = 13.sp)
+                                    Text("我：${turn.userText}", color = Color.White, fontSize = 14.sp, lineHeight = 21.sp)
+                                    Text("小伴：${turn.aiText}", color = Color(0xFFDBEFE3), fontSize = 14.sp, lineHeight = 21.sp)
                                 }
                             }
                         }
-                        if (history.isEmpty() && userText.isBlank() && aiText.isBlank()) Text("开始说话后，你和 AI 的对话会显示在这里。", color = Muted, fontSize = 13.sp)
+                        if (openingQuestionAsked) Text("小伴：开始前想问你，这次学习有哪里需要我先帮你理清吗？", color = Color(0xFFDBEFE3), fontSize = 14.sp, lineHeight = 21.sp)
+                        if (!openingQuestionAsked && history.isEmpty() && userText.isBlank() && aiText.isBlank()) Text("开始说话后，对话会显示在这里。", color = Color.White, fontSize = 14.sp)
                     }
                 }
             }
@@ -1036,18 +1085,18 @@ private fun CurrentConversationCard(
     aiText: String,
     realtimeStatus: FocusVoicePhase,
 ) {
-    Surface(shape = RoundedCornerShape(18.dp), color = PrimarySoft) {
+    Surface(shape = RoundedCornerShape(18.dp), color = Color.White.copy(alpha = .13f)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("当前对话", color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+            Text("当前对话", color = Color.White, style = MaterialTheme.typography.titleSmall)
             if (userText.isNotEmpty()) {
-                Text("我：", color = Muted, fontSize = 12.sp)
-                Text(userText, color = TextPrimary, fontSize = 15.sp)
+                Text("我：", color = Color(0xFFDBEFE3), fontSize = 12.sp)
+                Text(userText, color = Color.White, fontSize = 15.sp)
             }
             if (aiText.isNotEmpty() || realtimeStatus == FocusVoicePhase.THINKING || realtimeStatus == FocusVoicePhase.SPEAKING) {
-                Text("CampusMate：", color = Muted, fontSize = 12.sp)
+                Text("小伴：", color = Color(0xFFDBEFE3), fontSize = 12.sp)
                 Text(
                     aiText.ifEmpty { if (realtimeStatus == FocusVoicePhase.THINKING) "正在思考..." else "正在回答..." },
-                    color = TextPrimary,
+                    color = Color.White,
                     fontSize = 15.sp,
                 )
             }

@@ -7,6 +7,7 @@ import com.example.campusai.ui.components.GlassTextButton as TextButton
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
@@ -140,6 +141,7 @@ fun FocusScreen(
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var sessionMode by remember { mutableStateOf(FocusSessionMode.QUIET) }
     var selectedDurationMinutes by remember { mutableIntStateOf(25) }
+    var focusGoal by rememberSaveable { mutableStateOf("") }
     var customDurationInput by remember { mutableStateOf("60") }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
@@ -200,10 +202,10 @@ fun FocusScreen(
                 null -> {
                     val latestPlan = effectiveTaskId?.let { planRepository.getPlan(it) }
                     val latestStep = latestPlan?.currentStep
-                    val sessionTaskName = latestStep?.title ?: taskName
+                    val sessionTaskName = latestStep?.title ?: focusGoal.trim().ifBlank { taskName }
                     val startResult = repository.start(
                         mode,
-                        latestStep?.title ?: sessionTaskName,
+                        sessionTaskName,
                         effectiveTaskId,
                         selectedDurationMinutes * 60,
                         sessionMode,
@@ -220,7 +222,7 @@ fun FocusScreen(
                 }
                 else -> onOpenAssistant(
                     recoverableSession.plannedDurationSeconds.takeIf { it > 0 } ?: mode.totalSeconds,
-                    currentStep?.title ?: taskName,
+                    recoverableSession.goal?.takeIf { it.isNotBlank() } ?: currentStep?.title ?: taskName,
                     recoverableSession.sessionMode,
                     effectiveTaskId.takeIf { currentStep != null },
                 )
@@ -261,9 +263,10 @@ fun FocusScreen(
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White)
+                    IconButton(onClick = onBack, modifier = Modifier.size(54.dp)) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = Color.White)
                     }
+                    Spacer(Modifier.width(12.dp))
                     Column {
                         Text("自习室", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                         Text("选好节奏，再进入专注空间", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
@@ -273,6 +276,9 @@ fun FocusScreen(
             item {
                 QuickFocusCard(
                     taskName = taskName,
+                    fixedGoal = currentStep?.title,
+                    focusGoal = focusGoal,
+                    onGoalChange = { focusGoal = it.take(120) },
                     selectedMinutes = selectedDurationMinutes,
                     selectedMode = sessionMode,
                     canStart = backendOnline && sessionReady,
@@ -285,16 +291,16 @@ fun FocusScreen(
             item {
                 Surface(
                     onClick = onOpenHistory,
-                    color = Color(0xDDF7F2E8),
-                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xEDF7F2E8),
+                    shape = RoundedCornerShape(18.dp),
                 ) {
-                    Text(
-                        "查看专注记录  ›",
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        color = Color(0xFF273C35),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(Modifier.padding(horizontal = 18.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.History, contentDescription = null, tint = Color(0xFF295643), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text("学习足迹", modifier = Modifier.weight(1f), color = Color(0xFF273C35), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF295643))
+                    }
                 }
             }
             if (effectiveTaskId != null) {
@@ -333,6 +339,9 @@ fun FocusScreen(
 @Composable
 private fun QuickFocusCard(
     taskName: String,
+    fixedGoal: String?,
+    focusGoal: String,
+    onGoalChange: (String) -> Unit,
     selectedMinutes: Int,
     selectedMode: FocusSessionMode,
     canStart: Boolean,
@@ -353,10 +362,25 @@ private fun QuickFocusCard(
         Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Spacer(Modifier.height(9.dp))
         Text("从现在开始，专注一件事", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Text(taskName, color = quiet, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("进入后可以切换雨夜、图书馆与林间场景", color = quiet, fontSize = 11.sp)
-        Spacer(Modifier.height(20.dp))
-        Text("专注时长", color = quiet, fontSize = 12.sp)
+        if (taskName != "本次专注") Text(taskName, color = quiet, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("进入后可以切换雨夜、图书馆与林间场景", color = quiet, fontSize = 13.sp)
+        Spacer(Modifier.height(18.dp))
+        Text("小伴想先问你：这次准备完成什么？", color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        if (fixedGoal != null) {
+            Text(fixedGoal, color = green, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        } else {
+            OutlinedTextField(
+                value = focusGoal,
+                onValueChange = onGoalChange,
+                placeholder = { Text("例如：做完两道习题（可以跳过）", fontSize = 13.sp) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Text("专注时长", color = quiet, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(25, 45, 60).forEach { minutes ->
@@ -375,9 +399,9 @@ private fun QuickFocusCard(
         TextButton(onClick = onCustom, modifier = Modifier.align(Alignment.End)) {
             Text(if (selectedMinutes !in listOf(25, 45, 60)) "自定义 $selectedMinutes 分钟" else "自定义时长", color = green, fontSize = 12.sp)
         }
-        Text("专注方式", color = quiet, fontSize = 12.sp)
+        Text("专注方式", color = quiet, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
-        FocusSessionMode.entries.forEach { option ->
+        listOf(FocusSessionMode.QUIET, FocusSessionMode.AI_COMPANION).forEach { option ->
             val selected = selectedMode == option
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
@@ -394,7 +418,7 @@ private fun QuickFocusCard(
                     option.description,
                     modifier = Modifier.weight(1f),
                     color = quiet,
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = androidx.compose.ui.text.style.TextAlign.End,
@@ -817,6 +841,9 @@ private fun HallDialogueChoice(
 @Composable
 fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
     val records by repository.records.collectAsStateWithLifecycle()
+    var selectedRecordId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedRecord = records.firstOrNull { it.sourceId == selectedRecordId }
+    BackHandler(enabled = selectedRecordId != null) { selectedRecordId = null }
     LaunchedEffect(Unit) { repository.refresh() }
     val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
     Box(Modifier.fillMaxSize()) {
@@ -834,21 +861,43 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White) }
-                    Text("专注记录", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                    IconButton(onClick = { if (selectedRecordId != null) selectedRecordId = null else onBack() }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (selectedRecordId == null) "学习足迹" else "本次学习", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
-            if (records.isEmpty()) item { Text("还没有专注记录，完成第一次专注后会显示在这里。", color = Color.White, fontSize = 14.sp) }
-            else items(records, key = { it.id }) { record ->
-                Surface(shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
+            if (selectedRecordId != null) {
+                item {
+                    Surface(shape = RoundedCornerShape(24.dp), color = Color(0xF5FBF8EF)) {
+                        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (selectedRecord == null) {
+                                Text("这条记录暂时无法加载，请返回列表重试。", color = Color(0xFF203B32))
+                            } else {
+                                Text("${selectedRecord.date}  ${selectedRecord.endedAt}", color = Color(0xFF63796E), fontSize = 14.sp)
+                                Text(if (selectedRecord.actualMinutes > 0) "专注了 ${selectedRecord.actualMinutes} 分钟" else "专注不足 1 分钟", color = Color(0xFF203B32), fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                                selectedRecord.goal?.takeIf { it.isNotBlank() }?.let { goal ->
+                                    Text("本次目标", color = Color(0xFF295643), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text(goal, color = Color(0xFF203B32), fontSize = 16.sp, lineHeight = 24.sp)
+                                }
+                                Text("我的学习收获", color = Color(0xFF295643), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text(selectedRecord.selfReport?.takeIf { it.isNotBlank() } ?: "这次没有填写学习收获。", color = Color(0xFF203B32), fontSize = 16.sp, lineHeight = 24.sp)
+                            }
+                        }
+                    }
+                }
+            } else if (records.isEmpty()) item { Text("还没有学习足迹，完成第一次专注后会显示在这里。", color = Color.White, fontSize = 14.sp) }
+            else items(records, key = { it.sourceId }) { record ->
+                Surface(onClick = { selectedRecordId = record.sourceId }, shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
                     Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = CircleShape, color = Color(0xFFDDEBDF)) { Icon(Icons.Default.Check, null, tint = Color(0xFF295643), modifier = Modifier.padding(9.dp)) }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = Color(0xFF203B32), fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                            Text(record.endedAt, color = Color(0xFF63796E), fontSize = 13.sp)
+                            Text("${FocusMode.byName(record.mode).label} · ${if (record.actualMinutes > 0) "${record.actualMinutes} 分钟" else "不足 1 分钟"}", color = Color(0xFF203B32), fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("${record.date}  ${record.endedAt}", color = Color(0xFF63796E), fontSize = 13.sp)
                         }
-                        Text("已完成", color = Color(0xFF327054), fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Default.ChevronRight, contentDescription = "查看本次学习", tint = Color(0xFF327054))
                     }
                 }
             }

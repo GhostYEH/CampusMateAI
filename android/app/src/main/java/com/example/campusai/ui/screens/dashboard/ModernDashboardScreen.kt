@@ -110,7 +110,7 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                 .width(maxWidth * .41f).height(maxHeight * .26f),
         ) { onNavigate("courses") }
         WorldArea(
-            "成长墙", Modifier.align(Alignment.TopStart)
+            "学习足迹", Modifier.align(Alignment.TopStart)
                 .offset(x = 0.dp, y = maxHeight * .57f)
                 .width(maxWidth * .47f).height(maxHeight * .18f),
         ) { onNavigate("focus_history") }
@@ -131,7 +131,7 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                 .offset(x = maxWidth * .63f - 20.dp, y = maxHeight * .375f),
         ) { onNavigate("courses") }
         WorldDestination(
-            label = "成长墙", icon = Icons.Default.History, tint = GrowthGreen,
+            label = "学习足迹", icon = Icons.Default.History, tint = GrowthGreen,
             modifier = Modifier.align(Alignment.TopStart)
                 .offset(x = 18.dp, y = maxHeight * .525f),
         ) { onNavigate("focus_history") }

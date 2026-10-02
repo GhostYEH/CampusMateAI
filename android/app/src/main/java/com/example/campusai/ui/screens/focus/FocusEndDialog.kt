@@ -72,12 +72,12 @@ internal fun FocusEndDialog(
                     if (timerExpired) "这段学习完成了" else "结束本次专注？",
                     color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold,
                 )
-                Text("记录这段时间的投入，然后看看学习回顾。", color = Color.White.copy(alpha = .8f), fontSize = 13.sp)
+                Text("小伴想问：刚才完成了什么？下次准备从哪里继续？", color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
                 OutlinedTextField(
                     value = selfReport,
                     onValueChange = { onReportChange(it.take(2_000)) },
-                    label = { Text("本次学习感受（选填）") },
-                    placeholder = { Text("例如：今天把习题做完了", color = Color.White.copy(alpha = .62f)) },
+                    label = { Text("我的学习收获（选填）") },
+                    placeholder = { Text("例如：做完两道习题，下次继续第三题", color = Color.White.copy(alpha = .72f)) },
                     minLines = 2,
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),

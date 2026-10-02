@@ -24,6 +24,8 @@ data class StudySessionSnapshot(
     val pausedAt: String? = null,
     val pauseSeconds: Int = 0,
     val behaviorSummary: FocusBehaviorSummary? = null,
+    val selfReport: String? = null,
+    val goal: String? = null,
 )
 
 /**
@@ -61,6 +63,8 @@ class RemoteFocusRepository(
             finished = true,
             endedAt = ended.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")),
             sourceId = session.id,
+            selfReport = session.selfReport,
+            goal = session.goal,
             behaviorSummary = session.behaviorSummary,
         )
     }
@@ -73,7 +77,7 @@ class RemoteFocusRepository(
         now: () -> Instant,
     ): FocusStats {
         val today = now().atZone(ZoneId.systemDefault()).toLocalDate()
-        val focusRecords = records.filter { it.mode == FocusMode.FOCUS.name }
+        val focusRecords = records.filter { it.mode == FocusMode.FOCUS.name && it.actualMinutes > 0 }
         val dates = focusRecords.map { LocalDate.parse(it.date) }.toSet()
         var streak = 0
         var cursor = if (today in dates) today else today.minusDays(1)

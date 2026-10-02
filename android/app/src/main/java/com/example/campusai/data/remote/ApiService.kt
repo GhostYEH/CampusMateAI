@@ -881,6 +881,7 @@ data class StudySessionDto(
     val duration_seconds: Int = 0,
     val pause_seconds: Int = 0,
     val status: String,
+    val self_report: String? = null,
     val behavior_summary: StudyBehaviorSummaryDto? = null,
 )
 

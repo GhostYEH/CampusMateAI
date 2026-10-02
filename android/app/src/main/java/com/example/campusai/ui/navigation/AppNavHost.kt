@@ -637,26 +637,26 @@ fun AppNavHost(
                     // Uri.encode keeps spaces as %20.  URLEncoder uses '+', which Navigation
                     // treats as literal text and previously produced strings such as "+4+次".
                     val task = Uri.encode(completion.taskName)
-                    val summary = Uri.encode(completion.aiSummary)
-                    val observation = Uri.encode(completion.observationSummary)
                     val nextStep = Uri.encode(completion.nextStepTitle.orEmpty())
-                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}")
+                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}&sessionId=${Uri.encode(completion.sessionId)}")
                 },
             )
         }
         composable(
-            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}",
+            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}&sessionId={sessionId}",
             arguments = listOf(
                 navArgument("actualSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("conversationCount") { type = NavType.IntType; defaultValue = 0 },
-                navArgument("aiSummary") { type = NavType.StringType; defaultValue = "你完成了这段专注。" },
-                navArgument("observationSummary") { type = NavType.StringType; defaultValue = "你的学习状态整体稳定。" },
                 navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("nextStepTitle") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("planComplete") { type = NavType.BoolType; defaultValue = false },
+                navArgument("sessionId") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { backStackEntry ->
+            val completedRecords by modules.focus.records.collectAsStateWithLifecycle()
+            val completedSessionId = backStackEntry.arguments?.getString("sessionId")
+            LaunchedEffect(completedSessionId) { modules.focus.refreshHistoryAndGoal() }
             val returnToFocusHome = {
                 navController.navigate("focus") {
                     // Remove the original home entry too.  It may otherwise restore its
@@ -675,15 +675,15 @@ fun AppNavHost(
                 }
             }
             FocusSummaryScreen(
+                selfReport = completedRecords.firstOrNull { it.sourceId == completedSessionId }?.selfReport,
                 actualSeconds = backStackEntry.arguments?.getInt("actualSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
                 conversationCount = backStackEntry.arguments?.getInt("conversationCount") ?: 0,
-                aiSummary = backStackEntry.arguments?.getString("aiSummary") ?: "你完成了这段专注。",
-                observationSummary = backStackEntry.arguments?.getString("observationSummary") ?: "你的学习状态整体稳定。",
                 nextStepTitle = backStackEntry.arguments?.getString("nextStepTitle")?.takeIf { it.isNotBlank() },
                 planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false,
                 onReturnHome = returnToFocusHome,
                 onStartNext = startNextStep,
+                onOpenHistory = { go("focus_history") },
             )
         }
 

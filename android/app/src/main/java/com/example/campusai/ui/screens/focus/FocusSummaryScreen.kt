@@ -56,15 +56,15 @@ private val SummaryGreen = Color(0xFFBDE7CA)
 /** A terminal page for one completed session. It owns no timer or active-session state. */
 @Composable
 fun FocusSummaryScreen(
+    selfReport: String? = null,
     actualSeconds: Int,
     taskName: String,
     conversationCount: Int,
-    aiSummary: String,
-    observationSummary: String,
     nextStepTitle: String? = null,
     planComplete: Boolean = false,
     onReturnHome: () -> Unit,
     onStartNext: () -> Unit,
+    onOpenHistory: () -> Unit,
 ) {
     BackHandler(onBack = onReturnHome)
     val context = LocalContext.current
@@ -97,20 +97,19 @@ fun FocusSummaryScreen(
                 }
             }
             item { Surface(shape = CircleShape, color = SummaryGreen) { Icon(Icons.Default.CheckCircle, null, tint = SummaryInk, modifier = Modifier.padding(15.dp)) } }
-            item { Text("这段学习，完成了", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold) }
-            item { Text("留下今天的收获，下一次继续前进", color = Color.White.copy(alpha = .76f), fontSize = 14.sp) }
+            item { Text(if (actualSeconds >= 60) "这段学习，完成了" else "这段学习，已结束", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold) }
+            item { Text("这次的收获，已经留在学习足迹里", color = Color.White.copy(alpha = .86f), fontSize = 14.sp) }
             item {
                 Surface(shape = RoundedCornerShape(26.dp), color = Color(0xF3FBF8EF), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(21.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text(duration, color = SummaryInk, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
                         Text("本次学习 · $taskName", color = Color(0xFF63796E), fontSize = 14.sp)
-                        Text("✓ 已完成", color = Color(0xFF327054), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(if (actualSeconds >= 60) "✓ 已完成" else "已结束 · 不足 1 分钟", color = Color(0xFF327054), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
-            item { SummaryNote(Icons.Default.AutoAwesome, "学习回顾", aiSummary) }
+            item { SummaryNote(Icons.Default.AutoAwesome, "我的学习收获", selfReport?.takeIf { it.isNotBlank() } ?: "这次还没有记录收获。下次结束时，可以写下一件完成的事。") }
             if (conversationCount > 0) item { SummaryNote(Icons.Default.ChatBubbleOutline, "AI 交流", "本次共交流 $conversationCount 次。") }
-            item { SummaryNote(Icons.Default.Timer, "学习状态", observationSummary) }
             if (planComplete) {
                 item { SummaryNote(Icons.Default.CheckCircle, "任务进度", "这项任务的规划步骤已全部完成。") }
             } else {
@@ -119,23 +118,23 @@ fun FocusSummaryScreen(
                 }
             }
             item {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = onStartNext,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SummaryGreen, contentColor = SummaryInk),
                 ) {
-                    Text(if (planComplete) "返回自习室" else if (!nextStepTitle.isNullOrBlank()) "开始下一步骤" else "开始下一次专注", fontWeight = FontWeight.Bold)
+                    Text(if (!planComplete && !nextStepTitle.isNullOrBlank()) "开始下一步骤" else "返回自习室", fontWeight = FontWeight.Bold)
                 }
             }
-            if (!planComplete) item {
+            item {
                 OutlinedButton(
-                    onClick = onReturnHome,
+                    onClick = onOpenHistory,
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(18.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                ) { Text("返回自习室") }
+                ) { Text("查看学习足迹") }
             }
         }
     }
