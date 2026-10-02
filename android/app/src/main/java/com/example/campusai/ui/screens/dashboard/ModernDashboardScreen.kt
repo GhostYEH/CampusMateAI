@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -30,14 +32,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -117,89 +119,95 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().background(WorldInk)) {
-        Image(
-            painter = painterResource(R.drawable.campus_world_scene_v2),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                scaleX = 1.045f + drift * .008f + arrival * .055f
-                scaleY = 1.045f + drift * .008f + arrival * .055f
-                translationX = drift * 6.dp.toPx()
-                translationY = drift * 3.dp.toPx()
-                transformOrigin = when (pendingRoute) {
-                    "focus" -> TransformOrigin(.36f, .43f)
-                    "courses" -> TransformOrigin(.79f, .52f)
-                    "focus_history" -> TransformOrigin(.22f, .72f)
-                    else -> TransformOrigin.Center
+        val sceneWidth = maxWidth
+        val sceneHeight = maxHeight
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().height(sceneHeight).clipToBounds()) {
+                WorldSceneImage(R.drawable.campus_world_study_library_v4, drift, arrival,
+                    Modifier.fillMaxSize(), when (pendingRoute) {
+                        "focus" -> TransformOrigin(.25f, .41f)
+                        "courses" -> TransformOrigin(.76f, .42f)
+                        else -> TransformOrigin(.5f, .57f)
+                    })
+                Box(Modifier.fillMaxWidth().height(sceneHeight * .21f).align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color(0xD00B2030), Color.Transparent))))
+                if (!reduceMotion) {
+                    CampusAmbientLight()
+                    CampusWalkers()
                 }
-            },
-        )
-        Box(
-            Modifier.fillMaxWidth().height(maxHeight * .19f).align(Alignment.TopCenter)
-                .background(Brush.verticalGradient(listOf(Color(0xB30B2334), Color.Transparent))),
-        )
-        Box(
-            Modifier.fillMaxWidth().height(maxHeight * .23f).align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB70A1F2A)))),
-        )
-        if (!reduceMotion) CampusWalkers()
-
-        Row(
-            Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, top = 20.dp, end = 18.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("CampusMate", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                Text("今天，学一点新东西", color = Color.White.copy(alpha = .91f), fontSize = 14.sp)
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, top = 20.dp, end = 18.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("CampusMate", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                        Text("今天，学一点新东西", color = Color.White.copy(alpha = .91f), fontSize = 14.sp)
+                    }
+                    WorldIconButton(Icons.Default.Menu, "更多功能") { showMore = true }
+                    Spacer(Modifier.width(8.dp))
+                    WorldIconButton(Icons.Default.Person, "我的") { enter("profile") }
+                }
+                WorldArea("自习室", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .03f, y = sceneHeight * .27f)
+                    .width(sceneWidth * .43f).height(sceneHeight * .25f)) { enter("focus") }
+                WorldArea("图书馆", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .52f, y = sceneHeight * .24f)
+                    .width(sceneWidth * .46f).height(sceneHeight * .29f)) { enter("courses") }
+                WorldDestination("自习室", Icons.Default.Timer, StudyAmber,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .06f, y = sceneHeight * .48f),
+                    drift = drift, active = pendingRoute == "focus") { enter("focus") }
+                WorldDestination("图书馆", Icons.Default.MenuBook, LibraryViolet,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .53f, y = sceneHeight * .51f),
+                    drift = drift, floatPhase = 1.3f, active = pendingRoute == "courses") { enter("courses") }
+                Text("向上滑动 · 探索校园  ↓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp)
+                        .graphicsLayer { translationY = drift * 3.dp.toPx() }
+                        .clip(CircleShape).background(Color(0xB0123038)).padding(horizontal = 15.dp, vertical = 8.dp))
             }
-            WorldIconButton(Icons.Default.Menu, "更多功能") { showMore = true }
-            Spacer(Modifier.width(8.dp))
-            WorldIconButton(Icons.Default.Person, "我的") { onNavigate("profile") }
+            Box(Modifier.fillMaxWidth().height(sceneHeight).clipToBounds()) {
+                WorldSceneImage(R.drawable.campus_world_lower_v4, drift, arrival,
+                    Modifier.fillMaxSize(), when (pendingRoute) {
+                        "tasks" -> TransformOrigin(.24f, .30f)
+                        "community" -> TransformOrigin(.75f, .34f)
+                        "focus_history" -> TransformOrigin(.26f, .64f)
+                        "profile" -> TransformOrigin(.78f, .64f)
+                        else -> TransformOrigin(.5f, .5f)
+                    })
+                Box(Modifier.fillMaxWidth().height(sceneHeight * .08f).align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color(0xAA102637), Color.Transparent))))
+                if (!reduceMotion) {
+                    CampusAmbientLight(lower = true)
+                    CampusWalkers(lower = true)
+                }
+                WorldArea("待办", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .07f, y = sceneHeight * .18f)
+                    .width(sceneWidth * .38f).height(sceneHeight * .27f)) { enter("tasks") }
+                WorldArea("校园社区", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .52f, y = sceneHeight * .24f)
+                    .width(sceneWidth * .45f).height(sceneHeight * .21f)) { enter("community") }
+                WorldArea("学习足迹", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .04f, y = sceneHeight * .54f)
+                    .width(sceneWidth * .44f).height(sceneHeight * .22f)) { enter("focus_history") }
+                WorldArea("我的", Modifier.align(Alignment.TopStart)
+                    .offset(x = sceneWidth * .55f, y = sceneHeight * .52f)
+                    .width(sceneWidth * .43f).height(sceneHeight * .25f)) { enter("profile") }
+                WorldDestination("待办", Icons.Default.AssignmentTurnedIn, StudyAmber,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .07f, y = sceneHeight * .38f),
+                    compact = true, drift = drift, active = pendingRoute == "tasks") { enter("tasks") }
+                WorldDestination("校园社区", Icons.Default.Groups, LibraryViolet,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .51f, y = sceneHeight * .42f),
+                    compact = true, drift = drift, floatPhase = 1.1f, active = pendingRoute == "community") { enter("community") }
+                WorldDestination("学习足迹", Icons.Default.History, GrowthGreen,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .06f, y = sceneHeight * .67f),
+                    compact = true, drift = drift, floatPhase = 2.2f, active = pendingRoute == "focus_history") { enter("focus_history") }
+                WorldDestination("我的", Icons.Default.Person, LibraryViolet,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .69f, y = sceneHeight * .70f),
+                    compact = true, drift = drift, floatPhase = 3.3f, active = pendingRoute == "profile") { enter("profile") }
+                WorldDestination("通知", Icons.Default.Notifications, StudyAmber,
+                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .37f, y = sceneHeight * .79f),
+                    compact = true, drift = drift, floatPhase = 4.4f, active = pendingRoute == "notifications") { enter("notifications") }
+            }
         }
-
-        // Buildings are touch targets too; the visible chips are not the only way in.
-        WorldArea(
-            "自习室", Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .04f, y = maxHeight * .29f)
-                .width(maxWidth * .53f).height(maxHeight * .25f),
-        ) { enter("focus") }
-        WorldArea(
-            "图书馆", Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .59f, y = maxHeight * .43f)
-                .width(maxWidth * .41f).height(maxHeight * .26f),
-        ) { enter("courses") }
-        WorldArea(
-            "学习足迹", Modifier.align(Alignment.TopStart)
-                .offset(x = 0.dp, y = maxHeight * .63f)
-                .width(maxWidth * .47f).height(maxHeight * .18f),
-        ) { enter("focus_history") }
-        WorldArea(
-            "问小伴", Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .42f, y = maxHeight * .59f)
-                .width(maxWidth * .18f).height(maxHeight * .11f),
-        ) { enter("counselor") }
-
-        WorldDestination(
-            label = "自习室", icon = Icons.Default.Timer, tint = StudyAmber,
-            modifier = Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .13f, y = maxHeight * .335f),
-        ) { enter("focus") }
-        WorldDestination(
-            label = "图书馆", icon = Icons.Default.MenuBook, tint = LibraryViolet,
-            modifier = Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .59f, y = maxHeight * .49f),
-        ) { enter("courses") }
-        WorldDestination(
-            label = "学习足迹", icon = Icons.Default.History, tint = GrowthGreen,
-            modifier = Modifier.align(Alignment.TopStart)
-                .offset(x = 18.dp, y = maxHeight * .66f),
-        ) { enter("focus_history") }
-        WorldDestination(
-            label = "问小伴", icon = Icons.Default.SmartToy, tint = LibraryViolet, compact = true,
-            modifier = Modifier.align(Alignment.TopStart)
-                .offset(x = maxWidth * .54f, y = maxHeight * .635f),
-        ) { enter("counselor") }
-
     }
 
     if (showMore) {
@@ -208,7 +216,9 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                 Text("更多功能", color = WorldInk, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Text("学习之外的校园事务，随时可以在这里找到", color = Color(0xFF637183), fontSize = 13.sp)
                 Spacer(Modifier.size(18.dp))
-                MoreDestination("待办事项", Icons.Default.Timer) { showMore = false; onNavigate("tasks") }
+                MoreDestination("待办事项", Icons.Default.AssignmentTurnedIn) { showMore = false; onNavigate("tasks") }
+                HorizontalDivider()
+                MoreDestination("校园社区", Icons.Default.Groups) { showMore = false; onNavigate("community") }
                 HorizontalDivider()
                 MoreDestination("校园通知", Icons.Default.Notifications) { showMore = false; onNavigate("notifications") }
                 HorizontalDivider()
@@ -216,6 +226,29 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
             }
         }
     }
+}
+
+/** Independent scene layers keep camera drift separate from the tappable map landmarks. */
+@Composable
+private fun WorldSceneImage(
+    drawable: Int,
+    drift: Float,
+    arrival: Float,
+    modifier: Modifier,
+    origin: TransformOrigin,
+) {
+    Image(
+        painter = painterResource(drawable),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.graphicsLayer {
+            scaleX = 1.025f + arrival * .035f
+            scaleY = 1.025f + arrival * .035f
+            translationX = drift * 4.dp.toPx()
+            translationY = drift * 2.dp.toPx()
+            transformOrigin = origin
+        },
+    )
 }
 
 @Composable
@@ -226,8 +259,9 @@ private fun WorldArea(label: String, modifier: Modifier, onClick: () -> Unit) {
 @Composable
 private fun WorldIconButton(icon: ImageVector, label: String, onClick: () -> Unit) {
     Box(
-        Modifier.size(44.dp).clip(CircleShape).background(Color(0xAA102C38))
-            .border(1.dp, Color.White.copy(alpha = .32f), CircleShape)
+        Modifier.size(44.dp).shadow(9.dp, CircleShape).clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(Color(0xE9234550), Color(0xE813303D))))
+            .border(1.dp, Color.White.copy(alpha = .42f), CircleShape)
             .semantics { contentDescription = label }
             .clickable(role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -243,17 +277,27 @@ private fun WorldDestination(
     tint: Color,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    drift: Float = 0f,
+    floatPhase: Float = 0f,
+    active: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val approach by animateFloatAsState(if (active) 1f else 0f, tween(260), label = "marker-approach")
     Row(
-        modifier.shadow(10.dp, CircleShape).clip(CircleShape).background(Color(0xDA112F3A))
-            .border(1.dp, Color.White.copy(alpha = .34f), CircleShape)
+        modifier.graphicsLayer {
+            val bob = sin((drift + 1f) * PI.toFloat() + floatPhase) * 2.dp.toPx()
+            translationY = bob - approach * 5.dp.toPx()
+            scaleX = 1f + approach * .075f
+            scaleY = 1f + approach * .075f
+        }.shadow(12.dp, CircleShape).clip(CircleShape)
+            .background(Brush.verticalGradient(listOf(Color(0xE81B3C46), Color(0xEB102B37))))
+            .border(1.dp, tint.copy(alpha = if (active) .9f else .55f), CircleShape)
             .semantics { contentDescription = "进入$label" }
             .clickable(role = Role.Button, onClick = onClick)
             .padding(start = 5.dp, top = 5.dp, end = if (compact) 13.dp else 15.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(if (compact) 32.dp else 39.dp).clip(CircleShape).background(Color.White.copy(alpha = .12f)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(if (compact) 32.dp else 39.dp).clip(CircleShape).background(tint.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(if (compact) 17.dp else 21.dp))
         }
         Spacer(Modifier.width(if (compact) 7.dp else 10.dp))
@@ -265,9 +309,37 @@ private fun WorldDestination(
     }
 }
 
+/** One quiet pool of window light per destination, avoiding repeated decorative lamps. */
+@Composable
+private fun CampusAmbientLight(lower: Boolean = false) {
+    val transition = rememberInfiniteTransition(label = "campus-window-light")
+    val strength by transition.animateFloat(
+        initialValue = .035f, targetValue = .065f,
+        animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing), RepeatMode.Reverse),
+        label = "window-breath",
+    )
+    Canvas(Modifier.fillMaxSize()) {
+        val windows = if (lower) listOf(Offset(.22f, .30f), Offset(.82f, .62f))
+            else listOf(Offset(.25f, .40f), Offset(.73f, .39f))
+        windows.forEach { point ->
+            val center = Offset(size.width * point.x, size.height * point.y)
+            val radius = size.width * .16f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    listOf(Color(0xFFF7D79B).copy(alpha = strength), Color.Transparent),
+                    center = center,
+                    radius = radius,
+                ),
+                radius = radius,
+                center = center,
+            )
+        }
+    }
+}
+
 /** Tiny walkers follow the existing courtyard paths without shifting any controls. */
 @Composable
-private fun CampusWalkers() {
+private fun CampusWalkers(lower: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "campus-walkers")
     val progress by transition.animateFloat(
         initialValue = 0f, targetValue = 1f,
@@ -288,9 +360,13 @@ private fun CampusWalkers() {
             drawOval(coat.copy(alpha = opacity), Offset(x - 4.dp.toPx(), y - 6.dp.toPx()), Size(8.dp.toPx(), 10.dp.toPx()))
             drawCircle(Color(0xFFF0CAA6).copy(alpha = opacity), head, Offset(x, y - 8.dp.toPx()))
         }
-        walker(Offset(.48f, .73f), Offset(.45f, .51f), .04f, Color(0xFF6F91A0), .02f)
-        walker(Offset(.54f, .74f), Offset(.80f, .58f), .39f, Color(0xFFB78365), .025f)
-        walker(Offset(.46f, .77f), Offset(.23f, .69f), .72f, Color(0xFF8C9F73), -.012f)
+        if (lower) {
+            walker(Offset(.51f, .20f), Offset(.29f, .43f), .03f, Color(0xFF8298A4), .012f)
+            walker(Offset(.48f, .42f), Offset(.72f, .67f), .51f, Color(0xFF987E72), -.018f)
+        } else {
+            walker(Offset(.48f, .83f), Offset(.43f, .57f), .04f, Color(0xFF6F91A0), .012f)
+            walker(Offset(.53f, .76f), Offset(.74f, .49f), .47f, Color(0xFFB78365), .014f)
+        }
     }
 }
 
