@@ -74,15 +74,18 @@ async function refreshAccessToken(baseUrl, storage) {
   }
   let data;
   try {
-    ({ data } = await axios.post(`${baseUrl}/auth/refresh`, { refresh_token: refreshToken }));
-  } catch {
+    ({ data } = await axios.post(`${baseUrl}/auth/refresh`, { refresh_token: refreshToken }, { timeout: 8000 }));
+  } catch (error) {
     // A later logout or login owns storage now; this request must not erase it.
     if (storage.getItem("campus_refresh_token") !== refreshToken) {
       throw new Error("登录状态已变更，请重试");
     }
-    clearStoredSession(storage);
-    redirectToLogin();
-    throw new Error("登录已过期，请重新登录");
+    if ([401, 403].includes(error.response?.status)) {
+      clearStoredSession(storage);
+      redirectToLogin();
+      throw new Error("登录已过期，请重新登录");
+    }
+    throw new Error("登录状态暂时无法刷新，请稍后重试", { cause: error });
   }
   // The same guard also prevents a late successful refresh from restoring a
   // logged-out session or replacing the tokens of a different account.

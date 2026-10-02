@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { marked } from "marked";
+import { renderSafeMarkdown as renderMarkdown } from "../utils/safeHtml.js";
 import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
 import { itemsOf } from "../data/contracts.js";
@@ -8,6 +8,7 @@ import ClassroomProposalCard from "../components/interactive/ClassroomProposalCa
 import { Icon } from "../components/Icon.jsx";
 import RippleDistortion from "../components/RippleDistortion.jsx";
 import { useDigitalHumanSpeech } from "../hooks/useDigitalHumanSpeech.js";
+import { readCounselorSessions, saveCounselorSessions } from "../data/counselorSessions.js";
 
 const suggestionSets = [
   ["期末考试如何高效复习？", "我要申请课程重修，需要准备什么？", "帮我把这周的任务排个轻重缓急", "校园卡充值和退款流程是怎样的？"],
@@ -59,22 +60,6 @@ const reminders = [
   { title: "英语口语小组会议", time: "20:00", tone: "violet" },
 ];
 
-function readSessions() {
-  try { return JSON.parse(localStorage.getItem("campus_counselor_sessions") || "[]"); } catch { return []; }
-}
-
-function renderMarkdown(value) {
-  const html = marked.parse(value || "", { breaks: true, gfm: true });
-  if (typeof DOMParser === "undefined") return String(value || "");
-  const documentValue = new DOMParser().parseFromString(html, "text/html");
-  documentValue.querySelectorAll("script,style,iframe,object,embed,form,link,meta").forEach((node) => node.remove());
-  documentValue.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => { if (attribute.name.toLowerCase().startsWith("on")) node.removeAttribute(attribute.name); }));
-  documentValue.querySelectorAll("a").forEach((node) => {
-    try { const url = new URL(node.getAttribute("href"), window.location.href); if (!["http:", "https:"].includes(url.protocol)) node.removeAttribute("href"); else { node.setAttribute("rel", "noreferrer noopener"); node.setAttribute("target", "_blank"); } } catch { node.removeAttribute("href"); }
-  });
-  return documentValue.body.innerHTML;
-}
-
 function sessionTime(item) {
   if (item.displayTime) return item.displayTime;
   const date = new Date(item.updatedAt);
@@ -82,6 +67,12 @@ function sessionTime(item) {
 }
 
 export default function CounselorPage() {
+  const { session } = useApp();
+  const identity = session?.id || session?.user_id || session?.username || "anon";
+  return <CounselorSessionPage key={identity} />;
+}
+
+function CounselorSessionPage() {
   const { reduceMotion, session } = useApp();
   // 课堂任务的作用域身份：账号切换后绝不恢复上一个账号的任务与深链。
   const classroomIdentity =
@@ -92,7 +83,7 @@ export default function CounselorPage() {
     return hasInitialPrompt ? [] : [{ role: "user", text: sampleQuestion }, { role: "assistant", text: sampleAnswer }];
   });
   const [sources, setSources] = useState(sampleSources);
-  const [sessions, setSessions] = useState(readSessions);
+  const [sessions, setSessions] = useState(() => readCounselorSessions(classroomIdentity));
   const [conversationId, setConversationId] = useState("sample-main");
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -166,10 +157,10 @@ export default function CounselorPage() {
     if (!first || !id) return;
     setSessions((current) => {
       const next = [{ id, workspaceId, title: first.text.slice(0, 24), updatedAt: new Date().toISOString(), messages: nextMessages, sources: nextSources }, ...current.filter((item) => item.id !== id)].slice(0, 12);
-      localStorage.setItem("campus_counselor_sessions", JSON.stringify(next));
+      saveCounselorSessions(classroomIdentity, next);
       return next;
     });
-  }, [workspaceId]);
+  }, [classroomIdentity, workspaceId]);
 
   const send = useCallback(async (value = input) => {
     const text = value.trim();
@@ -233,9 +224,17 @@ export default function CounselorPage() {
 
   useEffect(() => {
     const prompt = new URLSearchParams(window.location.search).get("prompt");
-    if (prompt && !promptHandled.current) { promptHandled.current = true; window.setTimeout(() => send(prompt), 0); }
+    if (!prompt || promptHandled.current) return;
+    const timer = window.setTimeout(() => {
+      promptHandled.current = true;
+      send(prompt);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [send]);
-  useEffect(() => () => aborter.current?.abort(), []);
+  useEffect(() => () => {
+    chatEpoch.current += 1;
+    aborter.current?.abort();
+  }, []);
 
   /** 切换会话作用域：作废在途流式回写，并停掉"回答中"状态。 */
   function resetConversationScope() {

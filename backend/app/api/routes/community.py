@@ -78,7 +78,7 @@ def _ensure_visible(post_id: str, user: UserRow, c: ServiceContainer) -> dict:
     return post
 
 
-def _image_storage_dir() -> Path:
+def community_image_storage_dir() -> Path:
     settings = get_settings()
     path = Path(settings.community_image_path)
     if not path.is_absolute():
@@ -163,7 +163,7 @@ async def upload_image(image: UploadFile = File(...),
     elif image.content_type == "image/gif":
         ext = ".gif"
     filename = f"{uuid.uuid4().hex}{ext}"
-    image_path = _image_storage_dir() / filename
+    image_path = community_image_storage_dir() / filename
     total = 0
     try:
         with image_path.open("wb") as output:
@@ -178,7 +178,9 @@ async def upload_image(image: UploadFile = File(...),
                         code="IMAGE_TOO_LARGE", http_status=413,
                     )
                 output.write(chunk)
-    except AppException:
+    except BaseException:
+        # Failed reads, disk writes and cancelled requests must not leave a
+        # partial upload in the publicly served directory.
         image_path.unlink(missing_ok=True)
         raise
     return UploadImageResponse(url=f"/static/community_images/{filename}", filename=filename, size=total)

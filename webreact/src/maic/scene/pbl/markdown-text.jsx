@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { marked } from 'marked';
+import { renderSafeMarkdown } from '../../../utils/safeHtml.js';
 
 import { cn } from '../../utils/cn.js';
 
@@ -20,7 +20,7 @@ import { cn } from '../../utils/cn.js';
  * theme + utilities 两层，没有 typography。类名仍然保留，接入插件后即可生效。
  */
 export function MarkdownText({ content, className }) {
-  const html = useMemo(() => (typeof content === 'string' ? marked.parse(content) : ''), [content]);
+  const html = useMemo(() => renderSafeMarkdown(content), [content]);
 
   return (
     <div

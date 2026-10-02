@@ -173,6 +173,7 @@ def create_submission(
         student_id=user.id,
         text_content=req.text_content,
         status=status,
+        student_write=True,
     )
     return _enrich_with_student_info(container, sub)
 
@@ -239,6 +240,7 @@ def update_submission(
         student_id=sub.student_id,
         text_content=new_text,
         status=sub.status,
+        student_write=True,
     )
     return _enrich_with_student_info(container, sub)
 
@@ -276,6 +278,7 @@ def submit_submission(
         student_id=sub.student_id,
         text_content=sub.text_content,
         status=new_status,
+        student_write=True,
     )
     return _enrich_with_student_info(container, sub)
 
@@ -298,6 +301,8 @@ async def upload_attachment(
             raise Forbidden("只能给自己的提交上传附件")
         if a.status == "closed":
             raise AssignmentClosed()
+        if sub.status != "draft" and not a.allow_resubmit:
+            raise ResubmitNotAllowed()
     else:
         # 教师也可为学生上传补充材料?当前不允许(避免混淆)
         _assert_can_manage_class(
@@ -314,7 +319,7 @@ async def upload_attachment(
     if ext not in _ALLOWED_EXT:
         raise AttachmentTypeNotAllowed(f"不支持的文件类型: .{ext}")
     # 大小校验
-    content = await file.read()
+    content = await file.read(_MAX_SIZE_BYTES + 1)
     size = len(content)
     if size > _MAX_SIZE_BYTES:
         raise AttachmentTooLarge("附件不能超过 10MB")
@@ -332,14 +337,19 @@ async def upload_attachment(
         raise FileNameUnsafe("存储路径非法")
     storage_path.write_bytes(content)
     mime = file.content_type or _guess_mime(ext)
-    att = container.submission_repository.add_attachment(
-        submission_id=submission_id,
-        original_filename=safe_name,
-        stored_filename=stored_filename,
-        mime_type=mime,
-        size_bytes=size,
-        storage_path=str(storage_path),
-    )
+    try:
+        att = container.submission_repository.add_attachment(
+            submission_id=submission_id,
+            original_filename=safe_name,
+            stored_filename=stored_filename,
+            mime_type=mime,
+            size_bytes=size,
+            storage_path=str(storage_path),
+            student_write=user.role == "student",
+        )
+    except BaseException:
+        storage_path.unlink(missing_ok=True)
+        raise
     return AttachmentOut(
         id=att.id,
         submission_id=att.submission_id,

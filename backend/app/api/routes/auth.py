@@ -161,7 +161,9 @@ def refresh(
     if user is None or not user.is_active:
         raise Unauthorized("用户不存在或已停用")
     # 撤销旧 refresh token(防止重放)
-    refresh_repo.revoke(token_hash)
+    if not refresh_repo.revoke(token_hash):
+        # Another refresh or logout may have consumed it after the read above.
+        raise Unauthorized("refresh token 已失效或不存在")
     return _issue_tokens(user, settings, container)
 
 

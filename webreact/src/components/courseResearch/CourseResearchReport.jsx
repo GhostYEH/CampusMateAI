@@ -1,4 +1,4 @@
-import { marked } from "marked";
+import { renderSafeMarkdown as renderMarkdown } from "../../utils/safeHtml.js";
 import {
   academicPolicyLabel,
   assistanceModeLabel,
@@ -83,27 +83,4 @@ export default function CourseResearchReport({ run, artifact, artifactContent = 
       )}
     </section>
   );
-}
-
-function renderMarkdown(text) {
-  if (!text) return "";
-  try {
-    const html = marked.parse(text, { breaks: true, gfm: true });
-    if (typeof DOMParser === "undefined") return String(text);
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    doc.querySelectorAll("script,style,iframe,object,embed,form,link,meta").forEach((n) => n.remove());
-    doc.querySelectorAll("*").forEach((n) => [...n.attributes].forEach((a) => {
-      if (a.name.toLowerCase().startsWith("on")) n.removeAttribute(a.name);
-    }));
-    doc.querySelectorAll("a").forEach((n) => {
-      try {
-        const url = new URL(n.getAttribute("href"), window.location.href);
-        if (!["http:", "https:"].includes(url.protocol)) n.removeAttribute("href");
-        else { n.setAttribute("rel", "noreferrer noopener"); n.setAttribute("target", "_blank"); }
-      } catch { n.removeAttribute("href"); }
-    });
-    return doc.body.innerHTML;
-  } catch {
-    return String(text || "");
-  }
 }

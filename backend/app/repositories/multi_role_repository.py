@@ -5,7 +5,7 @@
 - 写操作均使用 transaction,保证原子性。
 - 查询使用聚合 SQL 避免 N+1。
 - 邀请码、token 等使用 secrets 生成。
-- 不在这里抛业务异常(留给 service / route 层),仅返回 Optional / row。
+- 一般返回 Optional / row；提交写入策略在事务内校验,避免并发绕过。
 """
 from __future__ import annotations
 
@@ -1356,6 +1356,20 @@ class SubmissionRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    @staticmethod
+    def _assert_student_write_allowed(conn, assignment_id: str, existing_status: Optional[str]) -> None:
+        from ..core.exceptions import AssignmentClosed, AssignmentNotFound, ResubmitNotAllowed
+
+        assignment = conn.execute(
+            "SELECT status, allow_resubmit FROM assignments WHERE id = ?", (assignment_id,),
+        ).fetchone()
+        if not assignment or assignment["status"] not in ("published", "closed"):
+            raise AssignmentNotFound()
+        if assignment["status"] == "closed" and not assignment["allow_resubmit"]:
+            raise AssignmentClosed()
+        if existing_status and existing_status != "draft" and not assignment["allow_resubmit"]:
+            raise ResubmitNotAllowed()
+
     def upsert_submission(
         self,
         *,
@@ -1363,16 +1377,27 @@ class SubmissionRepository:
         student_id: str,
         text_content: Optional[str] = None,
         status: str = "draft",
+        student_write: bool = False,
     ) -> SubmissionRow:
         """新建或更新提交(UNIQUE(assignment_id, student_id) 保证幂等)。"""
         now = _now_iso()
         submitted_at = now if status in ("submitted", "resubmitted", "late") else None
         with self._db.transaction() as conn:
+            if student_write:
+                # Serialize the policy check and write, including other DB
+                # connections, so a concurrent submit cannot bypass the gate.
+                conn.execute("BEGIN IMMEDIATE")
             cur = conn.execute(
                 "SELECT id, status FROM submissions WHERE assignment_id = ? AND student_id = ?",
                 (assignment_id, student_id),
             )
             existing = cur.fetchone()
+            if student_write:
+                self._assert_student_write_allowed(conn, assignment_id, existing["status"] if existing else None)
+                if existing and existing["status"] != "draft":
+                    if status in {"submitted", "graded"}:
+                        status = "resubmitted"
+                        submitted_at = now
             if existing:
                 sid = existing["id"]
                 conn.execute(
@@ -1381,6 +1406,13 @@ class SubmissionRepository:
                        WHERE id = ?""",
                     (text_content, status, submitted_at, now, sid),
                 )
+                if student_write:
+                    # A grade belongs to the previous content, never to a new
+                    # draft or resubmission.
+                    conn.execute(
+                        "UPDATE submissions SET score = NULL, teacher_comment = NULL WHERE id = ?",
+                        (sid,),
+                    )
             else:
                 sid = _new_id("sub")
                 conn.execute(
@@ -1523,10 +1555,27 @@ class SubmissionRepository:
         mime_type: Optional[str],
         size_bytes: int,
         storage_path: str,
+        student_write: bool = False,
     ) -> SubmissionAttachmentRow:
         aid = _new_id("att")
         now = _now_iso()
         with self._db.transaction() as conn:
+            if student_write:
+                from ..core.exceptions import SubmissionNotFound
+
+                conn.execute("BEGIN IMMEDIATE")
+                submission = conn.execute(
+                    "SELECT assignment_id, status FROM submissions WHERE id = ?", (submission_id,),
+                ).fetchone()
+                if not submission:
+                    raise SubmissionNotFound()
+                self._assert_student_write_allowed(conn, submission["assignment_id"], submission["status"])
+                if submission["status"] != "draft":
+                    conn.execute(
+                        "UPDATE submissions SET score=NULL, teacher_comment=NULL, status=?, "
+                        "submitted_at=?, updated_at=? WHERE id=?",
+                        ("late" if submission["status"] == "late" else "resubmitted", now, now, submission_id),
+                    )
             conn.execute(
                 """INSERT INTO submission_attachments
                    (id, submission_id, original_filename, stored_filename,

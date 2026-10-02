@@ -1,6 +1,8 @@
 import pytest
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from app.services.container import ServiceContainer
 from app.schemas.notice import NoticeExtractResponse
 from app.schemas.notice import DuplicateNoticeCheckResponse
@@ -54,6 +56,7 @@ class MockNoticeExtractionService:
 # Mock ChaoxingClient
 class MockChaoxingClient:
     def __init__(self, cookies=None):
+        self.client = SimpleNamespace(aclose=AsyncMock())
         self.notices = []
         self.assignments = []
         self.courses = [

@@ -12,6 +12,7 @@ import { useElementFlip } from '../hooks/useElementFlip.js';
 import { useElementFill } from '../hooks/useElementFill.js';
 import { GradientDefs } from './GradientDefs.jsx';
 import { PatternDefs } from './PatternDefs.jsx';
+import { sanitizeHtml } from '../../../../../utils/safeHtml.js';
 
 /**
  * Base shape element for read-only/playback mode
@@ -108,7 +109,7 @@ export function BaseShapeElement({ elementInfo }) {
               style={{
                 '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
               }}
-              dangerouslySetInnerHTML={{ __html: text.content }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(text.content) }}
             />
           </div>
         </div>

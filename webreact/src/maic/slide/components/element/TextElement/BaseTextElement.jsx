@@ -9,6 +9,7 @@
  */
 import { useElementShadow } from '../hooks/useElementShadow.js';
 import { ElementOutline } from '../ElementOutline.jsx';
+import { sanitizeHtml } from '../../../../../utils/safeHtml.js';
 
 /**
  * Base text element component (read-only)
@@ -56,7 +57,7 @@ export function BaseTextElement({ elementInfo, target }) {
           />
           <div
             className={`text ProseMirror-static relative ${target === 'thumbnail' ? 'pointer-events-none' : ''}`}
-            dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(elementInfo.content) }}
           />
         </div>
       </div>

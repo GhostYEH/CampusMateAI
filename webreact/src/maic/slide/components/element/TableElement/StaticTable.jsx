@@ -8,7 +8,7 @@
  */
 import { useMemo } from 'react';
 import { getTableSubThemeColor } from '../../../_compat/element.js';
-import { getTextStyle, formatText, getHiddenCells } from './tableUtils.js';
+import { getTextStyle, getHiddenCells } from './tableUtils.js';
 
 /**
  * Static table rendering component, ported from PPTist StaticTable.vue.
@@ -135,6 +135,7 @@ export function StaticTable({ elementInfo }) {
                         display: 'flex',
                         flexDirection: 'column',
                         lineHeight: 1,
+                        whiteSpace: 'pre-wrap',
                         justifyContent:
                           cell.vAlign === 'top'
                             ? 'flex-start'
@@ -142,8 +143,9 @@ export function StaticTable({ elementInfo }) {
                               ? 'flex-end'
                               : 'center',
                       }}
-                      dangerouslySetInnerHTML={{ __html: formatText(cell.text) }}
-                    />
+                    >
+                      {typeof cell.text === 'string' ? cell.text : ''}
+                    </div>
                   </td>
                 );
               })}

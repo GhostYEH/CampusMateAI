@@ -57,6 +57,18 @@ test.afterEach(() => {
   globalThis.fetch = REAL_FETCH;
 });
 
+test("CRLF event boundaries work across network chunks", async () => {
+  const seen = await collect([
+    'event: chunk\r\ndata: {"text":"回答"}\r\n\r',
+    '\nevent: done\r\ndata: {"answer":"回答","conversation_id":"c1"}\r',
+    '\n\r\n',
+  ]);
+  assert.deepEqual(seen.chunks, [["回答", "llm"]]);
+  assert.equal(seen.done.length, 1);
+  assert.equal(seen.done[0].conversation_id, "c1");
+  assert.equal(seen.errors.length, 0);
+});
+
 test("多行 data 按 SSE 规范以换行连接后再解析", async () => {
   // 一个 JSON 被拆成两行 data:（代理/网关的合法行为）
   const seen = await collect(

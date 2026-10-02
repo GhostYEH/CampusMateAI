@@ -22,6 +22,7 @@ from .core.exceptions import register_exception_handlers
 from .core.logging import configure_logging, logger
 from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human_assets_dir
 from .api.routes.home_banners import banner_image_storage_dir
+from .api.routes.community import community_image_storage_dir
 from .services.container import build_container, get_container
 from .services.demo_seeder import seed_demo_data
 
@@ -147,8 +148,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 
-    images_dir = Path(__file__).resolve().parent.parent / "data" / "community_images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = community_image_storage_dir()
     app.mount("/static/community_images", StaticFiles(directory=str(images_dir)), name="community-images")
     app.mount(
         "/static/banner-images",

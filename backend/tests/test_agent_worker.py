@@ -18,6 +18,7 @@ from app.services.agent_runtime.handlers.base import (
 )
 from app.services.agent_runtime.handlers.registry import JobHandlerRegistry
 from app.services.agent_runtime.worker import AgentWorker
+from app.services.agent_runtime.run_manager import RunManager
 
 
 class _Input(BaseModel):
@@ -102,6 +103,21 @@ def _worker(repo, handler, clock, *, mode="worker"):
         repo, registry, AgentEventStore(repo), mode=mode, clock=clock,
         lease_seconds=30, heartbeat_seconds=10, poll_interval_seconds=0,
     )
+
+
+@pytest.mark.asyncio
+async def test_paused_queued_run_is_claimed_and_completed_after_resume(runtime):
+    run_id = _queued(runtime)
+    manager = RunManager(runtime)
+    handler = _Handler()
+    worker = _worker(runtime, handler, _Clock())
+    assert manager.pause(run_id)["status"] == "PAUSED"
+    assert (await worker.run_once()).action == "idle"
+    assert manager.resume(run_id)["status"] == "QUEUED"
+    assert (await worker.run_once()).action == "executed"
+    assert handler.calls == 1
+    assert runtime.get_run(run_id)["status"] == "SUCCEEDED"
+    assert [event["type"] for event in runtime.list_events(run_id)].count("RUN_RESUMED") == 1
 
 
 @pytest.mark.asyncio

@@ -23,7 +23,7 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
         # 审批通过后，原 Run 必须能被 Worker 重新领取 —— 否则批准了也永远不会执行，
     # 客户端就只剩下"再建一个新 Job 并带上旧 approval"这条错误路径。
     "AWAITING_APPROVAL": {"QUEUED", "RUNNING", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"},
-    "PAUSED": {"RUNNING", "CANCELLED"},
+    "PAUSED": {"QUEUED", "RUNNING", "CANCELLED"},
     "SUCCEEDED": set(),  # 终态
     "PARTIAL": {"CANCELLED"},  # 可取消
     "FAILED": set(),  # 终态
@@ -178,19 +178,20 @@ class RunManager:
         )
 
     def resume(self, run_id: str) -> dict:
-        """仅从 PAUSED 恢复到 RUNNING。"""
+        """恢复暂停任务；没有执行者租约时交回队列。"""
         run = self._repo.get_run(run_id)
         if not run:
             raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
         if run["status"] != "PAUSED":
-            if run["status"] == "RUNNING":
+            if run["status"] in {"RUNNING", "QUEUED"}:
                 return run
             raise AgentRuntimeError(
                 f"Run 当前状态({run['status']})不可恢复",
                 code="AGENT_INVALID_STATE", http_status=409,
             )
+        status = "RUNNING" if run.get("lease_owner") else "QUEUED"
         return self.transition(
-            run_id, "RUNNING", phase="WAITING_FOR_TOOL",
+            run_id, status, phase="WAITING_FOR_TOOL" if status == "RUNNING" else "IDLE",
             event_type="RUN_RESUMED", event_summary="运行已恢复",
         )
 

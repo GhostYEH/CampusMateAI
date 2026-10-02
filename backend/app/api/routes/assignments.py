@@ -89,7 +89,7 @@ def _assignment_to_out(
             ) for r in att_rows
         ]
     if submission_status is None and container is not None and student_id is not None:
-        submission = container.assignment_repository.get_submission_for_student(a.id, student_id)
+        submission = container.submission_repository.get_submission_for_student(a.id, student_id)
         submission_status = submission.status if submission is not None else "not_submitted"
     return AssignmentOut(
         id=a.id,
@@ -137,7 +137,7 @@ def list_assignments(
         class_id, status=status_filter, page=page, page_size=page_size,
     )
     submission_statuses = (
-        container.assignment_repository.get_submission_statuses_for_student(
+        container.submission_repository.get_submission_statuses_for_student(
             [row.id for row in rows], user.id,
         )
         if user.role == "student"
@@ -150,7 +150,7 @@ def list_assignments(
             author_name=_author_name(container, r.author_id),
             container=container,
             student_id=user.id if user.role == "student" else None,
-            submission_status=submission_statuses.get(row.id, "not_submitted") if user.role == "student" else None,
+            submission_status=submission_statuses.get(r.id, "not_submitted") if user.role == "student" else None,
         )
         for r in rows
     ]

@@ -186,3 +186,32 @@ test("a new account starts its own refresh while the old one is in flight", asyn
     axios.defaults.adapter = previousAdapter;
   }
 });
+
+for (const status of [undefined, 429, 500, 503]) {
+  test(`temporary refresh failure (${status || "network"}) preserves the current session`, async () => {
+    const saved = storage({ campus_access_token: "old-access", campus_refresh_token: "old-refresh", campus_session: "user" });
+    const previousAdapter = axios.defaults.adapter;
+    axios.defaults.adapter = async (config) => {
+      assert.equal(config.timeout, 8000);
+      throw { response: status ? { status } : undefined };
+    };
+    try {
+      await assert.rejects(refreshAccessToken("/api/v1", saved), /暂时无法刷新/);
+      assert.equal(saved.getItem("campus_access_token"), "old-access");
+      assert.equal(saved.getItem("campus_refresh_token"), "old-refresh");
+      assert.equal(saved.getItem("campus_session"), "user");
+    } finally { axios.defaults.adapter = previousAdapter; }
+  });
+}
+
+test("an explicitly rejected refresh clears the expired session", async () => {
+  const saved = storage({ campus_access_token: "old-access", campus_refresh_token: "old-refresh", campus_session: "user" });
+  const previousAdapter = axios.defaults.adapter;
+  axios.defaults.adapter = async () => { throw { response: { status: 401 } }; };
+  try {
+    await assert.rejects(refreshAccessToken("/api/v1", saved), /登录已过期/);
+    assert.equal(saved.getItem("campus_access_token"), null);
+    assert.equal(saved.getItem("campus_refresh_token"), null);
+    assert.equal(saved.getItem("campus_session"), null);
+  } finally { axios.defaults.adapter = previousAdapter; }
+});

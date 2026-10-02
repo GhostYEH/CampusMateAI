@@ -246,7 +246,24 @@ async def login_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
+    sync_lock = _get_user_sync_lock(user.id)
+    if not sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="sync_in_progress")
+    try:
+        return await _login_chaoxing(req, user, container)
+    finally:
+        sync_lock.release()
+
+
+async def _login_chaoxing(req, user, container):
     client = ChaoxingClient()
+    try:
+        return await _login_with_client(req, user, container, client)
+    finally:
+        await client.client.aclose()
+
+
+async def _login_with_client(req, user, container, client):
     success, msg = await client.login(req.username, req.password)
     if not success:
         if msg == "verification_required":
@@ -334,6 +351,13 @@ async def _perform_sync_chaoxing(
         raise HTTPException(status_code=401, detail="Chaoxing credentials not found")
 
     client = ChaoxingClient(cookies=credentials)
+    try:
+        return await _sync_with_client(user, container, credentials, client)
+    finally:
+        await client.client.aclose()
+
+
+async def _sync_with_client(user, container, credentials, client):
     async def extract_notice(notice, course):
         content = notice.get("content") or notice["title"]
         published_at = _parse_chaoxing_datetime(notice.get("published_at"))
@@ -1031,6 +1055,12 @@ async def disconnect_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
-    container.chaoxing_repository.delete_credentials(user.id)
-    _forget_status(user.id)
-    return {"status": "disconnected"}
+    sync_lock = _get_user_sync_lock(user.id)
+    if not sync_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="sync_in_progress")
+    try:
+        container.chaoxing_repository.delete_credentials(user.id)
+        _forget_status(user.id)
+        return {"status": "disconnected"}
+    finally:
+        sync_lock.release()

@@ -38,7 +38,7 @@ def test_run_can_pause_and_resume(runtime):
     run_id = _run(repo, manager)
 
     assert manager.pause(run_id, reason="用户暂时离开")['status'] == "PAUSED"
-    assert manager.resume(run_id)['status'] == "RUNNING"
+    assert manager.resume(run_id)['status'] == "QUEUED"
 
 
 def test_retry_creates_new_run_with_lineage(runtime):

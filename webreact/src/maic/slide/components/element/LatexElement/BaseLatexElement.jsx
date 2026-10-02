@@ -16,6 +16,7 @@
  * 看得见公式源码」而不是一片空白。
  */
 import { useRef, useState, useLayoutEffect } from 'react';
+import { sanitizeHtml } from '../../../../../utils/safeHtml.js';
 
 /**
  * Base latex element for read-only/playback mode.
@@ -123,7 +124,7 @@ function KatexContent({ html, width, height, align = 'center' }) {
           transform: `scale(${scale})`,
           whiteSpace: 'nowrap',
         }}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import { itemsOf, studySessionPayload } from "./contracts.js";
 import { BASE_URL, client } from "./http/client.js";
+import { splitSseBlocks } from "./agentSseStream.js";
 
 export { BASE_URL, client, createClient, refreshAccessToken, saveTokenPair, applyTokenPair } from "./http/client.js";
 export { probeBackend, login, getDeviceId, qrCreate, qrStatus, qrExchange, trustedDeviceAutoLogin, revokeTrustedDevice } from "./http/authEndpoints.js";
@@ -739,10 +740,11 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const blocks = buffer.split("\n\n");
-      buffer = blocks.pop() || "";
+      const { blocks, remainder } = splitSseBlocks(buffer);
+      buffer = remainder;
       blocks.filter(Boolean).forEach(consume);
     }
+    buffer += decoder.decode();
     if (buffer.trim()) consume(buffer);
   } catch (error) {
     if (error.name !== "AbortError") onError?.(error);
