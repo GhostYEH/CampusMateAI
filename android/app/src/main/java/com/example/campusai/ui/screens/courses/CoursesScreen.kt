@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Notifications
 import com.example.campusai.ui.components.GlassButton as Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -75,7 +76,6 @@ import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
-import com.example.campusai.data.remote.CourseKnowledgeGraphDto
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -90,7 +90,6 @@ import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
-import com.example.campusai.ui.theme.Success
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
@@ -539,11 +538,7 @@ internal fun CourseDetailSheet(
     var loading by remember(course.id) { mutableStateOf(true) }
     var syncing by remember(course.id) { mutableStateOf(false) }
     var error by remember(course.id) { mutableStateOf<String?>(null) }
-    var graph by remember(course.id) { mutableStateOf<CourseKnowledgeGraphDto?>(null) }
-    var graphLoading by remember(course.id) { mutableStateOf(true) }
-    var graphSyncing by remember(course.id) { mutableStateOf(false) }
-    var graphError by remember(course.id) { mutableStateOf<String?>(null) }
-    var graphExpanded by remember(course.id) { mutableStateOf(false) }
+    var selectedNotice by remember(course.id) { mutableStateOf<CourseContentItemDto?>(null) }
     var filter by remember(course.id) { mutableStateOf("全部") }
     val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
     val kinds = mapOf(
@@ -561,10 +556,6 @@ internal fun CourseDetailSheet(
             content = loaded.second
         } catch (_: Exception) { error = "课程内容加载失败，已保留现有信息" }
         finally { loading = false }
-    }
-    androidx.compose.runtime.LaunchedEffect(course.id) {
-        graph = repository.loadCourseKnowledgeGraph(course.id)
-        graphLoading = false
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -589,6 +580,18 @@ internal fun CourseDetailSheet(
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
+            item {
+                Button(
+                    onClick = { onStartFocus("学习《${course.name}》") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22513F)),
+                ) {
+                    Icon(Icons.Default.Schedule, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("带着这门课去自习室", fontWeight = FontWeight.Bold)
+                }
+            }
             if (!initialSessionId.isNullOrBlank()) item {
                 InteractiveClassroomSection(course = course, repository = repository, initialSessionId = initialSessionId)
             }
@@ -631,96 +634,27 @@ internal fun CourseDetailSheet(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 enabled = !syncing,
-            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "同步学习通课程内容", fontWeight = FontWeight.Bold) }
+            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "更新章节、作业与通知", fontWeight = FontWeight.Bold) }
             }
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(PrimarySoft).padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.List, null, tint = Primary, modifier = Modifier.size(18.dp))
-                            Text("学习通知识图谱", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                        Text(
-                            if (graph?.available == true) "${graph?.knowledge_point_count ?: 0} 个知识点" else "尚未同步",
-                            color = Muted, fontSize = 11.sp,
-                        )
-                    }
-                    val current = graph
-                    when {
-                        graphLoading -> Text("知识点数据加载中…", color = Muted, fontSize = 12.sp)
-                        current == null || !current.available -> {
-                            val graphSection = summary?.sections?.firstOrNull { it.section == "knowledge_graph" }
-                            Text(
-                                graphError ?: when (graphSection?.error_code) {
-                                    "access_denied" -> "学习通拒绝读取这门课的课程图谱，暂时无法展示真实知识点和掌握率。已同步的章节、资料仍可在下方查看。"
-                                    "structure_changed" -> "上次没有读到课程图谱。可重试一次，确认是访问受限还是页面变化。"
-                                    else -> "只有学习通提供并允许读取课程图谱时，才能同步真实知识点和掌握率。"
-                                },
-                                color = Muted, fontSize = 12.sp,
-                            )
-                            Button(
-                                onClick = {
-                                    graphSyncing = true
-                                    graphError = null
-                                    scope.launch {
-                                        try { graph = repository.syncCourseKnowledgeGraph(course.id) }
-                                        catch (error: Exception) { graphError = error.message ?: "知识点同步失败，请稍后重试" }
-                                        finally { graphSyncing = false; graphLoading = false }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(42.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                                enabled = !graphSyncing,
-                            ) { Text(if (graphSyncing) "同步中…" else if (graphSection?.error_code == "access_denied" || graphError?.contains("拒绝") == true) "重新尝试读取" else "同步知识点", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        }
-                        else -> {
-                            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                                MasteryStat("知识点", current.knowledge_point_count.toString())
-                                MasteryStat("我的掌握率", rateText(current.own_mastery_rate))
-                                MasteryStat("班级平均", rateText(current.class_mastery_rate))
-                                MasteryStat(
-                                    if ((current.mastery_gap_vs_class ?: 0.0) < 0) "落后班级" else "领先班级",
-                                    current.mastery_gap_vs_class?.let { (if (it > 0) "+" else "") + it.toString() } ?: "—",
-                                    highlight = (current.mastery_gap_vs_class ?: 0.0) >= 0,
-                                )
+            if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
+            error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
+            summary?.sections?.let { sections ->
+                if (sections.isNotEmpty()) item {
+                    val names = mapOf("chapters" to "章节", "assignments" to "作业", "notices" to "通知")
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        names.forEach { (key, name) ->
+                            val section = sections.firstOrNull { it.section == key } ?: return@forEach
+                            val result = when (section.status) {
+                                "complete" -> "${section.item_count} 条"
+                                "failed" -> if (section.error_code == "reauth_required") "需要重新登录学习通" else "同步失败"
+                                "unavailable" -> "暂不可用"
+                                else -> "尚未同步"
                             }
-                            MasteryBar("掌握率", current.own_mastery_rate, current.class_mastery_rate)
-                            MasteryBar("完成率", current.own_completion_rate, current.class_completion_rate)
-                            if (current.tags.isNotEmpty()) {
-                                Text(current.tags.joinToString(" · "), color = Muted, fontSize = 10.sp)
-                            }
-                            if (current.points.isNotEmpty()) {
-                                Text(
-                                    if (graphExpanded) "收起知识点" else "查看 ${current.points.size} 个知识点",
-                                    color = Primary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.campusClickable { graphExpanded = !graphExpanded },
-                                )
-                                if (graphExpanded) {
-                                    current.points.forEach { point ->
-                                        Row(
-                                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
-                                                .campusClickable { onStartFocus("学习《${course.name}》：${point.name}") }
-                                                .padding(vertical = 8.dp, horizontal = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            Text("#${point.position + 1}", color = Muted, fontSize = 10.sp)
-                                            Text(point.name, modifier = Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Icon(Icons.Default.ChevronRight, contentDescription = "去自习室学习这个知识点", tint = Primary, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                }
-                            }
+                            Text("$name：$result", color = Muted, fontSize = 11.sp)
                         }
                     }
                 }
             }
-            if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
-            error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
             if (!loading) {
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -736,10 +670,11 @@ internal fun CourseDetailSheet(
                 }
                 if (visible.isEmpty()) item {
                     val section = summary?.sections?.firstOrNull { it.section == mapOf("章节" to "chapters", "资料" to "materials", "作业" to "assignments", "通知" to "notices", "考试" to "exams", "讨论" to "discussions")[filter] }
-                    val text = when (section?.status) {
-                        "failed" -> "本次同步失败，正在保留上次数据"
-                        "unavailable" -> "学习通当前未开放此栏目"
-                        "complete" -> "学习通返回的列表为空"
+                    val text = when {
+                        section?.error_code == "reauth_required" -> "学习通登录已失效，重新连接后再同步此栏目"
+                        section?.status == "failed" -> "本次同步失败，正在保留上次数据"
+                        section?.status == "unavailable" -> "学习通当前未开放此栏目"
+                        section?.status == "complete" -> "学习通返回的列表为空"
                         else -> "尚未同步此栏目"
                     }
                     Text(text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
@@ -749,6 +684,10 @@ internal fun CourseDetailSheet(
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(PrimarySoft)
                             .campusClickable {
+                                if (item.kind == "notice") {
+                                    selectedNotice = item
+                                    return@campusClickable
+                                }
                                 scope.launch {
                                     try {
                                         if (item.can_download) {
@@ -784,22 +723,14 @@ internal fun CourseDetailSheet(
                         Icon(icon, null, tint = Primary, modifier = Modifier.size(20.dp))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(listOf(item.kind, item.status, if (item.cached) "已缓存" else "").filter { it.isNotBlank() }.joinToString(" · "), color = Muted, fontSize = 10.sp)
+                            Text(
+                                if (item.kind == "notice") "教师通知${item.author_name?.let { " · $it" }.orEmpty()}"
+                                else listOf(item.kind, item.status.takeUnless { it == "unknown" }.orEmpty(), if (item.cached) "已缓存" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                                color = Muted, fontSize = 10.sp,
+                            )
                         }
                         Icon(Icons.Default.ChevronRight, null, tint = Muted)
                     }
-                }
-            }
-            item {
-                Button(
-                    onClick = { onStartFocus("学习《${course.name}》") },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22513F)),
-                ) {
-                    Icon(Icons.Default.Schedule, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("带着这门课去自习室", fontWeight = FontWeight.Bold)
                 }
             }
             if (courseRecords.isNotEmpty()) item {
@@ -827,44 +758,16 @@ internal fun CourseDetailSheet(
             }
         }
     }
-}
-
-@Composable
-private fun rateText(value: Double?): String {
-    if (value == null) return "—"
-    return if (value % 1.0 == 0.0) "${value.toInt()}%" else "$value%"
-}
-
-@Composable
-private fun MasteryStat(label: String, value: String, highlight: Boolean? = null) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            value,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = when (highlight) { true -> Success; false -> CourseOrange; null -> TextPrimary },
+    selectedNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { selectedNotice = null },
+            title = { Text(notice.title, fontWeight = FontWeight.Bold) },
+            text = { Text(notice.description?.takeIf(String::isNotBlank) ?: "这条通知暂时没有可显示的正文。") },
+            confirmButton = {
+                Button(onClick = { selectedNotice = null }) { Text("关闭") }
+            },
+            containerColor = Color(0xFFF5F2E8),
         )
-        Text(label, color = Muted, fontSize = 10.sp)
-    }
-}
-
-@Composable
-private fun MasteryBar(label: String, own: Double?, classRate: Double?) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-            Text(label, color = Muted, fontSize = 11.sp)
-            Text(rateText(own), fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
-        }
-        Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(Color.White.copy(alpha = 0.6f))) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction = ((own ?: 0.0) / 100.0).coerceIn(0.0, 1.0).toFloat())
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Primary)
-            )
-        }
-        Text("班级平均 ${rateText(classRate)}", color = Muted, fontSize = 10.sp)
     }
 }
 

@@ -188,7 +188,7 @@ fun LibraryScreen(
                     }
                 }
             }
-            item { LibraryNote("在图书馆选内容，在自习室完成", "打开一门课，同步资料、查看知识点或互动讲解，再带着这门课进入专注。") }
+            item { LibraryNote("在图书馆选课，在自习室完成", "打开一门课，查看已同步的内容；也可以直接带着这门课进入专注。") }
         }
     }
     selectedCourse?.let { course ->
