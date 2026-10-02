@@ -155,8 +155,6 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
 
     private fun toSnapshot(dto: StudySessionDto) = StudySessionSnapshot(
         id = dto.id,
-        goal = dto.goal,
-        selfReport = dto.self_report,
         relatedTaskId = dto.related_task_id,
         startedAt = dto.started_at,
         endedAt = dto.ended_at,

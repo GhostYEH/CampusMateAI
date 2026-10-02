@@ -873,7 +873,6 @@ data class StudySessionDto(
     val mode: String,
     val experience_mode: String = "QUIET",
     val goal: String? = null,
-    val self_report: String? = null,
     val related_task_id: String? = null,
     val started_at: String,
     val paused_at: String? = null,
