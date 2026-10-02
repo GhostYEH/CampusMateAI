@@ -178,8 +178,7 @@ fun AppShell(
     }
 
     Box(Modifier.fillMaxSize()) {
-        // The app uses page content and the bottom dock as its navigation model;
-        // no secondary personal header is shown above the main tabs.
+        // The campus scene owns home navigation; secondary pages retain the dock.
         if (false) {
             CampusTopBar(
                 name = session?.name ?: "校园同学",
@@ -200,7 +199,7 @@ fun AppShell(
         ) {
             content()
         }
-        if (!immersiveFocusSession) {
+        if (!immersiveFocusSession && route != "home") {
             CampusDock(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 items = navItems,

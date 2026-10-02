@@ -30,6 +30,14 @@ class SystemBarPolicyTest {
     }
 
     @Test
+    fun campusHomeKeepsSystemIconsLegibleOverTheScene() {
+        val policy = systemBarPolicy(route = "home", darkTheme = false, authenticated = true)
+
+        assertFalse(policy.darkStatusBarIcons)
+        assertFalse(policy.darkNavigationBarIcons)
+    }
+
+    @Test
     fun darkThemeUsesLightIconsOnThemeColoredPages() {
         val policy = systemBarPolicy(route = "tasks", darkTheme = true, authenticated = true)
 
