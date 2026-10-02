@@ -59,7 +59,8 @@ class SystemBarPolicyTest {
     fun fullBleedAndSelfInsetRoutesAreExplicit() {
         assertTrue(routeOwnsStatusBarInset("home"))
         assertTrue(routeOwnsStatusBarInset("profile"))
-        assertFalse(routeOwnsStatusBarInset("courses"))
+        assertTrue(routeOwnsStatusBarInset("courses"))
+        assertTrue(routeOwnsStatusBarInset("focus"))
         assertFalse(routeOwnsStatusBarInset("task_detail/{taskId}"))
     }
 }

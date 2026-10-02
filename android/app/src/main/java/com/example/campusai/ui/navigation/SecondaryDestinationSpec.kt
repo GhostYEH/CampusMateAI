@@ -93,7 +93,6 @@ private val staticDestinationTitles = mapOf(
     "edu_system" to "教务系统",
     "edu_schedule" to "教务课表",
     "exams" to "考试安排",
-    "focus" to "专注大厅",
     "focus_summary" to "本次专注总结",
     "focus_history" to "学习足迹",
     "agent_final_review" to "期末复习",

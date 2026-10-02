@@ -122,6 +122,7 @@ fun FocusScreen(
     reduceMotion: Boolean,
     onBack: () -> Unit,
     relatedTaskId: String? = null,
+    initialGoal: String? = null,
     onOpenCounselorPlan: (String) -> Unit,
     onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode, relatedTaskId: String?) -> Unit,
     onOpenHistory: () -> Unit,
@@ -141,7 +142,7 @@ fun FocusScreen(
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var sessionMode by remember { mutableStateOf(FocusSessionMode.QUIET) }
     var selectedDurationMinutes by remember { mutableIntStateOf(25) }
-    var focusGoal by rememberSaveable { mutableStateOf("") }
+    var focusGoal by rememberSaveable(initialGoal) { mutableStateOf(initialGoal.orEmpty()) }
     var customDurationInput by remember { mutableStateOf("60") }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }

@@ -20,6 +20,8 @@ class RemoteFocusRepositoryTest {
             sessions = listOf(
                 StudySessionSnapshot(
                     id = "study-1",
+                    goal = "学习《数据结构》：链表",
+                    selfReport = "完成了链表练习",
                     startedAt = "2026-08-11T10:00:00Z",
                     endedAt = "2026-08-11T10:25:00Z",
                     durationSeconds = 1_500,
@@ -35,6 +37,8 @@ class RemoteFocusRepositoryTest {
         assertEquals(1, repository.stats.todayCount)
         assertEquals(1, repository.stats.streakDays)
         assertTrue(repository.records.single().finished)
+        assertEquals("学习《数据结构》：链表", repository.records.single().goal)
+        assertEquals("完成了链表练习", repository.records.single().selfReport)
     }
 
     @Test

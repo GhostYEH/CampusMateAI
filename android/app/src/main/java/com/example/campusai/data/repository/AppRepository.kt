@@ -147,7 +147,7 @@ class AppRepository(
 
     fun getCampusNewsById(id: String): CampusNews? = _campusNews.value.find { it.id == id }
 
-    private val _courses = MutableStateFlow(defaultCourses())
+    private val _courses = MutableStateFlow<List<Course>>(emptyList())
     val courses: StateFlow<List<Course>> = _courses.asStateFlow()
 
     private val _homeBanners = MutableStateFlow<List<HomeBanner>>(emptyList())
@@ -596,8 +596,7 @@ class AppRepository(
             val resp = ApiClient.api.listCourses(page = 1, pageSize = 100)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _courses.value = items.map { dto ->
+                _courses.value = items.map { dto ->
                         Course(
                             id = dto.id,
                             name = dto.name,
@@ -611,7 +610,6 @@ class AppRepository(
                             last_synced_at = dto.last_synced_at,
                         )
                     }
-                }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
     }
@@ -1436,15 +1434,6 @@ class AppRepository(
         Task("demo-2", "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
         Task("demo-3", "整理创新创业项目资料", "5月21日 18:00", "个人待办", false, "整理已有项目资料并确认下一步计划。\n\n- 汇总项目计划书\n- 整理团队分工\n- 记录需要咨询的问题"),
         Task("demo-4", "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
-    )
-
-    private fun defaultCourses() = listOf(
-        Course(name = "数据结构", code = "CS2103", type = "专业必修", teacher = "张明远", location = "教学楼 2-305"),
-        Course(name = "计算机组成原理", code = "CS2201", type = "专业必修", teacher = "刘文青", location = "实验楼 A-204"),
-        Course(name = "高等数学（下）", code = "MA1202", type = "学科基础", teacher = "王建国", location = "博学楼 1-401"),
-        Course(name = "大学英语 IV", code = "EN1404", type = "公共基础", teacher = "陈思雨", location = "明德楼 3-208"),
-        Course(name = "操作系统原理", code = "CS2304", type = "专业核心", teacher = "赵启航", location = "教学楼 4-302"),
-        Course(name = "计算机网络", code = "CS2402", type = "专业核心", teacher = "周立新", location = "实验楼 B-310"),
     )
 
     private fun defaultNotices() = listOf(

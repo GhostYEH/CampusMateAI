@@ -32,7 +32,7 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.counselor.CounselorScreen
-import com.example.campusai.ui.screens.courses.CoursesScreen
+import com.example.campusai.ui.screens.courses.LibraryScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
@@ -311,9 +311,12 @@ fun AppNavHost(
             }
         }
         composable("courses") {
-            CoursesScreen(
-                repository,
-                onOpenSchedule = { go(courseScheduleRoute()) },
+            LibraryScreen(
+                repository = repository,
+                focusRepository = modules.focus,
+                onBack = { navController.popBackStack() },
+                onConnectChaoxing = { go("chaoxing") },
+                onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                 onOpenCounselor = { courseId, courseName, initialPrompt ->
                     go(
                         "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
@@ -329,12 +332,14 @@ fun AppNavHost(
                 navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { backStackEntry ->
-            CoursesScreen(
+            LibraryScreen(
                 repository = repository,
+                focusRepository = modules.focus,
                 initialCourseId = backStackEntry.arguments?.getString("courseId"),
-                initialTab = backStackEntry.arguments?.getString("tab"),
                 initialSessionId = backStackEntry.arguments?.getString("session"),
-                onOpenSchedule = { go(courseScheduleRoute()) },
+                onBack = { navController.popBackStack() },
+                onConnectChaoxing = { go("chaoxing") },
+                onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                 onOpenCounselor = { courseId, courseName, initialPrompt ->
                     go("counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}")
                 },
@@ -585,12 +590,11 @@ fun AppNavHost(
 
         // ── 专注大厅 / 专注空间 / 本次专注总结 ──
         composable(
-            route = "focus?taskId={taskId}",
-            arguments = listOf(navArgument("taskId") {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            }),
+            route = "focus?taskId={taskId}&goal={goal}",
+            arguments = listOf(
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("goal") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
         ) { backStackEntry ->
             val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             FocusScreen(
@@ -599,6 +603,7 @@ fun AppNavHost(
                 reduceMotion = reduceMotion,
                 onBack = { navController.popBackStack() },
                 relatedTaskId = backStackEntry.arguments?.getString("taskId"),
+                initialGoal = backStackEntry.arguments?.getString("goal"),
                 onOpenCounselorPlan = { prompt ->
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")

@@ -71,6 +71,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Course
+import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
@@ -78,6 +79,8 @@ import com.example.campusai.data.remote.CourseKnowledgeGraphDto
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.core.content.FileProvider
+import java.net.URLConnection
 import com.example.campusai.ui.components.ModeBadge
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
@@ -520,12 +523,14 @@ private fun EmptyCourses() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CourseDetailSheet(
+internal fun CourseDetailSheet(
     course: Course,
     repository: AppRepository,
     initialSessionId: String? = null,
     onDismiss: () -> Unit,
     onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit,
+    onStartFocus: (String) -> Unit = {},
+    courseRecords: List<FocusRecord> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -563,7 +568,7 @@ private fun CourseDetailSheet(
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Surface,
+        containerColor = Color(0xFFF5F2E8),
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
         LazyColumn(
@@ -573,7 +578,7 @@ private fun CourseDetailSheet(
         ) {
             item { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("课程详情", color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("图书馆 / 课程书架", color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text(course.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                     Text("${course.code} · ${course.type}", color = Muted, fontSize = 12.sp)
                 }
@@ -584,12 +589,8 @@ private fun CourseDetailSheet(
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
-            item {
-                InteractiveClassroomSection(
-                    course = course,
-                    repository = repository,
-                    initialSessionId = initialSessionId,
-                )
+            if (!initialSessionId.isNullOrBlank()) item {
+                InteractiveClassroomSection(course = course, repository = repository, initialSessionId = initialSessionId)
             }
             item {
                 Button(
@@ -696,12 +697,15 @@ private fun CourseDetailSheet(
                                 if (graphExpanded) {
                                     current.points.forEach { point ->
                                         Row(
-                                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                                .campusClickable { onStartFocus("学习《${course.name}》：${point.name}") }
+                                                .padding(vertical = 8.dp, horizontal = 5.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         ) {
                                             Text("#${point.position + 1}", color = Muted, fontSize = 10.sp)
-                                            Text(point.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(point.name, modifier = Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Icon(Icons.Default.ChevronRight, contentDescription = "去自习室学习这个知识点", tint = Primary, modifier = Modifier.size(16.dp))
                                         }
                                     }
                                 }
@@ -741,12 +745,31 @@ private fun CourseDetailSheet(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(PrimarySoft)
                             .campusClickable {
                                 scope.launch {
-                                    if (item.can_download) {
-                                        val file = repository.downloadCourseResource(course.id, item)
-                                        Toast.makeText(context, if (file != null) "已缓存到应用临时目录" else "资料下载失败", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        val url = repository.getCourseResourceUrl(course.id, item.id)
-                                        if (!url.isNullOrBlank()) context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    try {
+                                        if (item.can_download) {
+                                            val file = repository.downloadCourseResource(course.id, item)
+                                            if (file == null) {
+                                                Toast.makeText(context, "资料下载失败", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.coursefiles", file)
+                                                val mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "*/*"
+                                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                    setDataAndType(uri, mimeType)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                runCatching { context.startActivity(intent) }
+                                                    .onFailure { Toast.makeText(context, "资料已下载，但手机上没有可打开它的应用", Toast.LENGTH_SHORT).show() }
+                                            }
+                                        } else {
+                                            val url = repository.getCourseResourceUrl(course.id, item.id)
+                                            if (!url.isNullOrBlank() && Uri.parse(url).scheme == "https") {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                            } else {
+                                                Toast.makeText(context, "这份资料暂时无法打开", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, "资料打开失败，请稍后重试", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }.padding(13.dp),
@@ -761,6 +784,41 @@ private fun CourseDetailSheet(
                         Icon(Icons.Default.ChevronRight, null, tint = Muted)
                     }
                 }
+            }
+            item {
+                Button(
+                    onClick = { onStartFocus("学习《${course.name}》") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22513F)),
+                ) {
+                    Icon(Icons.Default.Schedule, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("带着这门课去自习室", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (courseRecords.isNotEmpty()) item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("这门课的学习足迹", color = Color(0xFF22513F), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    courseRecords.take(3).forEach { record ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                                .background(Color.White.copy(alpha = .72f)).padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(record.goal.orEmpty(), color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text("${record.date} · ${record.actualMinutes} 分钟", color = Muted, fontSize = 11.sp)
+                            record.selfReport?.takeIf(String::isNotBlank)?.let { Text("我的回顾：$it", color = TextPrimary, fontSize = 12.sp) }
+                        }
+                    }
+                }
+            }
+            if (initialSessionId.isNullOrBlank()) item {
+                InteractiveClassroomSection(
+                    course = course,
+                    repository = repository,
+                    initialSessionId = initialSessionId,
+                )
             }
         }
     }
