@@ -35,6 +35,8 @@ def _course_to_out(
         name=course.name,
         code=course.code,
         semester=course.semester,
+        starts_at=course.starts_at,
+        ends_at=course.ends_at,
         description=course.description,
         teacher_id=course.teacher_id,
         teacher_name=teacher_name,

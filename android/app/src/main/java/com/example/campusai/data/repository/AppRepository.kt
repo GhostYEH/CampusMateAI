@@ -608,6 +608,9 @@ class AppRepository(
                             external_id = dto.external_id,
                             source_url = dto.source_url,
                             last_synced_at = dto.last_synced_at,
+                            semester = dto.semester,
+                            startsAt = dto.starts_at,
+                            endsAt = dto.ends_at,
                         )
                     }
             }

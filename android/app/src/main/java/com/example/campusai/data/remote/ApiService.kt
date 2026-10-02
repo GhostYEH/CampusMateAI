@@ -562,6 +562,8 @@ data class CourseDto(
     val name: String,
     val code: String? = null,
     val semester: String? = null,
+    val starts_at: String? = null,
+    val ends_at: String? = null,
     val description: String? = null,
     val teacher_id: String? = null,
     val teacher_name: String? = null,

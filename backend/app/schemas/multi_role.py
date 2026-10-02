@@ -173,6 +173,8 @@ class CourseOut(BaseModel):
     name: str
     code: Optional[str] = None
     semester: Optional[str] = None
+    starts_at: Optional[str] = None
+    ends_at: Optional[str] = None
     description: Optional[str] = None
     teacher_id: Optional[str] = None
     teacher_name: Optional[str] = None

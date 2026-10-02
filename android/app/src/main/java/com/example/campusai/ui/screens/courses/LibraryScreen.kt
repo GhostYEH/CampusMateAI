@@ -2,6 +2,7 @@ package com.example.campusai.ui.screens.courses
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,19 +10,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -37,8 +39,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -51,9 +56,14 @@ import com.example.campusai.data.model.Course
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ApiFocusRepository
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 private val libraryCream = Color(0xFFF5F2E8)
 private val libraryGreen = Color(0xFF214E3D)
+private val bookColors = listOf(
+    Color(0xFF325F5A), Color(0xFF994D3D), Color(0xFF3B527C),
+    Color(0xFF8B6A3D), Color(0xFF5B526F), Color(0xFF3F654A),
+)
 
 /** The campus library only shows courses confirmed to come from the student's account. */
 @Composable
@@ -70,6 +80,13 @@ fun LibraryScreen(
     val courses by repository.courses.collectAsStateWithLifecycle()
     val focusRecords by focusRepository.records.collectAsStateWithLifecycle()
     val realCourses = courses.filter { it.provider.equals("chaoxing", ignoreCase = true) }
+    val today = LocalDate.now()
+    val termStart = currentTermStart(today)
+    val termEnd = termStart.plusMonths(6).minusDays(1)
+    val currentCourses = realCourses.filter { it.isInTerm(termStart, termEnd) }
+        .sortedWith(compareByDescending<Course> { it.startDate() != null }.thenByDescending { it.startDate() }.thenBy { it.name })
+    val otherCourses = realCourses.filterNot { it.isInTerm(termStart, termEnd) }
+        .sortedWith(compareByDescending<Course> { it.startDate() != null }.thenByDescending { it.startDate() }.thenBy { it.name })
     val scope = rememberCoroutineScope()
     var accountStatus by remember { mutableStateOf("checking") }
     var lastSyncedAt by remember { mutableStateOf<String?>(null) }
@@ -119,21 +136,25 @@ fun LibraryScreen(
             }
             item {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
-                        .background(libraryCream.copy(alpha = .95f)).padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                        .background(libraryCream.copy(alpha = .95f)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("我的学习通课程", color = libraryGreen, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        when (accountStatus) {
-                            "online" -> "已连接学习通 · ${realCourses.size} 门课程"
-                            "expired" -> "学习通登录已失效，请重新连接"
-                            "offline" -> "连接你的学习通，课程会出现在这里"
-                            "checking" -> "正在检查学习通连接…"
-                            else -> "暂时无法确认学习通连接，请检查网络"
-                        },
-                        color = Color(0xFF596B61), fontSize = 13.sp,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = libraryGreen)
+                        Column {
+                            Text("我的课程书架", color = libraryGreen, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                when (accountStatus) {
+                                    "online" -> "已连接学习通 · ${realCourses.size} 门课程"
+                                    "expired" -> "学习通登录已失效，请重新连接"
+                                    "offline" -> "连接学习通后，课程会摆上书架"
+                                    "checking" -> "正在检查学习通连接…"
+                                    else -> "暂时无法确认连接，请检查网络"
+                                }, color = Color(0xFF596B61), fontSize = 12.sp,
+                            )
+                        }
+                    }
                     if (accountStatus == "online") {
                         lastSyncedAt?.let { Text("上次同步：${it.take(16).replace('T', ' ')}", color = Color(0xFF64756B), fontSize = 11.sp) }
                         LibraryAction("同步课程", onClick = {
@@ -162,33 +183,26 @@ fun LibraryScreen(
                 }
             }
             if (accountStatus == "online") {
-                item { Text("课程书架", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                 if (realCourses.isEmpty()) {
                     item {
                         LibraryNote("还没有同步到课程", "同步后会展示学习通返回的课程；这里不会填入演示课程。")
                     }
                 } else {
-                    itemsIndexed(realCourses, key = { index, course -> "${course.id}|$index" }) { _, course ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                                .background(libraryCream.copy(alpha = .94f))
-                                .clickable { selectedCourse = course }.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier.size(48.dp).clip(RoundedCornerShape(15.dp))
-                                    .background(Color(0xFFDBE8DA)), contentAlignment = Alignment.Center,
-                            ) { Icon(Icons.Default.MenuBook, contentDescription = null, tint = libraryGreen) }
-                            Column(Modifier.weight(1f).padding(start = 13.dp)) {
-                                Text(course.name, color = Color(0xFF17372D), fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(listOf(course.teacher, "来自学习通").filter { it.isNotBlank() && it != "待定" }.joinToString(" · "), color = Color(0xFF617369), fontSize = 12.sp)
-                            }
-                            Icon(Icons.Default.ChevronRight, contentDescription = "打开课程", tint = libraryGreen)
+                    if (currentCourses.isNotEmpty()) {
+                        item { ShelfHeading("本学期", "最近开课的课程放在前面", currentCourses.size) }
+                        itemsIndexed(currentCourses.chunked(3)) { row, shelf ->
+                            CourseShelfRow(shelf, row) { selectedCourse = it }
+                        }
+                    }
+                    if (otherCourses.isNotEmpty()) {
+                        item { ShelfHeading("其他课程", "按开课时间从新到旧", otherCourses.size) }
+                        itemsIndexed(otherCourses.chunked(3)) { row, shelf ->
+                            CourseShelfRow(shelf, row + currentCourses.size) { selectedCourse = it }
                         }
                     }
                 }
             }
-            item { LibraryNote("在图书馆选课，在自习室完成", "打开一门课，查看已同步的内容；也可以直接带着这门课进入专注。") }
+            item { Text("轻触书脊打开课程", color = Color.White.copy(alpha = .72f), fontSize = 12.sp) }
         }
     }
     selectedCourse?.let { course ->
@@ -200,6 +214,79 @@ fun LibraryScreen(
             onOpenCounselor = onOpenCounselor,
             onStartFocus = onStartFocus,
             courseRecords = focusRecords.filter { it.goal?.contains("《${course.name}》") == true },
+        )
+    }
+}
+
+private fun currentTermStart(today: LocalDate): LocalDate = when (today.monthValue) {
+    1, 2 -> LocalDate.of(today.year - 1, 9, 1)
+    in 3..8 -> LocalDate.of(today.year, 3, 1)
+    else -> LocalDate.of(today.year, 9, 1)
+}
+
+private fun Course.startDate(): LocalDate? = startsAt?.take(10)?.let { raw ->
+    runCatching { LocalDate.parse(raw) }.getOrNull()
+}
+
+private fun Course.isInTerm(start: LocalDate, end: LocalDate): Boolean {
+    if (semester?.contains("本学期") == true) return true
+    val date = startDate() ?: return false
+    return !date.isBefore(start) && !date.isAfter(end)
+}
+
+@Composable
+private fun ShelfHeading(title: String, subtitle: String, count: Int) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+        Column {
+            Text(title, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Color.White.copy(alpha = .68f), fontSize = 11.sp)
+        }
+        Text("$count 本", color = Color(0xFFEBD5A8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CourseShelfRow(courses: List<Course>, row: Int, onOpen: (Course) -> Unit) {
+    Box(Modifier.fillMaxWidth().height(174.dp)) {
+        Box(
+            Modifier.fillMaxWidth().height(18.dp).align(Alignment.BottomCenter)
+                .shadow(7.dp, RoundedCornerShape(3.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFFB88A58), Color(0xFF68442F), Color(0xFF3A241C)))),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter).padding(bottom = 17.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            courses.forEachIndexed { index, course ->
+                Box(Modifier.weight(1f).height(150.dp), contentAlignment = Alignment.BottomCenter) {
+                    CourseSpine(course, row * 3 + index, onOpen)
+                }
+            }
+            repeat(3 - courses.size) { Box(Modifier.weight(1f)) }
+        }
+        Box(Modifier.fillMaxWidth().height(2.dp).align(Alignment.BottomCenter).background(Color(0xFFE4BD7C).copy(alpha = .65f)))
+    }
+}
+
+@Composable
+private fun CourseSpine(course: Course, index: Int, onOpen: (Course) -> Unit) {
+    val color = bookColors[index % bookColors.size]
+    Box(
+        modifier = Modifier.width(54.dp).height((119 + index % 3 * 6).dp)
+            .graphicsLayer(rotationZ = -42f, transformOrigin = TransformOrigin.Center)
+            .shadow(7.dp, RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(4.dp))
+            .background(Brush.horizontalGradient(listOf(color.copy(alpha = .84f), color, Color(0xFF172B28))))
+            .border(1.dp, Color(0xDDE4CFA4), RoundedCornerShape(4.dp))
+            .clickable(onClickLabel = "打开${course.name}") { onOpen(course) },
+    ) {
+        Box(Modifier.width(5.dp).fillMaxHeight().align(Alignment.CenterEnd).background(Color.White.copy(alpha = .18f)))
+        Box(Modifier.fillMaxWidth().height(2.dp).align(Alignment.TopCenter).padding(horizontal = 5.dp).background(Color(0xFFEBD5A8)))
+        Text(
+            course.name,
+            modifier = Modifier.align(Alignment.Center).width(108.dp).graphicsLayer(rotationZ = 90f),
+            color = Color(0xFFFFF4D8), fontSize = 11.sp, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }
 }
