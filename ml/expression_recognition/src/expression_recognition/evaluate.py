@@ -28,10 +28,11 @@ def collect_predictions(model, loader, device) -> tuple[np.ndarray, np.ndarray, 
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             logits = model(inputs)
-            losses.append(float(F.cross_entropy(logits, labels).cpu()))
+            losses.append(float(F.cross_entropy(logits, labels, reduction="sum").cpu()))
             probabilities.append(torch.softmax(logits, dim=1).cpu().numpy())
             targets.append(labels.cpu().numpy())
-    return np.concatenate(probabilities), np.concatenate(targets), float(np.mean(losses))
+    all_targets = np.concatenate(targets)
+    return np.concatenate(probabilities), all_targets, float(sum(losses) / len(all_targets))
 
 
 def benchmark_model(model, config: dict, device: torch.device) -> dict:

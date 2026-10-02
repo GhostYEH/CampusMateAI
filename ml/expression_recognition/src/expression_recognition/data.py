@@ -71,12 +71,16 @@ class BalancedBatchSampler(BatchSampler):
         self.targets = targets
         self.batch_size = batch_size
         self.seed = seed
+        self.epoch = 0
         self.class_indices = {label: [i for i, target in enumerate(targets) if target == label] for label in range(len(CLASS_NAMES))}
         self.classes = [label for label, values in self.class_indices.items() if values]
         self.batches = len(targets) // batch_size
 
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
     def __iter__(self):
-        generator = torch.Generator().manual_seed(self.seed)
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
         per_class = max(1, self.batch_size // len(self.classes))
         for _ in range(self.batches):
             batch = []
@@ -115,6 +119,7 @@ class DomainBalancedBatchSampler(BatchSampler):
         self.target_count = target_count
         self.batch_size = batch_size
         self.seed = seed
+        self.epoch = 0
         self.target_per_batch = min(batch_size - 1, max(1, round(batch_size * target_ratio)))
         self.public_per_batch = batch_size - self.target_per_batch
         self.batches = max(
@@ -122,8 +127,11 @@ class DomainBalancedBatchSampler(BatchSampler):
             math.ceil(target_count / self.target_per_batch),
         )
 
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
     def __iter__(self):
-        generator = torch.Generator().manual_seed(self.seed)
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
         for _ in range(self.batches):
             public = torch.randint(self.public_count, (self.public_per_batch,), generator=generator).tolist()
             target = (

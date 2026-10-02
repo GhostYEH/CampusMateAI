@@ -66,12 +66,61 @@ def _class_weights(rows: list[dict[str, str]]) -> torch.Tensor:
     )
 
 
-def _run_epoch(model, loader, criterion, device, optimizer=None, amp=False):
+class _EpochStatistics:
+    """Aggregate weighted mean loss without dependence on batch composition."""
+
+    def __init__(self, device):
+        self.loss_sum = torch.zeros((), device=device, dtype=torch.float64)
+        self.loss_weight = torch.zeros((), device=device, dtype=torch.float64)
+        self.targets = []
+        self.predictions = []
+        self.ignore_index = -100
+
+    def update(self, loss, logits, labels, criterion):
+        self.ignore_index = getattr(criterion, "ignore_index", -100)
+        valid = labels != self.ignore_index
+        if getattr(criterion, "weight", None) is not None:
+            safe_labels = labels.masked_fill(~valid, 0)
+            denominator = (criterion.weight[safe_labels] * valid).sum().to(torch.float64)
+        else:
+            denominator = valid.sum().to(torch.float64)
+        numerator = loss.detach().to(torch.float64)
+        if getattr(criterion, "reduction", "mean") == "mean":
+            numerator = numerator * denominator
+        self.loss_sum += numerator
+        self.loss_weight += denominator
+        self.targets.append(labels.detach())
+        self.predictions.append(logits.detach().argmax(dim=1))
+
+    def result(self):
+        targets = torch.cat(self.targets).cpu().numpy()
+        predictions = torch.cat(self.predictions).cpu().numpy()
+        valid = targets != self.ignore_index
+        macro_f1 = f1_score(
+            targets[valid], predictions[valid], labels=list(range(len(CLASS_NAMES))),
+            average="macro", zero_division=0,
+        )
+        mean_loss = self.loss_sum / self.loss_weight.clamp_min(torch.finfo(torch.float64).tiny)
+        return float(mean_loss), float(macro_f1)
+
+
+def _optimizer_step(model, loss, optimizer, scaler, gradient_clip_norm):
+    scaler.scale(loss).backward()
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+    scaler.step(optimizer)
+    scaler.update()
+
+
+def _run_epoch(
+    model, loader, criterion, device, optimizer=None, amp=False,
+    scaler=None, gradient_clip_norm=1.0,
+):
     training = optimizer is not None
     model.train(training)
-    total_loss = 0.0
-    targets: list[int] = []
-    predictions: list[int] = []
+    statistics = _EpochStatistics(device)
+    if training and scaler is None:
+        scaler = torch.amp.GradScaler("cuda", enabled=amp and device.type == "cuda")
     for inputs, labels in loader:
         inputs = inputs.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
@@ -83,17 +132,9 @@ def _run_epoch(model, loader, criterion, device, optimizer=None, amp=False):
             logits = model(inputs)
             loss = criterion(logits, labels)
         if training:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-        total_loss += float(loss.detach()) * labels.size(0)
-        targets.extend(labels.detach().cpu().tolist())
-        predictions.extend(logits.argmax(dim=1).detach().cpu().tolist())
-    average_loss = total_loss / max(1, len(targets))
-    macro_f1 = f1_score(
-        targets, predictions, labels=list(range(len(CLASS_NAMES))), average="macro", zero_division=0
-    )
-    return average_loss, float(macro_f1)
+            _optimizer_step(model, loss, optimizer, scaler, gradient_clip_norm)
+        statistics.update(loss, logits, labels, criterion)
+    return statistics.result()
 
 
 def train_model(
@@ -142,6 +183,8 @@ def train_model(
         lr=float(config.get("learning_rate", 5e-4)),
         weight_decay=float(config.get("weight_decay", 1e-4)),
     )
+    amp = bool(config.get("amp", True)) and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=amp)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "resolved_config.yaml").write_text(
         yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
@@ -164,7 +207,8 @@ def train_model(
     started = time.time()
     for epoch in range(1, int(config.get("max_epochs", 30)) + 1):
         train_loss, train_f1 = _run_epoch(
-            model, train_loader, criterion, device, optimizer, bool(config.get("amp", True))
+            model, train_loader, criterion, device, optimizer, amp,
+            scaler=scaler, gradient_clip_norm=float(config.get("gradient_clip_norm", 1.0)),
         )
         val_loss, val_f1 = _run_epoch(model, val_loader, criterion, device)
         row = {

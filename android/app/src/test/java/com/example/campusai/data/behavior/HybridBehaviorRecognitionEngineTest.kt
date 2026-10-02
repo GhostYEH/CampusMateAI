@@ -171,6 +171,65 @@ class HybridBehaviorRecognitionEngineTest {
     }
 
     @Test
+    fun temporalFailureDropsConfirmedComputerAndRequiresFreshFrames() {
+        val single = FakeEngine(singlePrediction())
+        val temporal = FakeEngine(temporalPrediction(StudyBehavior.COMPUTER))
+        val hybrid = HybridBehaviorRecognitionEngine(single, temporal)
+        hybrid.initialize()
+        try {
+            repeat(14) { index -> hybrid.analyzeTemporalWindow(listOf(frame()), index * 500L) }
+            temporal.result = BehaviorPrediction(emptyMap(), 0L, "INFERENCE_ERROR")
+            val failed = hybrid.analyzeTemporalWindow(listOf(frame()), 10_000L)
+            assertEquals(BehaviorV34Contract.MODEL_STATE, failed.modelState)
+            assertEquals(StudyBehavior.IDLE, failed.stableBehavior)
+            assertEquals(3, temporal.calls)
+
+            temporal.result = temporalPrediction(StudyBehavior.COMPUTER)
+            repeat(7) { index -> hybrid.analyzeTemporalWindow(listOf(frame()), 10_500L + index * 500L) }
+            assertEquals(3, temporal.calls)
+            val firstConfirmation = hybrid.analyzeTemporalWindow(listOf(frame()), 14_000L)
+            assertFalse(firstConfirmation.stableBehavior == StudyBehavior.COMPUTER)
+            assertEquals(4, temporal.calls)
+        } finally {
+            hybrid.close()
+        }
+    }
+
+    @Test
+    fun temporalUnavailableAfterSuccessDropsCachedEvidence() {
+        val single = FakeEngine(singlePrediction())
+        val temporal = FakeEngine(temporalPrediction(StudyBehavior.COMPUTER))
+        val hybrid = HybridBehaviorRecognitionEngine(single, temporal)
+        hybrid.initialize()
+        try {
+            repeat(14) { index -> hybrid.analyzeTemporalWindow(listOf(frame()), index * 500L) }
+            temporal.available = false
+            val degraded = hybrid.analyzeTemporalWindow(listOf(frame()), 7_000L)
+            assertEquals(BehaviorV34Contract.MODEL_STATE, degraded.modelState)
+            assertEquals(single.result.probabilities, degraded.probabilities)
+        } finally {
+            hybrid.close()
+        }
+    }
+
+    @Test
+    fun temporalExceptionKeepsSingleFramePrediction() {
+        val single = FakeEngine(singlePrediction())
+        val temporal = FakeEngine(temporalPrediction(StudyBehavior.COMPUTER))
+        val hybrid = HybridBehaviorRecognitionEngine(single, temporal)
+        hybrid.initialize()
+        try {
+            repeat(14) { index -> hybrid.analyzeTemporalWindow(listOf(frame()), index * 500L) }
+            temporal.fail = true
+            val degraded = hybrid.analyzeTemporalWindow(listOf(frame()), 10_000L)
+            assertEquals(BehaviorV34Contract.MODEL_STATE, degraded.modelState)
+            assertEquals(single.result.probabilities, degraded.probabilities)
+        } finally {
+            hybrid.close()
+        }
+    }
+
+    @Test
     fun resetDropsStaleFramesBeforeAResumedSession() {
         val single = FakeEngine(singlePrediction())
         val temporal = FakeEngine(temporalPrediction(StudyBehavior.PHONE_USE))
@@ -212,10 +271,11 @@ class HybridBehaviorRecognitionEngineTest {
 
     private class FakeEngine(
         var result: BehaviorPrediction,
-        private val available: Boolean = true,
+        var available: Boolean = true,
     ) : BehaviorRecognitionEngine {
         var calls = 0
         var lastFrameCount = 0
+        var fail = false
         override val isAvailable: Boolean get() = available
 
         override fun initialize() = Unit
@@ -226,6 +286,7 @@ class HybridBehaviorRecognitionEngineTest {
         ): BehaviorPrediction {
             calls++
             lastFrameCount = frames.size
+            if (fail) error("synthetic temporal failure")
             return result.copy(timestampMs = timestampMs)
         }
 

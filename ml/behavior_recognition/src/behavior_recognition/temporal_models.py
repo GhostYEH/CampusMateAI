@@ -34,6 +34,16 @@ class TemporalBehaviorModel(nn.Module):
         self.gru = nn.GRU(self.encoder.output_size, hidden_size, batch_first=True)
         self.classifier = nn.Linear(hidden_size, num_classes)
 
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if mode and not all(parameter.requires_grad for parameter in self.encoder.parameters()):
+            # Frozen BatchNorm statistics and dropout must stay fixed across epochs.
+            self.encoder.eval()
+            for block in self.encoder.features:
+                if any(parameter.requires_grad for parameter in block.parameters()):
+                    block.train()
+        return self
+
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         if inputs.ndim != 5:
             raise ValueError("Expected input shape [batch, time, channels, height, width]")

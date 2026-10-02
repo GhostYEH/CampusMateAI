@@ -19,7 +19,7 @@ from .metrics import (
     project_product_probabilities,
     softmax,
 )
-from .models import build_model
+from .models import build_experiment_model
 
 
 def collect_logits(model, dataset, device: torch.device, batch_size: int = 64):
@@ -128,7 +128,7 @@ def evaluate_checkpoint(
     config = checkpoint["config"]
     mode = input_mode or config.get("input_mode", "roi")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = build_model(len(CLASS_NAMES), pretrained=False)
+    model = build_experiment_model({**config, "pretrained": False}, len(CLASS_NAMES))
     model.load_state_dict(checkpoint["model_state"])
     model.to(device)
     cache_dir = manifest_dir.parent / "artifacts" / "roi-cache" if mode == "roi" else None

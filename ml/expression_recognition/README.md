@@ -61,6 +61,8 @@ if (-not $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT) { throw 'Set CAMPUSMATE_EXPRES
 
 ## 评估
 
+均衡类别/领域采样使用 `seed + epoch`，每轮重新抽样；恢复训练及 OOM 重建 loader 时沿用当前 epoch。评估 loss 按样本总数累计，避免最后一个短 batch 改变报告值。Android 保留大于 1 的类别阈值，用于禁用未达到验证精度门槛的类别。
+
 候选模型只在 validation 上比较。架构和阈值锁定后，test 仅用于最终评估及已锁定导出模型的数值回归：
 
 ```powershell

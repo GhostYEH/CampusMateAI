@@ -94,6 +94,24 @@ class ExpressionSignalProcessorTest {
     }
 
     @Test
+    fun disabledClassCannotStabilizeEvenAtFullConfidence() {
+        val processor = ExpressionSignalProcessor(
+            ExpressionSignalConfig(
+                emaAlpha = 1.0,
+                minimumStableFrames = 1,
+                minimumStableDurationMs = 0,
+                classThresholds = mapOf(ExpressionLabel.FEAR to 1.01),
+            ),
+            "test",
+        )
+        repeat(5) { index ->
+            val result = processor.process(probabilities(ExpressionLabel.FEAR, 1.0), 1000L + index)
+            assertEquals(ExpressionLabel.UNKNOWN, result.label)
+            assertFalse(result.isStable)
+        }
+    }
+
+    @Test
     fun missingClassThresholdsKeepLegacyGlobalThresholdBehavior() {
         val processor = ExpressionSignalProcessor(
             ExpressionSignalConfig(emaAlpha = 1.0, minimumConfidence = 0.7),

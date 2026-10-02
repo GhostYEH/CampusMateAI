@@ -169,19 +169,9 @@ class OnnxBehaviorRecognitionEngine(private val context: Context) : BehaviorReco
 
     private fun ensureModelFile(spec: BehaviorModelSpec): File {
         val directory = File(context.noBackupFilesDir, "behavior_models")
-        if (!directory.exists() && !directory.mkdirs()) error("Could not create $directory")
-        val modelFile = File(directory, spec.internalFilename)
-        if (modelFile.isFile && modelFile.length() > 0L) return modelFile
-        val temporary = File(directory, "${spec.internalFilename}.tmp")
-        context.assets.open(spec.assetPath).use { input ->
-            temporary.outputStream().use { output -> input.copyTo(output) }
+        return BehaviorModelAssetCache.ensureFile(directory, spec.internalFilename) {
+            context.assets.open(spec.assetPath)
         }
-        if (modelFile.exists()) modelFile.delete()
-        if (!temporary.renameTo(modelFile)) {
-            temporary.copyTo(modelFile, overwrite = true)
-            temporary.delete()
-        }
-        return modelFile
     }
 
     private fun unavailablePrediction(timestampMs: Long) =

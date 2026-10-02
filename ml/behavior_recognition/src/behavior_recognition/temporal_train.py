@@ -11,7 +11,6 @@ from pathlib import Path
 
 import torch
 import yaml
-from sklearn.metrics import f1_score
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -24,7 +23,7 @@ from .temporal_models import (
     freeze_encoder,
     unfreeze_encoder_tail,
 )
-from .train import _seed_worker, seed_everything
+from .train import _EpochStatistics, _optimizer_step, _seed_worker, seed_everything
 
 
 def _manifest_targets(path: Path) -> list[int]:
@@ -41,12 +40,15 @@ def _class_weights(targets: list[int]) -> torch.Tensor:
     )
 
 
-def _run_epoch(model, loader, criterion, device, optimizer=None, amp=False):
+def _run_epoch(
+    model, loader, criterion, device, optimizer=None, amp=False,
+    scaler=None, gradient_clip_norm=1.0,
+):
     training = optimizer is not None
     model.train(training)
-    losses = 0.0
-    targets: list[int] = []
-    predictions: list[int] = []
+    statistics = _EpochStatistics(device)
+    if training and scaler is None:
+        scaler = torch.amp.GradScaler("cuda", enabled=amp and device.type == "cuda")
     for inputs, labels in loader:
         inputs = inputs.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
@@ -58,28 +60,20 @@ def _run_epoch(model, loader, criterion, device, optimizer=None, amp=False):
             logits = model(inputs)
             loss = criterion(logits, labels)
         if training:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-        losses += float(loss.detach()) * labels.size(0)
-        targets.extend(labels.detach().cpu().tolist())
-        predictions.extend(logits.argmax(dim=1).detach().cpu().tolist())
-    macro_f1 = f1_score(
-        targets,
-        predictions,
-        labels=list(range(len(CLASS_NAMES))),
-        average="macro",
-        zero_division=0,
-    )
-    return losses / max(1, len(targets)), float(macro_f1)
+            _optimizer_step(model, loss, optimizer, scaler, gradient_clip_norm)
+        statistics.update(loss, logits, labels, criterion)
+    return statistics.result()
 
 
-def _run_onnx_epoch(model, encoder, loader, criterion, device, optimizer=None, amp=False):
+def _run_onnx_epoch(
+    model, encoder, loader, criterion, device, optimizer=None, amp=False,
+    scaler=None, gradient_clip_norm=1.0,
+):
     training = optimizer is not None
     model.train(training)
-    losses = 0.0
-    targets: list[int] = []
-    predictions: list[int] = []
+    statistics = _EpochStatistics(device)
+    if training and scaler is None:
+        scaler = torch.amp.GradScaler("cuda", enabled=amp and device.type == "cuda")
     for inputs, labels in loader:
         batch, time, channels, height, width = inputs.shape
         flattened = inputs.reshape(batch * time, channels, height, width).numpy()
@@ -94,20 +88,9 @@ def _run_onnx_epoch(model, encoder, loader, criterion, device, optimizer=None, a
             logits = model(features)
             loss = criterion(logits, labels)
         if training:
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-        losses += float(loss.detach()) * labels.size(0)
-        targets.extend(labels.detach().cpu().tolist())
-        predictions.extend(logits.argmax(dim=1).detach().cpu().tolist())
-    macro_f1 = f1_score(
-        targets,
-        predictions,
-        labels=list(range(len(CLASS_NAMES))),
-        average="macro",
-        zero_division=0,
-    )
-    return losses / max(1, len(targets)), float(macro_f1)
+            _optimizer_step(model, loss, optimizer, scaler, gradient_clip_norm)
+        statistics.update(loss, logits, labels, criterion)
+    return statistics.result()
 
 
 def _sha256(path: Path) -> str:
@@ -211,6 +194,8 @@ def train_temporal_model(
     best_path = run_dir / "best.pt"
     epoch = 0
     started = time.time()
+    amp = bool(config.get("amp", True)) and device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=amp)
     for phase, phase_epochs in phases:
         if phase_epochs < 1:
             continue
@@ -236,7 +221,9 @@ def train_temporal_model(
                 criterion,
                 device,
                 optimizer,
-                bool(config.get("amp", True)),
+                amp,
+                scaler=scaler,
+                gradient_clip_norm=float(config.get("gradient_clip_norm", 1.0)),
             )
             val_loss, val_f1 = epoch_runner(
                 *runner_prefix, val_loader, criterion, device

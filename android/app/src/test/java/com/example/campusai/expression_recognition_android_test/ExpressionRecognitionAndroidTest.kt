@@ -4,6 +4,7 @@ import com.example.campusai.ExpressionPerformanceStatsTest
 import com.example.campusai.ExpressionSignalProcessorTest
 import com.example.campusai.FaceQualityGateTest
 import com.example.campusai.ImageProxyBitmapConverterTest
+import com.example.campusai.data.expression.ExpressionClassThresholdsTest
 import org.junit.runner.RunWith
 import org.junit.runners.Suite
 
@@ -15,6 +16,7 @@ import org.junit.runners.Suite
 @Suite.SuiteClasses(
     ExpressionPerformanceStatsTest::class,
     ExpressionSignalProcessorTest::class,
+    ExpressionClassThresholdsTest::class,
     ImageProxyBitmapConverterTest::class,
     FaceQualityGateTest::class,
 )

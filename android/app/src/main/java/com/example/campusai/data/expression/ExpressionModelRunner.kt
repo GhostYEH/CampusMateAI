@@ -36,7 +36,12 @@ internal fun parseExpressionClassThresholds(root: JSONObject): Map<ExpressionLab
         if (!json.has(key)) {
             null
         } else {
-            label to json.getDouble(key).coerceIn(0.0, 1.0)
+            val threshold = json.getDouble(key)
+            require(threshold.isFinite() && threshold >= 0.0) {
+                "Expression class threshold must be finite and non-negative: $key"
+            }
+            // Calibration uses values above 1 to disable classes with insufficient precision.
+            label to threshold
         }
     }.toMap()
 }

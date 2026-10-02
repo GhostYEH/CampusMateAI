@@ -1,8 +1,36 @@
-from expression_recognition.data import DomainBalancedBatchSampler
+from expression_recognition.data import BalancedBatchSampler, DomainBalancedBatchSampler
 from expression_recognition.data import ManifestDataset, create_mixed_domain_loader
 from PIL import Image
 from torchvision import transforms
 import csv
+from collections import Counter
+import pytest
+
+
+@pytest.mark.parametrize("kind", ["class", "domain"])
+def test_balanced_sampler_changes_each_epoch_and_reproduces_resumed_epoch(kind) -> None:
+    targets = [label for label in range(7) for _ in range(30)]
+
+    def make_sampler():
+        if kind == "class":
+            return BalancedBatchSampler(targets, batch_size=14, seed=13)
+        return DomainBalancedBatchSampler(80, 20, 0.5, batch_size=10, seed=13)
+
+    sampler = make_sampler()
+    first = list(sampler)
+    sampler.set_epoch(1)
+    second = list(sampler)
+    assert first != second
+    sampler.set_epoch(7)
+    resumed = make_sampler()
+    resumed.set_epoch(7)
+    assert list(sampler) == list(resumed)
+    for batch in second:
+        if kind == "class":
+            assert Counter(targets[index] for index in batch) == {label: 2 for label in range(7)}
+        else:
+            assert all(0 <= index < 100 for index in batch)
+            assert sum(index >= 80 for index in batch) == 5
 
 
 def test_target_domain_batch_ratio_is_respected() -> None:

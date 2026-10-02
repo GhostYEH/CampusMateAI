@@ -393,6 +393,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         fused = this.fuse(result);
         hasTemporalEvidence = this.cachedTemporal !== undefined;
       } else {
+        // V3.2 has a different label space. Resuming V3.4 requires eight fresh frames.
+        this.resetTemporalState();
         const v32Result: BehaviorV34Result | undefined = await this.runV32(v32Model, frame);
         if (!this.runToken.isCurrent(run)) return undefined;
         if (v32Result === undefined) throw new Error('V3.2 output contract mismatch');

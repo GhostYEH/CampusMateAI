@@ -41,3 +41,30 @@ def test_gru_head_accepts_frozen_onnx_feature_sequences():
     output = head(torch.zeros(2, 3, 16))
 
     assert output.shape == (2, 4)
+
+
+def test_frozen_encoder_keeps_batchnorm_statistics_and_dropout_fixed():
+    model = TemporalBehaviorModel(hidden_size=8, pretrained=False)
+    freeze_encoder(model)
+    model.train()
+    batchnorm = next(module for module in model.encoder.modules() if isinstance(module, torch.nn.BatchNorm2d))
+    before = batchnorm.running_mean.clone()
+    frames = torch.ones(2, 3, 32, 32)
+    with torch.no_grad():
+        first = model.encoder(frames)
+        second = model.encoder(frames)
+    torch.testing.assert_close(batchnorm.running_mean, before, rtol=0, atol=0)
+    torch.testing.assert_close(first, second, rtol=0, atol=0)
+    assert model.gru.training and model.classifier.training
+
+
+def test_fine_tuning_only_updates_selected_encoder_blocks():
+    model = TemporalBehaviorModel(hidden_size=8, pretrained=False)
+    unfreeze_encoder_tail(model, blocks=2)
+    model.eval()
+    model.train()
+    assert not any(block.training for block in list(model.encoder.features)[:-2])
+    assert all(block.training for block in list(model.encoder.features)[-2:])
+    assert not model.encoder.projection.training
+    model.eval()
+    assert not any(module.training for module in model.encoder.modules())

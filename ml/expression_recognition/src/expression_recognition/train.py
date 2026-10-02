@@ -156,6 +156,9 @@ def run_epoch_with_oom_recovery(
     while True:
         try:
             loader = local["train_loader"]
+            set_epoch = getattr(loader.batch_sampler, "set_epoch", None)
+            if callable(set_epoch) and not is_validation:
+                set_epoch(int(local.get("epoch", 0)))
             metrics = run_epoch(
                 model, loader, criterion, device, optimizer, scaler,
                 gradient_clip_norm, max_batches,
@@ -307,7 +310,7 @@ def train(args: argparse.Namespace) -> Path:
         train_metrics = run_epoch_with_oom_recovery(
             model, build_loaders, criterion, device, optimizer, scaler,
             float(config["gradient_clip_norm"]), max_batches,
-            local={"batch_size": effective_batch_size, "train_loader": train_loader},
+            local={"batch_size": effective_batch_size, "train_loader": train_loader, "epoch": epoch},
         )
         effective_batch_size = train_metrics["batch_size"]
         train_loader = train_metrics["loader"]

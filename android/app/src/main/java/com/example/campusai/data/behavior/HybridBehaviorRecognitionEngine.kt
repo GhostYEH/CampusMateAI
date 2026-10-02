@@ -37,7 +37,14 @@ class HybridBehaviorRecognitionEngine(
             clearTemporalEvidence()
             return single
         }
-        if (single.probabilities.isEmpty()) return single
+        if (single.probabilities.isEmpty()) {
+            clearTemporalEvidence()
+            return single
+        }
+        if (!temporalEngine.isAvailable) {
+            clearTemporalEvidence()
+            return single
+        }
         retainLatestFrame(frames.lastOrNull())
 
         val singleTop = single.probabilities.maxByOrNull { it.value }?.key
@@ -52,11 +59,12 @@ class HybridBehaviorRecognitionEngine(
         val ranTemporal = shouldRun && temporalEngine.isAvailable
         if (ranTemporal) {
             lastTemporalAtMs = timestampMs
-            val temporal = temporalEngine.analyzeTemporalWindow(
-                sampleEightFrames(),
-                timestampMs,
-                personBoundingBox,
-            )
+            val temporal = try {
+                temporalEngine.analyzeTemporalWindow(sampleEightFrames(), timestampMs, personBoundingBox)
+            } catch (_: Exception) {
+                clearTemporalEvidence()
+                return single
+            }
             if (temporal.probabilities.isNotEmpty()) {
                 latestTemporalPrediction = temporal
                 val temporalTop = temporal.probabilities.maxByOrNull { it.value }?.key
@@ -65,6 +73,9 @@ class HybridBehaviorRecognitionEngine(
                 } else {
                     0
                 }
+            } else {
+                clearTemporalEvidence()
+                return single
             }
         }
         val temporal = latestTemporalPrediction ?: return single

@@ -158,6 +158,15 @@ exports/                   candidate ONNX, labels, parity, and model card
 
 Interrupted training can be restarted safely. Existing ROI cache files and downloaded torchvision weights are reused; the training run itself starts from a new optimizer state unless explicit resume support is added in a later approved design.
 
+CUDA float16 training uses a persistent gradient scaler, unscales before
+gradient clipping, and skips non-finite optimizer updates. Epoch loss is the
+global weighted cross-entropy mean (including label smoothing), so changing
+validation batch size does not change the reported loss. Frozen temporal
+encoder blocks keep BatchNorm statistics and dropout in evaluation mode;
+only explicitly unfrozen tail blocks return to training mode. Checkpoint
+evaluation restores the configured single-view or local-cue model without
+downloading pretrained weights.
+
 ## Interpretation and limits
 
 - Compare candidate four-class Macro-F1, Balanced Accuracy, per-class metrics, and PHONE_INTERACTION AUPRC.

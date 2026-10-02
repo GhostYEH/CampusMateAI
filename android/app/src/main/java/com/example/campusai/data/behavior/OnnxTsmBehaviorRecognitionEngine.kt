@@ -124,20 +124,11 @@ class OnnxTsmBehaviorRecognitionEngine(private val context: Context) : BehaviorR
 
     private fun ensureModelFile(): File {
         val directory = File(context.noBackupFilesDir, "behavior_models")
-        if (!directory.exists() && !directory.mkdirs()) error("Could not create $directory")
-        val modelFile = File(directory, INTERNAL_FILENAME)
-        if (modelFile.isFile && modelFile.length() == EXPECTED_FILE_SIZE) return modelFile
-        val temporary = File(directory, "$INTERNAL_FILENAME.tmp")
-        context.assets.open(ASSET_PATH).use { input ->
-            temporary.outputStream().use { output -> input.copyTo(output) }
+        val modelFile = BehaviorModelAssetCache.ensureFile(directory, INTERNAL_FILENAME) {
+            context.assets.open(ASSET_PATH)
         }
-        require(temporary.length() == EXPECTED_FILE_SIZE) {
-            "Unexpected TSM asset size ${temporary.length()}"
-        }
-        if (modelFile.exists()) modelFile.delete()
-        if (!temporary.renameTo(modelFile)) {
-            temporary.copyTo(modelFile, overwrite = true)
-            temporary.delete()
+        require(modelFile.length() == EXPECTED_FILE_SIZE) {
+            "Unexpected TSM asset size ${modelFile.length()}"
         }
         return modelFile
     }
