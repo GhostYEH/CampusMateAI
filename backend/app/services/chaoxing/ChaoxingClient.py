@@ -7,6 +7,7 @@ import re
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
+from ...core.logging import logger
 
 # 学习通所有时间字段均为北京时间(UTC+8)，解析出的时间统一按此归一，
 # 便于 learner_event_service 直接消费(它要求 occurred_at 带时区)。
@@ -970,14 +971,15 @@ class ChaoxingClient:
         返回 (是否成功, 状态信息/错误信息)
         """
         login_url = "https://passport2.chaoxing.com/api/login"
-        params = {
+        form = {
             "name": username,
             "pwd": password,
             "verify": "0",
             "schoolid": "",
         }
         try:
-            response = await self.client.get(login_url, params=params)
+            # 凭据仅放在 HTTPS 表单正文中，避免进入 URL 和访问日志。
+            response = await self.client.post(login_url, data=form, follow_redirects=False)
             response.raise_for_status()
             
             data = response.json()
@@ -1003,10 +1005,10 @@ class ChaoxingClient:
             return True, "success"
             
         except (httpx.RequestError, OSError) as e:
-            print(f"An error occurred while requesting {e.request.url!r}.")
+            logger.warning("chaoxing_login_request_failed exception_type={}", type(e).__name__)
             return False, "request_error"
         except httpx.HTTPStatusError as e: 
-            print(f"Error response {e.response.status_code} while requesting {e.request.url!r}.")
+            logger.warning("chaoxing_login_http_failed status={}", e.response.status_code)
             return False, f"http_error_{e.response.status_code}"
         except (ValueError, TypeError, AttributeError):
             return False, "structure_changed"
@@ -1057,10 +1059,10 @@ class ChaoxingClient:
                 return True, courses
             return False, "structure_changed"
         except (httpx.RequestError, OSError) as e:
-            print(f"Network error while fetching courses: {e}")
+            logger.warning("chaoxing_courses_request_failed exception_type={}", type(e).__name__)
             return False, "network_error"
         except httpx.HTTPStatusError as e:
-            print(f"HTTP error while fetching courses: {e.response.status_code}")
+            logger.warning("chaoxing_courses_http_failed status={}", e.response.status_code)
             return False, f"http_error_{e.response.status_code}"
 
     async def get_assignments_and_notices(self, course_url: str) -> dict:

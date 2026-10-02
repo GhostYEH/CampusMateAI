@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from ...core.config import Settings, get_settings
 from ...core.exceptions import (
+    AppException,
     InvalidCredentials,
     StudentNumberExists,
     Unauthorized,
@@ -31,6 +32,7 @@ from ...core.exceptions import (
     UsernameExists,
     ValidationFailed,
 )
+from ...core.logging import logger
 from ...core.security import (
     create_access_token,
     create_refresh_token,
@@ -182,8 +184,9 @@ def logout(
     if cookie_token:
         try:
             container.trusted_device_repository.revoke_by_token_hash(hash_token(cookie_token))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("trusted_device_logout_revoke_failed exception_type={}", type(exc).__name__)
+            raise AppException("可信设备授权撤销失败，请重试", http_status=503) from exc
         response.delete_cookie(
             key=cookie_name, 
             path="/api/v1/auth",
@@ -272,8 +275,9 @@ def admin_update_user(
     if fields.get("is_active") is False:
         try:
             container.trusted_device_repository.revoke_all_for_user(user_id)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("trusted_device_deactivation_revoke_failed exception_type={}", type(exc).__name__)
+            raise AppException("可信设备授权撤销失败，请重试", http_status=503) from exc
     return _enrich_user_public(updated, container)
 
 

@@ -55,6 +55,24 @@ def _test_settings(**overrides) -> Settings:
     return Settings(**kwargs)
 
 
+@pytest.mark.asyncio
+async def test_poll_persistence_runs_outside_event_loop_thread():
+    import threading
+
+    thread_ids = []
+
+    def record_thread(*args, **kwargs):
+        thread_ids.append(threading.get_ident())
+
+    store = SimpleNamespace(save=record_thread, release_reservation=record_thread)
+    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=object())
+    session = SimpleNamespace(is_terminal=False, job_id=None, user_id="user", course_id="course", session_id="session")
+    await service.poll(session)
+    assert session.status == "failed"
+    assert len(thread_ids) == 2
+    assert all(thread_id != threading.get_ident() for thread_id in thread_ids)
+
+
 def probe_not_found_response() -> httpx.Response:
     """契约指纹 P3 的真实期望：格式合法但不存在的 jobId → 404 INVALID_REQUEST。"""
     return httpx.Response(

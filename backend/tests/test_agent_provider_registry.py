@@ -139,6 +139,90 @@ async def test_router_dual_review():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("generator, reviewer", [("zhipu", "xunfei"), ("xunfei", "primary")])
+async def test_dual_review_receives_draft_and_returns_corrected_answer(generator, reviewer):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    from app.services.llm.base import LLMResponse
+
+    draft = LLMResponse('{"answer":"draft"}')
+    corrected = LLMResponse('{"answer":"corrected"}')
+    clients = {
+        generator: SimpleNamespace(name=generator, available=True, chat=AsyncMock(return_value=draft)),
+        reviewer: SimpleNamespace(name=reviewer, available=True, chat=AsyncMock(return_value=corrected)),
+    }
+    registry = Mock()
+    registry.get.side_effect = lambda name: SimpleNamespace(
+        available=True, client=clients[name],
+    ) if name in clients else None
+    original = [{"role": "user", "content": "Return JSON with an answer field"}]
+    result = await ModelRouter(registry).route(original, route_policy="dual_review")
+    assert result.status == "succeeded"
+    assert result.response is corrected
+    assert result.review_provider == reviewer
+    review_messages = clients[reviewer].chat.call_args.args[0]
+    assert review_messages[0] == original[0]
+    assert review_messages[1] == {"role": "assistant", "content": draft.content}
+    assert "JSON" in review_messages[2]["content"]
+    assert len(original) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty_review", [False, True])
+async def test_failed_review_retains_draft_with_explicit_fallback(empty_review):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    from app.services.llm.base import LLMResponse
+
+    draft = LLMResponse("draft")
+    generator = SimpleNamespace(available=True, name="generator", chat=AsyncMock(return_value=draft))
+    reviewer = SimpleNamespace(available=True, name="reviewer", chat=AsyncMock())
+    if empty_review:
+        reviewer.chat.return_value = LLMResponse(" ")
+    else:
+        reviewer.chat.side_effect = RuntimeError("review unavailable")
+    instances = {"zhipu": SimpleNamespace(available=True, client=generator),
+                 "xunfei": SimpleNamespace(available=True, client=reviewer)}
+    registry = Mock()
+    registry.get.side_effect = instances.get
+    result = await ModelRouter(registry).route([{"role": "user", "content": "hi"}], route_policy="dual_review")
+    assert result.response is draft
+    assert result.status == "fallback"
+    assert result.review_provider is None
+    assert result.fallback_reason == "review_xunfei_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_dual_review_records_usage_for_each_actual_provider():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+    from app.services.llm.base import LLMResponse
+
+    instances = {
+        name: SimpleNamespace(available=True, client=SimpleNamespace(
+            available=True, name=name + "-model", chat=AsyncMock(return_value=LLMResponse(
+                content, raw={"usage": {"prompt_tokens": prompt, "completion_tokens": completion}},
+            )),
+        ))
+        for name, content, prompt, completion in (
+            ("zhipu", "private draft", 10, 20), ("xunfei", "private correction", 30, 40),
+        )
+    }
+    registry = Mock()
+    registry.get.side_effect = instances.get
+    repository = Mock()
+    result = await ModelRouter(registry, repository).route(
+        [{"role": "user", "content": "private request"}], route_policy="dual_review", run_id="test-run",
+    )
+    assert result.response.content == "private correction"
+    rows = [call.kwargs for call in repository.record_model_call.call_args_list]
+    assert [(row["provider"], row["model"], row["total_tokens"]) for row in rows] == [
+        ("zhipu", "zhipu-model", 30), ("xunfei", "xunfei-model", 70),
+    ]
+    assert "private" not in repr(rows)
+
+
+@pytest.mark.asyncio
 async def test_router_persists_sanitized_model_trace_for_run():
     db = reset_db_for_tests()
     with db.transaction() as conn:

@@ -106,6 +106,62 @@ def test_forecast_abstains_when_data_insufficient():
     assert routine.probability is None
 
 
+@pytest.mark.parametrize("repository_name, method_name, source", [
+    ("personal_task_repository", "list_tasks", "tasks"),
+    ("study_session_repository", "list_sessions", "sessions"),
+    ("student_goal_repository", "list_goals", "goals"),
+    ("edu_data_repository", "list_schedule_items", "academic"),
+    ("edu_data_repository", "list_exam_items", "academic"),
+    ("edu_data_repository", "list_grade_items", "academic"),
+    ("learner_event_repository", "list_for_user", "events"),
+])
+def test_failed_input_reads_lower_quality_and_invalidate_verified_cache(
+    repository_name, method_name, source, monkeypatch,
+):
+    from dataclasses import replace
+
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    _seed_tasks(container, user_id=user_id)
+    service = container.forecast_service
+    healthy = service.collect_inputs(user_id=user_id, as_of=AS_OF)
+    verified = service.get_forecast(user_id=user_id, as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD")
+    assert verified.data_quality == "verified"
+
+    def broken_read(*args, **kwargs):
+        raise RuntimeError("private database details")
+
+    monkeypatch.setattr(getattr(service, "_" + repository_name), method_name, broken_read)
+    incomplete = service.collect_inputs(user_id=user_id, as_of=AS_OF)
+    assert incomplete.read_failures == (source,)
+    # 即便其余数据与健康快照一致，也不能复用 verified 缓存。
+    same_data_with_failure = replace(healthy, read_failures=incomplete.read_failures)
+    request = dict(user_id=user_id, inputs=same_data_with_failure,
+                   forecast_type="UPCOMING_WORKLOAD", horizon_start=AS_OF,
+                   horizon_end=AS_OF + timedelta(days=7), as_of=AS_OF)
+    forecast = service.compute_forecast_with_inputs(**request)
+    assert forecast.data_quality == "partial"
+    assert forecast.confidence < verified.confidence
+    assert forecast.value.warning_codes == ["input_read_failed"]
+    from app.services.forecast_service import ForecastRequest
+    forecast_request = ForecastRequest("UPCOMING_WORKLOAD", "USER", user_id, AS_OF, AS_OF + timedelta(days=7))
+    assert service._cache_key(user_id=user_id, request=forecast_request, inputs=healthy) != service._cache_key(
+        user_id=user_id, request=forecast_request, inputs=same_data_with_failure,
+    )
+
+
+def test_failed_reads_without_other_data_remain_unavailable():
+    from unittest.mock import Mock
+
+    repository = Mock()
+    repository.list_tasks.side_effect = RuntimeError("read failed")
+    service = ForecastService(personal_task_repository=repository)
+    forecast = service.get_forecast(user_id="test-user", as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD")
+    assert forecast.data_quality == "unavailable"
+    assert forecast.probability is None
+    assert forecast.confidence == 0
+
+
 def test_forecast_probability_clamped_to_unit_interval():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id

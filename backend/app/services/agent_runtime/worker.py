@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 from ...core.exceptions import AgentRuntimeError
+from ...core.logging import logger
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from .event_store import AgentEventStore
 from .handlers.base import HandlerContext, RecoveryAction
@@ -140,8 +141,8 @@ class AgentWorker:
                 await self.run_once()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # noqa: BLE001 - Worker 循环不能因单次异常退出
-                pass
+            except Exception as exc:  # noqa: BLE001 - Worker 循环不能因单次异常退出
+                logger.error("agent_worker_poll_failed exception_type={}", type(exc).__name__)
             if self._stopping:
                 break
             if self._poll_interval:

@@ -105,6 +105,28 @@ def _worker(repo, handler, clock, *, mode="worker"):
 
 
 @pytest.mark.asyncio
+async def test_poll_failure_is_logged_and_next_iteration_can_recover(runtime, monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+
+    worker = _worker(runtime, _Handler(), _Clock())
+    warning = Mock()
+    monkeypatch.setattr("app.services.agent_runtime.worker.logger.error", warning)
+    attempts = 0
+
+    async def run_once():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise TypeError("private input must not appear in logs")
+        worker._stopping = True
+
+    worker.run_once = AsyncMock(side_effect=run_once)
+    await worker._loop()
+    assert attempts == 2
+    warning.assert_called_once_with("agent_worker_poll_failed exception_type={}", "TypeError")
+
+
+@pytest.mark.asyncio
 async def test_worker_claims_and_completes_with_durable_events(runtime):
     run_id = _queued(runtime)
     handler = _Handler()

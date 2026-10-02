@@ -6,11 +6,14 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlparse
+import httpx
+
+from ...core.config import get_settings
+from .adapters.ssrf_guard import SSRFBlockedError, assert_safe_url
 
 from .discovery_constants import (
     PROVIDER_UNKNOWN,
@@ -100,7 +103,7 @@ async def submit_url(
 ) -> dict:
     """用户提交 URL → 检测 → 保存为 USER_SUBMITTED 候选。
 
-    不自动升级为 VERIFIED，仅标 CANDIDATE。
+    可达且匹配的页面标 VERIFIED_LIVE，正式入库仍由审核流程决定。
     """
     detector = ProviderDetector()
     uni_index = _build_university_index()
@@ -141,41 +144,34 @@ async def submit_url(
         return result
 
     try:
-        import httpx
-        from ...core.config import get_settings
-        from .adapters.ssrf_guard import assert_safe_url
         _settings = get_settings()
         allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
-        assert_safe_url(candidate_url)
-        async with httpx.AsyncClient(
-            timeout=15,
-            follow_redirects=False,
-            verify=True,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
-        ) as client:
-            try:
-                resp = await client.head(candidate_url)
-                if resp.status_code >= 400:
-                    resp = await client.get(candidate_url)
-            except Exception:
-                if not allow_insecure:
-                    raise
-                async with httpx.AsyncClient(
-                    timeout=15,
-                    follow_redirects=False,
-                    verify=False,
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
-                ) as client2:
-                    try:
-                        resp = await client2.head(candidate_url)
-                        if resp.status_code >= 400:
-                            resp = await client2.get(candidate_url)
-                    except Exception:
-                        resp = await client2.get(candidate_url)
+        async def fetch_page(*, verify: bool):
+            async with httpx.AsyncClient(
+                timeout=15,
+                follow_redirects=False,
+                verify=verify,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
+            ) as client:
+                url = candidate_url
+                for _ in range(6):
+                    # 每个跳转都先校验，不能让上游把探测引向内网。
+                    assert_safe_url(url)
+                    response = await client.get(url)
+                    if response.status_code not in (301, 302, 303, 307, 308):
+                        return response
+                    location = response.headers.get("location")
+                    if not location:
+                        return response
+                    url = urljoin(str(response.url), location)
+                raise httpx.TooManyRedirects("edu discovery redirect limit exceeded")
 
-        location = resp.headers.get("location")
-        if location:
-            assert_safe_url(urljoin(candidate_url, location))
+        try:
+            resp = await fetch_page(verify=True)
+        except httpx.TransportError:
+            if not allow_insecure:
+                raise
+            resp = await fetch_page(verify=False)
         result["reachable"] = True
         result["http_status"] = resp.status_code
         result["final_url"] = str(resp.url)
@@ -184,24 +180,22 @@ async def submit_url(
         headers = dict(resp.headers)
 
         fp = detector.detect(
-            url=candidate_url,
+            url=str(resp.url),
             html=content,
             headers=headers,
-            final_url=str(resp.url),
         )
-        result["provider"] = fp.provider
+        result["provider"] = normalize_provider(fp.provider)
         result["provider_confidence"] = fp.confidence
-        result["evidence"] = fp.evidence
-        result["is_edu_page"] = fp.is_edu_page
+        result["evidence"] = fp.to_dict()["evidence"]
+        result["is_edu_page"] = detector.is_edu_system_page(content, fp.title)
+        result["title"] = fp.title[:200] if fp.title else None
 
-        title_match = re.search(r"<title[^>]*>(.*?)</title>", content, re.IGNORECASE | re.DOTALL)
-        if title_match:
-            result["title"] = title_match.group(1).strip()[:200]
-
-        if fp.confidence >= 0.5 and fp.is_edu_page:
+        if resp.status_code >= 400:
+            result["verification_status"] = STATUS_DEAD
+        elif 200 <= resp.status_code < 300 and fp.confidence >= 0.5 and result["is_edu_page"]:
             if official_domain:
                 od = official_domain.lower().lstrip(".")
-                host = (urlparse(candidate_url).hostname or "").lower()
+                host = (urlparse(str(resp.url)).hostname or "").lower()
                 if od and (host == od or host.endswith("." + od)):
                     result["verification_status"] = STATUS_VERIFIED_OFFICIAL
                 else:
@@ -211,7 +205,7 @@ async def submit_url(
         else:
             result["verification_status"] = STATUS_CANDIDATE
 
-    except Exception as e:
+    except (httpx.HTTPError, SSRFBlockedError) as e:
         result["error"] = str(e)
         result["verification_status"] = STATUS_DEAD
 

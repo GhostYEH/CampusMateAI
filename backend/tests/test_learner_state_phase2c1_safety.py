@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import pytest
 
 from app.core.config import Settings
 from app.services.container import reset_container_for_tests
@@ -70,3 +71,35 @@ def test_input_limit_exactly_at_boundary_is_not_marked_truncated():
         user_id=user_id, limit=max(1, task_count)
     )
     assert inputs["input_metadata"]["truncated"] is False
+
+
+@pytest.mark.parametrize("projection, repository, method", [
+    ("world", "_student_goal_repository", "list_goals"),
+    ("world", "_edu_data_repository", "list_exam_items"),
+    ("world", "_learner_event_repository", "list_for_user"),
+    ("academic", "_edu_data_repository", "list_exam_items"),
+    ("academic", "_learner_event_repository", "list_for_user"),
+])
+def test_projection_read_failures_are_visible_and_never_verified(
+    projection, repository, method, monkeypatch,
+):
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    container.personal_task_repository.create_task(user_id=user_id, title="Observed task")
+    service = container.learner_state_service
+    calls = []
+    monkeypatch.setattr("app.services.learner_state_service.logger.warning", lambda *args: calls.append(args))
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("private data must never appear in logs")
+
+    monkeypatch.setattr(getattr(service, repository), method, fail)
+    result = getattr(service, "project_" + projection)(user_id, as_of=AS_OF, persist=False)
+    assert "input_read_failed" in result.warnings
+    assert "projection_failed" not in result.warnings
+    assert result.snapshots
+    assert all(snapshot.data_quality != "verified" for snapshot in result.snapshots)
+    assert all("input_read_failed" in snapshot.value["warning_codes"] for snapshot in result.snapshots)
+    assert all(snapshot.value["data_completeness"] == snapshot.data_quality for snapshot in result.snapshots)
+    assert "private data" not in repr(calls)
+    assert "RuntimeError" in repr(calls)

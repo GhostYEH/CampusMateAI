@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from ...core.exceptions import AppException, DocumentNotFound, FileNameUnsafe
 from ...core.logging import logger
@@ -182,7 +183,8 @@ async def upload_document(
                 )
             tmp.write(buf)
         tmp.close()
-        row, created = container.knowledge_ingestion.import_file(
+        row, created = await run_in_threadpool(
+            container.knowledge_ingestion.import_file,
             Path(tmp.name),
             original_filename=original_filename,
             source_department=source_department,
@@ -206,7 +208,7 @@ async def upload_document(
         # 若上传时未提供 title，使用文件推断的
         final_title = title or row.title
         # 重建索引
-        container.retrieval.rebuild()
+        await run_in_threadpool(container.retrieval.rebuild)
         return DocumentSummary(
             document_id=row.document_id,
             title=final_title,
@@ -237,17 +239,17 @@ async def upload_document(
 @router.delete("/knowledge/documents/{document_id}", response_model=DeleteResponse)
 async def delete_document(document_id: str, _: UserRow = Depends(require_role("admin"))) -> DeleteResponse:
     container = get_container()
-    deleted = container.knowledge_ingestion.delete_document(document_id)
+    deleted = await run_in_threadpool(container.knowledge_ingestion.delete_document, document_id)
     if not deleted:
         raise DocumentNotFound(f"文档 {document_id} 不存在")
-    container.retrieval.rebuild()
+    await run_in_threadpool(container.retrieval.rebuild)
     return DeleteResponse(success=True, document_id=document_id)
 
 
 @router.post("/knowledge/rebuild", response_model=RebuildResponse)
 async def rebuild_index(_: UserRow = Depends(require_role("admin"))) -> RebuildResponse:
     container = get_container()
-    n = container.knowledge_ingestion.rebuild_index()
+    n = await run_in_threadpool(container.knowledge_ingestion.rebuild_index)
     return RebuildResponse(
         success=True,
         document_count=container.document_repository.count_documents(),
@@ -271,8 +273,8 @@ async def data_management(action: str, _: UserRow = Depends(require_role("admin"
     container = get_container()
     action = action.strip().lower()
     if action == "delete_user_documents":
-        n = container.knowledge_ingestion.delete_all_user_documents()
-        container.retrieval.rebuild()
+        n = await run_in_threadpool(container.knowledge_ingestion.delete_all_user_documents)
+        await run_in_threadpool(container.retrieval.rebuild)
         return DataManagementResponse(
             success=True,
             action=action,
@@ -284,8 +286,8 @@ async def data_management(action: str, _: UserRow = Depends(require_role("admin"
             ),
         )
     if action == "delete_all_documents":
-        n = container.knowledge_ingestion.delete_all_documents()
-        container.retrieval.rebuild()
+        n = await run_in_threadpool(container.knowledge_ingestion.delete_all_documents)
+        await run_in_threadpool(container.retrieval.rebuild)
         return DataManagementResponse(
             success=True,
             action=action,

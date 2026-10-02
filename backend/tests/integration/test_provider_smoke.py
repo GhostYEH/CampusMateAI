@@ -332,7 +332,7 @@ async def test_dual_review_fallback_when_review_unavailable():
     )
     router = ModelRouter(reg)
     result = await router.route(_MINIMAL_MESSAGES, route_policy="dual_review")
-    assert result.status == "succeeded"
+    assert result.status == "fallback"
     assert result.provider_name == "zhipu"
     assert result.fallback_reason is not None
     assert "unavailable" in result.fallback_reason

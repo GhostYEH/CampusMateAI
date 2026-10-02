@@ -96,6 +96,14 @@ class ForecastInputs:
     simulated_focus_minutes: int = 0
     simulated_load_reduction: int = 0
     simulated_deferred_task_count: int = 0
+    read_failures: tuple[str, ...] = ()
+
+    @property
+    def warning_codes(self) -> list[str]:
+        codes = ["input_truncated"] if self.truncated else []
+        if self.read_failures:
+            codes.append("input_read_failed")
+        return codes
 
 
 @dataclass(frozen=True)
@@ -267,6 +275,14 @@ class ForecastService:
         grade_items: list[dict[str, Any]] = []
         events: list[dict[str, Any]] = []
         truncated = False
+        read_failures: list[str] = []
+
+        def read_failed(source: str, exc: Exception) -> None:
+            read_failures.append(source)
+            logger.warning(
+                "forecast_input_read_failed source={} exception_type={}",
+                source, type(exc).__name__,
+            )
 
         if self._personal_task_repository is not None:
             try:
@@ -276,8 +292,8 @@ class ForecastService:
                 tasks = [self._task_to_dict(r) for r in rows]
                 if total > 200:
                     truncated = True
-            except Exception:
-                pass
+            except Exception as exc:
+                read_failed("tasks", exc)
         if self._study_session_repository is not None:
             try:
                 rows, total = self._study_session_repository.list_sessions(
@@ -286,8 +302,8 @@ class ForecastService:
                 sessions = [self._session_to_dict(r) for r in rows]
                 if total > 200:
                     truncated = True
-            except Exception:
-                pass
+            except Exception as exc:
+                read_failed("sessions", exc)
         if self._student_goal_repository is not None:
             try:
                 rows, total = self._student_goal_repository.list_goals(
@@ -296,8 +312,8 @@ class ForecastService:
                 goals = [self._goal_to_dict(r) for r in rows]
                 if total > 200:
                     truncated = True
-            except Exception:
-                pass
+            except Exception as exc:
+                read_failed("goals", exc)
         if self._edu_data_repository is not None:
             try:
                 schedule_items = [
@@ -320,13 +336,18 @@ class ForecastService:
                         user_id=user_id, include_stale=False
                     )
                 ]
-            except Exception:
-                pass
+            except Exception as exc:
+                read_failed("academic", exc)
         if self._learner_event_repository is not None:
             try:
                 rows, total = self._learner_event_repository.list_for_user(
-                    user_id=user_id, page=1, page_size=200
+                    user_id=user_id, page=1, page_size=100
                 )
+                if total > 100:
+                    second_page, _ = self._learner_event_repository.list_for_user(
+                        user_id=user_id, page=2, page_size=100
+                    )
+                    rows = [*rows, *second_page]
                 events = [
                     {"event_id": e.event_id, "event_type": e.event_type,
                      "occurred_at": e.occurred_at, "source": e.source}
@@ -334,12 +355,13 @@ class ForecastService:
                 ]
                 if total > 200:
                     truncated = True
-            except Exception:
-                pass
+            except Exception as exc:
+                read_failed("events", exc)
         return ForecastInputs(
             tasks=tasks, sessions=sessions, goals=goals,
             schedule_items=schedule_items, exam_items=exam_items,
             grade_items=grade_items, events=events, truncated=truncated,
+            read_failures=tuple(read_failures),
         )
 
     @staticmethod
@@ -390,6 +412,7 @@ class ForecastService:
             "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
             "grade_items": inputs.grade_items, "events": inputs.events,
             "truncated": inputs.truncated,
+            "read_failures": inputs.read_failures,
             "simulated_focus_minutes": inputs.simulated_focus_minutes,
             "simulated_load_reduction": inputs.simulated_load_reduction,
             "simulated_deferred_task_count": inputs.simulated_deferred_task_count,
@@ -433,7 +456,7 @@ class ForecastService:
         has_data = bool(inputs.tasks)
         if not has_data:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_tasks")
-        quality = "partial" if inputs.truncated else "verified"
+        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
         pending_count = len(pending)
         if pending_count == 0 and overdue == 0:
             probability = 0.1
@@ -465,7 +488,7 @@ class ForecastService:
             tasks_within_horizon=pending_count,
             risk_band=risk_band,
             data_completeness=quality,
-            warning_codes=["input_truncated"] if inputs.truncated else [],
+            warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
             user_id=user_id, request=request, as_of=as_of,
@@ -493,7 +516,7 @@ class ForecastService:
         has_data = bool(inputs.tasks or inputs.exam_items)
         if not has_data:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_tasks")
-        quality = "partial" if inputs.truncated else "verified"
+        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
         estimated_minutes = max(
             0,
             len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
@@ -528,7 +551,7 @@ class ForecastService:
             pressure_band=pressure_band,
             concentrated_dates=concentrated,
             data_completeness=quality,
-            warning_codes=["input_truncated"] if inputs.truncated else [],
+            warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
             user_id=user_id, request=request, as_of=as_of,
@@ -570,7 +593,7 @@ class ForecastService:
         has_data = bool(inputs.schedule_items or inputs.exam_items or inputs.tasks)
         if not has_data:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_schedule")
-        quality = "partial" if inputs.truncated else "verified"
+        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
         probability = _clamp_probability(min(1.0, conflict_count * 0.2))
         if probability <= 0.25:
             risk_band = "LOW"
@@ -595,7 +618,7 @@ class ForecastService:
             available_window_count=available_windows,
             risk_band=risk_band,
             data_completeness=quality,
-            warning_codes=["input_truncated"] if inputs.truncated else [],
+            warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
             user_id=user_id, request=request, as_of=as_of,
@@ -611,7 +634,7 @@ class ForecastService:
             goals = [g for g in goals if g.get("goal_id") == request.goal_id]
         if not goals:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_goals")
-        quality = "partial" if inputs.truncated else "verified"
+        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
         active_goals = [g for g in goals if g.get("status") == "active"]
         recent_threshold = as_of - timedelta(days=14)
         recent_progress = 0
@@ -645,7 +668,7 @@ class ForecastService:
             goals_with_recent_progress=recent_progress,
             outlook_band=outlook_band,
             data_completeness=quality,
-            warning_codes=["input_truncated"] if inputs.truncated else [],
+            warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
             user_id=user_id, request=request, as_of=as_of,
@@ -665,7 +688,7 @@ class ForecastService:
                 completed.append(row)
         if not completed:
             return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_sessions")
-        quality = "partial" if inputs.truncated else "verified"
+        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
         completed_sorted = sorted(completed, key=lambda r: _parse(r.get("ended_at")) or as_of)
         intervals: list[float] = []
         for i in range(1, len(completed_sorted)):
@@ -691,7 +714,7 @@ class ForecastService:
             median_interval_hours=round(median_interval, 2),
             continuity_band=continuity_band,
             data_completeness=quality,
-            warning_codes=["input_truncated"] if inputs.truncated else [],
+            warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
             user_id=user_id, request=request, as_of=as_of,

@@ -192,7 +192,7 @@ class SimulationService:
         if not has_baseline_data:
             data_quality: SimulationDataQuality = "unavailable"
             limitations = list(_BASELINE_LIMITATIONS) + ["missing_baseline_data"]
-        elif baseline_inputs.truncated:
+        elif baseline_inputs.truncated or baseline_inputs.read_failures:
             data_quality = "partial"
             limitations = list(_BASELINE_LIMITATIONS)
         else:
@@ -244,6 +244,7 @@ class SimulationService:
 
     def _baseline_digest(self, *, user_id: str, inputs: ForecastInputs, baseline_run) -> str:
         payload = {
+            "read_failures": inputs.read_failures,
             "tasks": inputs.tasks, "sessions": inputs.sessions, "goals": inputs.goals,
             "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
             "grade_items": inputs.grade_items, "events": inputs.events,
@@ -377,6 +378,7 @@ class SimulationService:
             tasks=tasks, sessions=sessions, goals=goals,
             schedule_items=schedule_items, exam_items=exam_items,
             grade_items=grade_items, events=events, truncated=inputs.truncated,
+            read_failures=inputs.read_failures,
             simulated_focus_minutes=simulated_focus_minutes,
             simulated_load_reduction=simulated_load_reduction,
             simulated_deferred_task_count=simulated_deferred_task_count,

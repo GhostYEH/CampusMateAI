@@ -28,8 +28,64 @@ def db():
 
 @pytest.fixture
 def mock_httpx_client():
-    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+    with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
+            patch("httpx.AsyncClient.post", new=mock_get):
         yield mock_get
+
+
+@pytest.mark.asyncio
+async def test_login_credentials_are_only_in_https_post_body():
+    from urllib.parse import parse_qs
+
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.host == "passport2.chaoxing.com":
+            return httpx.Response(200, json={"result": True}, headers={"set-cookie": "session=test; Secure"})
+        return httpx.Response(200, text="<title>课程列表</title>")
+
+    client = ChaoxingClient()
+    await client.client.aclose()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport_client:
+        client.client = transport_client
+        assert await client.login("synthetic-user", "synthetic-secret") == (True, "success")
+        assert client.client.cookies["session"] == "test"
+    login, verification = requests
+    assert login.method == "POST"
+    assert login.url.scheme == "https"
+    assert not login.url.query
+    assert parse_qs(login.content.decode())["pwd"] == ["synthetic-secret"]
+    assert verification.method == "GET"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["request", "os", "http", "redirect"])
+async def test_login_errors_do_not_log_credentials_or_raise_for_os_errors(failure, capsys):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if failure == "request":
+            raise httpx.ConnectError("synthetic-secret", request=request)
+        if failure == "os":
+            raise OSError("synthetic-secret")
+        if failure == "redirect":
+            return httpx.Response(307, headers={"location": "https://other.example.com/login"})
+        return httpx.Response(503)
+
+    client = ChaoxingClient()
+    await client.client.aclose()
+    with patch("app.services.chaoxing.ChaoxingClient.logger.warning") as warning:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as transport_client:
+            client.client = transport_client
+            success, message = await client.login("synthetic-user", "synthetic-secret")
+        assert not success
+        assert message in ("request_error", "http_error_503", "http_error_307")
+        assert "synthetic-secret" not in str(warning.call_args_list)
+        assert "synthetic-user" not in str(warning.call_args_list)
+    assert len(requests) == 1
+    assert "synthetic-secret" not in capsys.readouterr().out
 
 @pytest.mark.asyncio
 async def test_chaoxing_login_failure_wrong_password(mock_httpx_client):

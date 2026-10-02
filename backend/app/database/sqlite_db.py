@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -1935,6 +1936,18 @@ class Database:
         conn.close()
 
     @staticmethod
+    def _execute_schema_script(conn: sqlite3.Connection, script: str) -> None:
+        """执行完整 SQL 语句，避免 executescript 隐式提交启动事务。"""
+        statement = ""
+        for fragment in script.split(";"):
+            statement += fragment + ";"
+            if sqlite3.complete_statement(statement):
+                conn.execute(statement)
+                statement = ""
+        if statement.strip():
+            conn.execute(statement)
+
+    @staticmethod
     def _prepare_legacy_learning_plan_runs(conn: sqlite3.Connection) -> None:
         """补齐建索引前必须存在的旧学习计划列。"""
         columns = {
@@ -1983,7 +1996,7 @@ class Database:
         conn.execute(f"CREATE TABLE {stash} AS SELECT * FROM adaptive_interventions")
         conn.execute("DROP TABLE adaptive_interventions")
         # 新表由紧随其后的 ADAPTIVE_INTERVENTION_SCHEMA_SQL 建立（含新列与新索引）。
-        conn.executescript(ADAPTIVE_INTERVENTION_SCHEMA_SQL)
+        self._execute_schema_script(conn, ADAPTIVE_INTERVENTION_SCHEMA_SQL)
         self._restore_adaptive_interventions(conn, stash)
 
     @staticmethod
@@ -2016,7 +2029,7 @@ class Database:
             raise sqlite3.IntegrityError(
                 "adaptive intervention recovery row count mismatch"
             )
-        foreign_key_errors = conn.execute("PRAGMA foreign_key_check").fetchall()
+        foreign_key_errors = conn.execute("PRAGMA foreign_key_check(adaptive_interventions)").fetchall()
         if foreign_key_errors:
             raise sqlite3.IntegrityError("adaptive intervention recovery foreign-key validation failed")
         conn.execute(f"DROP TABLE {stash}")
@@ -2024,40 +2037,65 @@ class Database:
     def _init_schema(self) -> None:
         with self._lock:
             conn = self._connect()
+            legacy_alter_table = conn.execute("PRAGMA legacy_alter_table").fetchone()[0]
             try:
-                conn.executescript(SCHEMA_SQL)
-                conn.executescript(MULTI_ROLE_SCHEMA_SQL)
-                conn.executescript(UNIVERSITY_SCHEMA_SQL)
-                conn.executescript(COMMUNITY_SCHEMA_SQL)
-                conn.executescript(ACADEMIC_SCHEMA_SQL)
-                conn.executescript(EDU_CONNECTOR_SCHEMA_SQL)
-                conn.executescript(EDU_DATA_SCHEMA_SQL)
-                conn.executescript(PERSONAL_TASK_SCHEMA_SQL)
-                conn.executescript(STUDY_SCHEMA_SQL)
-                conn.executescript(PERSONAL_HUB_SCHEMA_SQL)
-                conn.executescript(HOME_BANNER_SCHEMA_SQL)
-                conn.executescript(CHAOXING_CREDENTIALS_SCHEMA_SQL)
-                conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
-                conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
-                conn.executescript(NOTICES_SCHEMA_SQL)
-                conn.executescript(QR_AUTH_SCHEMA_SQL)
-                conn.executescript(EDU_SESSION_SCHEMA_SQL)
-                conn.executescript(LEARNER_EVENT_SCHEMA_SQL)
-                conn.executescript(LEARNER_STATE_SCHEMA_SQL)
-                self._prepare_legacy_learning_plan_runs(conn)
-                conn.executescript(LEARNING_PLAN_SCHEMA_SQL)
-                conn.executescript(ADAPTIVE_INTERVENTION_SCHEMA_SQL)
-                # 必须在建子表之前完成：重建会替换 adaptive_interventions，
-                # 若此时已有外键指向它，重建后会留下悬空引用。
-                self._migrate_adaptive_intervention_statuses(conn)
-                conn.executescript(INTERVENTION_EVALUATION_SCHEMA_SQL)
-                conn.executescript(MODEL_SHADOW_SCHEMA_SQL)
-                conn.executescript(LEARNER_CONTROL_SCHEMA_SQL)
-                conn.executescript(AGENT_RUNTIME_SCHEMA_SQL)
-                conn.executescript(STUDENT_GOAL_SCHEMA_SQL)
+                # 重建父表时禁止级联删除或把子表外键重写到 legacy 表。
+                # 完整 schema 与迁移共用一个事务，提交前重新验证所有外键。
+                conn.execute("PRAGMA foreign_keys=OFF")
+                conn.execute("PRAGMA legacy_alter_table=ON")
+                conn.execute("BEGIN IMMEDIATE")
+                schema_scripts = (
+                    SCHEMA_SQL,
+                    MULTI_ROLE_SCHEMA_SQL,
+                    UNIVERSITY_SCHEMA_SQL,
+                    COMMUNITY_SCHEMA_SQL,
+                    ACADEMIC_SCHEMA_SQL,
+                    EDU_CONNECTOR_SCHEMA_SQL,
+                    EDU_DATA_SCHEMA_SQL,
+                    PERSONAL_TASK_SCHEMA_SQL,
+                    STUDY_SCHEMA_SQL,
+                    PERSONAL_HUB_SCHEMA_SQL,
+                    HOME_BANNER_SCHEMA_SQL,
+                    CHAOXING_CREDENTIALS_SCHEMA_SQL,
+                    CHAOXING_ASSESSMENT_SCHEMA_SQL,
+                    CHAOXING_KNOWLEDGE_SCHEMA_SQL,
+                    NOTICES_SCHEMA_SQL,
+                    QR_AUTH_SCHEMA_SQL,
+                    EDU_SESSION_SCHEMA_SQL,
+                    LEARNER_EVENT_SCHEMA_SQL,
+                    LEARNER_STATE_SCHEMA_SQL,
+                    LEARNING_PLAN_SCHEMA_SQL,
+                    ADAPTIVE_INTERVENTION_SCHEMA_SQL,
+                    INTERVENTION_EVALUATION_SCHEMA_SQL,
+                    MODEL_SHADOW_SCHEMA_SQL,
+                    LEARNER_CONTROL_SCHEMA_SQL,
+                    AGENT_RUNTIME_SCHEMA_SQL,
+                    STUDENT_GOAL_SCHEMA_SQL,
+                )
+                for script in schema_scripts:
+                    if script == EDU_CONNECTOR_SCHEMA_SQL:
+                        self._migrate_edu_bindings(conn)
+                    elif script == LEARNING_PLAN_SCHEMA_SQL:
+                        self._prepare_legacy_learning_plan_runs(conn)
+                    elif script == INTERVENTION_EVALUATION_SCHEMA_SQL:
+                        # 父表重建必须先于新子表创建；已有子表由关闭的 FK 保护。
+                        self._migrate_adaptive_intervention_statuses(conn)
+                    self._execute_schema_script(conn, script)
                 self._migrate(conn)
+                self._repair_edu_sync_binding_foreign_key(conn)
+                # 仓储自管表在其构造时另行升级，此处只验证本层负责的表。
+                # 否则尚待升级的 notification_sources 等旧表会阻断启动。
+                tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", "\n".join(schema_scripts))
+                for table in tables:
+                    if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
+                        raise sqlite3.IntegrityError("schema migration foreign-key validation failed")
                 conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
             finally:
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute(f"PRAGMA legacy_alter_table={int(legacy_alter_table)}")
                 self._release(conn)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
@@ -2179,7 +2217,7 @@ class Database:
                 "('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK','LEGACY_UNVERIFIED','NOT_OBSERVED')"
             )
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
-        conn.executescript("""
+        self._execute_schema_script(conn, """
         CREATE TABLE IF NOT EXISTS learning_plan_feedback (
             feedback_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, user_id TEXT NOT NULL,
             feedback TEXT NOT NULL, created_at TEXT NOT NULL,
@@ -2207,7 +2245,8 @@ class Database:
             "WHERE is_current = 1"
         )
         # 永久退役校园活动功能，并删除已有活动与报名记录。
-        conn.executescript(
+        self._execute_schema_script(
+            conn,
             """
             DROP TABLE IF EXISTS activity_registrations;
             DROP TABLE IF EXISTS campus_activities;
@@ -2327,13 +2366,13 @@ class Database:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_exams'"
         )
         if cur.fetchone() is None:
-            conn.executescript(CHAOXING_ASSESSMENT_SCHEMA_SQL)
+            self._execute_schema_script(conn, CHAOXING_ASSESSMENT_SCHEMA_SQL)
 
         cur = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='chaoxing_knowledge_points'"
         )
         if cur.fetchone() is None:
-            conn.executescript(CHAOXING_KNOWLEDGE_SCHEMA_SQL)
+            self._execute_schema_script(conn, CHAOXING_KNOWLEDGE_SCHEMA_SQL)
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")
@@ -2429,23 +2468,17 @@ class Database:
             )
         self._migrate_edu_schema(conn)
 
-    def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:
-        """EduConnector 架构迁移：edu_bindings 升级 + edu_system_configs → edu_systems。"""
-        cur = conn.execute("PRAGMA table_info(edu_connections)")
-        connection_cols = {row["name"] for row in cur.fetchall()}
-        if connection_cols and "portal_url" not in connection_cols:
-            conn.execute("ALTER TABLE edu_connections ADD COLUMN portal_url TEXT")
-
-        cur = conn.execute("PRAGMA table_info(edu_systems)")
-        system_cols = {row["name"] for row in cur.fetchall()}
-        if system_cols and "adapter_config" not in system_cols:
-            conn.execute("ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'")
-
+    def _migrate_edu_bindings(self, conn: sqlite3.Connection) -> None:
+        """在创建依赖新列的索引前升级旧教务绑定表。"""
         # 1. edu_bindings 旧 schema → 新 schema
         cur = conn.execute("PRAGMA table_info(edu_bindings)")
         bind_cols = {row["name"] for row in cur.fetchall()}
         if bind_cols and "edu_system_id" not in bind_cols:
             conn.execute("ALTER TABLE edu_bindings RENAME TO edu_bindings_legacy_v1")
+            legacy_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(edu_bindings_legacy_v1)")}
+            for index in ("idx_edu_bindings_user_system", "idx_edu_bindings_university", "idx_edu_bindings_status"):
+                if index in legacy_indexes:
+                    conn.execute(f"DROP INDEX {index}")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS edu_bindings (
@@ -2501,6 +2534,40 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_edu_bindings_status "
                 "ON edu_bindings(connection_status)"
             )
+
+    def _repair_edu_sync_binding_foreign_key(self, conn: sqlite3.Connection) -> None:
+        """修复此前迁移已把同步记录外键改写到 legacy 绑定表的数据库。"""
+        foreign_keys = conn.execute("PRAGMA foreign_key_list(edu_sync_records)").fetchall()
+        if not any(row["table"] == "edu_bindings_legacy_v1" for row in foreign_keys):
+            return
+        stash = "edu_sync_records__binding_fk"
+        conn.execute(f"CREATE TEMP TABLE {stash} AS SELECT * FROM edu_sync_records")
+        old_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({stash})")}
+        old_count = conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0]
+        conn.execute("DROP TABLE edu_sync_records")
+        self._execute_schema_script(conn, EDU_CONNECTOR_SCHEMA_SQL)
+        new_columns = {row["name"] for row in conn.execute("PRAGMA table_info(edu_sync_records)")}
+        if not old_columns <= new_columns:
+            raise sqlite3.IntegrityError("edu sync foreign-key repair would discard unknown columns")
+        columns = ", ".join(sorted(old_columns))
+        conn.execute(f"INSERT INTO edu_sync_records ({columns}) SELECT {columns} FROM {stash}")
+        if conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0] != old_count:
+            raise sqlite3.IntegrityError("edu sync foreign-key repair row count mismatch")
+        conn.execute(f"DROP TABLE {stash}")
+
+    def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:
+        """EduConnector 架构迁移：edu_bindings 升级 + edu_system_configs → edu_systems。"""
+        cur = conn.execute("PRAGMA table_info(edu_connections)")
+        connection_cols = {row["name"] for row in cur.fetchall()}
+        if connection_cols and "portal_url" not in connection_cols:
+            conn.execute("ALTER TABLE edu_connections ADD COLUMN portal_url TEXT")
+
+        cur = conn.execute("PRAGMA table_info(edu_systems)")
+        system_cols = {row["name"] for row in cur.fetchall()}
+        if system_cols and "adapter_config" not in system_cols:
+            conn.execute("ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'")
+
+        self._migrate_edu_bindings(conn)
 
         # 2. edu_sync_records 旧 schema → 新 schema (加 adapter/error_code)
         cur = conn.execute("PRAGMA table_info(edu_sync_records)")

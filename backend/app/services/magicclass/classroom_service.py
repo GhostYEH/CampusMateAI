@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
@@ -361,7 +362,8 @@ class MagicClassClassroomService:
             resolved, adaptive_reason = choose_adaptive_mode(signals)
 
         # 1) 跨进程原子预占：并发时只有一个请求成为提交者
-        session_id, reusable = self._acquire(
+        session_id, reusable = await asyncio.to_thread(
+            self._acquire,
             user_id=user_id, course_id=course_id, mode=resolved
         )
         if reusable is not None:
@@ -386,7 +388,7 @@ class MagicClassClassroomService:
                 request_snapshot.to_dict() if request_snapshot is not None else None
             ),
         )
-        self._store.save(session)
+        await asyncio.to_thread(self._store.save, session)
 
         try:
             capabilities = await self._health_capabilities(client)
@@ -414,8 +416,9 @@ class MagicClassClassroomService:
             session.error = f"提交课堂生成任务失败: {type(exc).__name__}"
             session.message = "提交失败，可重试"
             session.updated_at = _now_iso()
-            self._store.save(session)
-            self._store.release_reservation(
+            await asyncio.to_thread(self._store.save, session)
+            await asyncio.to_thread(
+                self._store.release_reservation,
                 user_id=user_id, course_id=course_id, session_id=session_id
             )
             raise
@@ -425,10 +428,11 @@ class MagicClassClassroomService:
         session.status = result.status
         session.step = _public_step(result.step, result.status)
         session.message = "课堂生成任务已提交"
-        self._store.update_reservation(
+        await asyncio.to_thread(
+            self._store.update_reservation,
             user_id=user_id, course_id=course_id, session_id=session_id, job_id=result.job_id
         )
-        self._store.save(session)
+        await asyncio.to_thread(self._store.save, session)
         return session
 
     async def poll(self, session: MagicClassSession) -> MagicClassSession:
@@ -441,8 +445,9 @@ class MagicClassClassroomService:
             session.error = "缺少 jobId，无法轮询"
             session.progress = 100
             session.updated_at = _now_iso()
-            self._store.save(session)
-            self._store.release_reservation(
+            await asyncio.to_thread(self._store.save, session)
+            await asyncio.to_thread(
+                self._store.release_reservation,
                 user_id=session.user_id, course_id=session.course_id, session_id=session.session_id
             )
             return session
@@ -460,8 +465,9 @@ class MagicClassClassroomService:
             session.error_code = _error_code_of(exc)
             session.error = "互动课堂返回了不可信的地址，已拒绝使用"
             session.updated_at = _now_iso()
-            self._store.save(session)
-            self._store.release_reservation(
+            await asyncio.to_thread(self._store.save, session)
+            await asyncio.to_thread(
+                self._store.release_reservation,
                 user_id=session.user_id,
                 course_id=session.course_id,
                 session_id=session.session_id,
@@ -503,7 +509,8 @@ class MagicClassClassroomService:
             )
         else:
             # 进行中：续租，避免长时间生成被误判为过期
-            self._store.touch_reservation(
+            await asyncio.to_thread(
+                self._store.touch_reservation,
                 user_id=session.user_id,
                 course_id=session.course_id,
                 session_id=session.session_id,
@@ -516,9 +523,10 @@ class MagicClassClassroomService:
         if (session.status, session.step, session.progress, session.message) != before:
             session.updated_at = _now_iso()
 
-        self._store.save(session)
+        await asyncio.to_thread(self._store.save, session)
         if session.is_terminal:
-            self._store.release_reservation(
+            await asyncio.to_thread(
+                self._store.release_reservation,
                 user_id=session.user_id,
                 course_id=session.course_id,
                 session_id=session.session_id,

@@ -1,6 +1,116 @@
 import sqlite3
+import pytest
 
-from app.database.sqlite_db import Database
+from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL
+
+
+def test_startup_migration_failure_rolls_back_schema_and_data(tmp_path, monkeypatch):
+    path = tmp_path / "interrupted.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript("CREATE TABLE existing (id TEXT PRIMARY KEY); INSERT INTO existing VALUES ('keep');")
+    migrate = Database._migrate
+
+    def fail_after_migration(self, conn):
+        migrate(self, conn)
+        conn.execute("ALTER TABLE existing ADD COLUMN changed TEXT")
+        self._execute_schema_script(conn, "CREATE TABLE transient (id TEXT); INSERT INTO transient VALUES ('discard');")
+        raise RuntimeError("migration interrupted")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(Database, "_migrate", fail_after_migration)
+        with pytest.raises(RuntimeError, match="interrupted"):
+            Database(path)
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == [("existing",)]
+        assert [r[1] for r in conn.execute("PRAGMA table_info(existing)")] == ["id"]
+        assert conn.execute("SELECT * FROM existing").fetchall() == [("keep",)]
+    # 同一个旧库下一次启动仍能完整成功。
+    database = Database(path)
+    with database.query() as conn:
+        assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert conn.execute("SELECT id FROM existing").fetchone()[0] == "keep"
+    database.dispose()
+
+
+def test_schema_executor_preserves_quoted_semicolons_and_trigger_bodies():
+    with sqlite3.connect(":memory:") as conn:
+        conn.execute("BEGIN")
+        Database._execute_schema_script(conn, """
+            CREATE TABLE messages (value TEXT);
+            CREATE TABLE copies (value TEXT);
+            CREATE TRIGGER copy_message AFTER INSERT ON messages BEGIN
+                INSERT INTO copies VALUES (NEW.value);
+                INSERT INTO copies VALUES ('extra;value');
+            END;
+            INSERT INTO messages VALUES ('original;value');
+        """)
+        assert conn.in_transaction
+        assert conn.execute("SELECT value FROM copies").fetchall() == [("original;value",), ("extra;value",)]
+        conn.rollback()
+        assert not conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+
+
+def test_legacy_edu_binding_upgrade_preserves_child_foreign_keys_and_cascades(tmp_path):
+    path = tmp_path / "legacy-edu.db"
+    database = Database(path)
+    database.dispose()
+    with sqlite3.connect(path) as conn:
+        conn.executescript("""
+            INSERT INTO users (id, username, password_hash, created_at, updated_at)
+                VALUES ('edu-user', 'edu-user', 'hash', 'now', 'now');
+            INSERT INTO universities (id, name, created_at, updated_at)
+                VALUES ('edu-school', '测试高校', 'now', 'now');
+            DROP TABLE edu_bindings;
+            CREATE TABLE edu_bindings (
+                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, university_id TEXT NOT NULL,
+                provider TEXT NOT NULL, system_type TEXT NOT NULL DEFAULT 'undergrad',
+                external_student_id TEXT, external_student_name TEXT,
+                status TEXT, credential_ref TEXT, last_synced_at TEXT,
+                last_sync_status TEXT, last_error TEXT, created_at TEXT, updated_at TEXT
+            );
+            INSERT INTO edu_bindings (id, user_id, university_id, provider, status, created_at, updated_at)
+                VALUES ('binding', 'edu-user', 'edu-school', 'zhengfang', 'bound', 'now', 'now');
+            INSERT INTO edu_sync_records (id, binding_id, user_id, sync_type, started_at)
+                VALUES ('sync', 'binding', 'edu-user', 'schedule', 'now');
+        """)
+    for _ in range(2):
+        database = Database(path)
+        with database.query() as conn:
+            targets = {r['table'] for r in conn.execute("PRAGMA foreign_key_list(edu_sync_records)")}
+            assert "edu_bindings" in targets
+            assert "edu_bindings_legacy_v1" not in targets
+            assert conn.execute("SELECT id FROM edu_sync_records").fetchone()[0] == "sync"
+            assert not conn.execute("PRAGMA foreign_key_check").fetchall()
+        database.dispose()
+    database = Database(path)
+    with database.transaction() as conn:
+        conn.execute("DELETE FROM edu_bindings WHERE id='binding'")
+        assert conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0] == 0
+    database.dispose()
+
+
+def test_already_rewritten_edu_sync_foreign_key_is_repaired_without_losing_records(tmp_path):
+    path = tmp_path / "damaged-edu.db"
+    database = Database(path)
+    with database.transaction() as conn:
+        conn.execute("INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES ('u', 'u', 'hash', 'now', 'now')")
+        conn.execute("INSERT INTO universities (id, name, created_at, updated_at) VALUES ('school', '测试高校', 'now', 'now')")
+        conn.execute("INSERT INTO edu_bindings (id, user_id, university_id, provider, created_at, updated_at) VALUES ('binding', 'u', 'school', 'zhengfang', 'now', 'now')")
+        conn.execute("INSERT INTO edu_sync_records (id, binding_id, user_id, sync_type, started_at) VALUES ('sync', 'binding', 'u', 'schedule', 'now')")
+    database.dispose()
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA legacy_alter_table=OFF")
+        conn.execute("ALTER TABLE edu_bindings RENAME TO edu_bindings_legacy_v1")
+        conn.executescript(EDU_CONNECTOR_SCHEMA_SQL)
+        conn.execute("INSERT INTO edu_bindings SELECT * FROM edu_bindings_legacy_v1")
+        assert "edu_bindings_legacy_v1" in {row[2] for row in conn.execute("PRAGMA foreign_key_list(edu_sync_records)")}
+    database = Database(path)
+    with database.transaction() as conn:
+        assert "edu_bindings" in {row["table"] for row in conn.execute("PRAGMA foreign_key_list(edu_sync_records)")}
+        assert conn.execute("SELECT id FROM edu_sync_records").fetchone()[0] == "sync"
+        conn.execute("DELETE FROM edu_bindings WHERE id='binding'")
+        assert conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0] == 0
+    database.dispose()
 
 
 def test_legacy_courses_schema_is_migrated_before_external_id_index(tmp_path):

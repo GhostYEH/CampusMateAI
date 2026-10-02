@@ -68,6 +68,10 @@ def chunk_text(
         chunk_size: 每块字符数(中文按字符计)
         overlap: 相邻块重叠字符数
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must satisfy 0 <= overlap < chunk_size")
     if not text:
         return []
     text = normalize_text(text)

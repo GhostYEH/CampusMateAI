@@ -82,6 +82,11 @@ class ProjectionResult:
 class LearnerStateProjectionService:
     """Deterministic, full-user projection over events plus authoritative rows."""
 
+    @staticmethod
+    def _input_read_failed(inputs: dict[str, Any], source: str, exc: Exception) -> None:
+        inputs.setdefault("read_failures", []).append(source)
+        logger.warning("learner_state_input_read_failed source={} exception_type={}", source, type(exc).__name__)
+
     def __init__(self, repository: LearnerStateRepository, *, input_limit: int = 5000, control_repository=None, source_policy=None, edu_data_repository=None, learner_event_repository=None, student_goal_repository=None) -> None:
         self.repository = repository
         self.input_limit = input_limit
@@ -317,8 +322,8 @@ class LearnerStateProjectionService:
                     }
                     for g in goals
                 ]
-            except Exception:
-                pass
+            except Exception as exc:
+                self._input_read_failed(inputs, "world_goals", exc)
         if self._edu_data_repository is not None:
             try:
                 inputs["schedule_items"] = [
@@ -339,8 +344,8 @@ class LearnerStateProjectionService:
                         user_id=user_id, include_stale=False
                     )
                 ]
-            except Exception:
-                pass
+            except Exception as exc:
+                self._input_read_failed(inputs, "world_academic", exc)
         if self._learner_event_repository is not None:
             try:
                 events, _ = self._learner_event_repository.list_for_user(
@@ -357,10 +362,7 @@ class LearnerStateProjectionService:
                     if not exclude_evaluation_id or (e.payload or {}).get("evaluation_id") != exclude_evaluation_id
                 ]
             except Exception as exc:  # noqa: BLE001 - 事件缺失不能让整个投影失败
-                logger.warning(
-                    "world_projection_event_load_failed user_id={} trigger={} error_code={}",
-                    user_id, trigger, type(exc).__name__,
-                )
+                self._input_read_failed(inputs, "world_events", exc)
         try:
             with self.repository._db.query() as conn:
                 task_rows = conn.execute(
@@ -396,8 +398,8 @@ class LearnerStateProjectionService:
                     (user_id,),
                 ).fetchall()
                 inputs["sessions"] = [dict(row) for row in session_rows]
-        except Exception:
-            pass
+        except Exception as exc:
+            self._input_read_failed(inputs, "world_records", exc)
         return inputs
 
     def _world_snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
@@ -434,7 +436,7 @@ class LearnerStateProjectionService:
         run_id = f"lrun_{uuid.uuid4().hex[:16]}"
         rows: list[ComputedSnapshot] = []
         evidence: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        warnings: list[str] = ["input_read_failed"] if inputs.get("read_failures") else []
         valid_until = as_of + _WORLD_TTL
 
         if self._source_policy is not None:
@@ -458,6 +460,10 @@ class LearnerStateProjectionService:
             *, state_type: str, value: dict[str, Any], quality: str,
             sources: list[dict[str, Any]] | None = None,
         ) -> None:
+            if inputs.get("read_failures"):
+                quality = self._degrade_quality(quality, True)
+                value["data_completeness"] = quality
+                value["warning_codes"] = list(dict.fromkeys([*value.get("warning_codes", []), "input_read_failed"]))
             confidence = _confidence(quality)
             snapshot = ComputedSnapshot(
                 snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,
@@ -879,8 +885,8 @@ class LearnerStateProjectionService:
                         (user_id,),
                     ).fetchall()
                 ]
-        except Exception:
-            pass
+        except Exception as exc:
+            self._input_read_failed(inputs, "academic_records", exc)
         if self._edu_data_repository is not None:
             try:
                 inputs["schedule_items"] = [
@@ -904,8 +910,8 @@ class LearnerStateProjectionService:
                         user_id=user_id, include_stale=False
                     )
                 ]
-            except Exception:
-                pass
+            except Exception as exc:
+                self._input_read_failed(inputs, "academic_edu", exc)
         if self._learner_event_repository is not None:
             try:
                 events, _ = self._learner_event_repository.list_for_user(
@@ -916,8 +922,8 @@ class LearnerStateProjectionService:
                     for e in events
                     if not exclude_evaluation_id or (e.payload or {}).get("evaluation_id") != exclude_evaluation_id
                 ]
-            except Exception:
-                pass
+            except Exception as exc:
+                self._input_read_failed(inputs, "academic_events", exc)
         return inputs
 
     def _academic_snapshots_valid(self, user_id: str, as_of: datetime) -> bool:
@@ -937,7 +943,7 @@ class LearnerStateProjectionService:
         run_id = f"lrun_{uuid.uuid4().hex[:16]}"
         rows: list[ComputedSnapshot] = []
         evidence: list[dict[str, Any]] = []
-        warnings: list[str] = []
+        warnings: list[str] = ["input_read_failed"] if inputs.get("read_failures") else []
         valid_until = as_of + _ACADEMIC_TTL
 
         if self._source_policy is not None:
@@ -981,6 +987,10 @@ class LearnerStateProjectionService:
             *, state_type: str, value: dict[str, Any], quality: str,
             sources: list[dict[str, Any]] | None = None,
         ) -> None:
+            if inputs.get("read_failures"):
+                quality = self._degrade_quality(quality, True)
+                value["data_completeness"] = quality
+                value["warning_codes"] = list(dict.fromkeys([*value.get("warning_codes", []), "input_read_failed"]))
             confidence = _confidence(quality)
             snapshot = ComputedSnapshot(
                 snapshot_id=f"lsnap_{uuid.uuid4().hex[:16]}", run_id=run_id,

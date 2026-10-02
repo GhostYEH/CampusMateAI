@@ -32,6 +32,8 @@ class RouteResult:
     latency_ms: int
     fallback_reason: Optional[str] = None
     review_provider: Optional[str] = None  # dual_review 第二个 provider
+    generation_response: Optional[LLMResponse] = None
+    generation_latency_ms: Optional[int] = None
 
 
 # 路由策略 -> provider 优先级顺序。primary 复用仓库现有 LLM_* 配置,排在最后兜底。
@@ -213,10 +215,21 @@ class ModelRouter:
             route_policy=route_policy,
             model=result.model,
             status=result.status,
-            latency_ms=result.latency_ms,
+            latency_ms=result.generation_latency_ms if result.generation_latency_ms is not None else result.latency_ms,
             fallback_reason=result.fallback_reason,
-            **extract_token_usage(result.response),
+            **extract_token_usage(result.generation_response or result.response),
         )
+        if result.review_provider and result.generation_response is not None:
+            reviewer = self._registry.get(result.review_provider)
+            self._repository.record_model_call(
+                run_id=run_id, step_id=step_id, provider=result.review_provider,
+                route_policy=route_policy,
+                model=reviewer.client.name if reviewer is not None else "unknown",
+                status="succeeded",
+                latency_ms=max(0, result.latency_ms - (result.generation_latency_ms or 0)),
+                fallback_reason=None,
+                **extract_token_usage(result.response),
+            )
 
     async def _dual_review(
         self,
@@ -226,9 +239,14 @@ class ModelRouter:
         max_tokens: Optional[int],
         timeout: Optional[float],
     ) -> RouteResult:
-        """Zhipu 生成 + Xunfei review。一个不可用时继续并返回 warning。"""
-        gen_name = order[0] if order else "zhipu"
-        review_name = order[1] if len(order) > 1 else "xunfei"
+        """生成草稿，再返回第二个可用模型复核后的最终答案。"""
+        available = [
+            name for name in order
+            if (inst := self._registry.get(name)) is not None
+            and inst.available and inst.client.available
+        ]
+        gen_name = available[0] if available else "zhipu"
+        review_name = available[1] if len(available) > 1 else "xunfei"
         gen_inst = self._registry.get(gen_name)
         review_inst = self._registry.get(review_name)
         start = time.monotonic()
@@ -238,15 +256,26 @@ class ModelRouter:
                 resp = await gen_inst.client.chat(
                     messages, temperature=temperature, max_tokens=max_tokens, timeout=timeout
                 )
-                latency = int((time.monotonic() - start) * 1000)
+                draft = resp
+                generation_latency = int((time.monotonic() - start) * 1000)
                 # review(可选)
                 review_provider = None
                 fallback_reason = None
                 if review_inst and review_inst.available and review_inst.client.available:
                     try:
-                        await review_inst.client.chat(
-                            messages, temperature=temperature, max_tokens=max_tokens, timeout=timeout
+                        reviewed = await review_inst.client.chat(
+                            [*messages, {"role": "assistant", "content": resp.content}, {
+                                "role": "user",
+                                "content": (
+                                    "请复核上一条草稿是否满足原始请求，纠正错误和无依据的内容。"
+                                    "只返回完整的最终答案，严格保留原始请求要求的输出格式"
+                                    "（包括 JSON 字段），不要添加复核说明。"
+                                ),
+                            }], temperature=temperature, max_tokens=max_tokens, timeout=timeout
                         )
+                        if not reviewed.content.strip():
+                            raise LLMError("empty_review_response")
+                        resp = reviewed
                         review_provider = review_name
                     except Exception:
                         fallback_reason = f"review_{review_name}_unavailable"
@@ -254,13 +283,17 @@ class ModelRouter:
                     response=resp,
                     provider_name=gen_name,
                     model=gen_inst.client.name,
-                    status="succeeded",
-                    latency_ms=latency,
+                    status="fallback" if fallback_reason else "succeeded",
+                    latency_ms=int((time.monotonic() - start) * 1000),
                     fallback_reason=fallback_reason,
                     review_provider=review_provider,
+                    generation_response=draft if review_provider else None,
+                    generation_latency_ms=generation_latency if review_provider else None,
                 )
             except Exception as e:
-                pass
+                failure = classify_provider_error(e)
+                if is_terminal_failure(failure):
+                    gen_inst.available = False
         # 生成失败,尝试用 review provider 单独生成
         if review_inst and review_inst.available and review_inst.client.available:
             try:
@@ -278,14 +311,15 @@ class ModelRouter:
                 )
             except Exception:
                 pass
-        return RouteResult(
-            response=None,
-            provider_name=gen_name,
-            model="unknown",
-            status="failed",
-            latency_ms=0,
-            fallback_reason="dual_provider_unavailable",
+        # 固定的两家都失败时，也允许仓库已配置的 primary 兜底。
+        result = await self.route(
+            messages, route_policy="reasoning_primary", temperature=temperature,
+            max_tokens=max_tokens, timeout=timeout,
         )
+        if result.response is not None:
+            result.status = "fallback"
+            result.fallback_reason = "dual_review_degraded_single_provider"
+        return result
 
 
 __all__ = ["ModelRouter", "RouteResult"]
