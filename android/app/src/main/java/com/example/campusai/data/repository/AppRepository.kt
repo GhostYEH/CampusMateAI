@@ -676,7 +676,7 @@ class AppRepository(
     }
 
     suspend fun syncCourseContent(courseId: String): Pair<CourseContentSummaryDto?, List<CourseContentItemDto>> {
-        val response = ApiClient.api.syncCourseContent(courseId)
+        val response = ApiClient.api.syncCourseContent(courseId, sections = "chapters,materials,assignments,notices")
         if (!response.isSuccessful) throw IllegalStateException("course_content_sync_failed_${response.code()}")
         return loadCourseContent(courseId)
     }

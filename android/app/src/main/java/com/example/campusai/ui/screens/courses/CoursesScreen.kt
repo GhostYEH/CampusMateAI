@@ -563,20 +563,24 @@ internal fun CourseDetailSheet(
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF8F5EA), Color(0xFFE8EEE4)))),
             contentPadding = PaddingValues(start = 22.dp, end = 22.dp, bottom = 34.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            item { Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.Top) {
+            item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF15362F), Color(0xFF376249), Color(0xFF806C46))))
+                .padding(20.dp), Arrangement.SpaceBetween, Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("图书馆 / 课程书架", color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Text(course.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("${course.code} · ${course.type}", color = Muted, fontSize = 12.sp)
+                    Text("CAMPUSMATE  /  COURSE", color = Color(0xFFF1DCA5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(course.name, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("${course.code} · ${course.type}", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
                 }
-                Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MenuBook, null, tint = Primary)
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MenuBook, null, tint = Color.White)
                 }
             } }
+            item { Text("课程信息", color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
@@ -634,19 +638,22 @@ internal fun CourseDetailSheet(
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 enabled = !syncing,
-            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "更新章节、作业与通知", fontWeight = FontWeight.Bold) }
+            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "更新章节、资料、作业与通知", fontWeight = FontWeight.Bold) }
             }
             if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
+            item { Text("课程内容 · 分栏目更新", color = Primary, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+            item { Text("直接点击即可更新，无须预先打开学习通；本学期只影响书架排序。栏目内容由任课教师提供，登录失效或需要验证时请重新连接。", color = Muted, fontSize = 12.sp) }
             summary?.sections?.let { sections ->
                 if (sections.isNotEmpty()) item {
-                    val names = mapOf("chapters" to "章节", "assignments" to "作业", "notices" to "通知")
+                    val names = mapOf("chapters" to "章节", "materials" to "资料", "assignments" to "作业", "notices" to "通知")
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         names.forEach { (key, name) ->
                             val section = sections.firstOrNull { it.section == key } ?: return@forEach
                             val result = when (section.status) {
-                                "complete" -> "${section.item_count} 条"
-                                "failed" -> if (section.error_code == "reauth_required") "需要重新登录学习通" else "同步失败"
+                                "complete" -> if (section.item_count == 0) "该课暂无内容" else "${section.item_count} 条"
+                                "partial" -> "已读取 ${section.item_count} 条，部分来源受限"
+                                "failed" -> if (section.error_code in listOf("reauth_required", "verification_required")) "需要重新登录或完成验证" else "同步失败"
                                 "unavailable" -> "暂不可用"
                                 else -> "尚未同步"
                             }
@@ -671,10 +678,11 @@ internal fun CourseDetailSheet(
                 if (visible.isEmpty()) item {
                     val section = summary?.sections?.firstOrNull { it.section == mapOf("章节" to "chapters", "资料" to "materials", "作业" to "assignments", "通知" to "notices", "考试" to "exams", "讨论" to "discussions")[filter] }
                     val text = when {
-                        section?.error_code == "reauth_required" -> "学习通登录已失效，重新连接后再同步此栏目"
+                        section?.error_code in listOf("reauth_required", "verification_required") -> "学习通要求重新登录或验证，请完成后重试"
                         section?.status == "failed" -> "本次同步失败，正在保留上次数据"
+                        section?.status == "partial" -> "已读取部分内容，其他来源暂时受限"
                         section?.status == "unavailable" -> "学习通当前未开放此栏目"
-                        section?.status == "complete" -> "学习通返回的列表为空"
+                        section?.status == "complete" -> if (filter == "资料") "该课程的学习通资料栏暂无文件" else "学习通返回的列表为空"
                         else -> "尚未同步此栏目"
                     }
                     Text(text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
@@ -693,7 +701,7 @@ internal fun CourseDetailSheet(
                                         if (item.can_download) {
                                             val file = repository.downloadCourseResource(course.id, item)
                                             if (file == null) {
-                                                Toast.makeText(context, "资料下载失败", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "暂无法下载；学习通可能要求验证或限制访问", Toast.LENGTH_LONG).show()
                                             } else {
                                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.coursefiles", file)
                                                 val mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "*/*"

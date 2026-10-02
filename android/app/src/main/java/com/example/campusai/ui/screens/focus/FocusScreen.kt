@@ -289,21 +289,6 @@ fun FocusScreen(
                     onStart = startFocus,
                 )
             }
-            item {
-                Surface(
-                    onClick = onOpenHistory,
-                    modifier = Modifier.fillMaxWidth(),
-                    color = Color(0xEDF7F2E8),
-                    shape = RoundedCornerShape(18.dp),
-                ) {
-                    Row(Modifier.padding(horizontal = 18.dp, vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.History, contentDescription = null, tint = Color(0xFF295643), modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(12.dp))
-                        Text("学习足迹", modifier = Modifier.weight(1f), color = Color(0xFF273C35), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color(0xFF295643))
-                    }
-                }
-            }
             if (effectiveTaskId != null) {
                 item {
                     FocusPlanCard(
@@ -356,11 +341,13 @@ private fun QuickFocusCard(
     val green = Color(0xFF295643)
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(Color(0xF5FBF8EF))
-            .border(1.dp, Color.White.copy(alpha = .78f), RoundedCornerShape(28.dp))
+            .background(Brush.linearGradient(listOf(Color(0xF9FCF8E9), Color(0xEBE3EAD7), Color(0xEEC9DCCB))))
+            .border(1.dp, Color.White.copy(alpha = .82f), RoundedCornerShape(28.dp))
             .padding(20.dp),
     ) {
         Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Spacer(Modifier.height(8.dp))
+        Box(Modifier.width(42.dp).height(2.dp).background(Color(0xFFB59B63)))
         Spacer(Modifier.height(9.dp))
         Text("从现在开始，专注一件事", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (taskName != "本次专注") Text(taskName, color = quiet, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -402,11 +389,12 @@ private fun QuickFocusCard(
         }
         Text("专注方式", color = quiet, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
-        listOf(FocusSessionMode.QUIET, FocusSessionMode.AI_COMPANION).forEach { option ->
+        listOf(FocusSessionMode.QUIET, FocusSessionMode.AI_COMPANION, FocusSessionMode.SMART_GUARD).forEach { option ->
             val selected = selectedMode == option
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
-                    .background(if (selected) Color(0xFFE1EBE1) else Color(0xFFF2F1E9))
+                    .background(if (selected) Color(0xD9E1EBE1) else Color.White.copy(alpha = .38f))
+                    .border(1.dp, if (selected) green.copy(alpha = .3f) else Color.White.copy(alpha = .45f), RoundedCornerShape(13.dp))
                     .clickable { onSelectMode(option) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,

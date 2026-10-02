@@ -87,7 +87,10 @@ def list_content(course_id: str, kind: str | None = Query(None),
         for private in ("user_id", "course_id", "provider", "remote_object_id",
                         "source_url", "is_stale", "last_synced_at", "created_at", "updated_at"):
             values.pop(private, None)
-        values.update(cached=cached, can_download=row.kind in downloadable and bool(row.remote_object_id), can_open=True)
+        direct_file = bool(row.source_url and row.source_url.startswith(
+            "https://mooc1.chaoxing.com/coursedata/downloadData?"))
+        values.update(cached=cached, can_download=row.kind in downloadable and
+                      bool(row.remote_object_id or direct_file), can_open=True)
         items.append(CourseContentItemOut(**values))
     return CourseContentPage(items=items, total=total, page=page, page_size=page_size,
                              has_more=page * page_size < total)

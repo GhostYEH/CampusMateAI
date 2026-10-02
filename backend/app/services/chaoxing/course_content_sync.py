@@ -323,6 +323,16 @@ class ChaoxingCourseContentSyncService:
                 if section == "chapters" and kind == "chapter":
                     saved_chapters.append(saved_item)
             if status == "complete":
+                if section == "chapters":
+                    # 独立「资料」栏目不属于章节；刷新空章节不能清掉资料文件。
+                    existing_items = self.repository.list_items(
+                        user_id=user_id, course_id=course_id,
+                        include_stale=True, page_size=1000,
+                    )
+                    for existing_item in existing_items:
+                        external_id = str(existing_item.external_id)
+                        if external_id.startswith("course-data-"):
+                            keys.add((str(existing_item.kind), external_id))
                 if unchanged_chapter_ids and section in ("materials", "exams"):
                     existing_items = self.repository.list_items(
                         user_id=user_id, course_id=course_id,

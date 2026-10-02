@@ -200,24 +200,6 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                 .offset(x = maxWidth * .54f, y = maxHeight * .635f),
         ) { enter("counselor") }
 
-        Row(
-            Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                .padding(start = 34.dp, end = 34.dp, bottom = 30.dp)
-                .fillMaxWidth()
-                .shadow(18.dp, CircleShape).clip(CircleShape)
-                .background(Brush.horizontalGradient(listOf(Color(0xFF285C65), Color(0xFF1A3849))))
-                .border(1.dp, Color.White.copy(alpha = .34f), CircleShape)
-                .clickable(role = Role.Button) { enter("focus") }
-                .padding(vertical = 15.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Default.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text("开始学习", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(10.dp))
-            Icon(Icons.Default.ArrowForwardIos, null, tint = Color.White, modifier = Modifier.size(14.dp))
-        }
     }
 
     if (showMore) {

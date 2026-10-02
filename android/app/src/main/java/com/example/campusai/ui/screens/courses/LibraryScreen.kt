@@ -137,13 +137,14 @@ fun LibraryScreen(
             item {
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-                        .background(libraryCream.copy(alpha = .95f)).padding(16.dp),
+                        .background(Brush.linearGradient(listOf(Color(0xEF153B34), Color(0xEF305442), Color(0xE8736848))))
+                        .border(1.dp, Color(0x99E9D7A8), RoundedCornerShape(22.dp)).padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = libraryGreen)
+                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFE9D7A8))
                         Column {
-                            Text("我的课程书架", color = libraryGreen, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                            Text("我的课程书架", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             Text(
                                 when (accountStatus) {
                                     "online" -> "已连接学习通 · ${realCourses.size} 门课程"
@@ -151,12 +152,13 @@ fun LibraryScreen(
                                     "offline" -> "连接学习通后，课程会摆上书架"
                                     "checking" -> "正在检查学习通连接…"
                                     else -> "暂时无法确认连接，请检查网络"
-                                }, color = Color(0xFF596B61), fontSize = 12.sp,
+                                }, color = Color.White.copy(alpha = .78f), fontSize = 12.sp,
                             )
                         }
                     }
                     if (accountStatus == "online") {
-                        lastSyncedAt?.let { Text("上次同步：${it.take(16).replace('T', ' ')}", color = Color(0xFF64756B), fontSize = 11.sp) }
+                        lastSyncedAt?.let { Text("上次同步：${it.take(16).replace('T', ' ')}", color = Color.White.copy(alpha = .7f), fontSize = 11.sp) }
+                        Text("这里更新课程书架；打开一本课程可分别更新章节、资料、作业与通知。", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
                         LibraryAction("同步课程", onClick = {
                             if (!syncing) scope.launch {
                                 syncing = true
@@ -179,7 +181,7 @@ fun LibraryScreen(
                     } else if (accountStatus == "unavailable") {
                         LibraryAction("重试连接", onClick = { statusRefreshToken++ })
                     }
-                    syncMessage?.let { Text(it, color = libraryGreen, fontSize = 12.sp) }
+                    syncMessage?.let { Text(it, color = Color.White, fontSize = 12.sp) }
                 }
             }
             if (accountStatus == "online") {
@@ -295,7 +297,9 @@ private fun CourseSpine(course: Course, index: Int, onOpen: (Course) -> Unit) {
 private fun LibraryAction(label: String, onClick: () -> Unit, busy: Boolean = false) {
     Box(
         Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
-            .background(libraryGreen).clickable(enabled = !busy, onClick = onClick),
+            .background(Brush.horizontalGradient(listOf(Color(0xFFBD9C5E), Color(0xFF71653F))))
+            .border(1.dp, Color.White.copy(alpha = .42f), RoundedCornerShape(14.dp))
+            .clickable(enabled = !busy, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
