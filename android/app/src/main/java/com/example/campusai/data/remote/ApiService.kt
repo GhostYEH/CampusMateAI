@@ -616,6 +616,16 @@ data class CourseContentPageDto(
     val has_more: Boolean = false,
 )
 
+data class CourseContentSyncSectionDto(
+    val status: String = "failed",
+    val item_count: Int = 0,
+    val error: String? = null,
+)
+
+data class CourseContentSyncResponseDto(
+    val sections: Map<String, CourseContentSyncSectionDto> = emptyMap(),
+)
+
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
 // ── 交互课堂（生成与运行都经 CampusMate 后端；客户端绝不持有 magic class 凭据）──
@@ -1225,7 +1235,7 @@ interface ApiService {
     suspend fun syncCourseContent(
         @Path("courseId") courseId: String,
         @Query("sections") sections: String? = null,
-    ): Response<Unit>
+    ): Response<CourseContentSyncResponseDto>
 
     @GET("courses/{courseId}/knowledge-graph")
     suspend fun getCourseKnowledgeGraph(

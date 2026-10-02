@@ -695,8 +695,23 @@ class AppRepository(
     /** 只同步 knowledge_graph 这一个 section，不连带跑完整 deep 同步。 */
     suspend fun syncCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
         val response = ApiClient.api.syncCourseContent(courseId, sections = "knowledge_graph")
-        if (!response.isSuccessful) throw IllegalStateException("course_knowledge_graph_sync_failed_${response.code()}")
-        return loadCourseKnowledgeGraph(courseId)
+        if (!response.isSuccessful) {
+            val message = if (response.code() == 401) "账号登录已失效，请重新登录后再同步" else "知识点同步请求失败（${response.code()}）"
+            throw IllegalStateException(message)
+        }
+        val section = response.body()?.sections?.get("knowledge_graph")
+            ?: throw IllegalStateException("学习通没有返回课程图谱的同步结果")
+        if (section.status != "complete" && section.status != "partial") {
+            val message = when (section.error) {
+                "missing_course_context" -> "这门课缺少教学班信息，暂时无法读取课程图谱"
+                "structure_changed" -> "学习通未提供可读取的课程图谱，或图谱页面已变化"
+                "network_error" -> "读取学习通课程图谱失败，请检查连接后重试"
+                else -> if (section.status == "unavailable") "这门课暂时没有可读取的课程图谱" else "课程图谱同步失败，请稍后重试"
+            }
+            throw IllegalStateException(message)
+        }
+        return loadCourseKnowledgeGraph(courseId)?.takeIf { it.available }
+            ?: throw IllegalStateException("同步已完成，但没有读取到知识点数据")
     }
 
     suspend fun getCourseResourceUrl(courseId: String, itemId: String): String? {

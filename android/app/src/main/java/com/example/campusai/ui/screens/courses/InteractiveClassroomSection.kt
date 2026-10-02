@@ -407,19 +407,29 @@ fun InteractiveClassroomSection(
             }
             Text(state.serviceState.label, color = serviceColor(state.serviceState), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
-        state.status?.reason?.takeIf { it.isNotBlank() }?.let { Text(it, color = Muted, fontSize = 11.sp) }
-        if (state.status?.browserEmbedAvailable != true) {
+        val serviceReady = state.serviceState == InteractiveClassroomServiceState.AVAILABLE ||
+            state.serviceState == InteractiveClassroomServiceState.DEGRADED
+        val canCreateClassroom = serviceReady && state.status?.browserEmbedAvailable == true
+        if (!state.loading && !canCreateClassroom) {
             Text(
-                "浏览器课堂当前不可打开${state.status?.browserEmbedReason?.let { "：$it" }.orEmpty()}",
-                color = ColorError,
-                fontSize = 11.sp,
+                when (state.serviceState) {
+                    InteractiveClassroomServiceState.NOT_CONFIGURED -> "互动课堂暂未开通。课程资料和自习室仍可使用。"
+                    InteractiveClassroomServiceState.INCOMPATIBLE -> "课堂服务版本暂不兼容，请稍后再试。"
+                    InteractiveClassroomServiceState.CONFIGURED -> "课堂服务正在准备，请稍后重试。"
+                    InteractiveClassroomServiceState.AVAILABLE,
+                    InteractiveClassroomServiceState.DEGRADED -> "课堂服务已就绪，但手机当前无法打开生成的课堂。暂不生成，以免产生费用。"
+                    else -> "暂时无法连接课堂服务，请稍后重试。"
+                },
+                color = Muted,
+                fontSize = 12.sp,
             )
+            OutlinedButton(onClick = viewModel::load) { Text("重新检测课堂服务", fontSize = 12.sp) }
         }
-        if (state.loading || state.planLoading) {
+        if (state.loading || (canCreateClassroom && state.planLoading)) {
             Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(7.dp)); Text("正在读取课程资料与生成计划…", color = Muted, fontSize = 11.sp) }
         }
-        IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
-        state.plan?.let { plan ->
+        if (canCreateClassroom) IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
+        if (canCreateClassroom) state.plan?.let { plan ->
             Text("推荐理由", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             Text(plan.adaptiveReason ?: plan.reason ?: "根据课程资料为你安排一条学习路径。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
             StudentBrief(state, viewModel)
@@ -435,8 +445,8 @@ fun InteractiveClassroomSection(
                 ClassroomConfirmCard(plan, state, onGenerate = viewModel::generate)
             }
         }
-        state.error?.let { Text(it, color = ColorError, fontSize = 11.sp) }
-        ProgressCard(state.progress, state.status, context, onRetry = viewModel::retry)
+        if (canCreateClassroom) state.error?.let { Text(it, color = ColorError, fontSize = 11.sp) }
+        ProgressCard(state.progress, state.status, context, canRetry = canCreateClassroom, onRetry = viewModel::retry)
         state.composition?.let { CompositionCard(it) }
         HistoryCard(state.history, state.status, context)
     }
@@ -505,6 +515,7 @@ private fun ProgressCard(
     progress: ClassroomProgressState,
     status: InteractiveClassroomStatusDto?,
     context: Context,
+    canRetry: Boolean,
     onRetry: () -> Unit,
 ) {
     if (progress.phase == ClassroomPhase.IDLE) return
@@ -514,7 +525,7 @@ private fun ProgressCard(
         LinearProgressIndicator(progress = { progress.progress.coerceIn(0, 100) / 100f }, Modifier.fillMaxWidth())
         if (progress.message.isNotBlank()) Text(progress.message, color = Muted, fontSize = 11.sp)
         progress.updatedAt?.takeIf { it.isNotBlank() }?.let { Text("更新于 $it", color = Muted, fontSize = 10.sp) }
-        if (progress.phase == ClassroomPhase.FAILED && progress.retryable) Button(onClick = onRetry, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), colors = ButtonDefaults.buttonColors(containerColor = Primary)) { Text("重试", fontSize = 11.sp) }
+        if (canRetry && progress.phase == ClassroomPhase.FAILED && progress.retryable) Button(onClick = onRetry, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), colors = ButtonDefaults.buttonColors(containerColor = Primary)) { Text("重试", fontSize = 11.sp) }
         if (progress.generatedButClosed) Text("课堂已生成，但当前没有可用的公开地址。", color = ColorWarning, fontSize = 11.sp)
         // 学生指定的资料无法使用时必须明说，不能静默假装用上了
         progress.materialsWarning?.takeIf { it.isNotBlank() }?.let { Text(it, color = ColorWarning, fontSize = 11.sp) }

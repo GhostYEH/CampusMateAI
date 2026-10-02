@@ -662,7 +662,7 @@ internal fun CourseDetailSheet(
                                     graphError = null
                                     scope.launch {
                                         try { graph = repository.syncCourseKnowledgeGraph(course.id) }
-                                        catch (_: Exception) { graphError = "知识点同步失败，请稍后重试" }
+                                        catch (error: Exception) { graphError = error.message ?: "知识点同步失败，请稍后重试" }
                                         finally { graphSyncing = false; graphLoading = false }
                                     }
                                 },
