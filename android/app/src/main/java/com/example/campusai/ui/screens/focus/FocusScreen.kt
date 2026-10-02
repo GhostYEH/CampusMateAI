@@ -92,7 +92,6 @@ import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
-import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.glass.CampusGlassRole
 import com.example.campusai.ui.glass.CampusGlassScene
 import com.example.campusai.ui.glass.campusGlass
@@ -140,16 +139,11 @@ fun FocusScreen(
     val taskName = effectiveTaskId?.let(appRepository::getTaskById)?.title ?: "本次专注"
     var mode by remember { mutableStateOf(FocusMode.FOCUS) }
     var sessionMode by remember { mutableStateOf(FocusSessionMode.QUIET) }
-    var selectedSecondsLeft by remember { mutableIntStateOf(FocusMode.FOCUS.totalSeconds) }
     var selectedDurationMinutes by remember { mutableIntStateOf(25) }
     var customDurationInput by remember { mutableStateOf("60") }
     var showCustomDurationDialog by remember { mutableStateOf(false) }
     var showGoalDialog by remember { mutableStateOf(false) }
     var selectedGoal by remember(stats.goalMinutes) { mutableIntStateOf(stats.goalMinutes) }
-    var guideState by rememberSaveable { mutableStateOf(GuideDialogueState.GREETING) }
-    var showGuide by rememberSaveable { mutableStateOf(false) }
-    var arranging by rememberSaveable { mutableStateOf(false) }
-    var countdown by rememberSaveable { mutableIntStateOf(0) }
     var planLoading by remember { mutableStateOf(false) }
     var planError by remember { mutableStateOf<String?>(null) }
     var planReloadToken by remember { mutableIntStateOf(0) }
@@ -197,9 +191,7 @@ fun FocusScreen(
         sessionReady = activeSessionResolved
         planLoading = false
     }
-    val bottomContentPadding = floatingDockContentBottomPadding(
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-    ) + 16.dp
+    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
     val listState = rememberLazyListState()
     val startFocus: () -> Unit = {
         scope.launch {
@@ -217,7 +209,6 @@ fun FocusScreen(
                         sessionMode,
                     )
                     if (startResult.isSuccess) {
-                        selectedSecondsLeft = mode.totalSeconds
                         manager.beginFocusSession()
                         onOpenAssistant(
                             selectedDurationMinutes * 60,
@@ -237,32 +228,13 @@ fun FocusScreen(
         }
         Unit
     }
-    LaunchedEffect(arranging) {
-        if (arranging) {
-            delay(500)
-            arranging = false
-            guideState = GuideDialogueState.ASK_DURATION
-        }
-    }
-    LaunchedEffect(guideState, sessionReady) {
-        if (guideState == GuideDialogueState.CONFIRM && sessionReady) {
-            delay(900)
-            for (number in 3 downTo 1) {
-                countdown = number
-                delay(700)
-            }
-            guideState = GuideDialogueState.ENTER_SESSION
-            startFocus()
-        }
-    }
-
-    val wallpaperResource = rememberSaveable { FocusHallWallpaperPicker.next() }
+    val wallpaperResource = R.drawable.focus_room_entry
     CampusGlassScene(
         darkMode = false,
         background = { FocusHallBackdrop(wallpaperResource) },
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
             state = listState,
             contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = bottomContentPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -288,59 +260,40 @@ fun FocusScreen(
                 }
             }
             item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White)
+                    }
+                    Column {
+                        Text("自习室", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                        Text("选好节奏，再进入专注空间", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
+                    }
+                }
+            }
+            item {
                 QuickFocusCard(
                     taskName = taskName,
                     selectedMinutes = selectedDurationMinutes,
                     selectedMode = sessionMode,
                     canStart = backendOnline && sessionReady,
-                    onSelectMinutes = { minutes ->
-                        selectedDurationMinutes = minutes
-                        selectedSecondsLeft = minutes * 60
-                    },
+                    onSelectMinutes = { minutes -> selectedDurationMinutes = minutes },
+                    onCustom = { showCustomDurationDialog = true },
                     onSelectMode = { sessionMode = it },
                     onStart = startFocus,
-                    onOpenHistory = onOpenHistory,
                 )
             }
             item {
                 Surface(
-                    onClick = {
-                        showGuide = !showGuide
-                        if (!showGuide) {
-                            guideState = GuideDialogueState.GREETING
-                            arranging = false
-                        }
-                    },
-                    modifier = Modifier.campusGlass(
-                        shape = RoundedCornerShape(50),
-                        role = CampusGlassRole.NAVIGATION,
-                        tint = Color.White.copy(alpha = .34f),
-                    ),
-                    color = Color.Transparent,
+                    onClick = onOpenHistory,
+                    color = Color(0xDDF7F2E8),
                     shape = RoundedCornerShape(50),
                 ) {
                     Text(
-                        if (showGuide) "收起 AI 导员引导" else "也可以让 AI 导员陪你安排",
+                        "查看专注记录  ›",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        color = TextPrimary,
+                        color = Color(0xFF273C35),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-            if (showGuide) {
-                item {
-                    FocusHallDialogue(
-                        state = guideState,
-                        arranging = arranging,
-                        countdown = countdown,
-                        selectedMinutes = selectedDurationMinutes,
-                        selectedMode = sessionMode,
-                        onReady = { if (sessionReady) arranging = true },
-                        onOpenHistory = onOpenHistory,
-                        onSelectMinutes = { minutes -> selectedDurationMinutes = minutes; selectedSecondsLeft = minutes * 60; guideState = GuideDialogueState.ASK_MODE },
-                        onCustom = { showCustomDurationDialog = true },
-                        onSelectMode = { selected -> sessionMode = selected; guideState = GuideDialogueState.CONFIRM },
                     )
                 }
             }
@@ -356,13 +309,8 @@ fun FocusScreen(
             }
             item {
                 Surface(
-                    modifier = Modifier.campusGlass(
-                        shape = RoundedCornerShape(24.dp),
-                        role = CampusGlassRole.PANEL,
-                        tint = Color.White.copy(alpha = .42f),
-                    ),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color.Transparent,
+                    color = Color(0xF5FBF8EF),
                 ) {
                     Column(Modifier.padding(16.dp)) {
                         Text("今日学习数据 ✦", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
@@ -376,7 +324,7 @@ fun FocusScreen(
             onDismissRequest = { showCustomDurationDialog = false },
             title = { Text("自定义专注时长") },
             text = { OutlinedTextField(value = customDurationInput, onValueChange = { customDurationInput = it.filter(Char::isDigit) }, label = { Text("分钟（5–240）") }, singleLine = true) },
-            confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it; selectedSecondsLeft = it * 60; guideState = GuideDialogueState.ASK_MODE }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
+            confirmButton = { TextButton(onClick = { customDurationInput.toIntOrNull()?.coerceIn(5, 240)?.let { selectedDurationMinutes = it }; showCustomDurationDialog = false }) { Text("确定", color = FocusBlue) } },
             dismissButton = { TextButton(onClick = { showCustomDurationDialog = false }) { Text("取消") } },
         )
     }
@@ -389,56 +337,63 @@ private fun QuickFocusCard(
     selectedMode: FocusSessionMode,
     canStart: Boolean,
     onSelectMinutes: (Int) -> Unit,
+    onCustom: () -> Unit,
     onSelectMode: (FocusSessionMode) -> Unit,
     onStart: () -> Unit,
-    onOpenHistory: () -> Unit,
 ) {
+    val ink = Color(0xFF203B32)
+    val quiet = Color(0xFF63796E)
+    val green = Color(0xFF295643)
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF10243A), Color(0xFF3258A0))))
+            .background(Color(0xF5FBF8EF))
+            .border(1.dp, Color.White.copy(alpha = .78f), RoundedCornerShape(28.dp))
             .padding(20.dp),
     ) {
-        Text("FOCUS  /  学习空间", color = Color(0xFFB8F0DB), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
         Spacer(Modifier.height(9.dp))
-        Text("从现在开始，专注一件事", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-        Text(taskName, color = Color.White.copy(alpha = .72f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("从现在开始，专注一件事", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(taskName, color = quiet, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("进入后可以切换雨夜、图书馆与林间场景", color = quiet, fontSize = 11.sp)
         Spacer(Modifier.height(20.dp))
-        Text("专注时长", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
+        Text("专注时长", color = quiet, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(25, 45, 60).forEach { minutes ->
                 val selected = selectedMinutes == minutes
                 Box(
                     Modifier.weight(1f).clip(CircleShape)
-                        .background(if (selected) Color(0xFFB8F0DB) else Color.White.copy(alpha = .15f))
+                        .background(if (selected) green else Color(0xFFE8EEE5))
                         .clickable { onSelectMinutes(minutes) }
                         .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("$minutes 分钟", color = if (selected) Color(0xFF10243A) else Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("$minutes 分钟", color = if (selected) Color.White else ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
-        Spacer(Modifier.height(15.dp))
-        Text("专注方式", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
+        TextButton(onClick = onCustom, modifier = Modifier.align(Alignment.End)) {
+            Text(if (selectedMinutes !in listOf(25, 45, 60)) "自定义 $selectedMinutes 分钟" else "自定义时长", color = green, fontSize = 12.sp)
+        }
+        Text("专注方式", color = quiet, fontSize = 12.sp)
         Spacer(Modifier.height(8.dp))
         FocusSessionMode.entries.forEach { option ->
             val selected = selectedMode == option
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
-                    .background(if (selected) Color.White.copy(alpha = .2f) else Color.White.copy(alpha = .08f))
+                    .background(if (selected) Color(0xFFE1EBE1) else Color(0xFFF2F1E9))
                     .clickable { onSelectMode(option) }
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(8.dp).background(if (selected) Color(0xFFB8F0DB) else Color.White.copy(alpha = .42f), CircleShape))
+                Box(Modifier.size(8.dp).background(if (selected) green else Color(0xFFAEBBB0), CircleShape))
                 Spacer(Modifier.width(9.dp))
-                Text(option.title, color = Color.White, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                Text(option.title, color = ink, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                 Spacer(Modifier.width(9.dp))
                 Text(
                     option.description,
                     modifier = Modifier.weight(1f),
-                    color = Color.White.copy(alpha = .6f),
+                    color = quiet,
                     fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -453,14 +408,11 @@ private fun QuickFocusCard(
             enabled = canStart,
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8F0DB), contentColor = Color(0xFF10243A)),
+            colors = ButtonDefaults.buttonColors(containerColor = green, contentColor = Color.White),
         ) {
             Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("开始专注", fontWeight = FontWeight.Bold)
-        }
-        TextButton(onClick = onOpenHistory, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("查看专注记录", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
         }
     }
 }
@@ -478,10 +430,10 @@ private fun BoxScope.FocusHallBackdrop(@DrawableRes wallpaperResource: Int) {
             .matchParentSize()
             .background(
                 Brush.verticalGradient(
-                    0f to Color.White.copy(alpha = .46f),
-                    .28f to Color.White.copy(alpha = .23f),
-                    .72f to Color.White.copy(alpha = .18f),
-                    1f to Color(0xFFF3F7F7).copy(alpha = .58f),
+                    0f to Color(0xA8132C26),
+                    .25f to Color(0x330E211C),
+                    .72f to Color.Transparent,
+                    1f to Color(0x9614221B),
                 ),
             ),
     )
@@ -866,28 +818,38 @@ private fun HallDialogueChoice(
 fun FocusHistoryScreen(repository: ApiFocusRepository, onBack: () -> Unit) {
     val records by repository.records.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { repository.refresh() }
-    val bottomContentPadding = floatingDockContentBottomPadding(
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-    ) + 16.dp
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(FocusBg),
-        contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, bottomContentPadding),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = TextPrimary) }
-                Text("专注记录", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.focus_room_entry),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(Modifier.fillMaxSize().background(Color(0xB4142924)))
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
+            contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, bottomContentPadding),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White) }
+                    Text("专注记录", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                }
             }
-        }
-        if (records.isEmpty()) item { Text("还没有专注记录，完成第一次专注后会显示在这里。", color = Muted, fontSize = 14.sp) }
-        else items(records, key = { it.id }) { record ->
-            Surface(shape = RoundedCornerShape(20.dp), color = Surface, border = BorderStroke(1.dp, Line)) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.Check, null, tint = FocusBlue, modifier = Modifier.padding(9.dp)) }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) { Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp); Text(record.endedAt, color = Muted, fontSize = 13.sp) }
-                    Text("已完成", color = FocusGreen, fontWeight = FontWeight.SemiBold)
+            if (records.isEmpty()) item { Text("还没有专注记录，完成第一次专注后会显示在这里。", color = Color.White, fontSize = 14.sp) }
+            else items(records, key = { it.id }) { record ->
+                Surface(shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = CircleShape, color = Color(0xFFDDEBDF)) { Icon(Icons.Default.Check, null, tint = Color(0xFF295643), modifier = Modifier.padding(9.dp)) }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("${FocusMode.byName(record.mode).label} · ${record.actualMinutes} 分钟", color = Color(0xFF203B32), fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text(record.endedAt, color = Color(0xFF63796E), fontSize = 13.sp)
+                        }
+                        Text("已完成", color = Color(0xFF327054), fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

@@ -29,6 +29,14 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
+    fun focusFlowOwnsItsHeaderAndFullBleedBackground() {
+        listOf("focus", "focus_summary", "focus_history").forEach { route ->
+            assertNull(secondaryDestinationSpec(route))
+            assertEquals(0.dp, navigationDestinationLayout(route, 24.dp).contentTopPadding)
+        }
+    }
+
+    @Test
     fun secondaryDestinationKeepsNavHostAtTopAndPadsOnlyItsOwnContent() {
         val layout = navigationDestinationLayout("settings", statusBarHeight = 24.dp)
 
@@ -80,7 +88,6 @@ class SecondaryDestinationSpecTest {
             "exams",
             "exam_detail/{examId}",
             "exam_edit/{examId}",
-            "focus",
         ).forEach { route ->
             assertFalse("Route $route needs a fixed navigation title", secondaryDestinationSpec(route)?.title.isNullOrBlank())
         }

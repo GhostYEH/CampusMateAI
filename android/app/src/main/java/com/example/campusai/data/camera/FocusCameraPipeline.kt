@@ -37,7 +37,7 @@ class FocusCameraPipeline(
     private val application: Application
 ) {
     private var analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private var cameraProvider: ProcessCameraProvider? = null
+    @Volatile private var cameraProvider: ProcessCameraProvider? = null
     private var lifecycleOwner: LifecycleOwner? = null
     private var previewView: PreviewView? = null
     private val analyzing = AtomicBoolean(false)
@@ -66,20 +66,17 @@ class FocusCameraPipeline(
 
     fun pause() {
         running = false
-        bindingGeneration.incrementAndGet()
-        cameraProvider?.unbindAll()
+        unbindWhenStopped(bindingGeneration.incrementAndGet())
     }
 
     fun stop() {
         running = false
-        bindingGeneration.incrementAndGet()
-        cameraProvider?.unbindAll()
+        unbindWhenStopped(bindingGeneration.incrementAndGet())
     }
 
     fun dispose() {
         running = false
-        bindingGeneration.incrementAndGet()
-        cameraProvider?.unbindAll()
+        unbindWhenStopped(bindingGeneration.incrementAndGet())
         cameraProvider = null
         lifecycleOwner = null
         previewView = null
@@ -95,8 +92,7 @@ class FocusCameraPipeline(
 
     fun detachLifecycle() {
         running = false
-        bindingGeneration.incrementAndGet()
-        cameraProvider?.unbindAll()
+        unbindWhenStopped(bindingGeneration.incrementAndGet())
         lifecycleOwner = null
     }
 
@@ -118,10 +114,17 @@ class FocusCameraPipeline(
 
     fun unbindCamera() {
         running = false
-        bindingGeneration.incrementAndGet()
-        cameraProvider?.unbindAll()
+        unbindWhenStopped(bindingGeneration.incrementAndGet())
         lifecycleOwner = null
         previewView = null
+    }
+
+    /** CameraX unbindAll is main-thread-only, including during async page teardown. */
+    private fun unbindWhenStopped(generation: Long) {
+        val provider = cameraProvider ?: return
+        ContextCompat.getMainExecutor(application).execute {
+            if (!running && generation == bindingGeneration.get()) provider.unbindAll()
+        }
     }
 
     private fun bindUseCasesIfReady() {

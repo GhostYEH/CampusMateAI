@@ -448,62 +448,22 @@ fun FocusSessionScreen(
         )
     }
     if (showEndConfirmation) {
-        AlertDialog(
-            onDismissRequest = {
-                if (!finishingSession && !timerExpired) showEndConfirmation = false
+        FocusEndDialog(
+            scene = sceneSettings.scene,
+            timerExpired = timerExpired,
+            finishing = finishingSession,
+            hasPlanStep = planTaskId != null,
+            selfReport = selfReport,
+            error = completionError,
+            onReportChange = { selfReport = it },
+            onDismiss = { showEndConfirmation = false },
+            onComplete = {
+                finishingSession = true
+                focusScope.launch { completeSession(planTaskId != null) }
             },
-            title = { Text(if (timerExpired) "本次计时已完成" else "结束本次专注？") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("AI 将根据本次学习时长、交流和学习状态生成总结。")
-                    OutlinedTextField(
-                        value = selfReport,
-                        onValueChange = { selfReport = it.take(2_000) },
-                        label = { Text("本次学习感受（选填）") },
-                        placeholder = { Text("例如：练习题比预想的难") },
-                        minLines = 2,
-                        maxLines = 4,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    completionError?.let { error ->
-                        Text(error, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !finishingSession,
-                    onClick = {
-                        finishingSession = true
-                        focusScope.launch {
-                            completeSession(planTaskId != null)
-                        }
-                    },
-                ) {
-                    Text(
-                        if (planTaskId != null) "完成步骤并结束" else "结束并生成总结",
-                        color = Primary,
-                    )
-                }
-            },
-            dismissButton = {
-                Row {
-                    if (!timerExpired) {
-                        TextButton(
-                            enabled = !finishingSession,
-                            onClick = { showEndConfirmation = false },
-                        ) { Text("继续专注") }
-                    }
-                    if (planTaskId != null) {
-                        TextButton(
-                            enabled = !finishingSession,
-                            onClick = {
-                                finishingSession = true
-                                focusScope.launch { completeSession(false) }
-                            },
-                        ) { Text("仅结束专注") }
-                    }
-                }
+            onEndOnly = {
+                finishingSession = true
+                focusScope.launch { completeSession(false) }
             },
         )
     }

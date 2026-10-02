@@ -53,6 +53,9 @@ private fun dynamicDestinationTitle(route: String): String? = when {
 
 private val rootRoutes = setOf(
     "home",
+    "focus",
+    "focus_summary",
+    "focus_history",
     "courses",
     "tasks",
     "profile",

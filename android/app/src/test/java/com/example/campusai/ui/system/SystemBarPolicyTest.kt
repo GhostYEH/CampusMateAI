@@ -38,6 +38,16 @@ class SystemBarPolicyTest {
     }
 
     @Test
+    fun focusFlowUsesLightSystemIconsOverFullBleedScenes() {
+        listOf("focus", "focus_session", "focus_summary", "focus_history").forEach { route ->
+            val policy = systemBarPolicy(route = route, darkTheme = false, authenticated = true)
+            assertFalse(policy.darkStatusBarIcons)
+            assertFalse(policy.darkNavigationBarIcons)
+            assertTrue(routeOwnsStatusBarInset(route))
+        }
+    }
+
+    @Test
     fun darkThemeUsesLightIconsOnThemeColoredPages() {
         val policy = systemBarPolicy(route = "tasks", darkTheme = true, authenticated = true)
 

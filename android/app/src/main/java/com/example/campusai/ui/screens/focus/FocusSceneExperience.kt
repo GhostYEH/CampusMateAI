@@ -84,6 +84,9 @@ private fun FocusScene.visuals(): FocusSceneVisuals = when (this) {
     )
 }
 
+@DrawableRes
+internal fun FocusScene.backgroundResource(): Int = visuals().backgroundRes
+
 /**
  * Keeps companion content outside the background transition. Changing scenes therefore never
  * recreates the robot's animation state or interrupts an in-flight voice status animation.

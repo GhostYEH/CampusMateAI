@@ -160,7 +160,7 @@ fun AppShell(
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
-    val immersiveFocusSession = route == "focus_session"
+    val immersiveFocusFlow = route in setOf("focus", "focus_session", "focus_summary", "focus_history")
     val view = LocalView.current
     val systemBarPolicy = systemBarPolicy(
         route = route,
@@ -199,7 +199,7 @@ fun AppShell(
         ) {
             content()
         }
-        if (!immersiveFocusSession && route != "home") {
+        if (!immersiveFocusFlow && route != "home") {
             CampusDock(
                 modifier = Modifier.align(Alignment.BottomCenter),
                 items = navItems,
