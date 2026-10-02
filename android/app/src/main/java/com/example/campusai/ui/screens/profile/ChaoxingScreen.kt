@@ -1,6 +1,10 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +26,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassTextButton as TextButton
@@ -33,20 +36,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.campusai.R
 import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.AlertErrorBg
 import com.example.campusai.ui.theme.AlertErrorText
-import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Surface
-import com.example.campusai.ui.theme.TextPrimary
 import com.example.campusai.workers.ChaoxingSyncScheduler
 
 /** The single entry point for Chaoxing connection and synchronization. */
@@ -56,14 +62,22 @@ fun ChaoxingScreen(viewModel: ChaoxingViewModel = viewModel()) {
 
     LaunchedEffect(Unit) { viewModel.checkStatus() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 20.dp)
-            .padding(top = 12.dp, bottom = BottomDockReservedHeight + 24.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
+    Box(Modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.focus_scene_quiet_library),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xC912302B), Color(0xB9183029), Color(0xE10D211E)))))
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 20.dp, bottom = BottomDockReservedHeight + 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+        Text("连接学习通", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("把课程与资料带进你的图书馆", color = Color.White.copy(alpha = .82f), fontSize = 13.sp)
         StatusCard(uiState)
 
         when (uiState.status) {
@@ -90,6 +104,7 @@ fun ChaoxingScreen(viewModel: ChaoxingViewModel = viewModel()) {
                 Text(message, color = if (isSuccess) Primary else AlertErrorText, fontSize = 12.sp)
             }
         }
+        }
     }
 }
 
@@ -108,18 +123,20 @@ private fun ConnectedActions(uiState: ChaoxingUiState, viewModel: ChaoxingViewMo
 @Composable
 private fun StatusCard(uiState: ChaoxingUiState) {
     Column(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Surface)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(Color(0xE519443B), Color(0xE33E5C45), Color(0xD789714F))))
+            .border(1.dp, Color(0x99E9D7A8), RoundedCornerShape(22.dp))
+            .padding(horizontal = 18.dp, vertical = 18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(PrimarySoft),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Default.School, null, tint = Primary, modifier = Modifier.size(18.dp)) }
+            ) { Icon(Icons.Default.School, null, tint = Color(0xFFF4DDA8), modifier = Modifier.size(18.dp)) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("学习通", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text("学习通 · 课程书架", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                 Spacer(Modifier.height(2.dp))
                 val text = when (uiState.status) {
                     "online" -> if (uiState.isCheckingStatus) "已连接 · 正在验证" else "已连接"
@@ -128,9 +145,9 @@ private fun StatusCard(uiState: ChaoxingUiState) {
                     else -> "正在检查连接状态"
                 }
                 val color = when (uiState.status) {
-                    "online" -> Primary
+                    "online" -> Color(0xFFE2F3D3)
                     "expired" -> AlertErrorText
-                    else -> Muted
+                    else -> Color.White.copy(alpha = .78f)
                 }
                 Text(text, color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
@@ -143,21 +160,21 @@ private fun StatusCard(uiState: ChaoxingUiState) {
 
         when (uiState.status) {
             "online" -> {
-                HorizontalDivider(color = Line)
+                HorizontalDivider(color = Color.White.copy(alpha = .28f))
                 uiState.lastSyncedAt?.let { InfoLine("上次同步", it) }
                 InfoLine("自动同步", "每 ${ChaoxingSyncScheduler.SYNC_INTERVAL_HOURS} 小时")
                 InfoLine("数据来源", if (uiState.source == "chaoxing_live") "学习通实时数据" else "待确认")
                 InfoLine("课程与教师", "${uiState.courses} 门 · ${uiState.teachers} 位")
                 InfoLine("未完成作业", "${uiState.pendingAssignments} 项")
                 InfoLine("已同步通知", "${uiState.notices} 条")
-                uiState.statusMessage?.let { Text(it, color = Muted, fontSize = 12.sp) }
+                uiState.statusMessage?.let { Text(it, color = Color.White.copy(alpha = .75f), fontSize = 12.sp) }
             }
-            "expired" -> { HorizontalDivider(color = Line); Text("学习通会话已过期，请重新登录后继续同步。", color = AlertErrorText, fontSize = 12.sp) }
+            "expired" -> { HorizontalDivider(color = Color.White.copy(alpha = .28f)); Text("学习通会话已过期，请重新登录后继续同步。", color = Color.White, fontSize = 12.sp) }
             "offline" -> {
-                Text("连接后可同步课程、作业与课程通知。", color = Muted, fontSize = 12.sp)
-                uiState.statusMessage?.let { Text(it, color = Muted, fontSize = 12.sp) }
+                Text("连接后可同步课程、资料与通知。", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
+                uiState.statusMessage?.let { Text(it, color = Color.White.copy(alpha = .75f), fontSize = 12.sp) }
             }
-            else -> Text("正在确认学习通连接，请稍候。", color = Muted, fontSize = 12.sp)
+            else -> Text("正在确认学习通连接，请稍候。", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
         }
     }
 }
@@ -165,17 +182,17 @@ private fun StatusCard(uiState: ChaoxingUiState) {
 @Composable
 private fun CheckingStatus() {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
+        CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
         Spacer(Modifier.width(8.dp))
-        Text("正在检查学习通连接", color = Muted, fontSize = 13.sp)
+        Text("正在检查学习通连接", color = Color.White, fontSize = 13.sp)
     }
 }
 
 @Composable
 private fun InfoLine(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Muted, fontSize = 12.sp)
-        Text(value, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = Color.White.copy(alpha = .7f), fontSize = 12.sp)
+        Text(value, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -190,6 +207,6 @@ private fun PrimaryActionButton(text: String, icon: ImageVector, enabled: Boolea
 @Composable
 private fun SecondaryActionButton(text: String, icon: ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
     TextButton(onClick, Modifier.fillMaxWidth().height(40.dp), enabled, RoundedCornerShape(10.dp)) {
-        Icon(icon, null, Modifier.size(14.dp), tint = Muted); Spacer(Modifier.width(6.dp)); Text(text, color = Muted, fontSize = 13.sp)
+        Icon(icon, null, Modifier.size(14.dp), tint = Color.White.copy(alpha = .76f)); Spacer(Modifier.width(6.dp)); Text(text, color = Color.White.copy(alpha = .76f), fontSize = 13.sp)
     }
 }

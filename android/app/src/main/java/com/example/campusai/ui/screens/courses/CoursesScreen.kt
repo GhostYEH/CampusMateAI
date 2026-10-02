@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Class
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.FolderOpen
@@ -99,6 +100,8 @@ private val CourseBlueLight = Color(0xFF7E95F5)
 private val CourseOrange = Color(0xFFF29A49)
 private val CourseGreen = Color(0xFF37B89B)
 private val CoursePurple = Color(0xFF9369E8)
+private val DetailForest = Color(0xFF22513F)
+private val DetailGold = Color(0xFFAF925B)
 
 @Composable
 fun CoursesScreen(
@@ -539,6 +542,7 @@ internal fun CourseDetailSheet(
     var syncing by remember(course.id) { mutableStateOf(false) }
     var error by remember(course.id) { mutableStateOf<String?>(null) }
     var selectedNotice by remember(course.id) { mutableStateOf<CourseContentItemDto?>(null) }
+    var downloadFailure by remember(course.id) { mutableStateOf<Pair<CourseContentItemDto, String>?>(null) }
     var filter by remember(course.id) { mutableStateOf("全部") }
     val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
     val kinds = mapOf(
@@ -580,7 +584,7 @@ internal fun CourseDetailSheet(
                     Icon(Icons.Default.MenuBook, null, tint = Color.White)
                 }
             } }
-            item { Text("课程信息", color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+            item { Text("课程信息", color = DetailForest, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
             item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
             summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
             summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
@@ -610,10 +614,7 @@ internal fun CourseDetailSheet(
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF385AF6),
-                        contentColor = Color.White,
-                    ),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF477365), contentColor = Color.White),
                 ) {
                     Icon(Icons.Default.AutoAwesome, null)
                     Spacer(Modifier.width(8.dp))
@@ -636,13 +637,13 @@ internal fun CourseDetailSheet(
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                colors = ButtonDefaults.buttonColors(containerColor = DetailForest),
                 enabled = !syncing,
             ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "更新章节、资料、作业与通知", fontWeight = FontWeight.Bold) }
             }
             if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
-            item { Text("课程内容 · 分栏目更新", color = Primary, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+            item { Text("课程内容 · 分栏目更新", color = DetailForest, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
             item { Text("直接点击即可更新，无须预先打开学习通；本学期只影响书架排序。栏目内容由任课教师提供，登录失效或需要验证时请重新连接。", color = Muted, fontSize = 12.sp) }
             summary?.sections?.let { sections ->
                 if (sections.isNotEmpty()) item {
@@ -666,12 +667,15 @@ internal fun CourseDetailSheet(
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         itemsIndexed(filters) { _, item ->
-                            Button(
-                                onClick = { filter = item },
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = if (filter == item) Primary else PrimarySoft, contentColor = if (filter == item) Color.White else Primary),
-                            ) { Text(item, fontSize = 11.sp) }
+                            val selected = filter == item
+                            Box(
+                                Modifier.clip(CircleShape)
+                                    .background(if (selected) DetailForest else Color.White.copy(alpha = .55f))
+                                    .border(1.dp, if (selected) DetailGold else DetailForest.copy(alpha = .18f), CircleShape)
+                                    .campusClickable { filter = item }
+                                    .padding(horizontal = 17.dp, vertical = 9.dp),
+                                contentAlignment = Alignment.Center,
+                            ) { Text(item, color = if (selected) Color.White else DetailForest, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
                         }
                     }
                 }
@@ -688,9 +692,11 @@ internal fun CourseDetailSheet(
                     Text(text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
                 }
                 itemsIndexed(visible, key = { _, item -> item.id }) { _, item ->
-                    val icon = when (item.kind) { "notice" -> Icons.Default.Notifications; "assignment" -> Icons.Default.TaskAlt; else -> Icons.Default.FolderOpen }
+                    val icon = when (item.kind) { "notice" -> Icons.Default.Notifications; "assignment" -> Icons.Default.TaskAlt; "document" -> Icons.Default.Description; else -> Icons.Default.FolderOpen }
                     Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(PrimarySoft)
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                            .background(Brush.horizontalGradient(listOf(Color(0xFFFAF8EF), Color(0xFFE8EFE5))))
+                            .border(1.dp, DetailGold.copy(alpha = .25f), RoundedCornerShape(18.dp))
                             .campusClickable {
                                 if (item.kind == "notice") {
                                     selectedNotice = item
@@ -699,9 +705,10 @@ internal fun CourseDetailSheet(
                                 scope.launch {
                                     try {
                                         if (item.can_download) {
-                                            val file = repository.downloadCourseResource(course.id, item)
+                                            val downloaded = repository.downloadCourseResource(course.id, item)
+                                            val file = downloaded.file
                                             if (file == null) {
-                                                Toast.makeText(context, "暂无法下载；学习通可能要求验证或限制访问", Toast.LENGTH_LONG).show()
+                                                downloadFailure = item to (downloaded.errorCode ?: "unknown")
                                             } else {
                                                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.coursefiles", file)
                                                 val mimeType = URLConnection.guessContentTypeFromName(file.name) ?: "*/*"
@@ -721,23 +728,25 @@ internal fun CourseDetailSheet(
                                             }
                                         }
                                     } catch (_: Exception) {
-                                        Toast.makeText(context, "资料打开失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                                        downloadFailure = item to "network_error"
                                     }
                                 }
-                            }.padding(13.dp),
+                            }.padding(15.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Icon(icon, null, tint = Primary, modifier = Modifier.size(20.dp))
+                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(DetailForest.copy(alpha = .1f)), contentAlignment = Alignment.Center) {
+                            Icon(icon, null, tint = DetailForest, modifier = Modifier.size(19.dp))
+                        }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
                                 if (item.kind == "notice") "教师通知${item.author_name?.let { " · $it" }.orEmpty()}"
-                                else listOf(item.kind, item.status.takeUnless { it == "unknown" }.orEmpty(), if (item.cached) "已缓存" else "").filter { it.isNotBlank() }.joinToString(" · "),
+                                else listOf(when (item.kind) { "document" -> "文档"; "video" -> "视频"; "audio" -> "音频"; "image" -> "图片"; "chapter" -> "章节"; else -> "课程资料" }, if (item.cached) "已缓存" else "来自学习通").joinToString(" · "),
                                 color = Muted, fontSize = 10.sp,
                             )
                         }
-                        Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                        Icon(Icons.Default.ChevronRight, null, tint = DetailForest)
                     }
                 }
             }
@@ -777,13 +786,44 @@ internal fun CourseDetailSheet(
             containerColor = Color(0xFFF5F2E8),
         )
     }
+    downloadFailure?.let { (item, code) ->
+        AlertDialog(
+            onDismissRequest = { downloadFailure = null },
+            title = { Text("暂时无法下载") },
+            text = {
+                Text(when (code) {
+                    "verification_required" -> "学习通要求安全验证。可以前往学习通打开此文件，完成验证后下载。"
+                    "chaoxing_session_expired", "chaoxing_credentials_not_found", "http_401" -> "学习通登录已失效，请重新连接账号后重试。"
+                    "resource_too_large" -> "文件超过应用当前可下载的大小限制，可前往学习通查看。"
+                    "resource_not_found" -> "学习通中的这份文件可能已被移除。"
+                    else -> "学习通暂未提供可用的文件下载。可以尝试在学习通中打开。"
+                })
+            },
+            confirmButton = {
+                Button(onClick = {
+                    downloadFailure = null
+                    scope.launch {
+                        val url = runCatching { repository.getCourseResourceUrl(course.id, item.id) }.getOrNull()
+                        if (!url.isNullOrBlank() && Uri.parse(url).scheme == "https") {
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                                .onFailure { Toast.makeText(context, "无法打开学习通页面", Toast.LENGTH_SHORT).show() }
+                        } else {
+                            Toast.makeText(context, "学习通没有提供可打开的文件地址", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("去学习通打开") }
+            },
+            dismissButton = { Button(onClick = { downloadFailure = null }) { Text("返回") } },
+            containerColor = Color(0xFFF5F2E8),
+        )
+    }
 }
 
 @Composable
 private fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(PrimarySoft), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = Primary, modifier = Modifier.size(19.dp))
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(DetailForest.copy(alpha = .1f)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = DetailForest, modifier = Modifier.size(19.dp))
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, color = Muted, fontSize = 10.sp)

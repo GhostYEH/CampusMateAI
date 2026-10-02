@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.classroom.ClassroomCompositionText
+import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.ClassroomPhase
 import com.example.campusai.data.classroom.ClassroomProgressReducer
 import com.example.campusai.data.classroom.ClassroomProgressState
@@ -68,7 +69,6 @@ import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Success
-import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -393,17 +393,20 @@ fun InteractiveClassroomSection(
         viewModel.resumeObservationIfNeeded()
         onDispose { viewModel.stopObservation() }
     }
+    if (!state.loading && state.serviceState == InteractiveClassroomServiceState.NOT_CONFIGURED &&
+        state.history.isEmpty() && state.progress.phase == ClassroomPhase.IDLE
+    ) return
     Column(
         Modifier.fillMaxWidth()
             .padding(top = 4.dp)
-            .background(Surface, RoundedCornerShape(18.dp))
-            .padding(14.dp),
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFF9F7EC), androidx.compose.ui.graphics.Color(0xFFE6EEE1))), RoundedCornerShape(22.dp))
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("智能辅导 · 互动课堂", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("围绕这门课生成一次可交互学习内容", color = Muted, fontSize = 11.sp)
+                Text("互动课堂 · 从这门课出发", color = androidx.compose.ui.graphics.Color(0xFF22513F), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("选择课件与学习目标，生成讲解和练习", color = Muted, fontSize = 12.sp)
             }
             Text(state.serviceState.label, color = serviceColor(state.serviceState), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
@@ -488,6 +491,7 @@ private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: Interact
 private fun MaterialsChooser(plan: InteractiveClassroomPlanDto, selected: Set<String>, onToggle: (String, Boolean) -> Unit) {
     if (plan.materials.isEmpty()) return
     Text("使用课程资料", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+    Text("当前已同步文件名，正文未读取；课堂会结合课程、文件标题和你的学习目标生成。", color = Muted, fontSize = 11.sp)
     plan.materials.forEach { material ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = material.id in selected, onCheckedChange = { onToggle(material.id, it) })
@@ -531,7 +535,7 @@ private fun ProgressCard(
         progress.materialsWarning?.takeIf { it.isNotBlank() }?.let { Text(it, color = ColorWarning, fontSize = 11.sp) }
         progress.requestSourceNote?.takeIf { it.isNotBlank() }?.let { Text(it, color = Muted, fontSize = 10.sp) }
         val safe = if (status?.browserEmbedAvailable == true) {
-            ClassroomUrlPolicy.sanitize(progress.openableUrl(), listOf(status.embedOrigin))
+            ClassroomUrlPolicy.sanitize(progress.openableUrl(), listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
         } else null
         if (safe != null && progress.phase == ClassroomPhase.SUCCEEDED) {
             OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe))) }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("打开公开课堂", fontSize = 11.sp) }
@@ -560,7 +564,7 @@ private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: Intera
                     Text(item.createdAt ?: "历史记录", color = Muted, fontSize = 10.sp)
                 }
                 val safe = if (status?.browserEmbedAvailable == true) {
-                    ClassroomUrlPolicy.sanitize(item.url, listOf(status.embedOrigin))
+                    ClassroomUrlPolicy.sanitize(item.url, listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
                 } else null
                 if (safe != null) {
                     OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe))) }, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)) { Text("打开", fontSize = 11.sp) }

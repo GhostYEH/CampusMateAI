@@ -724,15 +724,22 @@ class AppRepository(
         return response.body()?.url
     }
 
-    suspend fun downloadCourseResource(courseId: String, item: CourseContentItemDto): File? {
+    data class CourseResourceDownloadResult(val file: File? = null, val errorCode: String? = null)
+
+    suspend fun downloadCourseResource(courseId: String, item: CourseContentItemDto): CourseResourceDownloadResult {
         val response = ApiClient.chaoxingApi.downloadCourseResource(courseId, item.id)
         val body = response.body()
-        if (!response.isSuccessful || body == null) return null
+        if (!response.isSuccessful || body == null) {
+            val detail = runCatching {
+                org.json.JSONObject(response.errorBody()?.string().orEmpty()).optString("detail")
+            }.getOrNull()?.takeIf(String::isNotBlank)
+            return CourseResourceDownloadResult(errorCode = detail ?: "http_${response.code()}")
+        }
         val safeName = item.title.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { item.id }
         val targetDir = File(application.cacheDir, "chaoxing-resources").apply { mkdirs() }
         val target = File(targetDir, safeName.take(160))
         body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
-        return target
+        return CourseResourceDownloadResult(file = target)
     }
 
     /** 拉取个人中心数据（文件 / 收藏 / 活动）。 */

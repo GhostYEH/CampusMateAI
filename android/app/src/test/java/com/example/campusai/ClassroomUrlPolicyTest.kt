@@ -16,6 +16,16 @@ import org.junit.Test
  */
 class ClassroomUrlPolicyTest {
 
+    @Test
+    fun `emulator classroom needs explicit debug allowance and exact origin`() {
+        val url = "http://10.0.2.2:3000/classroom/room_1"
+        val origin = listOf("http://10.0.2.2:3000")
+        assertNull(ClassroomUrlPolicy.sanitize(url, origin))
+        assertEquals(url, ClassroomUrlPolicy.sanitize(url, origin, allowEmulatorDebug = true))
+        assertNull(ClassroomUrlPolicy.sanitize("http://10.0.2.2:3000/admin", origin, allowEmulatorDebug = true))
+        assertNull(ClassroomUrlPolicy.sanitize(url, listOf("http://10.0.2.2:3001"), allowEmulatorDebug = true))
+    }
+
     private val trusted = listOf("https://classroom.example.com")
     private val trustedWithPort = listOf("https://classroom.example.com:8443")
 

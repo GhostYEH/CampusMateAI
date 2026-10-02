@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.profile
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,13 +28,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.ui.theme.AlertErrorText
 import com.example.campusai.ui.theme.Muted
-import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.launch
@@ -50,9 +54,17 @@ fun ChaoxingLoginForm(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth().clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xF9FCF9EC), Color(0xF1E1EBD9))))
+            .border(1.dp, Color.White.copy(alpha = .85f), shape)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("CAMPUSMATE  /  COURSE LIBRARY", color = Color(0xFF295643), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.School, null, tint = Primary, modifier = Modifier.size(28.dp))
+            Icon(Icons.Default.School, null, tint = Color(0xFF295643), modifier = Modifier.size(28.dp))
             Spacer(Modifier.width(8.dp))
             Text(headline, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         }
@@ -63,7 +75,7 @@ fun ChaoxingLoginForm(
             label = { Text("学号 / 手机号") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(14.dp),
         )
         OutlinedTextField(
             value = password,
@@ -71,7 +83,7 @@ fun ChaoxingLoginForm(
             label = { Text("密码") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(14.dp),
             visualTransformation = PasswordVisualTransformation(),
         )
         Button(
@@ -89,8 +101,8 @@ fun ChaoxingLoginForm(
             },
             enabled = username.isNotBlank() && password.isNotBlank() && !isLoading,
             modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = RoundedCornerShape(10.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22513F)),
         ) {
             if (isLoading) {
                 CircularProgressIndicator(Modifier.size(16.dp), color = Surface, strokeWidth = 2.dp)

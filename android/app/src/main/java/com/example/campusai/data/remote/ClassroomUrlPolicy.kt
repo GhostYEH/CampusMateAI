@@ -11,11 +11,11 @@ import java.util.Locale
  * 恶意站点或带用户名密码的地址，就会在设备上被无条件打开。
  *
  * 约束（全部为硬性，任一条不满足即拒绝）：
- * - 只允许 **https**；
+ * - 正式入口只允许 **https**；调试构建可显式放行模拟器的固定本地课堂地址；
  * - scheme + host + port 必须与后端下发的可信 Origin **精确匹配**（含端口）；
  * - 禁止 file / content / javascript / data / about / blob / intent 等协议；
  * - 禁止 URL 携带用户名或密码；
- * - 禁止回环、私网、链路本地与未指定地址；
+ * - 禁止回环、私网、链路本地与未指定地址（上述模拟器调试例外除外）；
  * - 禁止路径穿越（`..`）；
  * - 不可信 URL **绝不**交给 `Intent.ACTION_VIEW`。
  *
@@ -65,15 +65,21 @@ object ClassroomUrlPolicy {
     /**
      * URL 是否可信：协议、用户名密码、路径穿越、地址范围、Origin 精确匹配全部通过。
      */
-    fun isTrusted(url: String?, trustedOrigins: List<String?>?): Boolean {
+    fun isTrusted(url: String?, trustedOrigins: List<String?>?, allowEmulatorDebug: Boolean = false): Boolean {
         val parsed = parse(url) ?: return false
-        if (schemeOf(url) !in ALLOWED_SCHEMES) return false
         val host = parsed.host?.lowercase(Locale.ROOT) ?: return false
         if (host.isEmpty()) return false
         // 禁止用户名/密码（凭据绝不进入 URL）
         if (!parsed.userInfo.isNullOrEmpty()) return false
         // 禁止路径穿越
         if (parsed.path.orEmpty().contains("..")) return false
+        // 仅调试构建可打开模拟器映射到开发机的课堂；真实设备与正式包仍只接受公网 HTTPS。
+        if (allowEmulatorDebug && parsed.scheme == "http" && host == "10.0.2.2" && parsed.port == 3000 &&
+            parsed.path.orEmpty().matches(Regex("/classroom/[A-Za-z0-9_-]{1,192}")) &&
+            parsed.rawQuery == null && parsed.rawFragment == null &&
+            trustedOrigins.orEmpty().any { it == "http://10.0.2.2:3000" }
+        ) return true
+        if (schemeOf(url) !in ALLOWED_SCHEMES) return false
         if (isLoopbackOrPrivate(host)) return false
         val allowed = normalizeOrigins(trustedOrigins)
         if (allowed.isEmpty()) return false
@@ -84,8 +90,8 @@ object ClassroomUrlPolicy {
      * 可安全交给系统浏览器打开的 URL；不可信时返回 null。
      * **调用方必须用返回值构造 Intent，绝不要直接用原始字符串。**
      */
-    fun sanitize(url: String?, trustedOrigins: List<String?>?): String? =
-        if (isTrusted(url, trustedOrigins)) url else null
+    fun sanitize(url: String?, trustedOrigins: List<String?>?, allowEmulatorDebug: Boolean = false): String? =
+        if (isTrusted(url, trustedOrigins, allowEmulatorDebug)) url else null
 
     /** 供 UI 展示的拒绝原因（不含任何 URL 细节，避免泄漏）。 */
     fun rejectionReason(url: String?, trustedOrigins: List<String?>?): String = when {
