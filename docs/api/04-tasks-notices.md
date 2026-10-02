@@ -80,7 +80,7 @@ Web 封装：`getNotices`（[webreact/src/data/api.js](../../webreact/src/data/a
 
 用途：提取notice。
 
-鉴权：公开或使用专用凭据（扫码 browser token / 可信设备 cookie 等见参数与流程）。
+鉴权：Bearer access token；已登录用户。
 
 实现：[backend/app/api/routes/notices.py](../../backend/app/api/routes/notices.py)，`extract_notice`。
 
@@ -142,7 +142,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 用途：多任务抽取 — 自动识别通知中是否包含多个独立任务。
 
-鉴权：公开或使用专用凭据（扫码 browser token / 可信设备 cookie 等见参数与流程）。
+鉴权：Bearer access token；已登录用户。
 
 实现：[backend/app/api/routes/notices.py](../../backend/app/api/routes/notices.py)，`extract_notice_multi`。
 
@@ -197,7 +197,7 @@ Web 封装：`extractNotice`（[webreact/src/data/api.js](../../webreact/src/dat
 
 用途：检测当前通知是否可能与最近已存在的通知重复。
 
-鉴权：公开或使用专用凭据（扫码 browser token / 可信设备 cookie 等见参数与流程）。
+鉴权：Bearer access token；已登录用户。
 
 实现：[backend/app/api/routes/notices.py](../../backend/app/api/routes/notices.py)，`check_duplicate`。
 

@@ -352,7 +352,10 @@ def list_notices(
 
 
 @router.post("/notices/extract", response_model=NoticeExtractResponse)
-async def extract_notice(req: NoticeExtractRequest) -> NoticeExtractResponse:
+async def extract_notice(
+    req: NoticeExtractRequest,
+    _user: UserRow = Depends(current_user),
+) -> NoticeExtractResponse:
     container = get_container()
     return await container.notice_extraction.extract(
         req.content,
@@ -364,6 +367,7 @@ async def extract_notice(req: NoticeExtractRequest) -> NoticeExtractResponse:
 @router.post("/notices/extract-multi", response_model=MultiNoticeExtractResponse)
 async def extract_notice_multi(
     req: NoticeExtractRequest,
+    _user: UserRow = Depends(current_user),
 ) -> MultiNoticeExtractResponse:
     """多任务抽取 — 自动识别通知中是否包含多个独立任务。
 
@@ -383,6 +387,7 @@ async def extract_notice_multi(
 @router.post("/notices/check-duplicate", response_model=DuplicateNoticeCheckResponse)
 async def check_duplicate(
     req: DuplicateNoticeCheckRequest,
+    _user: UserRow = Depends(current_user),
 ) -> DuplicateNoticeCheckResponse:
     """检测当前通知是否可能与最近已存在的通知重复。
 

@@ -65,7 +65,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 用途：列出知识库文档。
 
-鉴权：公开或使用专用凭据（扫码 browser token / 可信设备 cookie 等见参数与流程）。
+鉴权：Bearer access token；已登录用户。
 
 实现：[backend/app/api/routes/knowledge.py](../../backend/app/api/routes/knowledge.py)，`list_documents`。
 

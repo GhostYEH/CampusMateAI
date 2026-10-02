@@ -21,7 +21,7 @@ from ...schemas.knowledge import (
     RebuildResponse,
 )
 from ...services.container import get_container
-from ..deps import require_role
+from ..deps import current_user, require_role
 from ...models.multi_role import UserRow
 
 router = APIRouter()
@@ -84,7 +84,7 @@ async def knowledge_status() -> KnowledgeStatus:
 
 
 @router.get("/knowledge/documents", response_model=List[DocumentSummary])
-async def list_documents() -> List[DocumentSummary]:
+async def list_documents(_user: UserRow = Depends(current_user)) -> List[DocumentSummary]:
     container = get_container()
     docs = container.document_repository.list_documents()
     return [
