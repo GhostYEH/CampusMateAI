@@ -79,33 +79,7 @@ def test_container():
     from app.core.config import Settings
     from app.database.sqlite_db import Database
 
-    import sqlite3
-
-    settings = Settings(database_url="sqlite:///:memory:", llm_available=False)
-
-    # Bypass init schema since it's breaking on connect with original string
-    class MemoryDB(Database):
-        def __init__(self, settings):
-            self._shared_conn = None
-            super().__init__(settings)
-
-        def _connect(self):
-            if self._shared_conn is None:
-                self._shared_conn = sqlite3.connect(":memory:", check_same_thread=False)
-                self._shared_conn.row_factory = sqlite3.Row
-                self._shared_conn.execute("PRAGMA foreign_keys=ON;")
-                from app.database.sqlite_db import SCHEMA_SQL
-                self._shared_conn.executescript(SCHEMA_SQL)
-            return self._shared_conn
-
-        def _init_schema(self):
-            pass
-
-    db = MemoryDB(settings)
-    db._is_memory = True # Force memory mode flag
-
-    # Initialize the schema manually using the original Database method
-    Database._init_schema(db)
+    db = Database(None)
 
     # Use the builder to get a fully initialized container
     from app.services.container import build_container
@@ -137,7 +111,10 @@ def test_container():
         if hasattr(repo, "_db"):
             repo._db = db
 
-    yield container
+    try:
+        yield container
+    finally:
+        db.dispose()
 
 @pytest.fixture
 def mock_container(test_container: ServiceContainer, monkeypatch):

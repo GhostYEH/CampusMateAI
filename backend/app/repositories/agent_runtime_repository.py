@@ -35,6 +35,7 @@ _RUN_COLUMNS = (
 
 # 幂等声明的默认作用域。工具调用等其它写路径可复用同一张表,只需换 scope。
 IDEMPOTENCY_SCOPE_AGENT_JOB = "agent_job"
+IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY = "agent_run_retry"
 
 # 只有这些标量类型允许写回 job.input_ref —— 避免把大对象或敏感载荷塞进公开字段。
 _SAFE_PATCH_TYPES = (str, int, float, bool, type(None))
@@ -920,6 +921,109 @@ class AgentRuntimeRepository:
             return dict(row) if row else None
         finally:
             self._release(conn)
+
+    def retry_run_with_control(
+        self,
+        *,
+        run_id: str,
+        user_id: str,
+        idempotency_key: str,
+        handler_code: Optional[str] = None,
+        handler_version: Optional[str] = None,
+        record_control: bool = True,
+    ) -> dict:
+        """Atomically resolve a retry key, create its Run/event, and record control.
+
+        The claim row is the first write in the transaction. Its primary key serializes
+        same-user retries across repository instances and processes, while all dependent
+        rows use this transaction's connection so no partial retry can escape.
+        """
+        now = _now()
+        notify_run_id: Optional[str] = None
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO agent_idempotency_claims "
+                "(scope, user_id, idempotency_key, request_hash, resource_id, created_at) "
+                "VALUES (?, ?, ?, '', ?, ?)",
+                (IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY, user_id, idempotency_key, run_id, now),
+            )
+            source = self._fetch_run(conn, run_id)
+            if source is None:
+                raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
+            if source["user_id"] != user_id:
+                raise AgentRuntimeError("无权控制此运行", code="AGENT_PERMISSION_DENIED", http_status=403)
+
+            control = None
+            if record_control:
+                control = conn.execute(
+                    "SELECT command_id, run_id, user_id, action, idempotency_key, "
+                    "resulting_status, created_at FROM agent_run_controls "
+                    "WHERE run_id = ? AND idempotency_key = ?",
+                    (run_id, idempotency_key),
+                ).fetchone()
+            if control is not None:
+                # Preserve the route's existing same-key replay response (the source Run).
+                result = {"run": source, "replayed": True}
+            else:
+                if source["status"] not in {"FAILED", "PARTIAL", "CANCELLED"}:
+                    raise AgentRuntimeError(
+                        f"Run 当前状态({source['status']})不可重试",
+                        code="AGENT_INVALID_STATE", http_status=409,
+                    )
+
+                existing = conn.execute(
+                    f"SELECT {_RUN_COLUMNS} FROM agent_runs "
+                    "WHERE user_id = ? AND idempotency_key = ?",
+                    (source["user_id"], idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    retry = dict(existing)
+                else:
+                    retry_run_id = _uuid("run")
+                    conn.execute(
+                        "INSERT INTO agent_runs (run_id, job_id, user_id, status, phase, request_id, "
+                        "idempotency_key, retry_of, handler_code, handler_version, attempt_no, "
+                        "next_attempt_at, created_at, updated_at) "
+                        "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                        (
+                            retry_run_id, source["job_id"], source["user_id"],
+                            source.get("request_id"), idempotency_key, run_id,
+                            handler_code or source.get("handler_code"),
+                            handler_version or source.get("handler_version"),
+                            now, now, now,
+                        ),
+                    )
+                    conn.execute(
+                        "UPDATE agent_jobs SET status = 'QUEUED', updated_at = ? WHERE job_id = ?",
+                        (now, source["job_id"]),
+                    )
+                    self._insert_event(
+                        conn, run_id=retry_run_id, type="RUN_QUEUED", status="QUEUED",
+                        phase="IDLE", summary="任务已加入队列，等待执行",
+                    )
+                    retry = self._fetch_run(conn, retry_run_id) or {}
+                    notify_run_id = retry_run_id
+
+                conn.execute(
+                    "UPDATE agent_idempotency_claims SET resource_id = ? "
+                    "WHERE scope = ? AND user_id = ? AND idempotency_key = ?",
+                    (
+                        retry["run_id"], IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY,
+                        user_id, idempotency_key,
+                    ),
+                )
+                if record_control:
+                    conn.execute(
+                        "INSERT INTO agent_run_controls "
+                        "(command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at) "
+                        "VALUES (?, ?, ?, 'retry', ?, ?, ?)",
+                        (_uuid("cmd"), run_id, user_id, idempotency_key, retry["status"], now),
+                    )
+                result = {"run": retry, "replayed": False}
+
+        if notify_run_id:
+            self._notify(notify_run_id)
+        return result
 
     def record_control(self, *, run_id: str, user_id: str, action: str,
                        idempotency_key: str, resulting_status: str) -> dict:

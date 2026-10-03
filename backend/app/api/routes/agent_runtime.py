@@ -511,27 +511,26 @@ async def _control_run(
         if refreshed is None:
             raise AgentRunNotFound("Run 不存在")
         return _run_to_out(refreshed, artifacts or [])
-    from ...services.agent_runtime.run_manager import RunManager
-    manager = RunManager(repo, container.agent_event_store)
-    if action == "pause":
-        result = await _offload(manager.pause, run_id, reason=body.reason)
-    elif action == "resume":
-        result = await _offload(manager.resume, run_id)
-    else:
+    if action == "retry":
         job = await _offload(repo.get_job, run["job_id"])
         handler = container.agent_handler_registry.require(job["job_kind"] if job else "")
-        result = await _offload(manager.retry,
-            run_id,
+        retried = await _offload(
+            repo.retry_run_with_control,
+            run_id=run_id,
+            user_id=user.id,
             idempotency_key=key,
             handler_code=handler.code,
             handler_version=handler.version,
         )
-    if action == "retry":
-        await _offload(repo.record_control,
-            run_id=run_id, user_id=user.id, action=action,
-            idempotency_key=key, resulting_status=result["status"],
+        return await _offload(
+            _run_to_out_from_repo, repo, _artifact_repo(container), retried["run"]
         )
-        return await _offload(_run_to_out_from_repo, repo, _artifact_repo(container), result)
+    from ...services.agent_runtime.run_manager import RunManager
+    manager = RunManager(repo, container.agent_event_store)
+    if action == "pause":
+        result = await _offload(manager.pause, run_id, reason=body.reason)
+    else:
+        result = await _offload(manager.resume, run_id)
     await _offload(repo.record_control,
         run_id=run_id, user_id=user.id, action=action,
         idempotency_key=key, resulting_status=result["status"],

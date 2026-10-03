@@ -304,8 +304,7 @@ class PersonalTaskRepository:
             cur = conn.execute(
                 f"""SELECT * FROM personal_tasks{where}
                     ORDER BY
-                        CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
-                        deadline ASC,
+                        deadline ASC NULLS LAST,
                         created_at DESC
                     LIMIT ? OFFSET ?""",
                 params + [page_size, offset],
@@ -398,8 +397,7 @@ class PersonalTaskRepository:
                 """SELECT * FROM personal_tasks
                    WHERE user_id = ? AND status = 'pending'
                    ORDER BY
-                       CASE WHEN deadline IS NULL THEN 1 ELSE 0 END,
-                       deadline ASC,
+                       deadline ASC NULLS LAST,
                        created_at DESC
                    LIMIT ?""",
                 (user_id, limit),

@@ -213,16 +213,15 @@ class RunManager:
                 code="AGENT_INVALID_STATE", http_status=409,
             )
         key = idempotency_key or f"retry:{run_id}"
-        existing = self._repo.find_run_by_idempotency(run["user_id"], key)
-        if existing:
-            return existing
-        new_run_id = self._repo.create_run(
-            job_id=run["job_id"], user_id=run["user_id"],
-            request_id=run.get("request_id"), idempotency_key=key, retry_of=run_id,
+        result = self._repo.retry_run_with_control(
+            run_id=run_id,
+            user_id=run["user_id"],
+            idempotency_key=key,
             handler_code=handler_code or run.get("handler_code"),
             handler_version=handler_version or run.get("handler_version"),
+            record_control=False,
         )
-        return self._repo.get_run(new_run_id) or {}
+        return result["run"]
 
     def recover_incomplete_runs(self) -> list[dict]:
         """兼容旧调用方；恢复工作已由带租约的 AgentWorker 接管。

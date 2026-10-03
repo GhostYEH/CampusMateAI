@@ -316,11 +316,11 @@ def test_expired_approval_cannot_be_approved(tmp_path):
     container, tc, headers, recorder, job_id, approval_id = _awaiting_job(tmp_path)
     repo = container.agent_runtime_repository
     # 直接把过期时间调到过去
-    repo._conn().execute(
-        "UPDATE agent_approvals SET expires_at = ? WHERE approval_id = ?",
-        ("2000-01-01T00:00:00+00:00", approval_id),
-    )
-    repo._conn().commit()
+    with repo._db.transaction() as conn:
+        conn.execute(
+            "UPDATE agent_approvals SET expires_at = ? WHERE approval_id = ?",
+            ("2000-01-01T00:00:00+00:00", approval_id),
+        )
 
     resp = _decide(tc, headers, approval_id, "APPROVED")
     assert resp.status_code == 410, resp.text

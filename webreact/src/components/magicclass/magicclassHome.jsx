@@ -6,6 +6,7 @@ import { formatDateTime } from "../../utils/date.js";
 import { describeEntryFailure, enterClassroomHref, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../../features/magicclass/enterClassroomModel.js";
 import { buildCourseRailItems, defaultMagicClassCourseId } from "../../features/magicclass/homeModel.js";
 import { inferHomeGenerationMode } from "../../features/magicclass/homeGenerationModel.js";
+import { createPollScope } from "../../data/pollScope.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
@@ -34,32 +35,58 @@ export default function MagicClassHome({ courses = [], assignments = [], recentI
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
   const [phase, setPhase] = React.useState(null);
+  const pollScopeRef = React.useRef(null);
+  if (!pollScopeRef.current) pollScopeRef.current = createPollScope();
+  const pollScope = pollScopeRef.current;
+  const cancelPollWaitRef = React.useRef(null);
   const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
   const canGenerate = Boolean(selectedCourseId && fusion?.state === "ready" && fusion?.capabilities?.includes("workspace") && fusion?.capabilities?.includes("generation") && providerStatus?.providers?.llm);
   React.useEffect(() => { if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultMagicClassCourseId(courses)); }, [courses, selectedCourseId]);
+  React.useEffect(() => () => {
+    cancelPollWaitRef.current?.();
+    cancelPollWaitRef.current = null;
+    pollScope.stop();
+  }, [pollScope]);
 
-  async function waitForJob(courseId, jobId, workspaceId) {
+  async function waitForJob(courseId, jobId, workspaceId, token) {
     for (let attempt = 0; attempt < 180; attempt += 1) {
-      const job = await api.getMagicClassJob(courseId, jobId); setPhase(resolveGenerationPhase(job));
+      if (!pollScope.isCurrent(token)) return;
+      const job = await api.getMagicClassJob(courseId, jobId);
+      if (!pollScope.isCurrent(token)) return;
+      setPhase(resolveGenerationPhase(job));
       if (job.status === "completed") { navigate(`/courses/${courseId}/workspaces/${workspaceId}?mode=playback`, { replace: true }); return; }
       if (["failed", "cancelled"].includes(job.status)) throw { response: { status: 200, data: job } };
-      await new Promise((resolve) => window.setTimeout(resolve, 800));
+      const shouldContinue = await new Promise((resolve) => {
+        const cancel = () => resolve(false);
+        cancelPollWaitRef.current = cancel;
+        pollScope.arm(() => {
+          cancelPollWaitRef.current = null;
+          pollScope.disarm();
+          resolve(true);
+        }, 800, token);
+      });
+      if (!shouldContinue || !pollScope.isCurrent(token)) return;
     }
     throw new Error("课堂生成等待超时，请稍后从最近课堂恢复。");
   }
 
   async function submit(event) {
     event.preventDefault(); const topic = prompt.trim(); if (!topic || !selectedCourseId || busy) return;
+    cancelPollWaitRef.current?.();
+    cancelPollWaitRef.current = null;
+    pollScope.stop();
+    const token = pollScope.begin();
     setBusy(true); setError(""); setPhase(null);
     try {
       const result = await api.generateMagicClassHome(selectedCourseId, { mode: inferHomeGenerationMode(topic), prompt: topic, idempotencyKey: stageGenerationIdempotencyKey(selectedCourseId, topic) });
+      if (!pollScope.isCurrent(token)) return;
       const workspaceId = result?.workspace_id;
       if (!workspaceId) throw new Error("网关未返回课程工作台");
       if (result?.job?.status === "completed") navigate(`/courses/${selectedCourseId}/workspaces/${workspaceId}?mode=playback`, { replace: true });
-      else if (result?.job?.id) await waitForJob(selectedCourseId, result.job.id, workspaceId);
+      else if (result?.job?.id) await waitForJob(selectedCourseId, result.job.id, workspaceId, token);
       else throw new Error("受管服务未返回生成任务");
-    } catch (cause) { setError(describeEntryFailure(cause).message || cause?.message || "课堂生成失败，请重试。"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (pollScope.isCurrent(token)) setError(describeEntryFailure(cause).message || cause?.message || "课堂生成失败，请重试。"); }
+    finally { if (pollScope.isCurrent(token)) setBusy(false); }
   }
 
   const capabilityLabel = providerStatus?.providers?.llm ? "模型已连接" : "模型未配置";

@@ -152,11 +152,94 @@ class TestJobs:
 
 
 class TestRuns:
+    @staticmethod
+    def _failed_run(container, user_id: str) -> tuple[str, str]:
+        repo = container.agent_runtime_repository
+        job_id = repo.create_job(
+            user_id=user_id, job_kind="learning_goal", input_ref={}
+        )
+        run_id = repo.create_run(job_id=job_id, user_id=user_id)
+        repo.transition_run_with_event(
+            run_id, "FAILED", expected_statuses=["QUEUED"], event_type="RUN_FAILED",
+        )
+        return job_id, run_id
+
     def test_get_run_not_found(self):
         _, client = _client()
         headers = _login(client)
         resp = client.get("/api/v1/agent-runs/nonexistent", headers=headers)
         assert resp.status_code == 404
+
+    def test_retry_response_and_same_key_replay_keep_existing_contract(self):
+        container, client = _client()
+        headers = _login(client)
+        owner = container.user_repository.get_user_by_username("student_demo")
+        job_id, source_run_id = self._failed_run(container, owner.id)
+
+        first = client.post(
+            f"/api/v1/agent-runs/{source_run_id}/retry",
+            json={"idempotency_key": "http-retry-key"}, headers=headers,
+        )
+        assert first.status_code == 200, first.text
+        first_run = first.json()
+        assert first_run["run_id"] != source_run_id
+        assert first_run["retry_of"] == source_run_id
+        assert first_run["status"] == "QUEUED"
+
+        replay = client.post(
+            f"/api/v1/agent-runs/{source_run_id}/retry",
+            json={"idempotency_key": "http-retry-key"}, headers=headers,
+        )
+        assert replay.status_code == 200, replay.text
+        replay_run = replay.json()
+        assert replay_run["run_id"] == source_run_id
+        assert replay_run["status"] == "FAILED"
+        assert replay_run["retry_of"] is None
+
+        assert len(container.agent_runtime_repository.list_runs_by_job(job_id)) == 2
+        conn = container.agent_runtime_repository._conn()
+        try:
+            claims = conn.execute(
+                "SELECT * FROM agent_idempotency_claims "
+                "WHERE scope = 'agent_run_retry' AND user_id = ? AND idempotency_key = ?",
+                (owner.id, "http-retry-key"),
+            ).fetchall()
+            controls = conn.execute(
+                "SELECT * FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+                (source_run_id, "http-retry-key"),
+            ).fetchall()
+        finally:
+            container.agent_runtime_repository._release(conn)
+        assert len(claims) == 1
+        assert len(controls) == 1
+
+    def test_retry_non_owner_is_forbidden_without_claim_or_new_run(self):
+        container, client = _client()
+        owner = container.user_repository.get_user_by_username("student_demo")
+        job_id, source_run_id = self._failed_run(container, owner.id)
+        other_headers = _login(client, "student_demo_01")
+
+        response = client.post(
+            f"/api/v1/agent-runs/{source_run_id}/retry",
+            json={"idempotency_key": "unauthorized-retry-key"}, headers=other_headers,
+        )
+        assert response.status_code == 403, response.text
+        assert len(container.agent_runtime_repository.list_runs_by_job(job_id)) == 1
+        conn = container.agent_runtime_repository._conn()
+        try:
+            claims = conn.execute(
+                "SELECT * FROM agent_idempotency_claims "
+                "WHERE scope = 'agent_run_retry' AND idempotency_key = ?",
+                ("unauthorized-retry-key",),
+            ).fetchall()
+            controls = conn.execute(
+                "SELECT * FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+                (source_run_id, "unauthorized-retry-key"),
+            ).fetchall()
+        finally:
+            container.agent_runtime_repository._release(conn)
+        assert claims == []
+        assert controls == []
 
     def test_cancel_nonexistent_run(self):
         _, client = _client()

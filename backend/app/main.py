@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .api.router import api_router
@@ -26,6 +27,13 @@ from .api.routes.home_banners import banner_image_storage_dir
 from .api.routes.community import community_image_storage_dir
 from .services.container import build_container, get_container
 from .services.demo_seeder import seed_demo_data
+
+
+def _log_http_request(method: str, path: str, status: int | str, duration_ms: float) -> None:
+    logger.info(
+        "http_request method={} path={} status={} headers_duration_ms={:.1f}",
+        method, path, status, duration_ms,
+    )
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
@@ -47,8 +55,9 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                 return response
             finally:
                 if get_settings().log_requests:
-                    logger.info(
-                        "http_request method={} path={} status={} headers_duration_ms={:.1f}",
+                    # stdout 等同步 sink 较慢时，让事件循环仍能处理其他请求。
+                    await run_in_threadpool(
+                        _log_http_request,
                         request.method,
                         request.url.path,
                         response.status_code if response is not None else "error",

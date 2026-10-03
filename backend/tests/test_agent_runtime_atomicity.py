@@ -116,6 +116,7 @@ class TestCreateJobWithRunAndEvent:
         # 重放不得追加第二条 RUN_QUEUED。
         assert len(_event_rows(repo)) == 1
 
+
     def test_same_key_different_hash_conflicts(self, repo):
         repo.create_job_with_run_and_event(
             user_id="u1", job_kind="learning_goal", input_ref={"goal_id": "g1"},
@@ -181,6 +182,135 @@ class TestCreateJobWithRunAndEvent:
         assert len(_job_rows(repo)) == 1
         assert len(_run_rows(repo)) == 1
         assert len(_event_rows(repo)) == 1
+
+
+def test_concurrent_retry_key_creates_one_run_and_one_control(repo):
+    """Retry claim, queued event, and audit record must commit as one operation."""
+    created = repo.create_job_with_run_and_event(
+        user_id="u1", job_kind="learning_goal", input_ref={}, request_hash="h1",
+    )
+    source_run_id = created["run_id"]
+    repo.transition_run_with_event(
+        source_run_id, "FAILED", expected_statuses=["QUEUED"], event_type="RUN_FAILED",
+    )
+
+    barrier = threading.Barrier(6)
+    results: list[dict] = []
+    errors: list[BaseException] = []
+    result_lock = threading.Lock()
+    second_db = Database(repo._db._db_path)
+    retry_repositories = [repo, AgentRuntimeRepository(second_db)]
+
+    def worker(worker_index: int) -> None:
+        barrier.wait()
+        try:
+            result = retry_repositories[worker_index % len(retry_repositories)].retry_run_with_control(
+                run_id=source_run_id, user_id="u1", idempotency_key="retry-same-key",
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            with result_lock:
+                errors.append(exc)
+            return
+        with result_lock:
+            results.append(result)
+
+    threads = [threading.Thread(target=worker, args=(index,)) for index in range(6)]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        second_db.dispose()
+
+    assert errors == []
+    assert len(results) == 6
+    assert sum(not result["replayed"] for result in results) == 1
+    created_runs = [run for run in _run_rows(repo) if run["retry_of"] == source_run_id]
+    assert len(created_runs) == 1
+    assert len(_event_rows(repo)) == 3  # original queued/failed + one retry queued
+    conn = repo._conn()
+    try:
+        claims = conn.execute(
+            "SELECT * FROM agent_idempotency_claims WHERE scope = 'agent_run_retry'"
+        ).fetchall()
+        controls = conn.execute(
+            "SELECT * FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+            (source_run_id, "retry-same-key"),
+        ).fetchall()
+    finally:
+        repo._release(conn)
+    assert len(claims) == 1
+    assert claims[0]["resource_id"] == created_runs[0]["run_id"]
+    assert len(controls) == 1
+
+
+def test_retry_event_failure_rolls_back_run_claim_and_control(repo, monkeypatch):
+    created = repo.create_job_with_run_and_event(
+        user_id="u1", job_kind="learning_goal", input_ref={}, request_hash="h1",
+    )
+    source_run_id = created["run_id"]
+    repo.transition_run_with_event(
+        source_run_id, "FAILED", expected_statuses=["QUEUED"], event_type="RUN_FAILED",
+    )
+    _break_event_insert(monkeypatch)
+
+    with pytest.raises(sqlite3.OperationalError):
+        repo.retry_run_with_control(
+            run_id=source_run_id, user_id="u1", idempotency_key="retry-fails",
+        )
+
+    assert len(_run_rows(repo)) == 1
+    assert len(_event_rows(repo)) == 2
+    conn = repo._conn()
+    try:
+        claims = conn.execute(
+            "SELECT * FROM agent_idempotency_claims WHERE scope = 'agent_run_retry'"
+        ).fetchall()
+        controls = conn.execute(
+            "SELECT * FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+            (source_run_id, "retry-fails"),
+        ).fetchall()
+    finally:
+        repo._release(conn)
+    assert claims == []
+    assert controls == []
+
+
+def test_retry_control_failure_rolls_back_run_event_and_claim(repo):
+    created = repo.create_job_with_run_and_event(
+        user_id="u1", job_kind="learning_goal", input_ref={}, request_hash="h1",
+    )
+    source_run_id = created["run_id"]
+    repo.transition_run_with_event(
+        source_run_id, "FAILED", expected_statuses=["QUEUED"], event_type="RUN_FAILED",
+    )
+    with repo._db.transaction() as conn:
+        conn.execute(
+            "CREATE TRIGGER fail_agent_retry_control BEFORE INSERT ON agent_run_controls "
+            "BEGIN SELECT RAISE(ABORT, 'simulated audit failure'); END"
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="simulated audit failure"):
+        repo.retry_run_with_control(
+            run_id=source_run_id, user_id="u1", idempotency_key="retry-audit-fails",
+        )
+
+    assert len(_run_rows(repo)) == 1
+    assert len(_event_rows(repo)) == 2
+    conn = repo._conn()
+    try:
+        claims = conn.execute(
+            "SELECT * FROM agent_idempotency_claims WHERE scope = 'agent_run_retry'"
+        ).fetchall()
+        controls = conn.execute(
+            "SELECT * FROM agent_run_controls WHERE run_id = ? AND idempotency_key = ?",
+            (source_run_id, "retry-audit-fails"),
+        ).fetchall()
+    finally:
+        repo._release(conn)
+    assert claims == []
+    assert controls == []
 
 
 # ===== 状态转换 + 事件 =====

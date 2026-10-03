@@ -159,3 +159,54 @@ def test_file_transactions_remain_mutually_exclusive(tmp_path):
     finally:
         release_first.set()
         db.dispose()
+
+
+def test_direct_memory_connection_borrows_isolate_commit_and_rollback():
+    """Legacy repositories must not commit another thread's uncommitted work."""
+    db = Database(None)
+    _create_probe_table(db)
+    first_ready = threading.Event()
+    release_first = threading.Event()
+    second_attempting = threading.Event()
+    second_entered = threading.Event()
+
+    def rolling_back_writer():
+        conn = db._connect()
+        try:
+            conn.execute("UPDATE concurrency_probe SET value=2")
+            first_ready.set()
+            if not release_first.wait(timeout=5):
+                raise TimeoutError("first borrower release was not signaled")
+            conn.rollback()
+        finally:
+            db._release(conn)
+
+    def committing_writer():
+        second_attempting.set()
+        conn = db._connect()
+        try:
+            second_entered.set()
+            value = conn.execute("SELECT value FROM concurrency_probe").fetchone()[0]
+            conn.execute("UPDATE concurrency_probe SET value=3")
+            conn.commit()
+            return value
+        finally:
+            db._release(conn)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(rolling_back_writer)
+            assert first_ready.wait(timeout=3)
+            second = pool.submit(committing_writer)
+            assert second_attempting.wait(timeout=3)
+            try:
+                assert not second_entered.wait(timeout=0.1)
+            finally:
+                release_first.set()
+            first.result(timeout=5)
+            assert second.result(timeout=5) == 1
+        with db.query() as conn:
+            assert conn.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 3
+    finally:
+        release_first.set()
+        db.dispose()

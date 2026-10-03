@@ -1913,16 +1913,22 @@ class Database:
 
     def _connect(self) -> sqlite3.Connection:
         if self._is_memory:
-            # 内存模式必须复用同一连接
-            if self._shared_conn is None:
-                self._shared_conn = sqlite3.connect(
-                    ":memory:",
-                    check_same_thread=False,
-                    timeout=30.0,
-                )
-                self._shared_conn.row_factory = sqlite3.Row
-                self._shared_conn.execute("PRAGMA foreign_keys=ON;")
-            return self._shared_conn
+            # 仓储也会直接借用连接；整个借用期间持锁，避免不同线程
+            # 的提交/回滚影响同一个共享连接上的另一项操作。
+            self._lock.acquire()
+            try:
+                if self._shared_conn is None:
+                    self._shared_conn = sqlite3.connect(
+                        ":memory:",
+                        check_same_thread=False,
+                        timeout=30.0,
+                    )
+                    self._shared_conn.row_factory = sqlite3.Row
+                    self._shared_conn.execute("PRAGMA foreign_keys=ON;")
+                return self._shared_conn
+            except BaseException:
+                self._lock.release()
+                raise
         conn = sqlite3.connect(self._db_path, check_same_thread=False, timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -1930,8 +1936,9 @@ class Database:
         return conn
 
     def _release(self, conn: sqlite3.Connection) -> None:
-        """关闭连接(内存模式下的共享连接不关闭)。"""
+        """在借用线程释放连接；内存模式保留共享连接并解除借用锁。"""
         if self._is_memory:
+            self._lock.release()
             return
         conn.close()
 

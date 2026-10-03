@@ -103,9 +103,8 @@ export default function StudyPage() {
     // 于是把历史遗留的所有未完成个人待办都算成了"今天"（出现过"77 件待完成"）。
     // 这里只刷新共享数据，列表与总数/完成数都取同一份 summary。
     const mine = ++taskRefreshEpoch.current;
-    const mutationVersion = sessionMutationEpoch.current;
     return refreshAgenda().then((agenda) => {
-      if (!mounted.current || mine !== taskRefreshEpoch.current || mutationVersion !== sessionMutationEpoch.current) return null;
+      if (!mounted.current || mine !== taskRefreshEpoch.current) return null;
       const sidebar = selectAgendaForSidebar(agenda);
       setTasks(sidebar.items);
       setTaskStats({

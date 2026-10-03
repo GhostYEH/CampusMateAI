@@ -42,14 +42,17 @@ const vite = await createServer({
     },
     load(id) {
       if (id === "\0page-race-api") return apiModule;
-      if (id === "\0page-race-app-context") return `export function useApp(){ return { tasks: [], toggleTask(){}, updateTask(){}, deleteTask(){}, todayAgenda: null, agendaError: "", refreshAgenda: () => Promise.resolve(null) }; }`;
+      if (id === "\0page-race-app-context") return `export function useApp(){ return { tasks: [], toggleTask(){}, updateTask(){}, deleteTask(){}, todayAgenda: null, agendaError: "", refreshAgenda: () => globalThis.__pageRaceAgenda ? globalThis.__pageRaceAgenda() : Promise.resolve(null) }; }`;
       if (id === "\0page-race-study-room") return `
         import React from "react";
         export default function Room(props) {
           globalThis.__studyRoomProps = props;
           return React.createElement("section", null,
             React.createElement("output", { "data-testid": "active-session" }, props.active?.id || "no-session"),
+            React.createElement("output", { "data-testid": "task-total" }, String(props.taskTotal)),
+            React.createElement("output", { "data-testid": "task-titles" }, (props.tasks || []).map((task) => task.title).join(",")),
             React.createElement("button", { onClick: () => props.onStart("focus goal") }, "开始专注"),
+            React.createElement("button", { onClick: () => props.onAddTask("新增待办") }, "添加待办"),
             React.createElement("button", { onClick: props.onRefresh }, "刷新专注数据"));
         }
       `;
@@ -214,4 +217,48 @@ test("a successful study start after unmount keeps the server session and does n
   assert.deepEqual(finished, [], "navigating away must not end the server-side session");
   delete globalThis.__pageRaceApi;
   delete globalThis.__studyRoomProps;
+});
+
+test("a session mutation does not discard an unrelated in-flight agenda refresh", async () => {
+  const agendaRefresh = deferred();
+  const startRead = deferred();
+  let agendaReads = 0;
+  globalThis.__pageRaceAgenda = () => {
+    agendaReads += 1;
+    return agendaReads === 1 ? Promise.resolve(null) : agendaRefresh.promise;
+  };
+  globalThis.__pageRaceApi = {
+    getActiveStudySession: async () => null,
+    getStudySessions: async () => [],
+    getDailyStudyGoal: async () => ({ target_minutes: 60 }),
+    createTask: async () => ({ id: "created-task" }),
+    startStudySession: () => startRead.promise,
+  };
+  const { default: StudyPage } = await vite.ssrLoadModule("/src/pages/StudyPage.jsx");
+  const view = await mount(StudyPage);
+  try {
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    assert.equal(agendaReads, 1, "the initial study load has completed its agenda refresh");
+    assert.equal(view.host.querySelector("[data-testid='task-total']").textContent, "0");
+    let starting;
+    await act(async () => {
+      void globalThis.__studyRoomProps.onAddTask("新增待办");
+      starting = globalThis.__studyRoomProps.onStart("focus goal");
+    });
+    await act(async () => agendaRefresh.resolve({
+      summary: { total: 1, pending: 1, completed: 0 },
+      items: [{ id: "agenda-1", source_id: "task-1", title: "今日阅读", status: "pending", completable: true }],
+    }));
+    assert.equal(view.host.querySelector("[data-testid='task-total']").textContent, "1", "the agenda refresh remains valid across an unrelated session start");
+    assert.match(view.host.querySelector("[data-testid='task-titles']").textContent, /今日阅读/);
+
+    await act(async () => startRead.resolve({ id: "started-session", status: "active" }));
+    await act(async () => starting);
+    assert.equal(view.host.querySelector("[data-testid='active-session']").textContent, "started-session");
+  } finally {
+    await view.unmount();
+    delete globalThis.__pageRaceAgenda;
+    delete globalThis.__pageRaceApi;
+    delete globalThis.__studyRoomProps;
+  }
 });
