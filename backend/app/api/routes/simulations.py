@@ -29,7 +29,7 @@ def create_simulation(
     结果是"方案估计,不是因果保证"。
     跨用户 baseline_run_id 返回 404。
     """
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    as_of = datetime.now(timezone.utc)
     try:
         return container.simulation_service.simulate(
             user_id=user.id,

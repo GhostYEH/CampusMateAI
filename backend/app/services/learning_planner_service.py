@@ -44,7 +44,7 @@ WEIGHTS = {
 
 
 def _iso(value: datetime) -> str:
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+    return value.astimezone(timezone.utc).isoformat()
 
 
 def _parse(value: str | None) -> datetime | None:
@@ -106,7 +106,7 @@ class LearningPlannerService:
         `AdaptiveInterventionService.replan_from_evaluation`。两条路径共用同一个
         仓储方法，不引入第二套血缘规则。
         """
-        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
         strategy = self._coerce_strategy_context(strategy_context)
 
         if window_start and _parse(window_start) is None:
@@ -234,7 +234,7 @@ class LearningPlannerService:
             "goals": safe_goals, "notices": safe_notices,
             "available_minutes": available_minutes,
             "course_id": course_id, "goal_id": goal_id, "window_start": window_start, "window_end": window_end,
-            "time_bucket": now.replace(minute=0, second=0).isoformat(), "parameters": WEIGHTS,
+            "time_bucket": now.replace(minute=0, second=0, microsecond=0).isoformat(), "parameters": WEIGHTS,
         }
         if strategy is not None:
             # 策略版本进入 digest：策略规则或参数一变，旧计划即失效并可重新规划。

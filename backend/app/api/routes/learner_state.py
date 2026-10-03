@@ -103,7 +103,7 @@ def list_runs(
 ) -> LearnerStateRunPage:
     _project_projection(
         container, user_id=user.id, projection_kind=projection_kind,
-        as_of=datetime.now(timezone.utc).replace(microsecond=0),
+        as_of=datetime.now(timezone.utc),
     )
     rows, total = container.learner_state_service.list_run_summaries(
         user_id=user.id, page=page, page_size=page_size, projection_kind=projection_kind,
@@ -137,7 +137,7 @@ def list_changes(
     if to_run_id is None:
         projected = _project_projection(
             container, user_id=user.id, projection_kind=projection_kind,
-            as_of=datetime.now(timezone.utc).replace(microsecond=0),
+            as_of=datetime.now(timezone.utc),
         )
         to_run_id = projected.run_id
     if not to_run_id:
@@ -169,7 +169,7 @@ def list_snapshots(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateSnapshotPage:
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    as_of = datetime.now(timezone.utc)
     _project_projection(
         container, user_id=user.id, projection_kind=projection_kind, as_of=as_of
     )
@@ -197,7 +197,7 @@ def list_snapshot_evidence(
     )
     if family is None:
         result = container.learner_state_service.project_user(
-            user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_read"
+            user.id, as_of=datetime.now(timezone.utc), trigger="api_read"
         )
         family = container.learner_state_repository.get_snapshot_projection_family(
             user_id=user.id, snapshot_id=snapshot_id
@@ -235,7 +235,7 @@ def get_academic_state(
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateSnapshotPage:
     """获取 ACADEMIC 投影快照：教务事实安全投影到学生状态世界模型。"""
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    as_of = datetime.now(timezone.utc)
     container.learner_state_service.project_academic(
         user.id, as_of=as_of, trigger="api_academic"
     )

@@ -4548,7 +4548,8 @@ def _window_requires_start(cls, value: str | None, info):
 | `item_id` | string | 是 | — | — |
 | `item_type` | enum ["TASK_FOCUS", "EXAM_PREPARATION", "CAMPUS_AFFAIRS", "GOAL_PROGRESS", "RESEARCH_OR_COMPETITION", "CAREER_PREPARATION", "RECOVERY_BUFFER", "REVIEW_AND_REFLECT"] | 是 | — | — |
 | `course_id` | string / null | 否 | — | 关联课程标识 |
-| `task_id` | string / null | 否 | — | — |
+| `task_id` | string / null | 否 | — | 生成计划时关联的原任务 ID，不代表执行后创建的待办 |
+| `execution_task_id` | string / null | 否 | — | 计划执行创建的个人待办 ID；未创建时为空。撤销后保留关联，须结合 execution_status 判断 |
 | `estimated_minutes` | integer | 是 | — | — |
 | `priority_score` | number | 是 | — | — |
 | `priority_components` | map<string, number> | 是 | additionalProperties={"type": "number"} | — |

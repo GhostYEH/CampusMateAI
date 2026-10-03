@@ -4,6 +4,8 @@
 
 > 2026-10-03 补充：状态历史支持 `projection_kind`，学业快照修复分页与元信息，计划与模拟修复预测接线、只读性和缓存。六层完成情况、实际局限与联调顺序见[六层世界模型后端接入](../world-model-backend.md)。
 
+> 接口闭环补充：计划条目的 `execution_task_id` 返回执行创建的真实待办 ID，原 `task_id` 保留生成时的任务关联。任务完成、专注关联与反馈的完整 HTTP 顺序见[前端完整调用顺序](../world-model-backend.md#前端完整调用顺序)。
+
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
 ## 接口索引
@@ -907,6 +909,10 @@ Web 封装：`decideLearningPlan`（[webreact/src/data/learnerStateApi.js](../..
 ### `POST /api/v1/learning-plans/{plan_id}/execute`
 
 用途：执行学习计划。
+
+执行成功返回完整计划；创建待办的条目通过 `items[].execution_task_id` 返回新待办 ID。未创建时为 null，休息和反思条目不创建待办。原 `items[].task_id` 仍是生成时关联的原任务，执行不会自动完成它。
+
+前端用新待办 ID 调用 `GET /api/v1/tasks/{task_id}`、`POST /api/v1/tasks/{task_id}/complete`，或传入 `POST /api/v1/study/sessions` 的 `related_task_id`。重复执行不重复创建；详情、列表及撤销响应保持相同 ID。撤销后应结合 `execution_status=UNDONE` 判断历史关联。真实完成数量读取 evaluation 的 `completed_plan_task_count`；EXECUTED 仅表示执行动作成功。
 
 鉴权：Bearer access token；角色 student（不包含历史 teacher 账号）。
 

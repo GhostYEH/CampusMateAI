@@ -125,7 +125,7 @@ class SimulationService:
         idempotency_key: str | None,
         as_of: datetime,
     ) -> SimulationResponse:
-        as_of = as_of.astimezone(timezone.utc).replace(microsecond=0)
+        as_of = as_of.astimezone(timezone.utc)
         intervention_payload = intervention.model_dump(mode="json")
         key = SimulationKey(
             user_id=user_id,

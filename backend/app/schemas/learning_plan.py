@@ -126,7 +126,11 @@ class LearningPlanItemOut(BaseModel):
     item_id: str
     item_type: PLAN_ITEM_TYPE_LITERAL
     course_id: str | None = None
-    task_id: str | None = None
+    task_id: str | None = Field(default=None, description="生成计划时关联的原任务 ID，不代表执行后创建的待办。")
+    execution_task_id: str | None = Field(
+        default=None,
+        description="计划执行创建的个人待办 ID；未创建时为空。task_id 仍指生成时的原任务。撤销后保留此关联，须结合 execution_status 判断。",
+    )
 
     estimated_minutes: int
     priority_score: float

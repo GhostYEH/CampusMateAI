@@ -173,7 +173,7 @@ class AdaptiveInterventionService:
         defer_lineage: bool = False,
         on_stage: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> InterventionPlanResult:
-        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
 
         existing = self._repository.find_by_idempotency_key(
             user_id=user_id, idempotency_key=idempotency_key
@@ -288,7 +288,7 @@ class AdaptiveInterventionService:
         if plan is None:
             return None
 
-        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
         plan_goal_id = getattr(getattr(plan, "run", None), "goal_id", None)
         # `adaptive_interventions.goal_id` 非空。普通计划可以不绑定学生目标，
         # 这时用计划自身的稳定 scope 键占位：既能满足约束，也让重规划防抖
@@ -360,7 +360,7 @@ class AdaptiveInterventionService:
         刻意不触发任何 Agent 事件：评估是只读接口触发的观测动作，不是 Agent Runtime
         的执行阶段。新增事件类型会牵动跨端契约，属于另一个切片。
         """
-        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc).replace(microsecond=0)
+        now = (as_of or datetime.now(timezone.utc)).astimezone(timezone.utc)
         row = self._repository.get(user_id=user_id, intervention_id=intervention_id)
         if row is None:
             return None

@@ -3,7 +3,7 @@
   "info": {
     "title": "CampusMate AI Web API",
     "version": "2026-10-03",
-    "description": "基础路由快照为 2026-09-30；六层世界模型的状态历史参数于 2026-10-03 与运行时同步。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充动态响应、通用分页元素、社区 extra 与 Agent Handler 输入的 9 个模型定义仅供文档引用。"
+    "description": "基础路由快照为 2026-09-30；六层世界模型的状态历史参数及计划执行待办关联字段于 2026-10-03 与运行时同步。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充动态响应、通用分页元素、社区 extra 与 Agent Handler 输入的 9 个模型定义仅供文档引用。"
   },
   "paths": {
     "/api/v1/health": {
@@ -30496,7 +30496,20 @@
                 "type": "null"
               }
             ],
-            "title": "Task Id"
+            "title": "Task Id",
+            "description": "生成计划时关联的原任务 ID，不代表执行后创建的待办。"
+          },
+          "execution_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Task Id",
+            "description": "计划执行创建的个人待办 ID；未创建时为空。task_id 仍指生成时的原任务。撤销后保留此关联，须结合 execution_status 判断。"
           },
           "estimated_minutes": {
             "type": "integer",

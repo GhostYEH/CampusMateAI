@@ -35,7 +35,7 @@ def list_forecasts(
     确定性、版本化、可重复的基线估计器。
     数据不足时返回 UNAVAILABLE，不捏造概率。
     """
-    as_of = datetime.now(timezone.utc).replace(microsecond=0)
+    as_of = datetime.now(timezone.utc)
     items, total = container.forecast_service.list_forecasts(
         user_id=user.id,
         as_of=as_of,

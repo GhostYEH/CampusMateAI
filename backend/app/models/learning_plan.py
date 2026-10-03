@@ -64,6 +64,7 @@ class LearningPlanItemRow:
     explanation_codes: list[str]
     execution_status: str
     evidence: list[dict[str, Any]] = field(default_factory=list)
+    execution_task_id: str | None = None
 
 
 @dataclass(frozen=True)

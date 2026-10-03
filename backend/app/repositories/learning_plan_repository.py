@@ -52,6 +52,7 @@ def _item(row, evidence: list[dict[str, Any]] | None = None) -> LearningPlanItem
         priority_components=json.loads(row["priority_components_json"]),
         explanation_codes=json.loads(row["explanation_codes_json"]),
         execution_status=row["execution_status"], evidence=evidence or [],
+        execution_task_id=row["execution_task_id"] if "execution_task_id" in row.keys() else None,
     )
 
 
@@ -125,7 +126,13 @@ class LearningPlanRepository:
                 return None
             run = _run(row)
             item_rows = conn.execute(
-                "SELECT * FROM learning_plan_items WHERE plan_id=? ORDER BY priority_score DESC,item_id ASC", (plan_id,)
+                """SELECT i.*, a.target_task_id AS execution_task_id
+                   FROM learning_plan_items i
+                   LEFT JOIN learning_plan_execution_actions a
+                     ON a.plan_id=i.plan_id AND a.item_id=i.item_id
+                    AND a.action_type='CREATE_PERSONAL_TASK' AND a.user_id=?
+                   WHERE i.plan_id=? ORDER BY i.priority_score DESC,i.item_id ASC""",
+                (user_id, plan_id),
             ).fetchall()
             items = []
             for item_row in item_rows:

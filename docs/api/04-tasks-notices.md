@@ -2,6 +2,8 @@
 
 > 对照日期：2026-09-30。本模块共 24 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
+> 2026-10-03 补充：任务响应按真实记录返回 `source/external_id/course_id/source_url/last_synced_at`。计划待办的 `source=learning_plan`，`external_id=<plan_id>:<item_id>`；执行响应直接提供 `execution_task_id`，前端用它完成任务或关联专注会话，详见[计划接口闭环](../world-model-backend.md#前端完整调用顺序)。
+
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
 ## 接口索引
