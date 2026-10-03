@@ -267,6 +267,15 @@ class InteractiveClassroomViewModel(
         }
     }
 
+    fun returnToSettings() {
+        if (_uiState.value.progress.phase == ClassroomPhase.FAILED && _uiState.value.progress.sessionId == null) {
+            _uiState.update { it.copy(confirmed = false, progress = ClassroomProgressState(), error = null) }
+            viewModelScope.launch {
+                dataSource.history(courseId).onSuccess { items -> _uiState.update { it.copy(history = items) } }
+            }
+        }
+    }
+
     fun stopObservation() {
         observationJob?.cancel()
         observationJob = null
@@ -393,14 +402,6 @@ fun InteractiveClassroomSection(
         onDispose { viewModel.stopObservation() }
     }
 
-    fun returnToSettings() {
-        if (_uiState.value.progress.phase == ClassroomPhase.FAILED && _uiState.value.progress.sessionId == null) {
-            _uiState.update { it.copy(confirmed = false, progress = ClassroomProgressState(), error = null) }
-            viewModelScope.launch {
-                dataSource.history(courseId).onSuccess { items -> _uiState.update { it.copy(history = items) } }
-            }
-        }
-    }
     Column(
         Modifier.fillMaxWidth().padding(top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
