@@ -393,9 +393,6 @@ fun InteractiveClassroomSection(
         viewModel.resumeObservationIfNeeded()
         onDispose { viewModel.stopObservation() }
     }
-    if (!state.loading && state.serviceState == InteractiveClassroomServiceState.NOT_CONFIGURED &&
-        state.history.isEmpty() && state.progress.phase == ClassroomPhase.IDLE
-    ) return
     Column(
         Modifier.fillMaxWidth()
             .padding(top = 4.dp)

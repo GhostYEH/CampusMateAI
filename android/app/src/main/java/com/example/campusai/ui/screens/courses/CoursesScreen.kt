@@ -544,6 +544,7 @@ internal fun CourseDetailSheet(
     var selectedNotice by remember(course.id) { mutableStateOf<CourseContentItemDto?>(null) }
     var downloadFailure by remember(course.id) { mutableStateOf<Pair<CourseContentItemDto, String>?>(null) }
     var filter by remember(course.id) { mutableStateOf("全部") }
+    var showClassroom by remember(course.id, initialSessionId) { mutableStateOf(!initialSessionId.isNullOrBlank()) }
     val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
     val kinds = mapOf(
         "章节" to setOf("chapter"),
@@ -600,7 +601,19 @@ internal fun CourseDetailSheet(
                     Text("带着这门课去自习室", fontWeight = FontWeight.Bold)
                 }
             }
-            if (!initialSessionId.isNullOrBlank()) item {
+            item {
+                Button(
+                    onClick = { showClassroom = !showClassroom },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF315F55), contentColor = Color.White),
+                ) {
+                    Icon(Icons.Default.Class, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (showClassroom) "收起互动课堂" else "进入互动课堂 · 生成讲解与练习", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (showClassroom) item {
                 InteractiveClassroomSection(course = course, repository = repository, initialSessionId = initialSessionId)
             }
             item {
@@ -765,13 +778,6 @@ internal fun CourseDetailSheet(
                         }
                     }
                 }
-            }
-            if (initialSessionId.isNullOrBlank()) item {
-                InteractiveClassroomSection(
-                    course = course,
-                    repository = repository,
-                    initialSessionId = initialSessionId,
-                )
             }
         }
     }
