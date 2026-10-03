@@ -108,8 +108,6 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                     if (request.isForMainFrame) {
                                         loading = false
                                         loadError = "课堂网页连接失败（错误码 ${error.errorCode}）。请检查课堂服务和手机网络。"
-                                    } else if (request.url.path?.endsWith(".js") == true) {
-                                        loadError = "课堂网页脚本下载失败（错误码 ${error.errorCode}），请检查课堂服务。"
                                     }
                                 }
 
@@ -117,8 +115,6 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                     if (request.isForMainFrame) {
                                         loading = false
                                         loadError = "课堂网页返回 HTTP ${errorResponse.statusCode}。请稍后重试。"
-                                    } else if (request.url.path?.endsWith(".js") == true) {
-                                        loadError = "课堂网页脚本返回 HTTP ${errorResponse.statusCode}，请检查课堂服务。"
                                     }
                                 }
                             }
