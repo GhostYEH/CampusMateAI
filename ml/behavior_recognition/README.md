@@ -83,6 +83,39 @@ It does not update deployment assets. Use the same preprocessing and fixed
 video splits to compare the original and fine-tuned models, and do not describe
 the re-split data as unseen by the inherited model without its old split manifest.
 
+### Preserving existing weights with L2-SP
+
+`l2sp_experiment` compares terminal-classifier-only fine-tuning, full fine-tuning,
+and two full-network L2-SP strengths, all initialized from the same V3.4 ONNX.
+The L2-SP term is `alpha * 0.5 * sum((weights - initial_weights)^2)` without
+parameter-count normalization. This adapts the regularization idea from
+[Li et al., ICML 2018](https://proceedings.mlr.press/v80/li18a.html) to the existing
+four-class model; it is not a reproduction of the paper's datasets or numbers.
+The terminal Gemm weight and bias retain their original values before training.
+All arms share a seed, augmentation, loss and data splits. Full-network arms
+also share their learning rate. Adam uses no ordinary weight decay, so the
+L2-SP constraint is not confounded with an added zero-centered penalty.
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m behavior_recognition.l2sp_experiment `
+  --source-onnx $env:CAMPUSMATE_BEHAVIOR_SOURCE_ONNX `
+  --manifests $env:CAMPUSMATE_BEHAVIOR_MANIFESTS `
+  --output-dir artifacts/l2sp_new_run --epochs 6 --workers 2
+```
+
+Choose a new output directory for every run. The plan records source and
+manifest hashes before training, and rejects cross-split video/hash/sample
+overlap. ROI expansion is 1.1 to match V3.4, with lossless PNG caching.
+Candidate checkpoints are selected using validation only. An arm must improve
+validation Macro-F1 and retain at least the original validation accuracy to
+be eligible. The decision is saved before all locked candidates are evaluated
+on test, including rejected candidates for an honest comparison. A selected
+candidate is exported into the run directory and checked against its PyTorch
+logits and classes on real ROIs; production assets are never modified.
+The three-video benchmark and its previously reported test results support an
+exploratory offline comparison, not independent generalization or deployment.
+
 Run tests:
 
 ```powershell
