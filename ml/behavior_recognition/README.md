@@ -116,6 +116,49 @@ logits and classes on real ROIs; production assets are never modified.
 The three-video benchmark and its previously reported test results support an
 exploratory offline comparison, not independent generalization or deployment.
 
+### SAV adaptation with four-class replay
+
+`sav_replay_experiment` adapts the existing V3.4 single-frame branch using
+official SAV keyframes and retains the four-output model contract. It pairs a
+replay-only control with replay plus SAV, using identical old-data batches,
+learning rate, seed, regularization, and a fixed equal epoch/step budget.
+This paired experiment uses FP32 with TF32 disabled and aborts non-finite
+gradients instead of silently skipping optimizer updates.
+SAV adds a weighted set-label loss: read permits READ, take_notes permits WRITE,
+and simultaneous read/take_notes permits their probability sum. This preserves
+ambiguity in a mutually exclusive head; it does not learn simultaneous labels.
+Other SAV actions produce no negative or NO_VISIBLE_STUDY labels.
+
+The selected ten videos must have completed downloads and verified
+`prepared_labels` JSON with timestamp 1 / frame 31, normalized boxes, and
+original action IDs. Whole source videos from the same date stay together:
+training uses 20181016, 20181017, 20200901; validation uses 20181018; test uses
+20200902, 20200903. Student identities remain unknown. Pure WRITE is scarce
+and no phone examples exist in SAV, so results cannot establish independent
+WRITE accuracy, phone accuracy, or four-class precision on the new domain.
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m behavior_recognition.sav_replay_experiment `
+  --source-onnx $env:CAMPUSMATE_BEHAVIOR_SOURCE_ONNX `
+  --replay-manifests $env:CAMPUSMATE_BEHAVIOR_MANIFESTS `
+  --replay-cache $env:CAMPUSMATE_BEHAVIOR_REPLAY_CACHE `
+  --sav-root $env:CAMPUSMATE_SAV_ROOT `
+  --output-dir artifacts/sav_new_run --epochs 6 --workers 2
+```
+
+The ROI cache must match the existing L2-SP plan's manifest hashes and
+preprocessing. Source-image SHA256 and exact recomputed crop pixels are checked
+before cache reuse. The SAV source-video counts must be 6/2/2 for train/val/test.
+SAV uses full keyframes with ROI expansion 1.1. Validation must
+retain original SCB accuracy, Macro-F1, all per-class F1, phone AUPRC and recall,
+as well as SAV source-video-mean acceptable top-1 rate, while reducing SAV
+source-video-mean set NLL. The choice is persisted before evaluating either
+test. SAV scores describe recognition of positive set-labelled student ROIs,
+not general four-class accuracy. SCB test remains an exposed diagnostic.
+Checkpoints, comparison and parity records stay in the new run directory;
+production assets are never replaced by this command.
+
 Run tests:
 
 ```powershell
