@@ -44,10 +44,12 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     DisposableEffect(url) { onDispose { webView?.stopLoading(); webView?.destroy() } }
     LaunchedEffect(pageFinished, loadError) {
         if (pageFinished && loadError == null) {
-            kotlinx.coroutines.delay(8000)
-            webView?.evaluateJavascript("document.body ? document.body.innerText.trim().length : 0") { length ->
-                if (length == "0" && loadError == null) {
-                    loadError = "课堂网页已打开，但内容仍是空白。请重试；若持续出现，请检查课堂网页服务。"
+            kotlinx.coroutines.delay(10000)
+            webView?.evaluateJavascript(
+                "JSON.stringify({title:document.title, body:(document.body?.innerText||'').trim().length})",
+            ) { result ->
+                if (result.contains("\"body\":0")) {
+                    loadError = "课堂网页已打开，但课堂组件没有完成渲染。请重新加载；如果仍失败，请检查手机 WebView。"
                 }
             }
         }
@@ -69,6 +71,10 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                         WebView(context).apply {
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
+                            // Next.js and the classroom renderer have a normal mobile
+                            // browser path. Some dev WebViews append `; wv`, which makes
+                            // the page take an incomplete embedded-browser branch.
+                            settings.userAgentString = settings.userAgentString.replace("; wv", "")
                             settings.allowFileAccess = false
                             settings.allowContentAccess = false
                             settings.setSupportMultipleWindows(false)
