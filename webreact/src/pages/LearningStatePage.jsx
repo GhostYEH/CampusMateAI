@@ -1,3 +1,4 @@
+import "../styles/learning-state.css";
 /**
  * 我的状态页面 — 校园陪伴世界模型
  *
@@ -49,16 +50,6 @@ const PLAN_STATUS_LABEL = {
   UNDONE: "已撤销",
   EXPIRED: "已过期",
 };
-
-const FEEDBACK_OPTIONS = [
-  { value: "HELPFUL", label: "有帮助" },
-  { value: "NOT_HELPFUL", label: "没有帮助" },
-  { value: "TOO_LONG", label: "太长" },
-  { value: "TOO_SHORT", label: "太短" },
-  { value: "WRONG_PRIORITY", label: "优先级不合适" },
-  { value: "ALREADY_DONE", label: "我已经完成" },
-  { value: "MISSING_CONTEXT", label: "缺少必要信息" },
-];
 
 const DELETE_SCOPES = [
   { value: "STATE_ONLY", label: "仅状态投影", desc: "删除投影 run、snapshot 和 evidence" },
@@ -336,7 +327,6 @@ function StateTimeline({ changes }) {
 // ===== 3. 未来 7 天压力与冲突 =====
 function ForecastSection({ forecasts, onViewEvidence }) {
   const items = forecasts?.items || [];
-  if (items.length === 0) return <EmptyState text="暂时没有未来预测数据" />;
 
   const grouped = useMemo(() => {
     const byType = {};
@@ -347,6 +337,8 @@ function ForecastSection({ forecasts, onViewEvidence }) {
     }
     return byType;
   }, [items]);
+
+  if (items.length === 0) return <EmptyState text="暂时没有未来预测数据" />;
 
   return (
     <section className="ls-section ls-forecasts" aria-label="未来压力与冲突">
@@ -1005,7 +997,7 @@ export default function LearningStatePage() {
   }, []);
 
   return (
-    <div className="learning-state-page" aria-busy={snapshots.loading || busy}>
+    <main id="main-content" className="learning-state-page" aria-busy={snapshots.loading || busy}>
       <header className="ls-header">
         <div className="ls-header__title-row">
           <h1 className="ls-title">我的状态</h1>
@@ -1065,6 +1057,6 @@ export default function LearningStatePage() {
       <ModelTransparency transparency={transparency.data} />
 
       {evidenceSnapshot && <EvidenceDrawer snapshot={evidenceSnapshot} onClose={() => setEvidenceSnapshot(null)} onCorrection={handleMarkInaccurate} />}
-    </div>
+    </main>
   );
 }

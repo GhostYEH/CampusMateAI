@@ -1,3 +1,4 @@
+import "../../styles/maic.css";
 /**
  * MaicSlideSurface —— 移植层的集成入口。
  *

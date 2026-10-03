@@ -1,4 +1,3 @@
-import * as React from "react";
 import { ArrowLeft, LayoutList, Maximize2, Minimize2 } from "lucide-react";
 
 import { cn } from "../utils/cn.js";

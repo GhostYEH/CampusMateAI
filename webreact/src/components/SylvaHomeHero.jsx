@@ -1,4 +1,4 @@
-import { SylvaHero } from "@designcodeio/threeui";
+import { SylvaHero } from "@designcodeio/threeui/components/SylvaHero";
 import { useEffect, useRef } from "react";
 import "@designcodeio/threeui/style.css";
 

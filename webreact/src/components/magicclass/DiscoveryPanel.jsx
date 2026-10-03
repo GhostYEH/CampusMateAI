@@ -27,7 +27,6 @@ const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeSty
  */
 export default function DiscoveryPanel({ courseId, canBrowseFolders = false, canSearch = false }) {
   const [folders, setFolders] = React.useState([]);
-  const [cursor, setCursor] = React.useState(null);
   const [loading, setLoading] = React.useState(canBrowseFolders);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -51,7 +50,6 @@ export default function DiscoveryPanel({ courseId, canBrowseFolders = false, can
     try {
       const payload = await api.listMagicClassFolders(courseId, { limit: DISCOVERY_PAGE_LIMIT });
       setFolders(normalizeFolderList(payload));
-      setCursor(nextCursorOf(payload));
     } catch (failure) {
       const described = describeDiscoveryError(failure);
       setError(described.message);
@@ -62,7 +60,6 @@ export default function DiscoveryPanel({ courseId, canBrowseFolders = false, can
 
   React.useEffect(() => {
     setFolders([]);
-    setCursor(null);
     setExpanded(new Set());
     setHits([]);
     setSearchCursor(null);

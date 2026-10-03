@@ -1,3 +1,4 @@
+import "../styles/learning-space.css";
 /**
  * LearningSpacePage — 导航栏「学习空间」（/learning-space）。
  *

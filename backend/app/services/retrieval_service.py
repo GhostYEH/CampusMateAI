@@ -246,24 +246,15 @@ class RetrievalService:
         self._chunks: List[ChunkRow] = []
         self._tokenized: List[List[str]] = []
         self._token_sets: List[set[str]] = []  # 每个 chunk 的 token 集合(用于 token overlap 检查)
+        self._global_token_set: frozenset[str] = frozenset()
         self._doc_by_id: dict[str, DocumentRow] = {}
         self._needs_rebuild = True
 
     def rebuild(self) -> int:
         """重建索引。返回被索引的 chunk 数。"""
         with self._lock:
-            chunks = self._repo.list_chunks()
-            docs = self._repo.list_documents()
-            self._doc_by_id = {d.document_id: d for d in docs}
-            self._chunks = chunks
-            self._tokenized = [self._tokenize_for_index(c, self._doc_by_id.get(c.document_id)) for c in chunks]
-            self._token_sets = [set(ts) for ts in self._tokenized]
-            if chunks:
-                self._bm25 = BM25Okapi(self._tokenized)
-            else:
-                self._bm25 = None
-            self._needs_rebuild = False
-            return len(chunks)
+            self._rebuild_locked()
+            return len(self._chunks)
 
     def mark_stale(self) -> None:
         """标记索引需要重建(下次检索前会自动重建)。"""
@@ -397,9 +388,7 @@ class RetrievalService:
             token_sets = list(self._token_sets)
             doc_by_id = dict(self._doc_by_id)
             # 全局 token 集合(用于判断查询 token 是否在语料中出现)
-            global_token_set = set()
-            for ts in token_sets:
-                global_token_set |= ts
+            global_token_set = self._global_token_set
         # 释放锁后再做打分(纯计算)
         tokens = tokenize_zh(query)
         if not tokens:
@@ -477,6 +466,7 @@ class RetrievalService:
         self._chunks = chunks
         self._tokenized = [self._tokenize_for_index(c, self._doc_by_id.get(c.document_id)) for c in chunks]
         self._token_sets = [set(ts) for ts in self._tokenized]
+        self._global_token_set = frozenset(token for tokens in self._token_sets for token in tokens)
         if chunks:
             self._bm25 = BM25Okapi(self._tokenized)
         else:

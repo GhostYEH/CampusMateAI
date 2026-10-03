@@ -1,3 +1,4 @@
+import "../styles/agent-workspaces.css";
 /**
  * FinalReviewPage — 期末复习 Agent 工作台。
  *
@@ -8,8 +9,9 @@
  * - 复用 Primitives 与共享 agent 组件。
  * - 可访问、响应式（≥320px）、键盘可达、prefers-reduced-motion 由 CSS 媒体查询处理。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { PageFrame, Panel, SectionHeading, Button, AsyncState } from "../components/Primitives.jsx";
+
+import { useCallback, useEffect, useState } from "react";
+import { PageFrame, Panel, SectionHeading, AsyncState } from "../components/Primitives.jsx";
 import AgentErrorBoundary from "../components/agent/ErrorBoundary.jsx";
 import RunProgress from "../components/agent/RunProgress.jsx";
 import ApprovalPanel from "../components/agent/ApprovalPanel.jsx";
@@ -37,7 +39,7 @@ export default function FinalReviewPage() {
   const [activeRunId, setActiveRunId] = useState(null);
   const [approval, setApproval] = useState(null);
   const [pendingPlanVersion, setPendingPlanVersion] = useState(null);
-  const [resolveKey, setResolveKey] = useState(() => createIdempotencyKey("fr_resolve"));
+  const [resolveKey] = useState(() => createIdempotencyKey("fr_resolve"));
 
   const run = useAgentRun({ runId: activeRunId });
 

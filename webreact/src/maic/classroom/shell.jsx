@@ -1,5 +1,3 @@
-import * as React from "react";
-
 import { cn } from "../utils/cn.js";
 import { MaicSceneSidebar } from "./scene-sidebar.jsx";
 import { MaicClassroomHeader } from "./classroom-header.jsx";

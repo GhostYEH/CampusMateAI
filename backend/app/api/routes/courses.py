@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -58,68 +58,21 @@ def list_courses(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
-    if user.role == "student":
-        # 学生只看自己已加入班级所属的课程
-        course_ids = set()
-        enrolls = container.enrollment_repository.list_user_classes(user.id)
-        for e in enrolls:
-            course_ids.add(e["course_id"])
-        # Learning Tong courses are private imports owned by the student via
-        # owner_user_id. They do not have a campus class enrollment, so exposing
-        # only enrollment-backed courses made a successful sync invisible to the
-        # Android client.
-        imported, _ = container.course_repository.list_courses(
-            owner_user_id=user.id,
-            page=1,
-            page_size=1000,
-        )
-        course_ids.update(course.id for course in imported if course.provider == "chaoxing")
-        if not course_ids:
-            return Page(items=[], total=0, page=page, page_size=page_size, has_more=False)
-        items: List[CourseOut] = []
-        for cid in course_ids:
-            c = container.course_repository.get_course(cid)
-            if c is None:
-                continue
-            if status and c.status != status:
-                continue
-            if query and not _course_matches_query(c, query):
-                continue
-            teacher_name = c.remote_teacher_name or _teacher_name(container, c.teacher_id)
-            items.append(_course_to_out(c, teacher_name))
-        items.sort(key=lambda x: x.created_at, reverse=True)
-        total = len(items)
-        start = (page - 1) * page_size
-        end = start + page_size
-        return Page(
-            items=items[start:end],
-            total=total,
-            page=page,
-            page_size=page_size,
-            has_more=end < total,
-        )
-
-    # admin: 全部课程
     rows, total = container.course_repository.list_courses(
-        teacher_id=None,
         status=status,
         query=query,
+        student_id=user.id if user.role == "student" else None,
         page=page,
         page_size=page_size,
     )
-    items = [_course_to_out(r, r.remote_teacher_name or _teacher_name(container, r.teacher_id)) for r in rows]
+    names = container.user_repository.get_display_names(
+        [row.teacher_id for row in rows if row.teacher_id and not row.remote_teacher_name]
+    )
+    items = [
+        _course_to_out(row, row.remote_teacher_name or names.get(row.teacher_id))
+        for row in rows
+    ]
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
-
-
-def _course_matches_query(c: CourseRow, q: str) -> bool:
-    ql = q.lower()
-    if ql in (c.name or "").lower():
-        return True
-    if c.code and ql in c.code.lower():
-        return True
-    if c.description and ql in c.description.lower():
-        return True
-    return False
 
 
 def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Optional[str]:

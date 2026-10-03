@@ -4,7 +4,7 @@ import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
 import { buildCommentTree } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
-import { Icon } from "../components/Icon.jsx";
+
 import { formatDateTime } from "../utils/date.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");

@@ -62,12 +62,13 @@ function createCanvasStore() {
     emit();
   };
 
-  const select = (key) =>
-    useSyncExternalStore(
+  const createSelector = (key) => function useCanvasSelection() {
+    return useSyncExternalStore(
       subscribe,
       () => state[key],
       () => state[key],
     );
+  };
 
   return {
     subscribe,
@@ -96,15 +97,15 @@ function createCanvasStore() {
         zoomTarget: null,
       }),
     use: {
-      canvasScale: () => select('canvasScale'),
-      playingVideoElementId: () => select('playingVideoElementId'),
-      highlightedElementIds: () => select('highlightedElementIds'),
-      highlightOptions: () => select('highlightOptions'),
-      spotlightElementId: () => select('spotlightElementId'),
-      spotlightOptions: () => select('spotlightOptions'),
-      laserElementId: () => select('laserElementId'),
-      laserOptions: () => select('laserOptions'),
-      zoomTarget: () => select('zoomTarget'),
+      canvasScale: createSelector('canvasScale'),
+      playingVideoElementId: createSelector('playingVideoElementId'),
+      highlightedElementIds: createSelector('highlightedElementIds'),
+      highlightOptions: createSelector('highlightOptions'),
+      spotlightElementId: createSelector('spotlightElementId'),
+      spotlightOptions: createSelector('spotlightOptions'),
+      laserElementId: createSelector('laserElementId'),
+      laserOptions: createSelector('laserOptions'),
+      zoomTarget: createSelector('zoomTarget'),
     },
   };
 }

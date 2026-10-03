@@ -1,3 +1,4 @@
+import "../styles/counselor-reference.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderSafeMarkdown as renderMarkdown } from "../utils/safeHtml.js";
 import * as api from "../data/api.js";

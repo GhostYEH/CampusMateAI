@@ -70,17 +70,6 @@ function bound01(n, max) {
   return (value % max) / parseFloat(max);
 }
 
-/**
- * tinycolor2 的 `inputToRgb` 对 `{h,s,l}` 对象的处理：
- * `hslToRgb(bound01(h, 360), bound01(s, 100), bound01(l, 100))`。
- *
- * 注意 `s` / `l` 必须先按 `bound01(_, 100)` 归一化再进 `hslToRgb` —— 直接用
- * `0-1` 的小数会得到恒等（`0.639 % 100 === 0.639`），但要按 `bound01(x,100)`
- * 归一化，才能同时接受 `hsl(210, 100%, 54%)` 里的 `100` / `54` 两种写法。
- */
-function hslComponentToRgb(h, s, l) {
-  return hslToRgb(bound01(h, 360), bound01(s, 100), bound01(l, 100));
-}
 
 /**
  * tinycolor2 `rgbToRgb`：把 r/g/b 分量归一到 [0,255]。

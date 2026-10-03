@@ -19,7 +19,7 @@ function useResource(loader, deps = []) {
     Promise.resolve().then(loader).then((data) => alive && setState({ data, loading: false, error: "" })).catch((error) => alive && setState({ data: null, loading: false, error: errorText(error, "加载失败，请稍后重试") }));
     return () => { alive = false; };
     // The explicit dependencies are the resource identity; reload is represented by version.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [...deps, version]);
   return { ...state, reload: () => setVersion((current) => current + 1) };
 }
@@ -28,10 +28,6 @@ function PageNotice({ message, tone = "info" }) {
   return message ? <div className={`page-notice notice-${tone}`} role={tone === "error" ? "alert" : "status"}><Icon name={tone === "error" ? "PhWarningCircle" : "PhInfo"} size={17} />{message}</div> : null;
 }
 
-function ListRow({ icon = "PhCircle", title, detail, meta, to, onClick, tone = "blue", children }) {
-  const content = <><span className={`row-icon tone-${tone}`}><Icon name={icon} size={18} /></span><span className="row-copy"><strong>{title}</strong><small>{detail}</small></span>{meta && <span className="row-meta">{meta}</span>}{children}{to && <Icon name="PhCaretRight" size={16} />}</>;
-  return to ? <Link className="list-row" to={to}>{content}</Link> : <button type="button" className="list-row" onClick={onClick}>{content}</button>;
-}
 
 function noticeSourceUrl(item) {
   if (item?.kind !== "unified" || !item.source_url) return null;

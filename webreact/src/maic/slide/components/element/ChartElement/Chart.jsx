@@ -30,7 +30,7 @@ const FONT_SIZE = 12;
 const LEGEND_HEIGHT = 25;
 const LEGEND_ITEM_GAP = 12;
 /** echarts 默认的类目轴留白比例（boundaryGap: true） */
-const CATEGORY_GAP = 0.2;
+
 
 export function Chart({
   width,

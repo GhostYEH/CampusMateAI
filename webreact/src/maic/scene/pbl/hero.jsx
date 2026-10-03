@@ -83,7 +83,7 @@ export function PBLV2Hero({
     if (!locale) return;
     if (project.language === locale) return;
     onProjectChange({ ...project, language: locale });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [sceneId, locale]);
 
   const instructorRole = useMemo(

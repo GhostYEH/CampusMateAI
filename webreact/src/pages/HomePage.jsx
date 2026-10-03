@@ -1,3 +1,4 @@
+import "../styles/sylva-home.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";

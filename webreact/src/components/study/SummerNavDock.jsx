@@ -1,3 +1,4 @@
+import "../../styles/study-summer.css";
 import { Link, useLocation } from "react-router-dom";
 import { Icon } from "../Icon.jsx";
 import { isSummerNavActive, SUMMER_NAV_LINKS } from "../../features/study/summerNav.js";

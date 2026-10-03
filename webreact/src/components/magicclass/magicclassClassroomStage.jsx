@@ -1,3 +1,4 @@
+import "../../styles/maic.css";
 import React from "react";
 import { ChevronLeft, ChevronRight, LayoutList, Pause, Play } from "lucide-react";
 import { Button } from "../Primitives.jsx";
@@ -25,7 +26,7 @@ import {
 import { SCENE_TYPE_LABELS } from "../../features/magicclass/editorModel.js";
 import { useNarrowViewport } from "../../features/magicclass/workbenchLayoutModel.js";
 import { useSceneNarration } from "../../features/magicclass/useSceneNarration.js";
-import { canGenerateNarration, narrationLabel } from "../../features/magicclass/narrationModel.js";
+import { canGenerateNarration } from "../../features/magicclass/narrationModel.js";
 import {
   advanceActionTimeline,
   isPlaybackShortcutTarget,

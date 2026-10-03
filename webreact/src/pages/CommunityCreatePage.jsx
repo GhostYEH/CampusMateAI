@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
-import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
+import { BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 
 const fallbackCategories = [{ key: "question", label: "提问" }, { key: "campus", label: "校园动态" }, { key: "study", label: "学习交流" }, { key: "life", label: "生活随笔" }, { key: "other", label: "其它" }];
 const draftKey = "campusmate-community-draft";

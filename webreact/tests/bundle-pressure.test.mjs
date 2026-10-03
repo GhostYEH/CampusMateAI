@@ -1,27 +1,58 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
+import { fileURLToPath } from "node:url";
+import { build } from "vite";
 
-const viteConfig = readFileSync(new URL("../vite.config.mjs", import.meta.url), "utf8");
-const mainSource = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
-const homeSceneSource = readFileSync(new URL("../src/components/SylvaHomeHero.jsx", import.meta.url), "utf8");
+// Inspect the actual production dependency graph, including transitive imports.
+const { output } = await build({
+  root: fileURLToPath(new URL("..", import.meta.url)),
+  logLevel: "silent",
+  build: { write: false },
+});
+const chunks = new Map(output.filter((item) => item.type === "chunk").map((item) => [item.fileName, item]));
+const entry = output.find((item) => item.type === "chunk" && item.isEntry);
 
-test("route-only 3D libraries stay out of the shared startup vendor chunk", () => {
-  assert.match(viteConfig, /onlyExplicitManualChunks:\s*true/);
-  assert.match(viteConfig, /moduleId\.endsWith\("\.css"\)\) return undefined/);
-  assert.match(viteConfig, /@designcodeio\/threeui[\s\S]*return "route-3d-vendor"/);
-  assert.match(viteConfig, /@react-three[\s\S]*return "route-3d-vendor"/);
-  assert.match(viteConfig, /node_modules\/three\/[\s\S]*return "route-3d-vendor"/);
-  assert.match(viteConfig, /node_modules\/three-stdlib\//);
+function dependencies(root) {
+  const visited = new Set();
+  function visit(file) {
+    if (visited.has(file)) return;
+    visited.add(file);
+    for (const child of chunks.get(file)?.imports || []) visit(child);
+  }
+  visit(root.fileName);
+  return [...visited].map((file) => chunks.get(file)).filter(Boolean);
+}
+
+test("startup excludes login effects, route engines and classroom styles", () => {
+  const startup = dependencies(entry);
+  const modules = startup.flatMap((chunk) => Object.keys(chunk.modules));
+  for (const fragment of ["node_modules/three/", "node_modules/@react-three/", "node_modules/ogl/", "node_modules/qrcode/", "node_modules/prosemirror-", "/pages/LoginPage.jsx", "/components/AppShell.jsx", "/styles/maic.css"]) {
+    assert.ok(!modules.some((id) => id.includes(fragment)), `startup unexpectedly loads ${fragment}`);
+  }
 });
 
-test("ThreeUI styles load with their lazy scene instead of every initial route", () => {
-  assert.doesNotMatch(mainSource, /@designcodeio\/threeui\/style\.css/);
-  assert.match(homeSceneSource, /@designcodeio\/threeui\/style\.css/);
+test("startup stays within the measured JavaScript and CSS budgets", () => {
+  const startup = dependencies(entry);
+  const gzipBytes = startup.reduce((total, chunk) => total + gzipSync(chunk.code).length, 0);
+  const cssFiles = new Set(startup.flatMap((chunk) => [...chunk.viteMetadata.importedCss]));
+  const cssBytes = [...cssFiles].reduce((total, file) => total + Buffer.byteLength(output.find((item) => item.fileName === file).source), 0);
+  assert.ok(gzipBytes < 120_000, `startup JavaScript gzip: ${gzipBytes} bytes`);
+  assert.ok(cssBytes < 220_000, `startup CSS: ${cssBytes} bytes`);
 });
 
-test("shared dependencies use automatic chunking instead of a circular catch-all vendor chunk", () => {
-  assert.match(viteConfig, /return undefined/);
-  assert.doesNotMatch(viteConfig, /return "vendor"/);
-  assert.doesNotMatch(viteConfig, /return "react-vendor"/);
+test("the homepage iframe wrapper does not fetch the separate 3D engine", () => {
+  const home = output.find((item) => item.type === "chunk" && item.facadeModuleId?.endsWith("/pages/HomePage.jsx"));
+  assert.ok(home, "homepage chunk exists");
+  const modules = dependencies(home).flatMap((chunk) => Object.keys(chunk.modules));
+  assert.ok(!modules.some((id) => id.includes("node_modules/three/") || id.includes("node_modules/@react-three/")));
+});
+
+test("a direct classroom entry includes its progress and error styles", () => {
+  const classroom = output.find((item) => item.type === "chunk" && item.facadeModuleId?.endsWith("/pages/magicclassClassroomEntryPage.jsx"));
+  assert.ok(classroom, "classroom entry chunk exists");
+  const cssFiles = new Set(dependencies(classroom).flatMap((chunk) => [...chunk.viteMetadata.importedCss]));
+  const css = [...cssFiles].map((file) => output.find((item) => item.fileName === file).source).join("\n");
+  assert.ok(css.includes(".magicclass-entry__progress"), "cold entry includes its progress layout");
+  assert.ok(css.includes(".magicclass-entry__step"), "cold entry includes its generation steps");
 });

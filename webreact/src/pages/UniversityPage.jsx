@@ -3,7 +3,7 @@ import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
 import { AsyncState, Button, PageFrame } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
-import { formatDateTime } from "../utils/date.js";
+
 
 function useLoad(loader, deps = []) {
   const [state, setState] = useState({ data: null, loading: true, error: "" });
@@ -14,7 +14,7 @@ function useLoad(loader, deps = []) {
     Promise.resolve().then(loader).then((data) => active && setState({ data, loading: false, error: "" })).catch((error) => active && setState({ data: null, loading: false, error: error?.response?.data?.message || error?.message || "加载失败，请稍后重试" }));
     return () => { active = false; };
   // Loader is intentionally recreated by the page; version and explicit deps control reloads.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [...deps, version]);
   return { ...state, reload: () => setVersion((current) => current + 1) };
 }

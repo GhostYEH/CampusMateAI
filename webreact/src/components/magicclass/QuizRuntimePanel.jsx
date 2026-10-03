@@ -61,7 +61,7 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, cou
       setPhase(nextPhase);
       setAnswers(state.answers || {});
       setReview(state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null);
-      try { window.localStorage.setItem(storageKey(sceneId), JSON.stringify({ phase: nextPhase, answers: state.answers || {}, review: state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null, attempt_id: remote.attempt_id })); } catch {}
+      try { window.localStorage.setItem(storageKey(sceneId), JSON.stringify({ phase: nextPhase, answers: state.answers || {}, review: state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null, attempt_id: remote.attempt_id })); } catch { /* The server retains progress when local storage is unavailable. */ }
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [courseId, workspaceId, stageId, sceneId, questions]);

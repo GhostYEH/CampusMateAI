@@ -11,7 +11,7 @@ export default function FinalReviewCampaignForm({ exams = [], onSubmit, submitti
   const [dailyMinutes, setDailyMinutes] = useState(120);
   const [restDays, setRestDays] = useState([]);
   const [intensity, setIntensity] = useState("medium");
-  const [key, setKey] = useState(() => createIdempotencyKey("fr_campaign"));
+  const [key] = useState(() => createIdempotencyKey("fr_campaign"));
 
   function toggleExam(id) {
     setSelectedExams((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));

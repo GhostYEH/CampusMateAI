@@ -399,26 +399,6 @@ function TinyTree({ variant }: { variant: number }) {
   );
 }
 
-function TinyMountain({ variant }: { variant: number }) {
-  const palette = usePalette();
-  const h = 0.5 + (variant % 3) * 0.1;
-  return (
-    <group>
-      <mesh castShadow position={[0, h / 2, 0]} rotation={[0, variant * 0.42, 0]}>
-        <coneGeometry args={[0.22, h, 5]} />
-        <meshStandardMaterial color={palette.mountain1} flatShading roughness={1} />
-      </mesh>
-      <mesh castShadow position={[0.12, h * 0.34, 0.05]} rotation={[0, 0.5, 0]}>
-        <coneGeometry args={[0.13, h * 0.6, 5]} />
-        <meshStandardMaterial color={palette.mountain2} flatShading roughness={1} />
-      </mesh>
-      <mesh castShadow position={[-0.05, h - 0.05, 0]} rotation={[0, variant * 0.42, 0]}>
-        <coneGeometry args={[0.06, 0.12, 5]} />
-        <meshStandardMaterial color={palette.mountainSnow} flatShading roughness={0.95} />
-      </mesh>
-    </group>
-  );
-}
 
 function TinyFern({ variant }: { variant: number }) {
   const palette = usePalette();

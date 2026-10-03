@@ -1,3 +1,4 @@
+import "../styles/agent-workspaces.css";
 /**
  * NoticeWorkflowPage — 通知事务 Agent 工作台。
  *

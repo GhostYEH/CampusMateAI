@@ -1,3 +1,4 @@
+import "../styles/agent-workspaces.css";
 /**
  * CourseResearchPage — 课程研究 Agent 工作台（分栏布局）。
  *
@@ -29,7 +30,7 @@ export default function CourseResearchPage() {
   const [artifactContent, setArtifactContent] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const [createKey, setCreateKey] = useState(() => createIdempotencyKey("cr_create"));
+  const [createKey] = useState(() => createIdempotencyKey("cr_create"));
 
   const run = useAgentRun({ runId: activeRunId });
 

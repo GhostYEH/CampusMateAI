@@ -34,7 +34,7 @@ export function logApiError(scope, error) {
 export function normalizeNotice(item = {}) {
   return {
     ...item,
-    has_read: typeof item.has_read === "boolean" ? item.has_read : !Boolean(item.unread),
+    has_read: typeof item.has_read === "boolean" ? item.has_read : !item.unread,
     published_at: item.published_at || item.time || item.created_at || null,
     source: item.source || item.source_name || item.course_name || "",
   };

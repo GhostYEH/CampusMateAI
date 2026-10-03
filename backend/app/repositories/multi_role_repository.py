@@ -93,6 +93,19 @@ class UserRepository:
             row = cur.fetchone()
             return UserRow.from_row(row) if row else None
 
+    def get_display_names(self, user_ids: List[str]) -> dict[str, str]:
+        """Read names for a result page without fetching each user's full record."""
+        ids = list(dict.fromkeys(user_ids))
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        with self._db.query() as conn:
+            rows = conn.execute(
+                f"SELECT id, display_name, username FROM users WHERE id IN ({placeholders})",
+                ids,
+            ).fetchall()
+        return {row["id"]: row["display_name"] or row["username"] for row in rows}
+
     def get_user_by_username(self, username: str) -> Optional[UserRow]:
         with self._db.query() as conn:
             cur = conn.execute(
@@ -379,11 +392,20 @@ class CourseRepository:
         owner_user_id: Optional[str] = None,
         status: Optional[str] = None,
         query: Optional[str] = None,
+        student_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[List[CourseRow], int]:
         conditions = []
         params: list = []
+        if student_id is not None:
+            conditions.append("""((provider = 'chaoxing' AND owner_user_id = ?)
+                OR EXISTS (
+                    SELECT 1 FROM class_groups g
+                    JOIN enrollments e ON e.class_group_id = g.id
+                    WHERE g.course_id = courses.id AND e.user_id = ? AND e.status = 'active'
+                ))""")
+            params.extend([student_id, student_id])
         if teacher_id:
             conditions.append("teacher_id = ?")
             params.append(teacher_id)
@@ -394,12 +416,19 @@ class CourseRepository:
             conditions.append("status = ?")
             params.append(status)
         if query:
-            conditions.append("(name LIKE ? OR code LIKE ? OR description LIKE ?)")
-            like = f"%{query}%"
-            params.extend([like, like, like])
+            if student_id is not None:
+                # Preserve literal Unicode substring search, including % and _.
+                conditions.append("(instr(campus_lower(name), ?) > 0 OR instr(campus_lower(code), ?) > 0 OR instr(campus_lower(description), ?) > 0)")
+                params.extend([query.lower()] * 3)
+            else:
+                conditions.append("(name LIKE ? OR code LIKE ? OR description LIKE ?)")
+                like = f"%{query}%"
+                params.extend([like, like, like])
         where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
         offset = (page - 1) * page_size
         with self._db.query() as conn:
+            if student_id is not None and query:
+                conn.create_function("campus_lower", 1, lambda value: (value or "").lower(), deterministic=True)
             cur = conn.execute(
                 f"SELECT COUNT(*) AS n FROM courses{where}", params
             )
@@ -1331,6 +1360,22 @@ class AssignmentRepository:
                 (assignment_id,),
             )
             return [AssignmentAttachmentRow.from_row(r) for r in cur.fetchall()]
+
+    def list_attachments_for_assignments(self, assignment_ids: List[str]) -> dict[str, List[AssignmentAttachmentRow]]:
+        ids = list(dict.fromkeys(assignment_ids))
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        with self._db.query() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM assignment_attachments WHERE assignment_id IN ({placeholders}) ORDER BY created_at ASC",
+                ids,
+            ).fetchall()
+        grouped: dict[str, List[AssignmentAttachmentRow]] = {}
+        for row in rows:
+            attachment = AssignmentAttachmentRow.from_row(row)
+            grouped.setdefault(attachment.assignment_id, []).append(attachment)
+        return grouped
 
     def delete_attachment(self, attachment_id: str) -> Optional[str]:
         """Delete attachment and return its storage_path for file cleanup."""

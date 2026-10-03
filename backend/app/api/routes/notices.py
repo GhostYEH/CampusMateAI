@@ -1,7 +1,7 @@
 """通知结构化抽取路由。"""
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from datetime import datetime, timezone
 import asyncio
 import hashlib
@@ -39,20 +39,6 @@ router = APIRouter()
 
 
 _RELATIVE_TIME_RE = re.compile(r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天])")
-
-
-def _notice_time(value: object) -> Optional[str]:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().replace(".", "", 1).isdigit()):
-        timestamp = float(value)
-        if abs(timestamp) >= 10_000_000_000:
-            timestamp /= 1000
-        try:
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-        except (OverflowError, OSError, ValueError):
-            return None
-    return str(value)
 
 
 def _ai_cache_key(item: NoticeBatchItem, container: ServiceContainer) -> Optional[str]:
@@ -252,33 +238,6 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
-def _user_visible_classes(
-    user: UserRow, container: ServiceContainer
-) -> List[Tuple[str, str, Optional[str]]]:
-    """返回当前用户可见班级 (class_id, class_name, course_name) 列表。
-
-    - student: 已加入的班级
-    - admin: 全部班级
-    """
-    enrollment_repo = container.enrollment_repository
-    class_repo = container.class_group_repository
-    course_repo = container.course_repository
-
-    if user.role == "student":
-        rows = enrollment_repo.list_user_classes(user.id)
-        return [
-            (r["class_id"], r.get("class_name") or "", r.get("course_name"))
-            for r in rows
-        ]
-    # admin
-    classes, _ = class_repo.list_classes(page=1, page_size=200)
-    result: List[Tuple[str, str, Optional[str]]] = []
-    for c in classes:
-        course = course_repo.get_course(c.course_id)
-        result.append((c.id, c.name or "", course.name if course else None))
-    return result
-
-
 @router.get("/notices", response_model=Page)
 def list_notices(
     unread_only: bool = Query(False, description="仅返回未读"),
@@ -289,66 +248,15 @@ def list_notices(
 ) -> Page:
     """校园通知列表 —— 聚合 notices 表和 announcements 表的通知。"""
     
-    items: List[NoticeOut] = []
-    
-    # 1. 加载统一 notices 表中的通知（微信、学习通等）
-    notice_repo = container.notice_repository
-    unified_notices = notice_repo.list_notices(user.id)
-    for n in unified_notices:
-        # Notice 表数据暂时不维护 unread 状态（或统一默认已读）
-        if unread_only:
-            continue
-        items.append(
-            NoticeOut(
-                id=n.id,
-                title=n.title,
-                source=n.source,
-                time=_notice_time(n.published_at or n.created_at),
-                    unread=False,
-                    category=n.source,
-                    content=n.content,
-                    kind="unified",
-                    source_url=n.source_url,
-            )
-        )
-
-    # 2. 加载旧 announcements 表中的通知（向后兼容）
-    ann_repo = container.announcement_repository
-    for class_id, class_name, course_name in _user_visible_classes(user, container):
-        rows, _ = ann_repo.list_announcements(
-            class_id, status="published", page=1, page_size=100
-        )
-        for ann in rows:
-            unread = False
-            if user.role == "student":
-                unread = not ann_repo.is_read(ann.id, user.id)
-            items.append(
-                NoticeOut(
-                    id=ann.id,
-                    title=ann.title,
-                    source=class_name or course_name or ann.author_id,
-                    time=ann.published_at or ann.created_at,
-                        unread=unread,
-                        category=course_name,
-                        content=ann.content,
-                        kind="announcement",
-                )
-            )
-    
-    # 排序: 有时间者按时间倒序,无时间者排后
-    items.sort(key=lambda n: n.time or "", reverse=True)
-    if unread_only:
-        items = [n for n in items if n.unread]
-    total = len(items)
-    start = (page - 1) * page_size
-    end = start + page_size
-    return Page(
-        items=items[start:end],
-        total=total,
+    rows, total = container.notice_repository.list_visible_notices(
+        user.id,
+        student=user.role == "student",
+        unread_only=unread_only,
         page=page,
         page_size=page_size,
-        has_more=end < total,
     )
+    items = [NoticeOut(**row) for row in rows]
+    return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/notices/extract", response_model=NoticeExtractResponse)

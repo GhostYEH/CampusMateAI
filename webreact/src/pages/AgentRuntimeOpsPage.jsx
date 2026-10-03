@@ -1,3 +1,4 @@
+import "../styles/agent-ops.css";
 /**
  * AgentRuntimeOpsPage — 管理员只读的 Agent 运行观测页（/admin/agent-runtime）。
  *
@@ -79,7 +80,7 @@ export default function AgentRuntimeOpsPage() {
   if (!allowed) return <Navigate to="/home" replace />;
 
   return (
-    <div className="agent-ops-page">
+    <main id="main-content" className="agent-ops-page">
       <RuntimeOverview
         overview={overview}
         loading={loading}
@@ -117,6 +118,6 @@ export default function AgentRuntimeOpsPage() {
         error={traceError}
         onClose={() => { setTrace(null); setTraceError(null); }}
       />
-    </div>
+    </main>
   );
 }

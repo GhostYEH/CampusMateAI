@@ -1,4 +1,3 @@
-import * as React from "react";
 import { useCallback, useState } from "react";
 import {
   PanelLeftClose,
@@ -189,7 +188,6 @@ export function MaicSceneSidebar({
             const isActive = currentSceneId === scene.id;
             const Icon = getSceneTypeIcon(scene.type);
             const isSlide = scene.type === "slide";
-            const isInteractive = scene.type === "interactive";
 
             return (
               <div

@@ -1,3 +1,4 @@
+import "../styles/magicclass-classroom.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
@@ -5,16 +6,7 @@ import { Button, PageFrame } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { itemsOf } from "../data/contracts.js";
 import { describeFusionState } from "../features/magicclass/homeModel.js";
-import {
-  CLASSROOM_GENERATION_STEPS,
-  buildClassroomPrompt,
-  classroomEntryIdempotencyKey,
-  describeCourseReadiness,
-  describeEntryFailure,
-  enterClassroomHref,
-  resolveGenerationPhase,
-  stageGenerationIdempotencyKey,
-} from "../features/magicclass/enterClassroomModel.js";
+import { CLASSROOM_GENERATION_STEPS, buildClassroomPrompt, classroomEntryIdempotencyKey, describeCourseReadiness, describeEntryFailure, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../features/magicclass/enterClassroomModel.js";
 import { workspaceHref } from "../features/magicclass/quickAskModel.js";
 import { normalizeStageList, normalizeWorkspaceList } from "../features/magicclass/workspaceModel.js";
 
@@ -43,7 +35,6 @@ export default function MagicClassClassroomEntryPage() {
   const [course, setCourse] = useState(null);
   const [online, setOnline] = useState(false);
   const [workspace, setWorkspace] = useState(null);
-  const [stages, setStages] = useState([]);
   const [job, setJob] = useState(null);
   const [phase, setPhase] = useState(null);
   const [failure, setFailure] = useState(null);
@@ -202,7 +193,6 @@ export default function MagicClassClassroomEntryPage() {
         const stagePayload = await api.listMagicClassStages(courseId, target.id, { limit: 50 });
         if (mine !== epoch.current) return;
         const existing = normalizeStageList(stagePayload);
-        setStages(existing);
         if (existing.length) {
           setNotice("已恢复该课程已有的课堂内容。");
           goToWorkspace(target.id, "");

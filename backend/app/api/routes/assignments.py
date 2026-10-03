@@ -28,7 +28,7 @@ from ...core.exceptions import (
     NotFoundError,
 )
 from ...core.security import is_path_traversal, sanitize_filename
-from ...models.multi_role import AssignmentRow, UserRow
+from ...models.multi_role import AssignmentAttachmentRow, AssignmentRow, UserRow
 from ...schemas.multi_role import (
     AssignmentAttachmentOut,
     AssignmentCreate,
@@ -64,6 +64,7 @@ def _assignment_to_out(
     container: Optional[ServiceContainer] = None,
     student_id: Optional[str] = None,
     submission_status: Optional[str] = None,
+    attachment_rows: Optional[List[AssignmentAttachmentRow]] = None,
 ) -> AssignmentOut:
     types = []
     if a.submission_types:
@@ -74,8 +75,8 @@ def _assignment_to_out(
         except (ValueError, TypeError):
             types = []
     att_out: List[AssignmentAttachmentOut] = []
-    if container is not None:
-        att_rows = container.assignment_repository.list_attachments(a.id)
+    if attachment_rows is not None or container is not None:
+        att_rows = attachment_rows if attachment_rows is not None else container.assignment_repository.list_attachments(a.id)
         att_out = [
             AssignmentAttachmentOut(
                 id=r.id,
@@ -143,11 +144,14 @@ def list_assignments(
         if user.role == "student"
         else {}
     )
+    names = container.user_repository.get_display_names([row.author_id for row in rows])
+    attachments = container.assignment_repository.list_attachments_for_assignments([row.id for row in rows])
     items = [
         _assignment_to_out(
             r,
             course_id=cls.course_id,
-            author_name=_author_name(container, r.author_id),
+            author_name=names.get(r.author_id),
+            attachment_rows=attachments.get(r.id, []),
             container=container,
             student_id=user.id if user.role == "student" else None,
             submission_status=submission_statuses.get(r.id, "not_submitted") if user.role == "student" else None,
@@ -182,8 +186,9 @@ def list_student_assignments(
         page=page,
         page_size=page_size,
     )
+    names = container.user_repository.get_display_names([item["author_id"] for item in items])
     for item in items:
-        item["author_name"] = _author_name(container, item["author_id"])
+        item["author_name"] = names.get(item["author_id"])
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 

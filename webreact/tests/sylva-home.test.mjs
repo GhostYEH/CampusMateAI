@@ -25,7 +25,7 @@ test("homepage keeps the Sylva hero as the fixed living-scene background", async
     readFile(new URL("src/pages/HomePage.jsx", webRoot), "utf8"),
   ]);
 
-  assert.match(heroSource, /import\s*\{\s*SylvaHero\s*\}\s*from\s*["']@designcodeio\/threeui["']/);
+  assert.match(heroSource, /import\s*\{\s*SylvaHero\s*\}\s*from\s*["']@designcodeio\/threeui\/components\/SylvaHero["']/);
   assert.match(heroSource, /variant=["']living-green["']/);
   assert.match(heroSource, /headingFont=["']lexend["']/);
   assert.match(heroSource, /bodyFont=["']lexend["']/);

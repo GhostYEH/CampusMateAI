@@ -62,7 +62,7 @@ export function Modal({ title, children, onClose, actions, variant = "", classNa
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.documentElement.style.scrollbarGutter = prevScrollbarGutter;
       if (previouslyFocusedRef.current && typeof previouslyFocusedRef.current.focus === "function") {
-        try { previouslyFocusedRef.current.focus(); } catch {}
+        try { previouslyFocusedRef.current.focus(); } catch { /* The previously focused control may have been removed. */ }
       }
     };
   }, []);

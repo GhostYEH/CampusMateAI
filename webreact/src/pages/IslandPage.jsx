@@ -124,7 +124,7 @@ export default function IslandPage() {
   const todayText = new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
 
   return (
-    <section className="island-scene" data-study-scene={scene} aria-labelledby="island-title">
+    <main id="main-content" className="island-scene" data-study-scene={scene} aria-labelledby="island-title">
       <header className="island-top">
         <div className="island-heading">
           <p className="study-summer-eyebrow">{todayText}</p>
@@ -178,6 +178,6 @@ export default function IslandPage() {
       </footer>
 
       <SummerNavDock sceneAudio={ambient} />
-    </section>
+    </main>
   );
 }

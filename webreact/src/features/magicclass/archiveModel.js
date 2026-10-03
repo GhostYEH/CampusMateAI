@@ -47,6 +47,8 @@ export function filenameFromContentDisposition(disposition) {
 /** 一个文件名就是名字，永远不是路径。 */
 export function sanitizeFilename(value) {
   const text = String(value ?? "")
+    // Strip control characters from an untrusted download filename.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .replace(/[\\/]/g, " ")
     .trim();

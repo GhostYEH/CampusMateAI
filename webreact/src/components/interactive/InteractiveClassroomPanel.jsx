@@ -1,3 +1,4 @@
+import "../../styles/interactive-classroom.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../../data/api.js";
@@ -223,7 +224,7 @@ export function InteractiveClassroomView({
   }, [trustedEmbedOrigins, status]);
 
   const state = classroomState(status);
-  const targetMode = INTERACTIVE_MODES.find((m) => m.mode === normalizeMode(mode)) || INTERACTIVE_MODES[0];
+
   const live = polling || isSessionLive(session);
   const browserEmbedAvailable = trustedEmbedOrigins != null || status.browser_embed_available === true;
   const safeUrl =

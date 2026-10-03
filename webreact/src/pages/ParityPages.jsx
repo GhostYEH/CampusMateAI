@@ -3,20 +3,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
 import { examDetailFields } from "../data/alignment.js";
-import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
+import { AsyncState, BackLink, Button, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import MagicClassHome from "../components/magicclass/magicclassHome.jsx";
 import { normalizeRecentItems } from "../features/magicclass/homeModel.js";
-import { formatDateTime } from "../utils/date.js";
 
 const list = itemsOf;
-const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
+
 
 /** 最近内容的默认条数；上限由服务端固定（50）。 */
 const RECENT_LIMIT = 20;
 
 export function CoursesParityPage() {
-  const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [recentItems, setRecentItems] = useState([]);

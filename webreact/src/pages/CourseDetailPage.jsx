@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
@@ -69,7 +69,7 @@ function KnowledgeMasteryPanel({ graph, loading, error, syncing, onRetry, onSync
 }
 
 export default function CourseDetailPage() {
-  const { courseId } = useParams(); const navigate = useNavigate();
+  const { courseId } = useParams();
   // 站内深链：`/courses/:id?tab=mentoring&session=<sessionId>`。
   // 初始 tab 与要打开的课堂都从 URL 读一次，这样"最近内容"里的链接真的落在正确位置。
   const [searchParams] = useSearchParams();

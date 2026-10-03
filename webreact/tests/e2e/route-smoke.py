@@ -12,7 +12,18 @@ ROUTES = [
     "/counselor", "/notifications", "/announcements/1", "/study", "/exams",
     "/exams/1", "/exams/1/edit", "/profile", "/profile/favorites",
     "/profile/chaoxing", "/profile/academic", "/profile/settings",
+    "/learning-state", "/prediction", "/agent/final-review", "/agent/course-research",
+    "/agent/notice-workflow", "/admin/agent-runtime", "/learning-space",
+    "/courses/1/classroom", "/courses/1/magicclass-preview",
+    "/courses/1/workspaces/1", "/courses/1/workspaces/1/legacy",
+    "/plans", "/docs", "/statistics", "/island",
 ]
+
+# Embedded/immersive pages render their own content instead of PageFrame's h1.
+CUSTOM_PAGE_CONTENT = {
+    "/learning-space": ".learning-space-page [role='alert'], .learning-space-page [role='status'], .learning-space-page iframe",
+    "/courses/1/workspaces/1": ".ow-pane-title, .ow-nav[aria-label='工作台导航']",
+}
 
 
 def run():
@@ -47,7 +58,9 @@ def run():
                     raise AssertionError(f"{route}: {error}") from error
                 page.wait_for_timeout(100)
                 assert page.locator("main").count() > 0, route
-                assert page.locator("h1").count() > 0, route
+                content_selector = CUSTOM_PAGE_CONTENT.get(route, "h1")
+                page.wait_for_selector(content_selector, state="attached", timeout=10_000)
+                assert page.locator(content_selector).count() > 0, route
                 assert page.locator(".floating-nav").count() == 1, route
                 assert page.locator(".sidebar").count() == 0, route
             if viewport["width"] < 700:

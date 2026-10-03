@@ -1,3 +1,4 @@
+import "../styles/prediction.css";
 /**
  * 趋势与方案比较页面 — 校园陪伴世界模型
  *
@@ -240,7 +241,7 @@ export default function PredictionPage() {
   }, [simForm, horizonDays]);
 
   return (
-    <div className="pred-page">
+    <main id="main-content" className="pred-page">
       <header className="pred-page__header">
         <div className="pred-page__title-row">
           <div>
@@ -372,7 +373,7 @@ export default function PredictionPage() {
           </section>
         </>
       )}
-    </div>
+    </main>
   );
 }
 

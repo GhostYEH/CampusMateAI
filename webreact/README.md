@@ -23,8 +23,12 @@ npm run dev
 ## 验证
 
 ```bash
+npm run lint
 npm test
+npm run build
 python tests/e2e/route-smoke.py
 ```
+
+`lint` 检查全部 JS/JSX/TS/TSX 源码的基础错误、未使用符号及 Hook 调用规则；它不替代 TypeScript 类型检查。测试还会检查实际生产分包，防止路由专属引擎和样式进入首屏。
 
 E2E 脚本需要先运行 `npm run dev`；它覆盖登录保护、全部路由族、桌面与移动端导航。

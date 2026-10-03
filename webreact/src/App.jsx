@@ -2,9 +2,9 @@ import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { GlassSystemProvider } from "open-glass-ui";
 import { AppProvider, useApp } from "./app/AppContext.jsx";
-import AppShell from "./components/AppShell.jsx";
+const AppShell = lazy(() => import("./components/AppShell.jsx"));
 import TypingPlaceholderLayer from "./components/TypingPlaceholderLayer.jsx";
-import LoginPage from "./pages/LoginPage.jsx";
+const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
 
 const lazyIntegrationPage = (name) => name === "SettingsPage" ? lazy(() => import("./pages/SettingsPage.jsx")) : lazy(() => import("./pages/IntegrationPages.jsx").then((module) => ({ default: module[name] })));
 const lazyProfilePage = (name) => lazy(() => import("./pages/ProfileSecondaryPage.jsx").then((module) => ({ default: module[name] })));
@@ -36,7 +36,7 @@ const MagicClassClassroomEntryPage = lazy(() => import("./pages/magicclassClassr
 const MagicClassWorkbenchPage = lazy(() => import("./pages/magicclassWorkbenchPage.jsx"));
 const LearningSpacePage = lazy(() => import("./pages/LearningSpacePage.jsx"));
 const pages = {
-  HomePage, CoursesPage, CourseDetailPage,
+  LoginPage, HomePage, CoursesPage, CourseDetailPage,
   TasksPage, TaskDetailPage, StudyPage, IslandPage,
   PlansPage: StudySubpages, DocsPage: StudySubpages, StatisticsPage: StudySubpages,
   CommunityPage, CommunityCreatePage, CommunityDetailPage: lazyToolPage("CommunityDetailPage"),
@@ -54,11 +54,15 @@ function GuardedLayout() {
   const { session } = useApp();
   const location = useLocation();
   if (!session) return <Navigate to="/login" replace state={{ from: location }} />;
-  return <AppShell />;
+  return <Suspense fallback={<PageLoading />}><AppShell /></Suspense>;
+}
+
+function PageLoading() {
+  return <div className="state-card loading-state page-loading"><span className="loading-orb" /><p>正在打开页面…</p></div>;
 }
 
 function Page({ name }) {
-  return <Suspense fallback={<div className="state-card loading-state page-loading"><span className="loading-orb" /><p>正在打开页面…</p></div>}><PageResolver name={name} /></Suspense>;
+  return <Suspense fallback={<PageLoading />}><PageResolver name={name} /></Suspense>;
 }
 
 function PageResolver({ name }) {
@@ -69,7 +73,7 @@ function PageResolver({ name }) {
 export default function App() {
   useEffect(() => { document.documentElement.lang = "zh-CN"; }, []);
   return <GlassSystemProvider renderer="auto" theme={{ appearance: "light", theme: { preset: "cobalt", contrast: "high" } }}><AppProvider><TypingPlaceholderLayer /><Routes>
-    <Route path="/login" element={<LoginPage />} />
+    <Route path="/login" element={<Page name="LoginPage" />} />
     <Route element={<GuardedLayout />}>
       <Route path="/" element={<Navigate to="/home" replace />} />
       <Route path="/home" element={<Page name="HomePage" />} />

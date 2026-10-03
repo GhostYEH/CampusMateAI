@@ -21,8 +21,8 @@ export default function FinalReviewPlanView({
   checkinStatus = "",
   error = null,
 }) {
-  const [genKey, setGenKey] = useState(() => createIdempotencyKey("fr_generate"));
-  const [actKey, setActKey] = useState(() => createIdempotencyKey("fr_activate"));
+  const [genKey] = useState(() => createIdempotencyKey("fr_generate"));
+  const [actKey] = useState(() => createIdempotencyKey("fr_activate"));
   const [checkinKey] = useState(() => createIdempotencyKey("fr_checkin"));
   const [completedItemIds, setCompletedItemIds] = useState([]);
   const [insufficientTime, setInsufficientTime] = useState(false);

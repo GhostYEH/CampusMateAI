@@ -33,7 +33,8 @@ export default defineConfig({
           const moduleId = id.replaceAll("\\", "/");
           if (!moduleId.includes("node_modules")) return undefined;
           if (moduleId.endsWith(".css")) return undefined;
-          if (moduleId.includes("@designcodeio/threeui") || moduleId.includes("@react-three") || moduleId.includes("node_modules/three/") || moduleId.includes("node_modules/three-stdlib/") || moduleId.includes("node_modules/postprocessing/")) return "route-3d-vendor";
+          // Iframe scene wrappers remain separate from the actual WebGL engine.
+          if (moduleId.includes("@react-three") || moduleId.includes("node_modules/three/") || moduleId.includes("node_modules/three-stdlib/") || moduleId.includes("node_modules/postprocessing/")) return "route-3d-vendor";
           return undefined;
         },
       },

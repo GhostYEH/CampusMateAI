@@ -33,6 +33,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+from starlette.concurrency import run_in_threadpool
+
 from ..core.config import Settings
 from ..core.logging import logger
 from ..models.document import RetrievedChunk
@@ -608,6 +610,10 @@ class RagService:
         self._settings = settings
         self._repo = repository
 
+    def _retrieve_context(self, query: str) -> List[RetrievedChunk]:
+        """Keep index rebuilds, lock waits and document expansion off the event loop."""
+        return _expand_same_document(self._retrieval.search(query, k=8), self._retrieval)
+
     async def answer(
         self,
         query: str,
@@ -688,11 +694,10 @@ class RagService:
 
         # 检索(取较多 chunk,避免遗漏用户问题中的子项;
         # 同一文档的多个 chunk 进入 context 后由 LLM 综合判断)
-        retrieved = self._retrieval.search(q, k=8)
+        retrieved = await run_in_threadpool(self._retrieve_context, q)
         # 同文档扩展: 若某文档已有 chunk 被召回,把同文档的其他 chunk 也补进来,
         # 让 LLM 看到完整文档结构(避免漏答"办理地点""截止时间"等
         # 用户没直接问但属于申请流程一部分的信息)。
-        retrieved = _expand_same_document(retrieved, self._retrieval)
         context, sources, raw_docs = _build_context(retrieved)
         conflicts = _detect_conflicts(raw_docs)
         evidence_level, confidence, needs_human = _classify_evidence_level(sources)

@@ -7,6 +7,21 @@ from datetime import datetime, timezone
 from ..database.sqlite_db import Database
 from ..models.multi_role import NoticeRow
 
+
+def normalize_notice_time(value: object) -> Optional[str]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)) or (isinstance(value, str) and value.strip().replace(".", "", 1).isdigit()):
+        timestamp = float(value)
+        if abs(timestamp) >= 10_000_000_000:
+            timestamp /= 1000
+        try:
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    return str(value)
+
+
 class NoticeRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -63,6 +78,51 @@ class NoticeRepository:
                 "SELECT * FROM notices WHERE user_id = ? ORDER BY published_at DESC", (user_id,)
             )
             return [NoticeRow.from_row(r) for r in cur.fetchall()]
+
+    def list_visible_notices(
+        self,
+        user_id: str,
+        *,
+        student: bool,
+        unread_only: bool = False,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[dict], int]:
+        """Merge both sources, applying visibility and pagination in the database."""
+        visible = """WITH visible AS (
+            SELECT n.id, n.title, n.source,
+                   campus_notice_time(COALESCE(NULLIF(n.published_at, ''), n.created_at)) AS time,
+                   0 AS unread, n.source AS category, n.content,
+                   'unified' AS kind, n.source_url
+            FROM notices n WHERE n.user_id = ?
+            UNION ALL
+            SELECT a.id, a.title,
+                   COALESCE(NULLIF(g.name, ''), NULLIF(c.name, ''), a.author_id) AS source,
+                   COALESCE(NULLIF(a.published_at, ''), a.created_at) AS time,
+                   CASE WHEN ? AND receipt.announcement_id IS NULL THEN 1 ELSE 0 END AS unread,
+                   c.name AS category, a.content, 'announcement' AS kind, NULL AS source_url
+            FROM announcements a
+            JOIN class_groups g ON g.id = a.class_group_id
+            LEFT JOIN courses c ON c.id = g.course_id
+            LEFT JOIN announcement_read_receipts receipt
+                   ON receipt.announcement_id = a.id AND receipt.student_id = ?
+            WHERE a.status = 'published' AND (
+                NOT ? OR EXISTS (
+                    SELECT 1 FROM enrollments e
+                    WHERE e.class_group_id = g.id AND e.user_id = ? AND e.status = 'active'
+                )
+            )
+        )"""
+        params = [user_id, int(student), user_id, int(student), user_id]
+        where = " WHERE unread = 1" if unread_only else ""
+        with self._db.query() as conn:
+            conn.create_function("campus_notice_time", 1, normalize_notice_time, deterministic=True)
+            total = int(conn.execute(visible + " SELECT COUNT(*) AS n FROM visible" + where, params).fetchone()["n"])
+            rows = conn.execute(
+                visible + " SELECT * FROM visible" + where + " ORDER BY COALESCE(time, '') DESC, kind ASC, id ASC LIMIT ? OFFSET ?",
+                params + [page_size, (page - 1) * page_size],
+            ).fetchall()
+        return [dict(row) for row in rows], total
 
     def list_chaoxing_for_event_backfill(
         self,

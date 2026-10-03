@@ -1,3 +1,4 @@
+import "../../styles/magicclass-classroom.css";
 import React from "react";
 import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";

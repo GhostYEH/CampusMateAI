@@ -13,7 +13,7 @@
  *
  * 本模块不导入 React，fetch 与 refreshAuth 注入，便于 node:test。
  */
-import { reconnectDelay as defaultReconnectDelay, lastEventSequence } from "./agentContracts.js";
+import { reconnectDelay as defaultReconnectDelay } from "./agentContracts.js";
 
 /**
  * 把累积 buffer 拆成完整 SSE 帧和剩余片段。

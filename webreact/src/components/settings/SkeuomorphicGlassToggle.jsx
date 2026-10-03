@@ -1,4 +1,4 @@
-import { SkeuomorphicToggleCollection } from "@designcodeio/threeui";
+import { SkeuomorphicToggleCollection } from "@designcodeio/threeui/components/SkeuomorphicToggleCollection";
 import "@designcodeio/threeui/style.css";
 
 import "./SkeuomorphicGlassToggle.css";

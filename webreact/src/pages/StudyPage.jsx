@@ -61,7 +61,7 @@ export default function StudyPage() {
     const saved = saveStudyScene(nextScene);
     setSceneState(saved);
   }
-  const commitPomodoro = (next) => { pomodoroRef.current = next; setPomodoro(next); setSeconds(remainingAt(next, Date.now())); try { window.localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(next)); } catch {} };
+  const commitPomodoro = (next) => { pomodoroRef.current = next; setPomodoro(next); setSeconds(remainingAt(next, Date.now())); try { window.localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(next)); } catch { /* The active timer continues when local storage is unavailable. */ } };
 
   function syncPomodoroWithSession(current) {
     if (current) {

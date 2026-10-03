@@ -390,7 +390,7 @@ function PBLV2WorkspaceLayer({
     // Re-run when `autoExpand` flips true so the reveal fires whether the flag
     // is already set at mount (the normal case) or arrives just after; the
     // callbacks are effectively stable for this one-shot.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [autoExpand]);
 
   // Lock background scroll only while the workspace owns the viewport.

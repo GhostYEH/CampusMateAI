@@ -1,3 +1,4 @@
+import "../styles/magicclass-workbench.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";

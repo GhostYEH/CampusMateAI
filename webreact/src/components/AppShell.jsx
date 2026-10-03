@@ -71,7 +71,7 @@ export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [systemReducedMotion, setSystemReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false);
-  const isHome = location.pathname === "/home";
+
   const isCourses = location.pathname.startsWith("/courses");
   const isMagicClassImmersive = isMagicClassImmersivePath(location.pathname);
   const isCounselor = location.pathname.startsWith("/counselor");

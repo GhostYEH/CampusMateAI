@@ -34,7 +34,6 @@ test("iridescence tracks the cursor above the click-through background layer", (
 
 test("the homepage does not mount the legacy shell background before Sylva loads", () => {
   assert.match(appShell, /iridescence-background-active/);
-  assert.match(appShell, /location\.pathname === ["']\/home["']/);
   assert.match(appShell, /isCourses && <Iridescence/);
   assert.doesNotMatch(appShell, /\(isHome \|\| isCourses\) && <Iridescence/);
   assert.doesNotMatch(appShell, /home-background-active/);
