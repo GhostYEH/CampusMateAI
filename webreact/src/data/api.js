@@ -693,9 +693,8 @@ export async function decideAgentApproval(approvalId, decision, reason) {
 
 export async function chatStream(message, { onSources, onChunk, onDone, onError, signal, webSearch = false, attachment = null, conversationId = null, recentTasks = [], courseId = null, workspaceId = null } = {}) {
   try {
-    const token = localStorage.getItem("campus_access_token");
-    const response = await fetch(`${BASE_URL}/counselor/chat`, {
-      method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    const response = await client.authorizedFetch(`${BASE_URL}/counselor/chat`, {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
       body: JSON.stringify({
         message, stream: true, web_search: webSearch, attachment, recent_tasks: recentTasks,
         ...(conversationId ? { conversation_id: conversationId } : {}),
@@ -752,9 +751,8 @@ export async function chatStream(message, { onSources, onChunk, onDone, onError,
 }
 
 export async function streamAssistantSpeech(text, { signal, onChunk = () => {}, onHeaders = () => {} } = {}) {
-  const token = localStorage.getItem("campus_access_token");
-  const response = await fetch(`${BASE_URL}/assistant/tts`, {
-    method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  const response = await client.authorizedFetch(`${BASE_URL}/assistant/tts`, {
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "application/octet-stream" },
     body: JSON.stringify({ text }), signal,
   });
   if (!response.ok) throw new Error(`语音服务错误 (${response.status})`);

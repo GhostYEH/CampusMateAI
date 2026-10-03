@@ -10,8 +10,108 @@ function storageOrDefault(storage) {
 
 export function createClient(baseUrl = BASE_URL, storage = globalThis.localStorage) {
   const client = axios.create({ baseURL: baseUrl, timeout: 8000, withCredentials: true });
+  const authStorage = () => storageOrDefault(storage);
+  const readTokenPair = () => {
+    const activeStorage = authStorage();
+    return {
+      access: activeStorage?.getItem("campus_access_token") || null,
+      refresh: activeStorage?.getItem("campus_refresh_token") || null,
+    };
+  };
+  const pairKey = (pair) => JSON.stringify([pair?.access || null, pair?.refresh || null]);
+  const refreshLineage = new Map();
+  let knownPairKey = pairKey(readTokenPair());
+  const observeCurrentPair = () => {
+    const pair = readTokenPair();
+    const key = pairKey(pair);
+    // A token-pair change outside a refresh recorded by this client means a
+    // new login/logout owns storage; old requests must not cross that boundary.
+    if (key !== knownPairKey) {
+      refreshLineage.clear();
+      knownPairKey = key;
+    }
+    return { pair, key };
+  };
+  const isRefreshSuccessor = (sentPair, currentKey) => {
+    const start = pairKey(sentPair);
+    if (start === currentKey) return true;
+    const visited = new Set([start]);
+    let key = start;
+    while (refreshLineage.has(key)) {
+      key = refreshLineage.get(key);
+      if (key === currentKey) return true;
+      if (visited.has(key)) return false;
+      visited.add(key);
+    }
+    return false;
+  };
+  const currentAuthorization = () => {
+    const token = authStorage()?.getItem("campus_access_token");
+    return token ? `Bearer ${token}` : undefined;
+  };
+
+  const refreshOnce = async () => {
+    const activeStorage = authStorage();
+    const beforePair = readTokenPair();
+    const refreshToken = activeStorage?.getItem("campus_refresh_token");
+    if (!refreshRequest || refreshRequest.token !== refreshToken) {
+      refreshRequest = {
+        token: refreshToken,
+        promise: refreshAccessToken(baseUrl, activeStorage),
+      };
+    }
+    const pendingRefresh = refreshRequest;
+    try {
+      const token = await pendingRefresh.promise;
+      const afterPair = readTokenPair();
+      if (beforePair.access && beforePair.refresh && afterPair.access === token && afterPair.refresh) {
+        const beforeKey = pairKey(beforePair);
+        const afterKey = pairKey(afterPair);
+        if (beforeKey !== afterKey) {
+          refreshLineage.set(beforeKey, afterKey);
+          if (refreshLineage.size > 16) refreshLineage.delete(refreshLineage.keys().next().value);
+        }
+        knownPairKey = afterKey;
+      }
+      return token;
+    } finally {
+      if (refreshRequest === pendingRefresh) refreshRequest = null;
+    }
+  };
+
+  client.authorizedFetch = async (input, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    const sentPair = readTokenPair();
+    const sentAuthorization = sentPair.access ? `Bearer ${sentPair.access}` : undefined;
+    if (sentAuthorization) headers.set("Authorization", sentAuthorization);
+    const requestInit = { ...init, headers };
+    const response = await fetch(input, requestInit);
+    if (response.status !== 401 || !sentAuthorization || init.signal?.aborted) return response;
+
+    const current = observeCurrentPair();
+    if (current.key !== pairKey(sentPair)) {
+      if (!isRefreshSuccessor(sentPair, current.key)) return response;
+      headers.set("Authorization", currentAuthorization());
+      return fetch(input, requestInit);
+    }
+
+    const token = await refreshOnce();
+    if (init.signal?.aborted) {
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
+    const refreshedAuthorization = currentAuthorization();
+    if (!refreshedAuthorization || refreshedAuthorization !== `Bearer ${token}`) return response;
+    headers.set("Authorization", refreshedAuthorization);
+    return fetch(input, requestInit);
+  };
   client.interceptors.request.use((config) => {
-    const token = storageOrDefault(storage)?.getItem("campus_access_token");
+    const observed = observeCurrentPair();
+    if (config._retried && (!config._retryAuthTokenPair
+      || pairKey(config._retryAuthTokenPair) !== observed.key)) {
+      throw new Error("登录状态已变更，请重试");
+    }
+    config._authTokenPair = observed.pair;
+    const token = observed.pair.access;
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   });
@@ -34,32 +134,34 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
 
     const authStorage = storageOrDefault(storage);
     const sentAuthorization = original.headers?.get?.("Authorization") ?? original.headers?.Authorization;
-    const currentAccessToken = authStorage?.getItem("campus_access_token");
-    // A response from an earlier session must never be replayed as the new user.
-    if (sentAuthorization !== (currentAccessToken ? `Bearer ${currentAccessToken}` : undefined)) {
+    const current = observeCurrentPair();
+    const sentPair = original._authTokenPair;
+    // A late 401 may use the latest access token only when it is a recorded
+    // successor produced by this client's successful refresh.
+    if (sentAuthorization !== (current.pair.access ? `Bearer ${current.pair.access}` : undefined)) {
+      if (!sentPair || !isRefreshSuccessor(sentPair, current.key)) {
+        return Promise.reject(error);
+      }
+      original._retried = true;
+      original._retryAuthTokenPair = current.pair;
+      original.headers.Authorization = `Bearer ${current.pair.access}`;
+      return client(original);
+    }
+    if (!sentPair || pairKey(sentPair) !== current.key) {
       return Promise.reject(error);
     }
 
     original._retried = true;
-    const refreshToken = authStorage?.getItem("campus_refresh_token");
-    if (!refreshRequest || refreshRequest.token !== refreshToken) {
-      refreshRequest = {
-        token: refreshToken,
-        promise: refreshAccessToken(baseUrl, authStorage),
-      };
-    }
-    const pendingRefresh = refreshRequest;
     try {
-      const token = await pendingRefresh.promise;
+      const token = await refreshOnce();
       if (authStorage.getItem("campus_access_token") !== token) {
         return Promise.reject(error);
       }
+      original._retryAuthTokenPair = readTokenPair();
       original.headers.Authorization = `Bearer ${token}`;
       return client(original);
     } catch (refreshError) {
       return Promise.reject(refreshError);
-    } finally {
-      if (refreshRequest === pendingRefresh) refreshRequest = null;
     }
   });
   return client;
