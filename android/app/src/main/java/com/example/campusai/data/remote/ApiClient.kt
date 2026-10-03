@@ -181,6 +181,18 @@ object ApiClient {
         .build()
     val chaoxingApi: ApiService = chaoxingRetrofit.create(ApiService::class.java)
 
+    // 课堂提交会先整理课程上下文并等待上游受理，不能沿用普通接口的 8 秒读取限制。
+    private val classroomHttpClient = okHttpClient.newBuilder()
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(75, TimeUnit.SECONDS)
+        .build()
+    val classroomApi: ApiService = Retrofit.Builder()
+        .baseUrl(BASE_URL)
+        .client(classroomHttpClient)
+        .addConverterFactory(MoshiConverterFactory.create(moshi).asLenient())
+        .build()
+        .create(ApiService::class.java)
+
     private val staticOrigin: String = run {
         val idx = BASE_URL.indexOf("://")
         val afterScheme = if (idx >= 0) BASE_URL.substring(idx + 3) else BASE_URL

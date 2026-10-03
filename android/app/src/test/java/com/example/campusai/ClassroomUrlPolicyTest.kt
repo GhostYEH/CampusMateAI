@@ -26,6 +26,16 @@ class ClassroomUrlPolicyTest {
         assertNull(ClassroomUrlPolicy.sanitize(url, listOf("http://10.0.2.2:3001"), allowEmulatorDebug = true))
     }
 
+    @Test
+    fun `physical debug device accepts only adb reverse classroom origin`() {
+        val origin = listOf("http://127.0.0.1:3000")
+        val room = "http://127.0.0.1:3000/classroom/room_1"
+        assertEquals(room, ClassroomUrlPolicy.sanitize(room, origin, allowEmulatorDebug = true))
+        assertNull(ClassroomUrlPolicy.sanitize(room, origin))
+        assertNull(ClassroomUrlPolicy.sanitize("http://127.0.0.1:3000/admin", origin, allowEmulatorDebug = true))
+        assertNull(ClassroomUrlPolicy.sanitize(room, listOf("http://10.0.2.2:3000"), allowEmulatorDebug = true))
+    }
+
     private val trusted = listOf("https://classroom.example.com")
     private val trustedWithPort = listOf("https://classroom.example.com:8443")
 

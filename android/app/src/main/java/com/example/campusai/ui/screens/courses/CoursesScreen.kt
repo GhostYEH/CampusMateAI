@@ -561,43 +561,46 @@ internal fun CourseDetailSheet(
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFFF5F2E8),
+        containerColor = Color(0xFFE8EBDF),
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f)
-                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF8F5EA), Color(0xFFE8EEE4)))),
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF0EBDD), Color(0xFFE4EBDD), Color(0xFFDCE8E2)))),
             contentPadding = PaddingValues(start = 22.dp, end = 22.dp, bottom = 34.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF15362F), Color(0xFF376249), Color(0xFF806C46))))
-                .padding(18.dp), Arrangement.SpaceBetween, Alignment.Top) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(course.name, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+            item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF12372F), Color(0xFF416148), Color(0xFF7E6946))))
+                .border(1.dp, Color(0x77E9D4A5), RoundedCornerShape(20.dp))
+                .padding(20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("课程藏书  /  ${course.type}", color = Color(0xFFF0D9A6), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text(course.name, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                     Text(listOf(summary?.teacher_name ?: course.teacher, summary?.class_name ?: course.code)
                         .filter(String::isNotBlank).joinToString(" · "),
                         color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
                 }
+                Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFF0D9A6), modifier = Modifier.size(28.dp))
             } }
             item {
-                Button(
-                    onClick = { onOpenClassroom(course.id) },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = DetailForest, contentColor = Color.White),
-                ) {
-                    Icon(Icons.Default.Class, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("进入互动课堂", fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.weight(1f))
-                    Icon(Icons.Default.ArrowForward, null)
+                Row(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF173D33), Color(0xFF315E46), Color(0xFF6D6743))))
+                    .border(1.dp, Color(0xCCBDAA75), RoundedCornerShape(16.dp))
+                    .campusClickable { onOpenClassroom(course.id) }.padding(horizontal = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFFF1DDB1))
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Text("进入互动课堂", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("从这门课生成讲解与练习", color = Color.White.copy(alpha = .74f), fontSize = 10.sp)
+                    }
+                    Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White)
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("从课程资料生成讲解与练习", color = Muted, fontSize = 12.sp)
-                    Text("去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    Text("课程资料来自学习通", color = Muted, fontSize = 12.sp)
+                    Text("带着课程去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.campusClickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
                 }
             }

@@ -1,8 +1,5 @@
 package com.example.campusai.ui.screens.courses
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +10,8 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,13 +24,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -42,7 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,10 +66,6 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
-import com.example.campusai.ui.theme.PrimarySoft
-import com.example.campusai.ui.theme.Success
-import com.example.campusai.ui.theme.Surface
-import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -202,7 +197,7 @@ class InteractiveClassroomViewModel(
 
     fun load() {
         viewModelScope.launch {
-            launch {
+            val statusJob = launch {
                 dataSource.status(courseId)
                     .onSuccess { status -> _uiState.update { it.copy(status = status, serviceState = status.serviceState()) } }
                     .onFailure { error -> _uiState.update { it.copy(serviceState = InteractiveClassroomServiceState.UNAVAILABLE, error = readable(error, "互动课堂服务状态加载失败")) } }
@@ -211,6 +206,7 @@ class InteractiveClassroomViewModel(
                 dataSource.history(courseId).onSuccess { items -> _uiState.update { it.copy(history = items) } }
             }
             loadPlan(_uiState.value.selectedMode)
+            statusJob.join()
             _uiState.update { it.copy(loading = false) }
         }
         resumeObservationIfNeeded()
@@ -248,7 +244,7 @@ class InteractiveClassroomViewModel(
     fun generate() {
         val state = _uiState.value
         val plan = state.plan ?: return
-        if (!state.confirmed || state.progress.sessionId != null || !plan.canGenerate) return
+        if (!state.confirmed || state.progress.phase != ClassroomPhase.IDLE || !plan.canGenerate) return
         val request = state.toRequest()
         _uiState.update { it.copy(progress = ClassroomProgressReducer.requesting(it.progress), error = null) }
         viewModelScope.launch {
@@ -353,7 +349,8 @@ class InteractiveClassroomViewModel(
         selectedMaterialIds = selectedMaterialIds.toList(),
     )
 
-    private fun readable(error: Throwable, fallback: String): String = error.message?.takeIf { it.isNotBlank() } ?: fallback
+    private fun readable(error: Throwable, fallback: String): String =
+        if (error is java.net.SocketTimeoutException) "连接等待超时，请先查看历史课堂，避免重复生成" else error.message?.takeIf { it.isNotBlank() } ?: fallback
 }
 
 class InteractiveClassroomViewModelFactory(
@@ -389,27 +386,32 @@ fun InteractiveClassroomSection(
         factory = factory,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    var showOptions by remember(course.id) { mutableStateOf(false) }
     var showMaterials by remember(course.id) { mutableStateOf(false) }
+    var viewerUrl by remember(course.id) { mutableStateOf<String?>(null) }
     DisposableEffect(viewModel) {
         viewModel.resumeObservationIfNeeded()
         onDispose { viewModel.stopObservation() }
     }
+
+    fun returnToSettings() {
+        if (_uiState.value.progress.phase == ClassroomPhase.FAILED && _uiState.value.progress.sessionId == null) {
+            _uiState.update { it.copy(confirmed = false, progress = ClassroomProgressState(), error = null) }
+            viewModelScope.launch {
+                dataSource.history(courseId).onSuccess { items -> _uiState.update { it.copy(history = items) } }
+            }
+        }
+    }
     Column(
-        Modifier.fillMaxWidth()
-            .padding(top = 4.dp)
-            .background(Surface, RoundedCornerShape(22.dp))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF193E35), Color(0xFF4F6A4A), Color(0xFF8B7650))), RoundedCornerShape(22.dp)).padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("生成设置", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("选择资料和目标，生成这门课的讲解与练习", color = Muted, fontSize = 12.sp)
+                Text("为这门课定制课堂", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("选学习方式，再决定使用哪些资料", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
             }
             Text(if (state.loading) "检测中" else state.serviceState.label,
-                color = if (state.loading) Muted else serviceColor(state.serviceState),
+                color = Color(0xFFF0DDAE),
                 fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         val serviceReady = state.serviceState == InteractiveClassroomServiceState.AVAILABLE ||
@@ -434,97 +436,86 @@ fun InteractiveClassroomSection(
             Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(7.dp)); Text("正在读取课程资料与生成计划…", color = Muted, fontSize = 11.sp) }
         }
         if (canCreateClassroom) state.plan?.let { plan ->
-            StudentBrief(state, viewModel, showOptions)
-            MaterialsChooser(plan, state.selectedMaterialIds, showMaterials,
-                onExpand = { showMaterials = !showMaterials }, onToggle = viewModel::toggleMaterial)
-            OutlinedButton(onClick = { showOptions = !showOptions }) {
-                Text(if (showOptions) "收起更多设置" else "更多设置：学习方式、时长", fontSize = 12.sp)
+            if (state.progress.sessionId == null) {
+                Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFFF7F2E5), Color(0xFFE6EFE6))), RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
+                    StudentBrief(state, viewModel)
+                    Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFFDCEAE0), Color(0xFFEADFC8))), RoundedCornerShape(16.dp))
+                        .clickable { showMaterials = true }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("选择课程资料", color = Color(0xFF1D493B), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("已选 ${state.selectedMaterialIds.size} / ${plan.materials.size} 项 · 进入资料库", color = Muted, fontSize = 11.sp)
+                        }
+                        Text("›", color = Color(0xFF1D493B), fontSize = 24.sp)
+                    }
+                    Text("当前只读取资料文件名，尚未读取正文", color = Muted, fontSize = 11.sp)
+                }
             }
-            if (showOptions) IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
-            if (!state.confirmed) {
-                Button(
+            if (!state.confirmed && state.progress.sessionId == null) {
+                androidx.compose.material3.Button(
                     onClick = viewModel::confirmPlan,
                     enabled = plan.canGenerate && state.progress.sessionId == null,
                     modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C493A)),
                 ) { Text("查看生成前确认") }
-            } else if (state.progress.sessionId == null) {
+            } else if (state.progress.phase == ClassroomPhase.IDLE) {
                 ClassroomConfirmCard(plan, state, onGenerate = viewModel::generate)
             }
         }
         if (canCreateClassroom) state.error?.let { Text(it, color = ColorError, fontSize = 11.sp) }
-        ProgressCard(state.progress, state.status, context, canRetry = canCreateClassroom, onRetry = viewModel::retry)
+        ProgressCard(state.progress, state.status, canRetry = canCreateClassroom, onRetry = viewModel::retry, onOpen = { viewerUrl = it })
+        if (state.progress.phase == ClassroomPhase.FAILED && state.progress.sessionId == null) {
+            OutlinedButton(onClick = viewModel::returnToSettings) { Text("返回设置并刷新历史课堂", fontSize = 12.sp) }
+        }
         state.composition?.let { CompositionCard(it) }
-        HistoryCard(state.history, state.status, context)
+        HistoryCard(state.history, state.status, onOpen = { viewerUrl = it })
     }
+    if (showMaterials) state.plan?.let { plan ->
+        ClassroomMaterialLibrary(course.name, plan.materials, state.selectedMaterialIds, viewModel::toggleMaterial) { showMaterials = false }
+    }
+    viewerUrl?.let { ClassroomViewer(it) { viewerUrl = null } }
 }
 
 @Composable
 private fun IntentChooser(mode: String, serviceState: InteractiveClassroomServiceState, onSelect: (String) -> Unit) {
-    Text("学习方式", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+    Text("学习方式", color = Color(0xFF1C493A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         com.example.campusai.data.classroom.ClassroomIntentCatalog.all.forEach { intent ->
-            OutlinedButton(
-                onClick = { onSelect(intent.wire) },
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-                border = BorderStroke(1.dp, if (mode == intent.wire) Primary else Line),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (mode == intent.wire) Primary else Muted),
-            ) { Text(intent.label, fontSize = 11.sp, maxLines = 1) }
+            val selected = mode == intent.wire
+            Text(intent.label, modifier = Modifier.background(
+                if (selected) Brush.horizontalGradient(listOf(Color(0xFF1B493A), Color(0xFF51704F)))
+                else Brush.horizontalGradient(listOf(Color(0xFFE0EBE3), Color(0xFFF0EEE1))), CircleShape)
+                .border(1.dp, if (selected) Color(0xFFC3AA72) else Color(0x553B6956), CircleShape)
+                .clickable { onSelect(intent.wire) }.padding(horizontal = 14.dp, vertical = 10.dp),
+                color = if (selected) Color.White else Color(0xFF285141), fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1)
         }
     }
     if (serviceState == InteractiveClassroomServiceState.DEGRADED) Text("当前为降级服务，生成结果可能缺少部分能力。", color = ColorWarning, fontSize = 11.sp)
 }
 
 @Composable
-private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: InteractiveClassroomViewModel, showOptions: Boolean) {
+private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: InteractiveClassroomViewModel) {
     OutlinedTextField(state.learningObjective, viewModel::updateLearningObjective, Modifier.fillMaxWidth(), label = { Text("学习目标（可选）") }, placeholder = { Text("例如：掌握链表插入与删除") }, singleLine = false, minLines = 2)
-    if (!showOptions) return
-    OutlinedTextField(state.currentDifficulty, viewModel::updateCurrentDifficulty, Modifier.fillMaxWidth(), label = { Text("当前困惑（可选）") }, placeholder = { Text("例如：不知道如何判断边界") }, singleLine = false, minLines = 2)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("时长", color = Muted, fontSize = 11.sp)
         listOf(15, 30, 45, 60).forEach { minutes ->
             OutlinedButton(onClick = { viewModel.updateDuration(minutes) }, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp), border = BorderStroke(1.dp, if (state.desiredDurationMinutes == minutes) Primary else Line)) { Text("${minutes}分", fontSize = 11.sp) }
         }
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("需要更多练习", modifier = Modifier.weight(1f), color = Muted, fontSize = 11.sp)
-        Switch(checked = state.wantsMorePractice, onCheckedChange = viewModel::updateMorePractice)
-    }
-}
-
-@Composable
-private fun MaterialsChooser(
-    plan: InteractiveClassroomPlanDto,
-    selected: Set<String>,
-    expanded: Boolean,
-    onExpand: () -> Unit,
-    onToggle: (String, Boolean) -> Unit,
-) {
-    if (plan.materials.isEmpty()) return
-    OutlinedButton(onClick = onExpand) {
-        Text(if (expanded) "收起课程资料" else "选择课程资料 · 已选 ${selected.size}/${plan.materials.size}", fontSize = 12.sp)
-    }
-    if (!expanded) return
-    Text("当前已同步文件名，正文未读取；课堂会结合课程、文件标题和你的学习目标生成。", color = Muted, fontSize = 11.sp)
-    plan.materials.forEach { material ->
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = material.id in selected, onCheckedChange = { onToggle(material.id, it) })
-            Text(material.title, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-    }
 }
 
 @Composable
 private fun ClassroomConfirmCard(plan: InteractiveClassroomPlanDto, state: InteractiveClassroomUiState, onGenerate: () -> Unit) {
-    Column(Modifier.fillMaxWidth().background(PrimarySoft, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFFDFEBDD), Color(0xFFECE7D5))), RoundedCornerShape(18.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("生成前确认", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Text("课程：${plan.courseName ?: plan.courseId}", fontSize = 11.sp)
-        Text("方式：${plan.modeLabel ?: state.selectedMode}", fontSize = 11.sp)
+        Text("方式：${if (state.selectedMode == "adaptive") "自动推荐 → " else ""}${plan.modeLabel ?: state.selectedMode}", fontSize = 11.sp)
         Text("推荐：${plan.adaptiveReason ?: "按课程资料安排"}", color = Muted, fontSize = 11.sp)
         Text("资料：${if (state.selectedMaterialIds.isEmpty()) "不指定资料，由服务端按课程上下文选择" else "已选择 ${state.selectedMaterialIds.size} 项课程资料"}", color = Muted, fontSize = 11.sp)
         plan.contextWarnings.forEach { warning -> Text("读取提示：$warning", color = ColorWarning, fontSize = 11.sp) }
         Text(plan.intentNote ?: com.example.campusai.data.classroom.ClassroomIntentCatalog.INTENT_NOTE, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
-        Button(onClick = onGenerate, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Primary)) { Text("确认并生成") }
+        androidx.compose.material3.Button(onClick = onGenerate, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C493A))) { Text("确认并生成") }
     }
 }
 
@@ -532,17 +523,24 @@ private fun ClassroomConfirmCard(plan: InteractiveClassroomPlanDto, state: Inter
 private fun ProgressCard(
     progress: ClassroomProgressState,
     status: InteractiveClassroomStatusDto?,
-    context: Context,
     canRetry: Boolean,
     onRetry: () -> Unit,
+    onOpen: (String) -> Unit,
 ) {
     if (progress.phase == ClassroomPhase.IDLE) return
-    Column(Modifier.fillMaxWidth().background(PrimarySoft, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFFE2EDE1), Color(0xFFD3E3DA))), RoundedCornerShape(18.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("课堂生成进度", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Text("${ClassroomProgressReducer.stepLabel(progress.step)} · ${progress.progress.coerceIn(0, 100)}%", color = Primary, fontSize = 11.sp)
         LinearProgressIndicator(progress = { progress.progress.coerceIn(0, 100) / 100f }, Modifier.fillMaxWidth())
-        if (progress.message.isNotBlank()) Text(progress.message, color = Muted, fontSize = 11.sp)
-        progress.updatedAt?.takeIf { it.isNotBlank() }?.let { Text("更新于 $it", color = Muted, fontSize = 10.sp) }
+        if (progress.message.isNotBlank()) Text(when {
+            progress.phase == ClassroomPhase.SUCCEEDED -> "课堂已经准备好"
+            progress.message.startsWith("Generated ") -> "正在生成课堂内容"
+            else -> progress.message
+        }, color = Muted, fontSize = 11.sp)
+        progress.updatedAt?.takeIf { it.isNotBlank() }?.let { raw ->
+            val display = runCatching { java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")) }.getOrDefault(raw.take(16).replace('T', ' '))
+            Text("更新于 $display", color = Muted, fontSize = 10.sp)
+        }
         if (canRetry && progress.phase == ClassroomPhase.FAILED && progress.retryable) Button(onClick = onRetry, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), colors = ButtonDefaults.buttonColors(containerColor = Primary)) { Text("重试", fontSize = 11.sp) }
         if (progress.generatedButClosed) Text("课堂已生成，但当前没有可用的公开地址。", color = ColorWarning, fontSize = 11.sp)
         // 学生指定的资料无法使用时必须明说，不能静默假装用上了
@@ -551,15 +549,20 @@ private fun ProgressCard(
         val safe = if (status?.browserEmbedAvailable == true) {
             ClassroomUrlPolicy.sanitize(progress.openableUrl(), listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
         } else null
-        if (safe != null && progress.phase == ClassroomPhase.SUCCEEDED) {
-            OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe))) }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp)) { Text("打开公开课堂", fontSize = 11.sp) }
+        if (progress.phase == ClassroomPhase.SUCCEEDED) {
+            if (safe != null) {
+                androidx.compose.material3.Button(onClick = { onOpen(safe) }, modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D493B))) { Text("进入课堂", fontWeight = FontWeight.Bold) }
+            } else {
+                Text(progress.urlUnavailableReason ?: status?.browserEmbedReason ?: "课堂地址未通过安全校验，暂时无法打开", color = ColorWarning, fontSize = 11.sp)
+            }
         }
     }
 }
 
 @Composable
 private fun CompositionCard(description: ClassroomCompositionText.Description) {
-    Column(Modifier.fillMaxWidth().background(PrimarySoft, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+    Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFFE8E2CB), Color(0xFFDCE9DE))), RoundedCornerShape(18.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text("课堂内容", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         Text(ClassroomCompositionText.summary(description), fontSize = 11.sp, lineHeight = 16.sp)
         ClassroomCompositionText.threeDNotice(description)?.let { Text(it, color = ColorWarning, fontSize = 11.sp) }
@@ -567,7 +570,7 @@ private fun CompositionCard(description: ClassroomCompositionText.Description) {
 }
 
 @Composable
-private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: InteractiveClassroomStatusDto?, context: Context) {
+private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: InteractiveClassroomStatusDto?, onOpen: (String) -> Unit) {
     if (items.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("历史课堂", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
@@ -581,7 +584,7 @@ private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: Intera
                     ClassroomUrlPolicy.sanitize(item.url, listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
                 } else null
                 if (safe != null) {
-                    OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(safe))) }, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)) { Text("打开", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onOpen(safe) }, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp)) { Text("打开", fontSize = 11.sp) }
                 } else {
                     Text(item.urlUnavailableReason ?: status?.browserEmbedReason ?: "当前无法打开", color = Muted, fontSize = 10.sp)
                 }
@@ -592,13 +595,3 @@ private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: Intera
 
 private val ColorError = androidx.compose.ui.graphics.Color(0xFFC63D4F)
 private val ColorWarning = androidx.compose.ui.graphics.Color(0xFFB26A1F)
-
-@Composable
-private fun serviceColor(state: InteractiveClassroomServiceState) = when (state) {
-    InteractiveClassroomServiceState.AVAILABLE -> Success
-    InteractiveClassroomServiceState.DEGRADED -> ColorWarning
-    InteractiveClassroomServiceState.INCOMPATIBLE,
-    InteractiveClassroomServiceState.UNAVAILABLE -> ColorError
-    InteractiveClassroomServiceState.CONFIGURED -> Primary
-    InteractiveClassroomServiceState.NOT_CONFIGURED -> Muted
-}

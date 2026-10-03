@@ -1,6 +1,7 @@
 package com.example.campusai.ui.screens.courses
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -9,6 +10,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,16 +19,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
-import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Muted
-import com.example.campusai.ui.theme.Primary
-import com.example.campusai.ui.theme.TextPrimary
 
 @Composable
 fun InteractiveClassroomScreen(
@@ -44,7 +45,7 @@ fun InteractiveClassroomScreen(
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Background),
+        modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFEAEBDC), Color(0xFFDCE9E1), Color(0xFFF0EDE2)))),
         contentPadding = PaddingValues(
             start = 20.dp,
             top = 18.dp,
@@ -57,11 +58,12 @@ fun InteractiveClassroomScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回课程", tint = Primary) }
+            Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF173B32), Color(0xFF486348), Color(0xFF8A7450))), RoundedCornerShape(20.dp))
+                .border(1.dp, Color(0x88ECD8A9), RoundedCornerShape(20.dp)).padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回课程", tint = Color.White) }
                 Column(Modifier.padding(start = 6.dp).weight(1f)) {
-                    Text("互动课堂", color = TextPrimary, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text(course?.name ?: "正在读取课程…", color = Muted, fontSize = 12.sp)
+                    Text("互动课堂", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                    Text(course?.name ?: "正在读取课程…", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
                 }
             }
         }

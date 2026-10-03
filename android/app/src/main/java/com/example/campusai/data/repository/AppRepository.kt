@@ -1314,7 +1314,7 @@ class AppRepository(
     suspend fun suggestInteractiveClassroomUrls(courseId: String): List<String> {
         if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
             return try {
-                val resp = ApiClient.api.getInteractiveClassroom(courseId)
+                val resp = ApiClient.classroomApi.getInteractiveClassroom(courseId)
                 if (resp.isSuccessful) resp.body()?.existingClassroomUrls() ?: emptyList()
                 else emptyList()
             } catch (_: Exception) {
@@ -1341,7 +1341,7 @@ class AppRepository(
     suspend fun interactiveClassroomPlan(courseId: String, mode: String): InteractiveClassroomPlanDto? {
         if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomPlan(courseId, mode)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomPlan(courseId, mode)
             if (resp.isSuccessful) resp.body() else null
         } catch (_: Exception) {
             null
@@ -1352,7 +1352,7 @@ class AppRepository(
     suspend fun interactiveClassroomHistory(courseId: String): List<InteractiveClassroomItemDto> {
         if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return emptyList()
         return try {
-            val resp = ApiClient.api.getInteractiveClassroom(courseId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroom(courseId)
             if (resp.isSuccessful && resp.body()?.enabled == true) resp.body()?.items.orEmpty()
             else emptyList()
         } catch (_: Exception) {
@@ -1369,7 +1369,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法生成互动课堂"))
         }
         return try {
-            val resp = ApiClient.api.generateInteractiveClassroom(courseId, request)
+            val resp = ApiClient.classroomApi.generateInteractiveClassroom(courseId, request)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("生成请求被拒绝")))
@@ -1387,7 +1387,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法查询进度"))
         }
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomJob(courseId, sessionId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomJob(courseId, sessionId)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("进度查询失败")))
@@ -1406,7 +1406,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法重试"))
         }
         return try {
-            val resp = ApiClient.api.retryInteractiveClassroom(courseId, sessionId, request)
+            val resp = ApiClient.classroomApi.retryInteractiveClassroom(courseId, sessionId, request)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("重试失败")))
@@ -1424,7 +1424,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法读取课堂内容"))
         }
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomComposition(courseId, sessionId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomComposition(courseId, sessionId)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("课堂内容读取失败")))
@@ -1440,7 +1440,7 @@ class AppRepository(
     suspend fun interactiveClassroomStatus(courseId: String): InteractiveClassroomStatusDto? {
         if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
             return try {
-                val resp = ApiClient.api.getInteractiveClassroomStatus(courseId)
+                val resp = ApiClient.classroomApi.getInteractiveClassroomStatus(courseId)
                 if (resp.isSuccessful) resp.body() else null
             } catch (_: Exception) {
                 null
