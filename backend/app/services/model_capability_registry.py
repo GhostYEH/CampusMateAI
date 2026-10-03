@@ -5,7 +5,6 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any, Type
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, ValidationError
 

@@ -10,6 +10,7 @@ from typing import Any
 from ..core.logging import logger
 from ..models.learner_state import ProjectionRunRow, StateSnapshotRow
 from ..repositories.learner_state_repository import LearnerStateRepository
+from .learner_score import score_band
 
 ESTIMATOR_VERSION = "deterministic-observed-v1"
 ACADEMIC_ESTIMATOR_VERSION = "academic-observed-v1"
@@ -1032,32 +1033,14 @@ class LearnerStateProjectionService:
         )
 
         # 2. grade_observation —— 教务成绩与学习通作业得分共用同一套分段口径
-        def _band_for(score) -> str | None:
-            # 0 分是有效成绩(0_59 段)，只有缺失或空值才不产出分段。
-            if score is None or str(score).strip() == "":
-                return None
-            try:
-                numeric = float(score)
-            except (TypeError, ValueError):
-                return "non_numeric"
-            if numeric >= 90:
-                return "90_100"
-            if numeric >= 80:
-                return "80_89"
-            if numeric >= 70:
-                return "70_79"
-            if numeric >= 60:
-                return "60_69"
-            return "0_59"
-
         score_bands: dict[str, int] = {}
         for item in grade_items:
-            band = _band_for(item.get("score"))
+            band = score_band(item.get("score"))
             if band is None:
                 continue
             score_bands[band] = score_bands.get(band, 0) + 1
         for item in chaoxing_grade_items:
-            band = _band_for(item.get("score"))
+            band = score_band(item.get("score"))
             if band is None:
                 continue
             score_bands[band] = score_bands.get(band, 0) + 1

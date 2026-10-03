@@ -184,7 +184,7 @@ class LearnerControlRepository:
 
     def revoke_correction(self, *, user_id: str, correction_id: str) -> CorrectionRow:
         """撤销纠正。幂等：已撤销则返回已有记录。"""
-        from ..core.exceptions import LearnerCorrectionAlreadyRevoked, LearnerCorrectionNotFound
+        from ..core.exceptions import LearnerCorrectionNotFound
         now = _utc_now()
         with self._db.transaction() as conn:
             row = conn.execute(

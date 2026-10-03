@@ -50,24 +50,17 @@ def _load_universities() -> list[dict]:
     return json.loads(_UNIVERSITIES_FILE.read_text(encoding="utf-8"))
 
 
-def _build_university_index() -> dict[str, dict]:
-    universities = _load_universities()
-    index = {}
-    for u in universities:
-        sc = u.get("school_code")
-        if sc:
-            index[sc] = u
-    return index
-
-
-def _build_name_index() -> dict[str, dict]:
-    universities = _load_universities()
-    index = {}
-    for u in universities:
+def _build_university_indexes() -> tuple[dict[str, dict], dict[str, dict]]:
+    code_index = {}
+    name_index = {}
+    for u in _load_universities():
+        school_code = u.get("school_code")
+        if school_code:
+            code_index[school_code] = u
         name = u.get("name")
         if name:
-            index[name] = u
-    return index
+            name_index[name] = u
+    return code_index, name_index
 
 
 def load_candidates() -> dict:
@@ -106,8 +99,7 @@ async def submit_url(
     可达且匹配的页面标 VERIFIED_LIVE，正式入库仍由审核流程决定。
     """
     detector = ProviderDetector()
-    uni_index = _build_university_index()
-    name_index = _build_name_index()
+    uni_index, name_index = _build_university_indexes()
 
     uni = uni_index.get(university_id)
     if not uni:

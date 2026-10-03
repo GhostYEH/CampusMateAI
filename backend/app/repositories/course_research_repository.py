@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from ._schema_helpers import _table_columns, _table_exists
 from ..database.sqlite_db import Database
 from ..models.course_research import (
     CourseResearchReportRow,
@@ -99,21 +100,6 @@ _LEGACY_TABLES = (
     "course_research_reports",
 )
 _LEGACY_SUFFIX = "__legacy"
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    return {
-        row[1]
-        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
 
 
 def _has_legacy_schema(conn: sqlite3.Connection) -> bool:

@@ -60,13 +60,13 @@ def trim_text(text: str, max_tokens: int) -> tuple[str, bool]:
     """头尾保留式截断,保证结果不超过 max_tokens。"""
     if max_tokens <= 0:
         return "", True
-    if estimate_tokens(text) <= max_tokens:
+    total = estimate_tokens(text)
+    if total <= max_tokens:
         return text, False
     if max_tokens < _MIN_TRIM_TOKENS:
         # 预算太小:连截断标记都放不下,退化为占位串。
         return _TRIM_PLACEHOLDER[:max_tokens], True
 
-    total = estimate_tokens(text)
     # 先给截断标记预留 token,否则标记本身会把结果顶出预算。
     marker = "…(已截断)…"
     content_budget = max(1, max_tokens - estimate_tokens(marker))
@@ -101,11 +101,13 @@ def trim_tool_result(
     """按档位裁剪单个工具结果。"""
     tier = tool_result_tier(tool_code)
     allowance = max(16, int(budget_tokens * _TIER_BUDGET_RATIO[tier]))
-    if tier == "low" and estimate_tokens(payload) > allowance:
-        return (
-            f"(低价值工具结果已按预算省略,原始约 {estimate_tokens(payload)} tokens)",
-            True,
-        )
+    if tier == "low":
+        payload_tokens = estimate_tokens(payload)
+        if payload_tokens > allowance:
+            return (
+                f"(低价值工具结果已按预算省略,原始约 {payload_tokens} tokens)",
+                True,
+            )
     return trim_text(payload, allowance)
 
 
@@ -152,15 +154,15 @@ def compact_facts(
         key=lambda item: item[1],
         reverse=True,
     )
-    for key, _weight in weighted:
+    for key, weight in weighted:
         value = facts[key]
         if remaining <= 0:
             dropped.append(key)
             continue
         if isinstance(value, str):
-            if estimate_tokens(value) <= remaining:
+            if weight <= remaining:
                 compacted[key] = value
-                remaining -= estimate_tokens(value)
+                remaining -= weight
                 continue
             text, _ = trim_text(value, remaining)
             compacted[key] = text

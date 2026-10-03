@@ -25,12 +25,7 @@ from typing import Any
 
 from ..core.config import Settings, get_settings
 from ..core.exceptions import DemoSeedRefused
-from ..database.sqlite_db import Database, init_db
-from ..repositories.learner_control_repository import LearnerControlRepository
-from ..repositories.learner_event_repository import LearnerEventRepository
-from ..repositories.learner_state_repository import LearnerStateRepository
-from ..services.learner_event_service import LearnerEventService
-from ..services.learner_state_service import LearnerStateProjectionService
+from ..database.sqlite_db import init_db
 
 SCENARIOS = (
     "deadline-pressure",

@@ -1,5 +1,6 @@
 import json
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -134,3 +135,30 @@ async def test_unreachable_page_is_saved_as_dead(discovery_env):
     assert result["reachable"] is False
     assert result["verification_status"] == "DEAD"
     assert path.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("university_id, school_code, school_name", [
+    ("shared", "shared", "代码最后项"),
+    ("同名高校", "name-last", "同名高校"),
+])
+async def test_university_lookup_loads_once_and_preserves_code_priority(
+    discovery_env, monkeypatch, university_id, school_code, school_name,
+):
+    _, _, transport = discovery_env
+    load_universities = Mock(return_value=[
+        {"school_code": "shared", "name": "代码首项"},
+        {"school_code": "shared", "name": "代码最后项"},
+        {"school_code": "name-collision", "name": "shared"},
+        {"school_code": "name-first", "name": "同名高校"},
+        {"school_code": "name-last", "name": "同名高校"},
+    ])
+    monkeypatch.setattr(discovery, "_load_universities", load_universities)
+    transport(lambda request: httpx.Response(200, text=EDU_HTML))
+
+    result = await discovery.submit_url(university_id, URL)
+
+    assert result["school_code"] == school_code
+    assert result["school_name"] == school_name
+    assert result["error"] is None
+    load_universities.assert_called_once_with()

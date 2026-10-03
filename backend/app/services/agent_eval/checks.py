@@ -16,11 +16,10 @@ from ..agent_runtime.context_budget import compact_facts
 from ..agent_runtime.hard_deny import hard_deny_reason
 from ..agent_runtime.risk_engine import RiskEngine
 from ..agent_runtime.run_manager import RunManager
-from ..llm.base import LLMError, LLMResponse
+from ..llm.base import LLMResponse
 from ..llm.model_router import ModelRouter, extract_token_usage
 from ..llm.openai_compatible import StubLLMClient
 from ..llm.provider_registry import ProviderRegistry
-from ..llm.provider_errors import classify_provider_error
 from ...core.config import Settings
 
 

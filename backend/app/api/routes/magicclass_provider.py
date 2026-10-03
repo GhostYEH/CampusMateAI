@@ -10,6 +10,7 @@ from ...models.multi_role import UserRow
 from ...services.container import ServiceContainer, get_container
 from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ..deps import current_user
+from ..magicclass_gateway import build_fusion_client
 
 router = APIRouter(prefix="/magicclass/fusion", tags=["magicclass-provider"])
 
@@ -19,8 +20,7 @@ def _container() -> ServiceContainer:
 
 
 def _client(container: ServiceContainer = Depends(_container)) -> MagicClassFusionClient:
-    settings = container.settings
-    return MagicClassFusionClient(base_url=settings.magicclass_service_url, secret=settings.magicclass_internal_secret, timeout_seconds=settings.magicclass_service_timeout_seconds)
+    return build_fusion_client(container, client_type=MagicClassFusionClient)
 
 
 @router.get("/providers")

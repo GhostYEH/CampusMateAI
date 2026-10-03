@@ -135,11 +135,31 @@ class NoticeWorkflowService:
         idempotency_key: Optional[str] = None,
     ) -> NoticeWorkflowRow:
         """为已持久化的 notice 创建工作流。兼容幂等与去重。"""
+        workflow, content = self._prepare_workflow_for_notice(
+            user_id=user_id,
+            notice_id=notice_id,
+            source_code=source_code,
+            idempotency_key=idempotency_key,
+        )
+        if content is None:
+            return workflow
+        self._analyze_and_plan(workflow.workflow_id, user_id, content, source_code)
+        return self._repo.get_workflow(workflow.workflow_id)  # type: ignore[return-value]
+
+    def _prepare_workflow_for_notice(
+        self,
+        *,
+        user_id: str,
+        notice_id: str,
+        source_code: str,
+        idempotency_key: Optional[str],
+    ) -> tuple[NoticeWorkflowRow, Optional[str]]:
+        """共享创建前检查；复用已有工作流时以 None 表示无需再次分析。"""
         # 幂等
         if idempotency_key:
             existing = self._repo.find_workflow_by_idempotency(user_id, idempotency_key)
             if existing:
-                return existing
+                return existing, None
         # 读取 notice
         notice_row = self._notice_repo.get_notice(user_id, notice_id)
         if notice_row is None:
@@ -149,7 +169,7 @@ class NoticeWorkflowService:
         # 去重:同指纹已有活跃工作流则返回
         active = self._repo.get_active_workflow_by_fingerprint(user_id, fp)
         if active:
-            return active
+            return active, None
         source = self._repo.get_source_by_code_for_user(source_code, user_id)
         source_id = source.source_id if source else None
         workflow = self._repo.create_workflow(
@@ -159,10 +179,9 @@ class NoticeWorkflowService:
             source_id=source_id,
             idempotency_key=idempotency_key,
         )
-        # 立即进入 ANALYZING 并解释
+        # 两种解释入口都先持久化 ANALYZING，保持失败时的可观测状态。
         self._repo.update_workflow_status(workflow.workflow_id, "ANALYZING")
-        self._analyze_and_plan(workflow.workflow_id, user_id, content, source_code)
-        return self._repo.get_workflow(workflow.workflow_id)  # type: ignore[return-value]
+        return workflow, content
 
     async def create_workflow_for_notice_async(
         self,
@@ -174,27 +193,14 @@ class NoticeWorkflowService:
         run_id: Optional[str] = None,
     ) -> NoticeWorkflowRow:
         """Async production path that can call configured model providers."""
-        if idempotency_key:
-            existing = self._repo.find_workflow_by_idempotency(user_id, idempotency_key)
-            if existing:
-                return existing
-        notice_row = self._notice_repo.get_notice(user_id, notice_id)
-        if notice_row is None:
-            raise WorkflowNotFound("通知不存在或无权访问")
-        content = notice_row.content or notice_row.title or ""
-        fp = content_fingerprint(content, user_id=user_id)
-        active = self._repo.get_active_workflow_by_fingerprint(user_id, fp)
-        if active:
-            return active
-        source = self._repo.get_source_by_code_for_user(source_code, user_id)
-        workflow = self._repo.create_workflow(
+        workflow, content = self._prepare_workflow_for_notice(
             user_id=user_id,
             notice_id=notice_id,
-            content_fingerprint=fp,
-            source_id=source.source_id if source else None,
+            source_code=source_code,
             idempotency_key=idempotency_key,
         )
-        self._repo.update_workflow_status(workflow.workflow_id, "ANALYZING")
+        if content is None:
+            return workflow
         interp = await self._interp.interpret_async(
             content, source_code, run_id=run_id
         )

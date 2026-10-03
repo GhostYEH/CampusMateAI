@@ -12,6 +12,7 @@ from ..models.study import StudySessionRow
 from ..repositories.course_content_repository import CourseContentItemRow
 from ..repositories.learner_event_repository import LearnerEventRepository
 from ..schemas.learner_event import EvidenceReference, LearnerEventAppendResult, LearnerEventCreate
+from .learner_score import score_band
 
 
 class LearnerEventService:
@@ -405,22 +406,7 @@ class LearnerEventService:
 
     @staticmethod
     def _score_band(score: Optional[str]) -> Optional[str]:
-        # 0 分是有效成绩(0_59 段)，只有缺失或空值才不产出分段。
-        if score is None or str(score).strip() == "":
-            return None
-        try:
-            numeric = float(score)
-        except (TypeError, ValueError):
-            return "non_numeric"
-        if numeric >= 90:
-            return "90_100"
-        if numeric >= 80:
-            return "80_89"
-        if numeric >= 70:
-            return "70_79"
-        if numeric >= 60:
-            return "60_69"
-        return "0_59"
+        return score_band(score)
 
     @staticmethod
     def _exam_time_bucket(starts_at: Optional[str]) -> Optional[str]:
@@ -1399,12 +1385,7 @@ class LearnerEventService:
                     type(exc).__name__,
                 )
             else:
-                if append_result is None:
-                    result["skipped"] += 1
-                elif append_result.created:
-                    result["created"] += 1
-                else:
-                    result["reused"] += 1
+                self._count_backfill_result(append_result, result)
 
     def _backfill_edu_grades(
         self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
@@ -1442,12 +1423,7 @@ class LearnerEventService:
                         type(exc).__name__,
                     )
                 else:
-                    if append_result is None:
-                        result["skipped"] += 1
-                    elif append_result.created:
-                        result["created"] += 1
-                    else:
-                        result["reused"] += 1
+                    self._count_backfill_result(append_result, result)
 
     def _backfill_edu_exams(
         self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
@@ -1483,12 +1459,7 @@ class LearnerEventService:
                         type(exc).__name__,
                     )
                 else:
-                    if append_result is None:
-                        result["skipped"] += 1
-                    elif append_result.created:
-                        result["created"] += 1
-                    else:
-                        result["reused"] += 1
+                    self._count_backfill_result(append_result, result)
 
     def _backfill_chaoxing_tasks(
         self, *, user_id: Optional[str], batch_size: int, result: dict[str, int]
@@ -1517,12 +1488,7 @@ class LearnerEventService:
                         type(exc).__name__,
                     )
                 else:
-                    if discovered is None:
-                        result["skipped"] += 1
-                    elif discovered.created:
-                        result["created"] += 1
-                    else:
-                        result["reused"] += 1
+                    self._count_backfill_result(discovered, result)
 
                 if task.status != "completed":
                     continue
@@ -1536,15 +1502,23 @@ class LearnerEventService:
                         type(exc).__name__,
                     )
                 else:
-                    if submitted is None:
-                        result["skipped"] += 1
-                    elif submitted.created:
-                        result["created"] += 1
-                    else:
-                        result["reused"] += 1
+                    self._count_backfill_result(submitted, result)
             if len(rows) < batch_size:
                 return
             page += 1
+
+    @staticmethod
+    def _count_backfill_result(
+        append_result: LearnerEventAppendResult | list[LearnerEventAppendResult | None] | None,
+        result: dict[str, int],
+    ) -> None:
+        append_results = append_result if isinstance(append_result, list) else [append_result]
+        recorded = [item for item in append_results if item is not None]
+        if not recorded:
+            result["skipped"] += 1
+            return
+        for item in recorded:
+            result["created" if item.created else "reused"] += 1
 
     def _backfill_repository(
         self,
@@ -1581,22 +1555,7 @@ class LearnerEventService:
                         type(exc).__name__,
                     )
                     continue
-                if isinstance(append_result, list):
-                    append_results = [item for item in append_result if item is not None]
-                    if not append_results:
-                        result["skipped"] += 1
-                        continue
-                    for item in append_results:
-                        if item.created:
-                            result["created"] += 1
-                        else:
-                            result["reused"] += 1
-                elif append_result is None:
-                    result["skipped"] += 1
-                elif append_result.created:
-                    result["created"] += 1
-                else:
-                    result["reused"] += 1
+                self._count_backfill_result(append_result, result)
             if len(rows) < batch_size:
                 return
             page += 1

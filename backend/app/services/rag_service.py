@@ -28,9 +28,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from datetime import datetime, timezone
+from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from starlette.concurrency import run_in_threadpool
@@ -710,6 +710,19 @@ class RagService:
         if not any(s.is_official for s in sources):
             warnings.append("引用资料均为非官方来源，建议以官方文件复核")
 
+        build_event = partial(
+            ChatFinalMeta,
+            sources=sources,
+            confidence=confidence,
+            evidence_level=evidence_level,
+            needs_human_confirmation=needs_human,
+            suggested_actions=actions,
+            conversation_id=conv_id,
+            warnings=warnings,
+            context_used=ctx_used,
+            context_warnings=ctx_warnings,
+        )
+
         # 优先 LLM
         if self._llm is not None and self._settings.llm_available:
             messages = _build_llm_messages(
@@ -720,21 +733,8 @@ class RagService:
                 expression_hint=expression_hint,
             )
             # 先发一个 sources-only 事件,让客户端先显示来源
-            yield ChatFinalMeta(
-                answer="",
-                sources=sources,
-                confidence=confidence,
-                evidence_level=evidence_level,
-                needs_human_confirmation=needs_human,
-                suggested_actions=actions,
-                conversation_id=conv_id,
-                mode="llm",
-                warnings=warnings,
-                context_used=ctx_used,
-                context_warnings=ctx_warnings,
-            )
+            yield build_event(answer="", mode="llm")
             accumulated = ""
-            stream_failed = False
             try:
                 async for chunk in self._llm.stream_chat(
                     messages,
@@ -744,63 +744,23 @@ class RagService:
                 ):
                     accumulated += chunk
                     # 中间事件：渐进式 typing
-                    yield ChatFinalMeta(
-                        answer=accumulated,
-                        sources=sources,
-                        confidence=confidence,
-                        evidence_level=evidence_level,
-                        needs_human_confirmation=needs_human,
-                        suggested_actions=actions,
-                        conversation_id=conv_id,
-                        mode="llm",
-                        warnings=warnings,
-                        context_used=ctx_used,
-                        context_warnings=ctx_warnings,
-                    )
+                    yield build_event(answer=accumulated, mode="llm")
             except asyncio.TimeoutError:
-                stream_failed = True
                 logger.warning("LLM 流式超时，尝试非流式兜底")
             except (LLMTimeoutError, LLMError) as e:
-                stream_failed = True
                 logger.warning("LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
             except Exception as e:
-                stream_failed = True
                 logger.warning("LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
             if accumulated.strip():
                 final_answer = _postprocess_markdown(accumulated.strip())
-                yield ChatFinalMeta(
-                    answer=final_answer,
-                    sources=sources,
-                    confidence=confidence,
-                    evidence_level=evidence_level,
-                    needs_human_confirmation=needs_human,
-                    suggested_actions=actions,
-                    conversation_id=conv_id,
-                    mode="llm",
-                    warnings=warnings,
-                    context_used=ctx_used,
-                    context_warnings=ctx_warnings,
-                )
+                yield build_event(answer=final_answer, mode="llm")
                 return
             # DeepSeek 推理模型可能只流式返回 reasoning_content，或者流式调用超时。
             # 此时再用非流式 chat() 兜底一次，避免整个回答被降级成检索摘要。
-            if stream_failed or not accumulated.strip():
-                fallback_answer = await self._llm_fallback_answer(messages)
-                if fallback_answer:
-                    yield ChatFinalMeta(
-                        answer=fallback_answer,
-                        sources=sources,
-                        confidence=confidence,
-                        evidence_level=evidence_level,
-                        needs_human_confirmation=needs_human,
-                        suggested_actions=actions,
-                        conversation_id=conv_id,
-                        mode="llm",
-                        warnings=warnings,
-                        context_used=ctx_used,
-                        context_warnings=ctx_warnings,
-                    )
-                    return
+            fallback_answer = await self._llm_fallback_answer(messages)
+            if fallback_answer:
+                yield build_event(answer=fallback_answer, mode="llm")
+                return
             logger.warning("LLM 流式与非流式兜底均失败，降级到检索摘要模式")
 
         # 降级：检索摘要模式
@@ -809,47 +769,23 @@ class RagService:
         chunk_size = 16
         accumulated = ""
         # 先发 sources-only 事件
-        yield ChatFinalMeta(
+        yield build_event(
             answer="",
-            sources=sources,
-            confidence=confidence,
-            evidence_level=evidence_level,
-            needs_human_confirmation=needs_human,
-            suggested_actions=actions,
-            conversation_id=conv_id,
             mode="retrieval_summary",
             warnings=warnings + ["LLM 不可用，当前为检索摘要模式"],
-            context_used=ctx_used,
-            context_warnings=ctx_warnings,
         )
         for i in range(0, len(answer), chunk_size):
             accumulated = answer[: i + chunk_size]
-            yield ChatFinalMeta(
+            yield build_event(
                 answer=accumulated,
-                sources=sources,
-                confidence=confidence,
-                evidence_level=evidence_level,
-                needs_human_confirmation=needs_human,
-                suggested_actions=actions,
-                conversation_id=conv_id,
                 mode="retrieval_summary",
                 warnings=warnings + ["LLM 不可用，当前为检索摘要模式"],
-                context_used=ctx_used,
-                context_warnings=ctx_warnings,
             )
             await asyncio.sleep(0.01)
-        yield ChatFinalMeta(
+        yield build_event(
             answer=answer,
-            sources=sources,
-            confidence=confidence,
-            evidence_level=evidence_level,
-            needs_human_confirmation=needs_human,
-            suggested_actions=actions,
-            conversation_id=conv_id,
             mode="retrieval_summary",
             warnings=warnings + ["LLM 不可用，当前为检索摘要模式"],
-            context_used=ctx_used,
-            context_warnings=ctx_warnings,
         )
 
     async def _llm_fallback_answer(self, messages: List[dict]) -> Optional[str]:
@@ -889,25 +825,24 @@ class RagService:
             fallback_answer,
             expression_hint,
         )
+        build_event = partial(
+            ChatFinalMeta,
+            sources=[],
+            confidence=0.0,
+            evidence_level="none",
+            needs_human_confirmation=False,
+            suggested_actions=[],
+            conversation_id=conv_id,
+            warnings=[],
+            context_used=ctx_used,
+            context_warnings=ctx_warnings,
+        )
         llm_available = self._llm is not None and self._settings.llm_available
         if not llm_available:
-            yield ChatFinalMeta(
-                answer=fallback_answer,
-                sources=[],
-                confidence=0.0,
-                evidence_level="none",
-                needs_human_confirmation=False,
-                suggested_actions=[],
-                conversation_id=conv_id,
-                mode="chat",
-                warnings=[],
-                context_used=ctx_used,
-                context_warnings=ctx_warnings,
-            )
+            yield build_event(answer=fallback_answer, mode="chat")
             return
         messages = _build_small_talk_messages(query, expression_hint=expression_hint)
         accumulated = ""
-        stream_failed = False
         try:
             async for chunk in self._llm.stream_chat(
                 messages,
@@ -916,42 +851,15 @@ class RagService:
                 timeout=float(self._settings.llm_timeout_seconds),
             ):
                 accumulated += chunk
-                yield ChatFinalMeta(
-                    answer=accumulated,
-                    sources=[],
-                    confidence=0.0,
-                    evidence_level="none",
-                    needs_human_confirmation=False,
-                    suggested_actions=[],
-                    conversation_id=conv_id,
-                    mode="llm",
-                    warnings=[],
-                    context_used=ctx_used,
-                    context_warnings=ctx_warnings,
-                )
+                yield build_event(answer=accumulated, mode="llm")
         except asyncio.TimeoutError:
-            stream_failed = True
             logger.warning("问候语 LLM 流式超时，尝试非流式兜底")
         except (LLMTimeoutError, LLMError) as e:
-            stream_failed = True
             logger.warning("问候语 LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
         except Exception as e:
-            stream_failed = True
             logger.warning("问候语 LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
         if accumulated.strip():
-            yield ChatFinalMeta(
-                answer=accumulated.strip(),
-                sources=[],
-                confidence=0.0,
-                evidence_level="none",
-                needs_human_confirmation=False,
-                suggested_actions=[],
-                conversation_id=conv_id,
-                mode="llm",
-                warnings=[],
-                context_used=ctx_used,
-                context_warnings=ctx_warnings,
-            )
+            yield build_event(answer=accumulated.strip(), mode="llm")
             return
         try:
             resp = await self._llm.chat(
@@ -969,79 +877,9 @@ class RagService:
         else:
             answer = (resp.content or "").strip()
             if answer:
-                yield ChatFinalMeta(
-                    answer=answer,
-                    sources=[],
-                    confidence=0.0,
-                    evidence_level="none",
-                    needs_human_confirmation=False,
-                    suggested_actions=[],
-                    conversation_id=conv_id,
-                    mode="llm",
-                    warnings=[],
-                    context_used=ctx_used,
-                    context_warnings=ctx_warnings,
-                )
+                yield build_event(answer=answer, mode="llm")
                 return
-        yield ChatFinalMeta(
-            answer=fallback_answer,
-            sources=[],
-            confidence=0.0,
-            evidence_level="none",
-            needs_human_confirmation=False,
-            suggested_actions=[],
-            conversation_id=conv_id,
-            mode="chat",
-            warnings=[],
-            context_used=ctx_used,
-            context_warnings=ctx_warnings,
-        )
-
-    async def _llm_small_talk_answer(
-        self,
-        query: str,
-        *,
-        expression_hint: Optional[str] = None,
-    ) -> Optional[str]:
-        """问候/寒暄也真实调用 LLM，流式优先以避免暴露 reasoning_content。"""
-        if self._llm is None or not self._settings.llm_available:
-            return None
-        messages = _build_small_talk_messages(query, expression_hint=expression_hint)
-        accumulated = ""
-        try:
-            async for chunk in self._llm.stream_chat(
-                messages,
-                temperature=0.7,
-                max_tokens=200,
-                timeout=float(self._settings.llm_timeout_seconds),
-            ):
-                accumulated += chunk
-        except asyncio.TimeoutError:
-            logger.warning("问候语 LLM 流式超时，尝试非流式兜底")
-        except (LLMTimeoutError, LLMError) as e:
-            logger.warning("问候语 LLM 流式失败，尝试非流式兜底: {}", str(e)[:120])
-        except Exception as e:
-            logger.warning("问候语 LLM 流式异常，尝试非流式兜底: {}", str(e)[:120])
-        if accumulated.strip():
-            return accumulated.strip()
-        try:
-            resp = await self._llm.chat(
-                messages,
-                temperature=0.7,
-                max_tokens=200,
-                timeout=float(self._settings.llm_timeout_seconds),
-            )
-        except asyncio.TimeoutError:
-            logger.warning("问候语 LLM 非流式兜底超时，使用固定问候语")
-            return None
-        except (LLMTimeoutError, LLMError) as e:
-            logger.warning("问候语 LLM 非流式兜底失败，使用固定问候语: {}", str(e)[:120])
-            return None
-        except Exception as e:
-            logger.warning("问候语 LLM 非流式兜底异常，使用固定问候语: {}", str(e)[:120])
-            return None
-        answer = (resp.content or "").strip()
-        return answer or None
+        yield build_event(answer=fallback_answer, mode="chat")
 
 
 __all__ = ["RagService"]

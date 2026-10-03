@@ -25,7 +25,7 @@ from .core.logging import configure_logging, logger
 from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human_assets_dir
 from .api.routes.home_banners import banner_image_storage_dir
 from .api.routes.community import community_image_storage_dir
-from .services.container import build_container, get_container
+from .services.container import build_container
 from .services.demo_seeder import seed_demo_data
 
 

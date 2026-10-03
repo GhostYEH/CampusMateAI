@@ -18,6 +18,7 @@ from ...services.course_access import can_view_course
 from ...services.magicclass.classroom_service import MagicClassClassroomService
 from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ..deps import current_user
+from ..magicclass_gateway import build_fusion_client
 
 router = APIRouter(prefix="/magicclass/fusion", tags=["magicclass-fusion"])
 
@@ -46,12 +47,7 @@ def _client(container: ServiceContainer = Depends(_container)) -> MagicClassFusi
     配置取自容器而不是应用级单例：路由的其它依赖都走容器，混用两套配置源会让
     测试里的覆盖静默失效（真实症状是"开关明明是开的却报未启用"）。
     """
-    settings = container.settings
-    return MagicClassFusionClient(
-        base_url=settings.magicclass_service_url,
-        secret=settings.magicclass_internal_secret,
-        timeout_seconds=settings.magicclass_service_timeout_seconds,
-    )
+    return build_fusion_client(container, client_type=MagicClassFusionClient)
 
 
 def _service(container: ServiceContainer = Depends(_container)) -> MagicClassClassroomService:

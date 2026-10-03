@@ -18,6 +18,7 @@ from ...services.magicclass.course_context import assert_course_access
 from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUnavailable
 from ..deps import current_user
+from ..magicclass_gateway import build_fusion_client
 
 router = APIRouter(prefix="/courses", tags=["magicclass-discussion"])
 
@@ -31,8 +32,7 @@ def _container() -> ServiceContainer:
 
 
 def _client(container: ServiceContainer = Depends(_container)) -> MagicClassFusionClient:
-    settings = container.settings
-    return MagicClassFusionClient(base_url=settings.magicclass_service_url, secret=settings.magicclass_internal_secret, timeout_seconds=settings.magicclass_service_timeout_seconds)
+    return build_fusion_client(container, client_type=MagicClassFusionClient)
 
 
 def _require(container: ServiceContainer) -> None:

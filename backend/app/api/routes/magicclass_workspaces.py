@@ -41,6 +41,7 @@ from ...services.magicclass.course_context import assert_course_access
 from ...services.magicclass.fusion_client import UNSET, MagicClassFusionClient
 from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUnavailable
 from ..deps import current_user
+from ..magicclass_gateway import build_fusion_client, require_idempotency_key, require_revision
 
 router = APIRouter(prefix="/courses", tags=["magicclass-workspaces"])
 
@@ -59,12 +60,7 @@ def _client(container: ServiceContainer = Depends(_container)) -> MagicClassFusi
     配置取自容器而不是应用级单例：路由的其它依赖都走容器，混用两套配置源会让
     测试里的覆盖静默失效（真实症状是"开关明明是开的却报未启用"）。
     """
-    settings = container.settings
-    return MagicClassFusionClient(
-        base_url=settings.magicclass_service_url,
-        secret=settings.magicclass_internal_secret,
-        timeout_seconds=settings.magicclass_service_timeout_seconds,
-    )
+    return build_fusion_client(container, client_type=MagicClassFusionClient)
 
 
 def _require_fusion_enabled(settings: Settings) -> None:
@@ -81,12 +77,11 @@ def _require_fusion_enabled(settings: Settings) -> None:
 
 
 def _require_idempotency_key(value: Optional[str]) -> str:
-    key = (value or "").strip()
-    if not key:
-        raise FusionInvalidRequest("创建请求必须携带 Idempotency-Key")
-    if len(key) > MAX_IDEMPOTENCY_KEY_LENGTH:
-        raise FusionInvalidRequest("Idempotency-Key 过长")
-    return key
+    return require_idempotency_key(
+        value,
+        missing_message="创建请求必须携带 Idempotency-Key",
+        max_length=MAX_IDEMPOTENCY_KEY_LENGTH,
+    )
 
 
 def _require_revision(value: Optional[str]) -> int:
@@ -96,18 +91,7 @@ def _require_revision(value: Optional[str]) -> int:
     exists to prevent, and a client that sends it has not read the row it is
     about to overwrite.
     """
-    raw = (value or "").strip().replace('W/', '').replace('"', '')
-    if not raw:
-        raise FusionInvalidRequest("写入请求必须携带 If-Match（当前 revision）")
-    if raw == "*":
-        raise FusionInvalidRequest("If-Match 不接受 *，请传回你读到的 revision")
-    try:
-        revision = int(raw)
-    except ValueError as exc:
-        raise FusionInvalidRequest("If-Match 必须是正整数 revision") from exc
-    if revision < 1:
-        raise FusionInvalidRequest("If-Match 必须是正整数 revision")
-    return revision
+    return require_revision(value)
 
 
 def _limit(value: int) -> int:

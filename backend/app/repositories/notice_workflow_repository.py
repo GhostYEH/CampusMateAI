@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from ._schema_helpers import _table_columns, _table_exists
 from ..database.sqlite_db import Database
 from ..models.notice_workflow import (
     NoticeWorkflowActionRow,
@@ -124,21 +125,6 @@ _REBUILD_ON_RENAME: dict[str, tuple[str, str]] = {
         "source_id IN (SELECT source_id FROM notification_sources)",
     ),
 }
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table_name,),
-    ).fetchone()
-    return row is not None
-
-
-def _table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
-    return {
-        row[1]
-        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
 
 
 def _foreign_key_parents(conn: sqlite3.Connection, table_name: str) -> set[str]:

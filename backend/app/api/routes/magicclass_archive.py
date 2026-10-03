@@ -34,6 +34,7 @@ from ...services.magicclass.course_context import assert_course_access
 from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUnavailable
 from ..deps import current_user
+from ..magicclass_gateway import build_fusion_client, require_idempotency_key
 
 router = APIRouter(prefix="/courses", tags=["magicclass-archive"])
 
@@ -55,12 +56,7 @@ def _container() -> ServiceContainer:
 
 
 def _client(container: ServiceContainer = Depends(_container)) -> MagicClassFusionClient:
-    settings = container.settings
-    return MagicClassFusionClient(
-        base_url=settings.magicclass_service_url,
-        secret=settings.magicclass_internal_secret,
-        timeout_seconds=settings.magicclass_service_timeout_seconds,
-    )
+    return build_fusion_client(container, client_type=MagicClassFusionClient)
 
 
 def _require_fusion_enabled(settings: Settings) -> None:
@@ -69,12 +65,11 @@ def _require_fusion_enabled(settings: Settings) -> None:
 
 
 def _require_idempotency_key(value: Optional[str]) -> str:
-    key = (value or "").strip()
-    if not key:
-        raise FusionInvalidRequest("导入请求必须携带 Idempotency-Key")
-    if len(key) > MAX_IDEMPOTENCY_KEY_LENGTH:
-        raise FusionInvalidRequest("Idempotency-Key 过长")
-    return key
+    return require_idempotency_key(
+        value,
+        missing_message="导入请求必须携带 Idempotency-Key",
+        max_length=MAX_IDEMPOTENCY_KEY_LENGTH,
+    )
 
 
 def content_disposition(

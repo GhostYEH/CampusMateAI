@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -35,13 +34,6 @@ from ..deps import current_user
 from .classes import _assert_can_view_class
 
 router = APIRouter(tags=["assignments"])
-
-# 允许的附件 MIME/扩展(与提交附件白名单一致)
-_ALLOWED_EXT = {
-    "txt", "md", "pdf", "doc", "docx", "xls", "xlsx",
-    "ppt", "pptx", "png", "jpg", "jpeg", "gif", "zip", "py", "cpp", "java", "c",
-}
-_MAX_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 
 
 def _container() -> ServiceContainer:
@@ -215,28 +207,6 @@ def get_assignment(
 
 
 # ===== 任务附件 =====
-
-
-def _guess_mime(ext: str) -> str:
-    return {
-        "txt": "text/plain",
-        "md": "text/markdown",
-        "pdf": "application/pdf",
-        "doc": "application/msword",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "png": "image/png",
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "gif": "image/gif",
-        "zip": "application/zip",
-        "py": "text/x-python",
-        "cpp": "text/x-c++",
-        "java": "text/x-java",
-        "c": "text/x-c",
-    }.get(ext, "application/octet-stream")
-
-
-
 
 
 @router.get("/assignments/{assignment_id}/attachments")
