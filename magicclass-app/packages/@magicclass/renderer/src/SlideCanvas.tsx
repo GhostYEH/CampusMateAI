@@ -250,7 +250,6 @@ export function SlideCanvas(props: SlideCanvasProps) {
             position: 'absolute',
             inset: 0,
             pointerEvents: 'none',
-            padding: '5%',
           }}
         >
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>

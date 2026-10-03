@@ -12,6 +12,7 @@ import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 import { useApp } from "../app/AppContext.jsx";
 import { selectAgendaForSidebar } from "../data/agendaModel.js";
+import { saveBreakdownTasks } from "../data/saveBreakdownTasks.js";
 
 const list = itemsOf;
 const POMODORO_STORAGE_KEY = "campus-study-pomodoro";
@@ -258,7 +259,7 @@ export default function StudyPage() {
 
   async function onBreakdown() {
     const target = breakdownGoal.trim();
-    if (!target || breaking) return;
+    if (!target || breaking || breakdownSaving) return;
     setBreaking(true); setError("");
     try {
       const result = await api.breakdownStudyTask({ goal: target });
@@ -278,29 +279,39 @@ export default function StudyPage() {
   }
 
   function updateBreakdownStep(index, patch) {
+    if (breaking || breakdownSaving) return;
     setBreakdownSteps((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
   }
 
   function removeBreakdownStep(index) {
+    if (breaking || breakdownSaving) return;
     setBreakdownSteps((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
   async function saveBreakdownSteps() {
     const valid = breakdownSteps.filter((step) => step.title.trim());
-    if (!valid.length || breakdownSaving) return;
+    if (!valid.length || breakdownSaving || breaking) return;
     setBreakdownSaving(true); setError("");
     try {
-      await Promise.all(valid.map((step) => api.createTask({
-        title: step.title.trim(),
-        description: step.description?.trim() || undefined,
-        source_name: "AI 拆解步骤",
-        source_text: breakdown?.goal || breakdownGoal.trim(),
-      })));
-      await refreshTasks();
-      setBreakdownOpen(false);
-      setBreakdown(null);
-      setBreakdownSteps([]);
-      setNotice(`已将 ${valid.length} 个步骤加入今日待办`);
+      const { savedCount, failedSteps } = await saveBreakdownTasks(
+        valid, breakdown?.goal || breakdownGoal.trim(), api.createTask,
+      );
+      // Remove committed drafts before refreshing the agenda: a refresh failure
+      // must never turn a successful create into another create on retry.
+      setBreakdownSteps(failedSteps);
+      if (!failedSteps.length) {
+        setBreakdownOpen(false);
+        setBreakdown(null);
+      } else {
+        setError(`${failedSteps.length} 个步骤保存失败，请重试；已保存的步骤不会重复添加。`);
+      }
+      setNotice(`已将 ${savedCount} 个步骤加入今日待办`);
+      try {
+        await refreshTasks();
+      } catch (err) {
+        logApiError("study-breakdown-refresh", err);
+        setError(`待办列表刷新失败，${savedCount} 个步骤已保存。${failedSteps.length ? "剩余步骤可重试；" : ""}请刷新列表。`);
+      }
     } catch (err) {
       logApiError("study-breakdown-save", err);
       setError(userErrorMessage(err, "步骤保存失败，请重试"));

@@ -1,4 +1,5 @@
 import { injectIntoDocumentHead } from './html-document';
+import { deferGeneratedMath } from '@/lib/interactive/defer-generated-math';
 import { INTERACTIVE_REFERENCE_EXCLUDED_TAG_NAMES } from '@/lib/interactive/element-reference-policy';
 
 const INTERACTIVE_REFERENCE_EXCLUDED_TAG_LOOKUP = Object.fromEntries(
@@ -36,6 +37,22 @@ const STORAGE_SHIM = `<script data-iframe-storage-shim>
     if (!ok) {
       try { Object.defineProperty(window, name, { value: makeStore(), configurable: true }); } catch (e) {}
     }
+  });
+})();
+</script>`;
+
+// Tell the host after DOMContentLoaded handlers have initialized the widget.
+// Unlike iframe load, this does not wait for images or background math downloads.
+const READY_SHIM = `<script data-iframe-ready-shim>
+(function () {
+  var ready = false;
+  var token = document.currentScript.getAttribute('data-document-token');
+  function notify() { window.parent.postMessage({ __maicInteractive: true, kind: 'document-ready', documentToken: token }, '*'); }
+  document.addEventListener('DOMContentLoaded', function () {
+    window.requestAnimationFrame(function () { ready = true; notify(); });
+  }, { once: true });
+  window.addEventListener('message', function (event) {
+    if (event.source === window.parent && event.data && event.data.__maicInteractiveReadyRequest && ready) notify();
   });
 })();
 </script>`;
@@ -392,7 +409,7 @@ export function patchHtmlForIframe(html: string): string {
 </style>`;
 
   const injection =
-    '\n' + ERROR_CAPTURE_SHIM + '\n' + ELEMENT_PICKER_SHIM + '\n' + STORAGE_SHIM + '\n' + iframeCss;
+    '\n' + ERROR_CAPTURE_SHIM + '\n' + ELEMENT_PICKER_SHIM + '\n' + STORAGE_SHIM + '\n' + READY_SHIM + '\n' + iframeCss;
 
-  return injectIntoDocumentHead(html, injection);
+  return injectIntoDocumentHead(deferGeneratedMath(html), injection);
 }

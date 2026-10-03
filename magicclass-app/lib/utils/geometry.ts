@@ -11,7 +11,26 @@ import type { PercentageGeometry } from '@/lib/types/action';
 export function getElementPercentageGeometry(
   element: PPTElement,
   viewportSize: number = 1000,
+  viewportRatio: number = 0.5625,
 ): PercentageGeometry | null {
+  if (element.type === 'line') {
+    const points: [number, number][] = [element.start, element.end];
+    // Match the rendered path's precedence; inactive control fields must not move the pointer.
+    if (element.broken) points.push(element.broken);
+    else if (element.broken2) {
+      const horizontal = Math.max(element.start[0], element.end[0]) >= Math.max(element.start[1], element.end[1]);
+      if (horizontal) points.push([element.broken2[0], element.start[1]], [element.broken2[0], element.end[1]]);
+      else points.push([element.start[0], element.broken2[1]], [element.end[0], element.broken2[1]]);
+    } else if (element.curve) points.push(element.curve);
+    else if (element.cubic) points.push(...element.cubic);
+    const xs = points.map((point) => point[0]);
+    const ys = points.map((point) => point[1]);
+    const x = ((element.left + Math.min(...xs)) / viewportSize) * 100;
+    const y = ((element.top + Math.min(...ys)) / (viewportSize * viewportRatio)) * 100;
+    const w = ((Math.max(...xs) - Math.min(...xs)) / viewportSize) * 100;
+    const h = ((Math.max(...ys) - Math.min(...ys)) / (viewportSize * viewportRatio)) * 100;
+    return { x, y, w, h, centerX: x + w / 2, centerY: y + h / 2 };
+  }
   // Only positioned elements have left/top/width/height
   if (
     !('left' in element) ||
@@ -26,9 +45,9 @@ export function getElementPercentageGeometry(
 
   // Calculate percentage coordinates (relative to viewportSize)
   const x = (left / viewportSize) * 100;
-  const y = (top / (viewportSize * 0.5625)) * 100; // 16:9 ratio
+  const y = (top / (viewportSize * viewportRatio)) * 100;
   const w = (width / viewportSize) * 100;
-  const h = (height / (viewportSize * 0.5625)) * 100;
+  const h = (height / (viewportSize * viewportRatio)) * 100;
 
   // Calculate center point
   const centerX = x + w / 2;
@@ -57,6 +76,7 @@ export function findElementGeometry(
   scene: Record<string, any>,
   elementId: string,
   viewportSize: number = 1000,
+  viewportRatio: number = 0.5625,
 ): PercentageGeometry | null {
   // Support two scene structures:
   // 1. scene.elements (old format)
@@ -82,7 +102,7 @@ export function findElementGeometry(
     return null;
   }
 
-  return getElementPercentageGeometry(element, viewportSize);
+  return getElementPercentageGeometry(element, viewportSize, viewportRatio);
 }
 
 /**

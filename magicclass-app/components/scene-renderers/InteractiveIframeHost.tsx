@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useWidgetIframeStore } from '@/lib/store/widget-iframe';
+import { WidgetMessageChannel } from '@/lib/interactive/widget-message-channel';
 import {
   useInteractiveIframePool,
   type IframePoolEntry,
@@ -31,6 +32,7 @@ type InteractivePickerMessage = {
   selector?: unknown;
   outerHTML?: unknown;
   text?: unknown;
+  documentToken?: unknown;
 };
 
 type ElementPickerMode = 'editor' | 'playback-stable-id';
@@ -232,6 +234,19 @@ function PooledIframe({
 }: PooledIframeProps) {
   const { t } = useI18n();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const documentVersion = useMemo(() => ({ srcDoc: entry.srcDoc, src: entry.src }), [entry.srcDoc, entry.src]);
+  const [readyDocument, setReadyDocument] = useState<typeof documentVersion | null>(null);
+  const ready = readyDocument === documentVersion;
+  const channel = useMemo(
+    () => new WidgetMessageChannel((message) => iframeRef.current?.contentWindow?.postMessage(message, '*')),
+    // A content edit starts a new document and drops its predecessor's queue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [documentVersion],
+  );
+  const srcDoc = useMemo(
+    () => entry.srcDoc?.replace('<script data-iframe-ready-shim>', `<script data-iframe-ready-shim data-document-token="${channel.token}">`),
+    [entry.srcDoc, channel],
+  );
   const registerIframe = useWidgetIframeStore((s) => s.registerIframe);
   const getSendMessage = useWidgetIframeStore((s) => s.getSendMessage);
   const pickTarget = useCanvasStore.use.pickTarget();
@@ -251,11 +266,11 @@ function PooledIframe({
   // the callback reads contentWindow lazily at send time.
   useEffect(() => {
     const send = (type: string, payload: Record<string, unknown>) => {
-      iframeRef.current?.contentWindow?.postMessage({ type, ...payload }, '*');
+      channel.send(type, payload);
     };
     registerIframe(sceneId, send);
     return () => registerIframe(sceneId, null);
-  }, [sceneId, registerIframe]);
+  }, [sceneId, channel, registerIframe]);
 
   useEffect(() => {
     const send = getSendMessage(sceneId);
@@ -293,6 +308,12 @@ function PooledIframe({
         | (InteractivePickerMessage & { errorKind?: string; message?: unknown })
         | undefined;
       if (!d || d.__maicInteractive !== true) return;
+      if (d.kind === 'document-ready') {
+        if (d.documentToken !== channel.token) return;
+        channel.markReady();
+        setReadyDocument(documentVersion);
+        return;
+      }
       if (d.kind === 'runtime-error') {
         const kind = typeof d.errorKind === 'string' ? d.errorKind : 'error';
         const msg = typeof d.message === 'string' ? d.message : String(d.message ?? '');
@@ -316,8 +337,9 @@ function PooledIframe({
     };
     window.addEventListener('message', onMessage);
     iframeRef.current?.contentWindow?.postMessage({ __maicErrorReplayRequest: true }, '*');
+    iframeRef.current?.contentWindow?.postMessage({ __maicInteractiveReadyRequest: true }, '*');
     return () => window.removeEventListener('message', onMessage);
-  }, [sceneId, entry.srcDoc, effectiveMode, onPlaybackCancel, onPlaybackPick, playbackArmed, t]);
+  }, [sceneId, documentVersion, channel, effectiveMode, onPlaybackCancel, onPlaybackPick, playbackArmed, t]);
 
   // A content change reloads the iframe; drop the previous render's errors so the
   // captured set reflects the CURRENT page (e.g. after the agent applies a fix).
@@ -369,12 +391,23 @@ function PooledIframe({
     <div style={wrapStyle}>
       <iframe
         ref={iframeRef}
-        srcDoc={entry.srcDoc}
+        srcDoc={srcDoc}
         src={entry.srcDoc ? undefined : entry.src}
         style={iframeStyle}
         title={`Interactive Scene ${sceneId}`}
         sandbox="allow-scripts allow-forms allow-popups"
+        onLoad={() => {
+          // URL-only scenes do not carry our ready shim.
+          if (entry.srcDoc) return;
+          channel.markReady();
+          setReadyDocument(documentVersion);
+        }}
       />
+      {!ready && (
+        <div role="status" aria-busy="true" className="absolute inset-0 flex items-center justify-center bg-background text-sm text-muted-foreground">
+          {t('common.loading')}
+        </div>
+      )}
       {playbackArmed && (
         <div
           data-testid="interactive-element-pick-instruction"

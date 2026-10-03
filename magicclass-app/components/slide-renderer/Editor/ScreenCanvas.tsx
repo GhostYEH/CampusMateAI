@@ -24,6 +24,8 @@ export function ScreenCanvas() {
   const elements = useSceneSelector<SlideContent, PPTElement[]>(
     (content) => content.canvas.elements,
   );
+  const viewportSize = useSceneSelector<SlideContent, number>((content) => content.canvas.viewportSize);
+  const viewportRatio = useSceneSelector<SlideContent, number>((content) => content.canvas.viewportRatio);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Viewport size and positioning
@@ -48,8 +50,10 @@ export function ScreenCanvas() {
     return findElementGeometry(
       { type: 'slide', content: { canvas: { elements } } } as Record<string, unknown>,
       laserElementId,
+      viewportSize,
+      viewportRatio,
     );
-  }, [laserElementId, elements]);
+  }, [laserElementId, elements, viewportSize, viewportRatio]);
 
   // Compute zoom target geometry
   const zoomGeometry = useMemo<PercentageGeometry | null>(() => {
@@ -59,8 +63,10 @@ export function ScreenCanvas() {
     return findElementGeometry(
       { type: 'slide', content: { canvas: { elements } } } as Record<string, unknown>,
       zoomTarget.elementId,
+      viewportSize,
+      viewportRatio,
     );
-  }, [zoomTarget, elements]);
+  }, [zoomTarget, elements, viewportSize, viewportRatio]);
 
   return (
     <div className="relative h-full w-full overflow-hidden select-none" ref={canvasRef}>
@@ -106,7 +112,7 @@ export function ScreenCanvas() {
         <SpotlightOverlay />
 
         {/* Visual effects layer - outside the scale layer, using percentage coordinates */}
-        <div className="absolute inset-0 pointer-events-none" style={{ padding: '5%' }}>
+        <div className="absolute inset-0 pointer-events-none">
           <div className="relative w-full h-full">
             {/* Laser pointer overlay */}
             <AnimatePresence>
