@@ -114,7 +114,8 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
 
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().background(WorldInk)) {
         val mapWidth = maxWidth
-        val mapHeight = maxHeight * 1.52f
+        val viewportHeight = maxHeight
+        val mapHeight = viewportHeight * 1.52f
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth().height(mapHeight).clipToBounds()) {
                 WorldSceneImage(R.drawable.campus_world_continuous_v5, drift, arrival,
@@ -181,7 +182,7 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                     Modifier.align(Alignment.TopStart).offset(x = mapWidth * .72f, y = mapHeight * .77f),
                     compact = true, drift = drift, floatPhase = 3.3f, active = pendingRoute == "profile") { enter("profile") }
                 Text("上滑探索校园  ↓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.TopCenter).offset(y = maxHeight * .86f)
+                    modifier = Modifier.align(Alignment.TopCenter).offset(y = viewportHeight * .86f)
                         .graphicsLayer { translationY = drift * 3.dp.toPx() }
                         .clip(CircleShape).background(Color(0xB0123038)).padding(horizontal = 15.dp, vertical = 8.dp))
             }
