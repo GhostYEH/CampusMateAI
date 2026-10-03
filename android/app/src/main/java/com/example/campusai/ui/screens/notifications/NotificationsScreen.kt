@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.ExtractResult
+import com.example.campusai.data.model.Notice
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.data.notification.NotificationSource
@@ -53,8 +54,9 @@ fun NotificationsScreen(
     inboxRepository: NotificationInboxRepository,
     onNavigateToWechat: () -> Unit,
     onNavigateToChaoxing: () -> Unit,
+    onNavigateToTasks: () -> Unit,
 ) {
-    val mockMode by repository.mockMode.collectAsStateWithLifecycle()
+    val notices by repository.notices.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -63,6 +65,9 @@ fun NotificationsScreen(
     val sourceSettings by inboxRepository.observeSourceSettings().collectAsStateWithLifecycle(initialValue = null)
     var notificationAccessGranted by remember { mutableStateOf(inboxRepository.isNotificationAccessGranted()) }
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var selectedNotice by remember { mutableStateOf<Notice?>(null) }
+    var showAllNotices by remember { mutableStateOf(false) }
+    val pageScroll = rememberScrollState()
 
     var chaoxingStatus by remember { mutableStateOf<String?>(null) }
     var chaoxingLastSync by remember { mutableStateOf<String?>(null) }
@@ -89,9 +94,7 @@ fun NotificationsScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    var noticeText by remember {
-        mutableStateOf("【教务处通知】请各班同学于本周五17:00前完成2026年秋季学期选课确认，登录教务系统核对课程信息。如有冲突请联系学院教务办公室。")
-    }
+    var noticeText by remember { mutableStateOf("") }
     var extracting by remember { mutableStateOf(false) }
     var extracted by remember { mutableStateOf<ExtractResult?>(null) }
 
@@ -105,11 +108,37 @@ fun NotificationsScreen(
             .fillMaxSize()
             .padding(horizontal = 20.dp, vertical = 16.dp)
             .graphicsLayer { alpha = animatedAlpha }
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(pageScroll),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        NotificationSectionCard(title = "已同步通知") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("课程与校园通知", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f))
+                TextButton(onClick = onNavigateToTasks) { Text("查看待办", color = Primary, fontSize = 12.sp) }
+            }
+            if (notices.isEmpty()) {
+                Text("暂无已同步通知。连接学习通后，可在图书馆更新课程通知。", color = Muted, fontSize = 12.sp)
+            } else {
+                notices.take(if (showAllNotices) 50 else 6).forEachIndexed { index, notice ->
+                    if (index > 0) HorizontalDivider(color = Line)
+                    Column(Modifier.fillMaxWidth().campusClickable { selectedNotice = notice }
+                        .padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(notice.title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(listOf(notice.source, notice.time).filter(String::isNotBlank).joinToString(" · "),
+                            color = Muted, fontSize = 11.sp, maxLines = 1)
+                        if (notice.content.isNotBlank()) Text(notice.content, color = Muted, fontSize = 12.sp, maxLines = 2)
+                    }
+                }
+                if (notices.size > 6) {
+                    TextButton(onClick = { showAllNotices = !showAllNotices }) {
+                        Text(if (showAllNotices) "收起通知" else "查看全部 ${notices.size} 条", color = Primary)
+                    }
+                }
+            }
+        }
         NotificationSectionCard(
-            title = "通知来源",
+            title = "通知来源与连接",
             modifier = Modifier.enterAnimation(delayMs = 30, enabled = !reduceMotion),
         ) {
             val wechatEnabled = sourceSettings?.isEnabled(NotificationSource.WECHAT) ?: false
@@ -440,6 +469,34 @@ fun NotificationsScreen(
         Spacer(Modifier.height(BottomDockReservedHeight + 20.dp))
     }
 
+    selectedNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { selectedNotice = null },
+            title = { Text(notice.title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(listOf(notice.source, notice.time).filter(String::isNotBlank).joinToString(" · "),
+                        color = Muted, fontSize = 12.sp)
+                    Text(notice.content.ifBlank { "这条通知没有可显示的正文。" }, color = TextPrimary, fontSize = 14.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val content = listOf(notice.title, notice.content).filter(String::isNotBlank).joinToString("\n")
+                    noticeText = content
+                    selectedNotice = null
+                    scope.launch {
+                        extracting = true
+                        extracted = try { repository.extractNotice(content) }
+                        catch (_: Exception) { ExtractResult(error = "提取服务暂时不可用，请稍后重试。") }
+                        finally { extracting = false }
+                        pageScroll.animateScrollTo(pageScroll.maxValue)
+                    }
+                }) { Text("整理为待办") }
+            },
+            dismissButton = { TextButton(onClick = { selectedNotice = null }) { Text("关闭") } },
+        )
+    }
     if (showClearConfirmation) {
         AlertDialog(
             onDismissRequest = { showClearConfirmation = false },

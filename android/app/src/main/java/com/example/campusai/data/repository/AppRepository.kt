@@ -134,7 +134,7 @@ class AppRepository(
         .map { list -> list.count { !it.done } }
         .stateIn(scope, SharingStarted.Eagerly, 0)
 
-    private val _notices = MutableStateFlow(defaultNotices())
+    private val _notices = MutableStateFlow<List<Notice>>(emptyList())
     val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
 
     private val _campusNews = MutableStateFlow(defaultCampusNews())
@@ -459,23 +459,25 @@ class AppRepository(
 
     /** 拉取校园通知（聚合学生可见班级的已发布通知）。 */
     suspend fun refreshNotices() {
-        if (!_backendOnline.value || _mockMode.value) return
+        if (_mockMode.value) {
+            _notices.value = defaultNotices()
+            return
+        }
+        if (!_backendOnline.value) return
         try {
             val resp = ApiClient.api.listNotices(page = 1, pageSize = 50)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _notices.value = items.map { dto ->
-                        Notice(
-                            id = dto.id,
-                            title = dto.title,
-                            source = dto.source.orEmpty(),
-                            time = dto.time.orEmpty(),
-                            unread = dto.unread,
-                            category = dto.category.orEmpty(),
-                            content = dto.content.orEmpty(),
-                        )
-                    }
+                _notices.value = items.map { dto ->
+                    Notice(
+                        id = dto.id,
+                        title = dto.title,
+                        source = dto.source.orEmpty(),
+                        time = dto.time.orEmpty(),
+                        unread = dto.unread,
+                        category = dto.category.orEmpty(),
+                        content = dto.content.orEmpty(),
+                    )
                 }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }

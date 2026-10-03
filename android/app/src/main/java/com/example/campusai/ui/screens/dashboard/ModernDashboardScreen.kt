@@ -14,7 +14,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -23,28 +22,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AssignmentTurnedIn
 import androidx.compose.material.icons.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -63,16 +56,19 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
@@ -87,10 +83,8 @@ private val LibraryViolet = Color(0xFFB5C9D8)
 private val GrowthGreen = Color(0xFFB6D4B7)
 
 /** A navigable campus scene. The illustration contains no baked-in controls or text. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Unit) {
-    var showMore by remember { mutableStateOf(false) }
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var pendingRoute by remember { mutableStateOf<String?>(null) }
@@ -119,22 +113,24 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().background(WorldInk)) {
-        val sceneWidth = maxWidth
-        val sceneHeight = maxHeight
+        val mapWidth = maxWidth
+        val mapHeight = maxHeight * 1.52f
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Box(Modifier.fillMaxWidth().height(sceneHeight).clipToBounds()) {
-                WorldSceneImage(R.drawable.campus_world_study_library_v4, drift, arrival,
+            Box(Modifier.fillMaxWidth().height(mapHeight).clipToBounds()) {
+                WorldSceneImage(R.drawable.campus_world_continuous_v5, drift, arrival,
                     Modifier.fillMaxSize(), when (pendingRoute) {
-                        "focus" -> TransformOrigin(.25f, .41f)
-                        "courses" -> TransformOrigin(.76f, .42f)
-                        else -> TransformOrigin(.5f, .57f)
+                        "focus" -> TransformOrigin(.22f, .25f)
+                        "courses" -> TransformOrigin(.78f, .24f)
+                        "tasks" -> TransformOrigin(.20f, .43f)
+                        "community" -> TransformOrigin(.78f, .48f)
+                        "focus_history" -> TransformOrigin(.22f, .68f)
+                        "profile" -> TransformOrigin(.79f, .72f)
+                        else -> TransformOrigin.Center
                     })
-                Box(Modifier.fillMaxWidth().height(sceneHeight * .21f).align(Alignment.TopCenter)
-                    .background(Brush.verticalGradient(listOf(Color(0xD00B2030), Color.Transparent))))
-                if (!reduceMotion) {
-                    CampusAmbientLight()
-                    CampusWalkers()
-                }
+                Box(Modifier.fillMaxWidth().height(mapHeight * .16f).align(Alignment.TopCenter)
+                    .background(Brush.verticalGradient(listOf(Color(0xC80B2030), Color.Transparent))))
+                CampusAmbientLight(enabled = !reduceMotion)
+                CampusSpriteWalkers(animated = !reduceMotion)
                 Row(
                     Modifier.fillMaxWidth().statusBarsPadding().padding(start = 22.dp, top = 20.dp, end = 18.dp),
                     verticalAlignment = Alignment.Top,
@@ -143,86 +139,51 @@ fun ModernDashboardScreen(repository: AppRepository, onNavigate: (String) -> Uni
                         Text("CampusMate", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                         Text("今天，学一点新东西", color = Color.White.copy(alpha = .91f), fontSize = 14.sp)
                     }
-                    WorldIconButton(Icons.Default.Menu, "更多功能") { showMore = true }
-                    Spacer(Modifier.width(8.dp))
                     WorldIconButton(Icons.Default.Person, "我的") { enter("profile") }
                 }
                 WorldArea("自习室", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .03f, y = sceneHeight * .27f)
-                    .width(sceneWidth * .43f).height(sceneHeight * .25f)) { enter("focus") }
+                    .offset(x = mapWidth * .01f, y = mapHeight * .16f)
+                    .width(mapWidth * .44f).height(mapHeight * .16f)) { enter("focus") }
                 WorldArea("图书馆", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .52f, y = sceneHeight * .24f)
-                    .width(sceneWidth * .46f).height(sceneHeight * .29f)) { enter("courses") }
+                    .offset(x = mapWidth * .53f, y = mapHeight * .12f)
+                    .width(mapWidth * .45f).height(mapHeight * .21f)) { enter("courses") }
+                WorldArea("待办", Modifier.align(Alignment.TopStart)
+                    .offset(x = mapWidth * .02f, y = mapHeight * .36f)
+                    .width(mapWidth * .38f).height(mapHeight * .17f)) { enter("tasks") }
+                WorldArea("校园社区", Modifier.align(Alignment.TopStart)
+                    .offset(x = mapWidth * .58f, y = mapHeight * .43f)
+                    .width(mapWidth * .40f).height(mapHeight * .14f)) { enter("community") }
+                WorldArea("学习足迹", Modifier.align(Alignment.TopStart)
+                    .offset(x = mapWidth * .02f, y = mapHeight * .58f)
+                    .width(mapWidth * .40f).height(mapHeight * .16f)) { enter("focus_history") }
+                WorldArea("我的", Modifier.align(Alignment.TopStart)
+                    .offset(x = mapWidth * .61f, y = mapHeight * .62f)
+                    .width(mapWidth * .37f).height(mapHeight * .18f)) { enter("profile") }
                 WorldDestination("自习室", Icons.Default.Timer, StudyAmber,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .06f, y = sceneHeight * .48f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .04f, y = mapHeight * .30f),
                     drift = drift, active = pendingRoute == "focus") { enter("focus") }
                 WorldDestination("图书馆", Icons.Default.MenuBook, LibraryViolet,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .53f, y = sceneHeight * .51f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .57f, y = mapHeight * .31f),
                     drift = drift, floatPhase = 1.3f, active = pendingRoute == "courses") { enter("courses") }
-                Text("向上滑动 · 探索校园  ↓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 22.dp)
-                        .graphicsLayer { translationY = drift * 3.dp.toPx() }
-                        .clip(CircleShape).background(Color(0xB0123038)).padding(horizontal = 15.dp, vertical = 8.dp))
-            }
-            Box(Modifier.fillMaxWidth().height(sceneHeight).clipToBounds()) {
-                WorldSceneImage(R.drawable.campus_world_lower_v4, drift, arrival,
-                    Modifier.fillMaxSize(), when (pendingRoute) {
-                        "tasks" -> TransformOrigin(.24f, .30f)
-                        "community" -> TransformOrigin(.75f, .34f)
-                        "focus_history" -> TransformOrigin(.26f, .64f)
-                        "profile" -> TransformOrigin(.78f, .64f)
-                        else -> TransformOrigin(.5f, .5f)
-                    })
-                Box(Modifier.fillMaxWidth().height(sceneHeight * .08f).align(Alignment.TopCenter)
-                    .background(Brush.verticalGradient(listOf(Color(0xAA102637), Color.Transparent))))
-                if (!reduceMotion) {
-                    CampusAmbientLight(lower = true)
-                    CampusWalkers(lower = true)
-                }
-                WorldArea("待办", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .07f, y = sceneHeight * .18f)
-                    .width(sceneWidth * .38f).height(sceneHeight * .27f)) { enter("tasks") }
-                WorldArea("校园社区", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .52f, y = sceneHeight * .24f)
-                    .width(sceneWidth * .45f).height(sceneHeight * .21f)) { enter("community") }
-                WorldArea("学习足迹", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .04f, y = sceneHeight * .54f)
-                    .width(sceneWidth * .44f).height(sceneHeight * .22f)) { enter("focus_history") }
-                WorldArea("我的", Modifier.align(Alignment.TopStart)
-                    .offset(x = sceneWidth * .55f, y = sceneHeight * .52f)
-                    .width(sceneWidth * .43f).height(sceneHeight * .25f)) { enter("profile") }
                 WorldDestination("待办", Icons.Default.AssignmentTurnedIn, StudyAmber,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .07f, y = sceneHeight * .38f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .04f, y = mapHeight * .50f),
                     compact = true, drift = drift, active = pendingRoute == "tasks") { enter("tasks") }
                 WorldDestination("校园社区", Icons.Default.Groups, LibraryViolet,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .51f, y = sceneHeight * .42f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .52f, y = mapHeight * .53f),
                     compact = true, drift = drift, floatPhase = 1.1f, active = pendingRoute == "community") { enter("community") }
                 WorldDestination("学习足迹", Icons.Default.History, GrowthGreen,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .06f, y = sceneHeight * .67f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .05f, y = mapHeight * .71f),
                     compact = true, drift = drift, floatPhase = 2.2f, active = pendingRoute == "focus_history") { enter("focus_history") }
-                WorldDestination("我的", Icons.Default.Person, LibraryViolet,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .69f, y = sceneHeight * .70f),
-                    compact = true, drift = drift, floatPhase = 3.3f, active = pendingRoute == "profile") { enter("profile") }
                 WorldDestination("通知", Icons.Default.Notifications, StudyAmber,
-                    Modifier.align(Alignment.TopStart).offset(x = sceneWidth * .37f, y = sceneHeight * .79f),
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .40f, y = mapHeight * .65f),
                     compact = true, drift = drift, floatPhase = 4.4f, active = pendingRoute == "notifications") { enter("notifications") }
-            }
-        }
-    }
-
-    if (showMore) {
-        ModalBottomSheet(onDismissRequest = { showMore = false }, containerColor = Color(0xFFF9FBF6)) {
-            Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 28.dp)) {
-                Text("更多功能", color = WorldInk, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("学习之外的校园事务，随时可以在这里找到", color = Color(0xFF637183), fontSize = 13.sp)
-                Spacer(Modifier.size(18.dp))
-                MoreDestination("待办事项", Icons.Default.AssignmentTurnedIn) { showMore = false; onNavigate("tasks") }
-                HorizontalDivider()
-                MoreDestination("校园社区", Icons.Default.Groups) { showMore = false; onNavigate("community") }
-                HorizontalDivider()
-                MoreDestination("校园通知", Icons.Default.Notifications) { showMore = false; onNavigate("notifications") }
-                HorizontalDivider()
-                MoreDestination("个人中心", Icons.Default.Person) { showMore = false; onNavigate("profile") }
+                WorldDestination("我的", Icons.Default.Person, LibraryViolet,
+                    Modifier.align(Alignment.TopStart).offset(x = mapWidth * .72f, y = mapHeight * .77f),
+                    compact = true, drift = drift, floatPhase = 3.3f, active = pendingRoute == "profile") { enter("profile") }
+                Text("上滑探索校园  ↓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.TopCenter).offset(y = maxHeight * .86f)
+                        .graphicsLayer { translationY = drift * 3.dp.toPx() }
+                        .clip(CircleShape).background(Color(0xB0123038)).padding(horizontal = 15.dp, vertical = 8.dp))
             }
         }
     }
@@ -309,9 +270,10 @@ private fun WorldDestination(
     }
 }
 
-/** One quiet pool of window light per destination, avoiding repeated decorative lamps. */
+/** Restrained window light stays separate from the map artwork. */
 @Composable
-private fun CampusAmbientLight(lower: Boolean = false) {
+private fun CampusAmbientLight(enabled: Boolean) {
+    if (!enabled) return
     val transition = rememberInfiniteTransition(label = "campus-window-light")
     val strength by transition.animateFloat(
         initialValue = .035f, targetValue = .065f,
@@ -319,9 +281,7 @@ private fun CampusAmbientLight(lower: Boolean = false) {
         label = "window-breath",
     )
     Canvas(Modifier.fillMaxSize()) {
-        val windows = if (lower) listOf(Offset(.22f, .30f), Offset(.82f, .62f))
-            else listOf(Offset(.25f, .40f), Offset(.73f, .39f))
-        windows.forEach { point ->
+        listOf(Offset(.25f, .24f), Offset(.75f, .23f)).forEach { point ->
             val center = Offset(size.width * point.x, size.height * point.y)
             val radius = size.width * .16f
             drawCircle(
@@ -337,49 +297,41 @@ private fun CampusAmbientLight(lower: Boolean = false) {
     }
 }
 
-/** Tiny walkers follow the existing courtyard paths without shifting any controls. */
+/** Actual character frames move along the paths; the background contains no fixed people. */
 @Composable
-private fun CampusWalkers(lower: Boolean = false) {
-    val transition = rememberInfiniteTransition(label = "campus-walkers")
-    val progress by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(16000, easing = LinearEasing)),
-        label = "walking-loop",
-    )
+private fun CampusSpriteWalkers(animated: Boolean) {
+    val studentA = ImageBitmap.imageResource(R.drawable.campus_walk_student_a)
+    val studentB = ImageBitmap.imageResource(R.drawable.campus_walk_student_b)
+    val progress = if (animated) {
+        val transition = rememberInfiniteTransition(label = "campus-sprite-walkers")
+        val position by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(14000, easing = LinearEasing)),
+            label = "walking-loop",
+        )
+        position
+    } else 0f
     Canvas(Modifier.fillMaxSize()) {
-        fun walker(from: Offset, to: Offset, phase: Float, coat: Color, curve: Float) {
-            val p = (progress + phase) % 1f
-            val opacity = (p / .08f).coerceAtMost(1f) * ((1f - p) / .12f).coerceAtMost(1f)
+        fun walker(sprite: ImageBitmap, from: Offset, to: Offset, phase: Float, staticPosition: Float) {
+            val p = if (animated) (progress + phase) % 1f else staticPosition
+            val opacity = if (animated) minOf(1f, p / .08f, (1f - p) / .08f) else 1f
             val x = size.width * (from.x + (to.x - from.x) * p)
-            val y = size.height * (from.y + (to.y - from.y) * p - curve * sin(PI.toFloat() * p))
-            val step = sin(p * 72f) * 2.dp.toPx()
-            val head = 3.dp.toPx()
-            drawOval(Color.Black.copy(alpha = .22f * opacity), Offset(x - 6.dp.toPx(), y + 5.dp.toPx()), Size(12.dp.toPx(), 4.dp.toPx()))
-            drawLine(Color(0xFF263841).copy(alpha = opacity), Offset(x - 2.dp.toPx(), y + 2.dp.toPx()), Offset(x - 2.dp.toPx() + step, y + 7.dp.toPx()), 2.dp.toPx(), cap = StrokeCap.Round)
-            drawLine(Color(0xFF263841).copy(alpha = opacity), Offset(x + 2.dp.toPx(), y + 2.dp.toPx()), Offset(x + 2.dp.toPx() - step, y + 7.dp.toPx()), 2.dp.toPx(), cap = StrokeCap.Round)
-            drawOval(coat.copy(alpha = opacity), Offset(x - 4.dp.toPx(), y - 6.dp.toPx()), Size(8.dp.toPx(), 10.dp.toPx()))
-            drawCircle(Color(0xFFF0CAA6).copy(alpha = opacity), head, Offset(x, y - 8.dp.toPx()))
+            val y = size.height * (from.y + (to.y - from.y) * p)
+            val frame = if (animated) ((progress * 72).toInt() + (phase * 4).toInt()) % 4 else 0
+            val frameWidth = sprite.width / 4
+            val widthPx = 26.dp.toPx().toInt()
+            val heightPx = 35.dp.toPx().toInt()
+            drawOval(Color.Black.copy(alpha = .18f * opacity), Offset(x - 6.dp.toPx(), y - 2.dp.toPx()), Size(12.dp.toPx(), 4.dp.toPx()))
+            drawImage(
+                image = sprite,
+                srcOffset = IntOffset(frame * frameWidth, 0),
+                srcSize = IntSize(frameWidth, sprite.height),
+                dstOffset = IntOffset(x.toInt() - widthPx / 2, y.toInt() - heightPx + 4.dp.toPx().toInt()),
+                dstSize = IntSize(widthPx, heightPx),
+                alpha = opacity,
+            )
         }
-        if (lower) {
-            walker(Offset(.51f, .20f), Offset(.29f, .43f), .03f, Color(0xFF8298A4), .012f)
-            walker(Offset(.48f, .42f), Offset(.72f, .67f), .51f, Color(0xFF987E72), -.018f)
-        } else {
-            walker(Offset(.48f, .83f), Offset(.43f, .57f), .04f, Color(0xFF6F91A0), .012f)
-            walker(Offset(.53f, .76f), Offset(.74f, .49f), .47f, Color(0xFFB78365), .014f)
-        }
-    }
-}
-
-@Composable
-private fun MoreDestination(label: String, icon: ImageVector, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = 15.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, tint = Color(0xFF677DE3), modifier = Modifier.size(22.dp))
-        Spacer(Modifier.width(14.dp))
-        Text(label, color = WorldInk, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ArrowForwardIos, null, tint = Color(0xFF8793A2), modifier = Modifier.size(13.dp))
+        walker(studentA, Offset(.48f, .32f), Offset(.53f, .53f), .08f, .36f)
+        walker(studentB, Offset(.49f, .55f), Offset(.60f, .76f), .52f, .59f)
     }
 }

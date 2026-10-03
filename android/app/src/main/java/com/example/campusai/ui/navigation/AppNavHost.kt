@@ -68,7 +68,6 @@ import com.example.campusai.ui.screens.community.CommunityScreen
 import com.example.campusai.ui.screens.community.CommunityDetailScreen
 import com.example.campusai.ui.screens.community.CommunityPublishScreen
 import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
-import com.example.campusai.ui.screens.v3.UniversityScreen
 import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.CampusMotion
@@ -260,6 +259,7 @@ fun AppNavHost(
                 inboxRepository = notificationInboxRepository,
                 onNavigateToWechat = { navController.navigate("notification-settings") },
                 onNavigateToChaoxing = { navController.navigate("chaoxing") },
+                onNavigateToTasks = { go("tasks") },
             )
         }
         composable("campus-news") {
@@ -376,10 +376,12 @@ fun AppNavHost(
             )
         }
         composable("university") {
-            UniversityScreen(
-                repository = repository,
-                onNavigate = { route -> go(route) },
-            )
+            LaunchedEffect(Unit) {
+                navController.navigate("account") {
+                    popUpTo("university") { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
         }
         composable(
             route = "community?sort={sort}&query={query}",

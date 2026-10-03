@@ -84,12 +84,10 @@ fun ProfileScreen(
                 ProfileMenu(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
-                        ProfileRow(Icons.Default.School, "我的大学", "校园信息 · 校园卡 · 一站式服务") { onNavigate("university") },
                         ProfileRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
                         ProfileRow(Icons.Default.AccountBalance, "教务系统", "连接教务系统，同步课表与成绩") { onNavigate("edu_system") },
-                        ProfileRow(Icons.Default.Timer, "学习与专注", "查看学习记录与陪伴") { onNavigate("study") },
                         ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
-                        ProfileRow(Icons.Default.Security, "账号与隐私", "个人资料和账号信息") { onNavigate("account") },
+                        ProfileRow(Icons.Default.Security, "资料、大学与隐私", "编辑个人资料和所在大学") { onNavigate("account") },
                         ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "常见问题、问题反馈与服务状态") { onNavigate("help-feedback") },
                         ProfileRow(Icons.Default.Info, "关于 CampusMate", "版本与能力边界") { showAbout = true },
                     ),
@@ -144,7 +142,7 @@ private fun ProfileHero(
                         colors = if (darkMode) {
                             listOf(Color(0xFF17384A), Color(0xFF275C78), Color(0xFF2F6486))
                         } else {
-                            listOf(PrimaryHover, Primary, Color(0xFF6E79F5))
+                            listOf(Color(0xFF173D35), Color(0xFF2B6555), Color(0xFF557F6D))
                         },
                     ),
                 ),
