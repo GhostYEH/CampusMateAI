@@ -17,13 +17,11 @@ from ..core.config import Settings, get_settings
 from ..core.exceptions import Forbidden, Unauthorized
 from ..core.security import JWTError, decode_jwt, hash_token
 from ..models.multi_role import UserRow
-from ..repositories.multi_role_repository import (
-    ClassGroupRepository,
-    CourseRepository,
-    EnrollmentRepository,
-    RefreshTokenRepository,
-    UserRepository,
-)
+from ..repositories.class_group_repository import ClassGroupRepository
+from ..repositories.course_repository import CourseRepository
+from ..repositories.enrollment_repository import EnrollmentRepository
+from ..repositories.refresh_token_repository import RefreshTokenRepository
+from ..repositories.user_repository import UserRepository
 from ..services.container import ServiceContainer, get_container
 
 _bearer = HTTPBearer(auto_error=False)

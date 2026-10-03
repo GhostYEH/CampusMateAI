@@ -23,9 +23,10 @@ import {
   describeObservedOutcome,
 } from "../src/data/interventionDecisionView.js";
 
-const pageSource = await readFile(
-  new URL("../src/pages/LearningStatePage.jsx", import.meta.url), "utf8",
-);
+const pageSource = (await Promise.all([
+  "../src/pages/LearningStatePage.jsx",
+  "../src/components/learningState/InterventionLoopSummary.jsx",
+].map((path) => readFile(new URL(path, import.meta.url), "utf8")))).join("\n");
 
 describe("持久化决策的五态展示", () => {
   for (const decision of ["CONTINUE", "WAIT_FOR_EVIDENCE", "REPLAN", "SUSPEND"]) {

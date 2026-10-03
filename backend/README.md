@@ -60,6 +60,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## 验证
 
+用户、会话、课程、班级、选课、公告、作业和提交仓库分别维护在 `app/repositories/` 的对应领域模块中；`multi_role_repository.py` 仅保留旧导入的兼容入口。调整数据访问时优先修改对应领域模块。
+
 ```powershell
 cd backend
 pytest

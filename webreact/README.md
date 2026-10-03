@@ -31,4 +31,6 @@ python tests/e2e/route-smoke.py
 
 `lint` 检查全部 JS/JSX/TS/TSX 源码的基础错误、未使用符号及 Hook 调用规则；它不替代 TypeScript 类型检查。测试还会检查实际生产分包，防止路由专属引擎和样式进入首屏。
 
+学习状态页由 `pages/LearningStatePage.jsx` 编排，数据与操作在 `hooks/useLearningState.js`，展示组件在 `components/learningState/`。学习状态页与趋势页共用 `useAsyncResource`，避免刷新或切换条件时旧响应覆盖新结果。
+
 E2E 脚本需要先运行 `npm run dev`；它覆盖登录保护、全部路由族、桌面与移动端导航。

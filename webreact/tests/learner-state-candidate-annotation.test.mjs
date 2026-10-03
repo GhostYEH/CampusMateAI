@@ -15,9 +15,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const pageSource = await readFile(
-  new URL("../src/pages/LearningStatePage.jsx", import.meta.url), "utf8",
-);
+const pageSource = (await Promise.all([
+  "../src/components/learningState/GoalExecutionCenter.jsx",
+  "../src/components/learningState/ModelTransparency.jsx",
+].map((path) => readFile(new URL(path, import.meta.url), "utf8")))).join("\n");
 const apiSource = await readFile(
   new URL("../src/data/learnerStateApi.js", import.meta.url), "utf8",
 );

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from ...core.config import get_settings
 from ...core.security import JWTError, decode_jwt
 from ...models.multi_role import UserRow
-from ...repositories.multi_role_repository import UserRepository
+from ...repositories.user_repository import UserRepository
 from ...schemas.focus_ai import FocusRealtimeVoiceSessionResponse, FocusRealtimeVoiceStopResponse
 from ...services.container import get_container
 from ...services.focus_realtime_voice_service import (

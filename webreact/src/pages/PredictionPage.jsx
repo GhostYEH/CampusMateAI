@@ -1,3 +1,4 @@
+import { FORECAST_TYPE_LABEL, RISK_BAND_LABEL, PRESSURE_BAND_LABEL, OUTLOOK_BAND_LABEL, CONTINUITY_BAND_LABEL } from "../features/learnerState/forecastLabels.js";
 import "../styles/prediction.css";
 /**
  * 趋势与方案比较页面 — 校园陪伴世界模型
@@ -8,44 +9,10 @@ import "../styles/prediction.css";
  *
  * 中性产品语言，避免心理画像/能力判定等负面表述。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useAsyncResource as useAsync } from "../hooks/useAsyncResource.js";
 import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
-
-const FORECAST_TYPE_LABEL = {
-  DEADLINE_COMPLETION_RISK: "截止完成风险",
-  UPCOMING_WORKLOAD: "未来负载",
-  SCHEDULE_CONFLICT_RISK: "日程冲突风险",
-  GOAL_PROGRESS_OUTLOOK: "目标进展展望",
-  ROUTINE_CONTINUITY: "专注节律连续性",
-};
-
-const RISK_BAND_LABEL = {
-  LOW: "较低",
-  MODERATE: "中等",
-  HIGH: "较高",
-  VERY_HIGH: "很高",
-};
-
-const PRESSURE_BAND_LABEL = {
-  LOW: "较轻",
-  MODERATE: "中等",
-  HIGH: "较重",
-  VERY_HIGH: "很重",
-};
-
-const OUTLOOK_BAND_LABEL = {
-  rising: "上升",
-  steady: "平稳",
-  declining: "下降",
-  insufficient_data: "证据不足",
-};
-
-const CONTINUITY_BAND_LABEL = {
-  stable: "稳定",
-  variable: "波动",
-  unknown: "未知",
-};
 
 const DATA_QUALITY_LABEL = {
   verified: "数据已核实",
@@ -71,24 +38,6 @@ const DATA_SOURCE_CATEGORIES = [
   { value: "manual", label: "手动记录" },
 ];
 
-function useAsync(fn, deps) {
-  const [state, setState] = useState({ loading: true, data: null, error: null });
-  const mounted = useRef(true);
-  const fnRef = useRef(fn);
-  fnRef.current = fn;
-  const run = useCallback(() => {
-    setState((s) => ({ ...s, loading: true, error: null }));
-    Promise.resolve(fnRef.current())
-      .then((data) => mounted.current && setState({ loading: false, data, error: null }))
-      .catch((error) => mounted.current && setState({ loading: false, data: null, error }));
-  }, deps);
-  useEffect(() => {
-    mounted.current = true;
-    run();
-    return () => { mounted.current = false; };
-  }, [run]);
-  return { ...state, reload: run };
-}
 
 function Spinner() {
   return <div className="pred-spinner" aria-busy="true" aria-live="polite">加载中…</div>;

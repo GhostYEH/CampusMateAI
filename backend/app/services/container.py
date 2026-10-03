@@ -12,16 +12,14 @@ from typing import Optional
 from ..core.config import Settings, get_settings
 from ..database.sqlite_db import Database, init_db
 from ..repositories.document_repository import DocumentRepository
-from ..repositories.multi_role_repository import (
-    AnnouncementRepository,
-    AssignmentRepository,
-    ClassGroupRepository,
-    CourseRepository,
-    EnrollmentRepository,
-    RefreshTokenRepository,
-    SubmissionRepository,
-    UserRepository,
-)
+from ..repositories.announcement_repository import AnnouncementRepository
+from ..repositories.assignment_repository import AssignmentRepository
+from ..repositories.class_group_repository import ClassGroupRepository
+from ..repositories.course_repository import CourseRepository
+from ..repositories.enrollment_repository import EnrollmentRepository
+from ..repositories.refresh_token_repository import RefreshTokenRepository
+from ..repositories.submission_repository import SubmissionRepository
+from ..repositories.user_repository import UserRepository
 from ..repositories.personal_task_repository import PersonalTaskRepository
 from ..repositories.personal_hub_repository import (
     FavoriteRepository,

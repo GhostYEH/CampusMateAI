@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const testsDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(testsDir, "..");
 const e2e = fs.readFileSync(path.join(testsDir, "e2e", "learner-state-closed-loop.py"), "utf8");
-const learningStatePage = fs.readFileSync(path.join(webRoot, "src", "pages", "LearningStatePage.jsx"), "utf8");
+const learningStatePage = fs.readFileSync(path.join(webRoot, "src", "components", "learningState", "DataPrivacyControl.jsx"), "utf8");
 const packageJson = JSON.parse(fs.readFileSync(path.join(webRoot, "package.json"), "utf8"));
 
 test("learner-state E2E uses current generic contracts", () => {

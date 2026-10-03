@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const page = fs.readFileSync(
-  path.join(process.cwd(), "src", "pages", "LearningStatePage.jsx"),
+  path.join(process.cwd(), "src", "hooks", "useLearningState.js"),
   "utf8",
 );
 
