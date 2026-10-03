@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Query
 from ...models.learner_state import StateEvidenceRow
 from ...models.multi_role import UserRow
 from ...schemas.learner_state import (
-    ACADEMIC_STATE_TYPES,
     STATE_TYPE_PATTERN,
     LearnerStateChangePage,
     LearnerStateEvidenceOut,
@@ -62,6 +61,25 @@ def _project_projection(container: ServiceContainer, *, user_id: str, projection
     return container.learner_state_service.project_user(user_id, as_of=as_of, trigger="api_read")
 
 
+def _snapshot_page(container: ServiceContainer, *, user_id: str, items, total: int,
+                   page: int, page_size: int) -> LearnerStateSnapshotPage:
+    runs = {
+        run_id: container.learner_state_repository.get_run(run_id, user_id=user_id)
+        for run_id in {item.run_id for item in items}
+    }
+    return LearnerStateSnapshotPage(
+        items=[_snapshot_out(
+            item,
+            run=runs.get(item.run_id),
+            evidence_count=container.learner_state_repository.count_evidence(
+                user_id=user_id, snapshot_id=item.snapshot_id
+            ),
+        ) for item in items],
+        total=total, page=page, page_size=page_size,
+        has_more=page * page_size < total,
+    )
+
+
 def _evidence_out(row: StateEvidenceRow) -> LearnerStateEvidenceOut:
     return LearnerStateEvidenceOut(
         evidence_kind=row.evidence_kind,
@@ -77,16 +95,18 @@ def _evidence_out(row: StateEvidenceRow) -> LearnerStateEvidenceOut:
 
 @router.get("/runs", response_model=LearnerStateRunPage)
 def list_runs(
+    projection_kind: str = Query("CORE", pattern="^(CORE|ACADEMIC|WORLD)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateRunPage:
-    container.learner_state_service.project_user(
-        user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_runs"
+    _project_projection(
+        container, user_id=user.id, projection_kind=projection_kind,
+        as_of=datetime.now(timezone.utc).replace(microsecond=0),
     )
     rows, total = container.learner_state_service.list_run_summaries(
-        user_id=user.id, page=page, page_size=page_size
+        user_id=user.id, page=page, page_size=page_size, projection_kind=projection_kind,
     )
     return LearnerStateRunPage(
         items=[LearnerStateRunOut(
@@ -105,6 +125,7 @@ def list_runs(
 def list_changes(
     from_run_id: str | None = Query(None, min_length=1, max_length=128),
     to_run_id: str | None = Query(None, min_length=1, max_length=128),
+    projection_kind: str = Query("CORE", pattern="^(CORE|ACADEMIC|WORLD)$"),
     scope_type: str | None = Query(None, pattern="^(USER|COURSE|TASK|SOURCE|KNOWLEDGE_COMPONENT|SEMESTER)$"),
     state_type: str | None = Query(None, pattern=STATE_TYPE_PATTERN),
     page: int = Query(1, ge=1),
@@ -114,8 +135,9 @@ def list_changes(
     container: ServiceContainer = Depends(_container),
 ) -> LearnerStateChangePage:
     if to_run_id is None:
-        projected = container.learner_state_service.project_user(
-            user.id, as_of=datetime.now(timezone.utc).replace(microsecond=0), trigger="api_changes"
+        projected = _project_projection(
+            container, user_id=user.id, projection_kind=projection_kind,
+            as_of=datetime.now(timezone.utc).replace(microsecond=0),
         )
         to_run_id = projected.run_id
     if not to_run_id:
@@ -156,20 +178,9 @@ def list_snapshots(
         state_type=state_type, course_id=course_id,
         projection_kind=projection_kind, projection_scope=projection_scope,
     )
-    runs = {
-        item.run_id: container.learner_state_repository.get_run(item.run_id, user_id=user.id)
-        for item in items
-    }
-    return LearnerStateSnapshotPage(
-        items=[_snapshot_out(
-            item,
-            run=runs.get(item.run_id),
-            evidence_count=container.learner_state_repository.count_evidence(
-                user_id=user.id, snapshot_id=item.snapshot_id
-            ),
-        ) for item in items],
-        total=total, page=page, page_size=page_size,
-        has_more=page * page_size < total,
+    return _snapshot_page(
+        container, user_id=user.id, items=items, total=total,
+        page=page, page_size=page_size,
     )
 
 
@@ -228,17 +239,14 @@ def get_academic_state(
     container.learner_state_service.project_academic(
         user.id, as_of=as_of, trigger="api_academic"
     )
-    academic_types = ACADEMIC_STATE_TYPES
     items, total = container.learner_state_repository.list_snapshots(
         user_id=user.id, page=page, page_size=page_size,
         scope_type=None, state_type=None, course_id=None,
         projection_kind="ACADEMIC", projection_scope="__user__",
     )
-    academic_items = [item for item in items if item.state_type in academic_types]
-    return LearnerStateSnapshotPage(
-        items=[_snapshot_out(item) for item in academic_items],
-        total=len(academic_items), page=page, page_size=page_size,
-        has_more=False,
+    return _snapshot_page(
+        container, user_id=user.id, items=items, total=total,
+        page=page, page_size=page_size,
     )
 
 

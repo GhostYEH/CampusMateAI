@@ -481,6 +481,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learning_plan_repository=learning_plan_repository,
     )
     # 预测是状态分析的增强信号：在这里补上，避免把构造顺序问题带进 Handler。
+    learning_planner_service._forecast_service = forecast_service
     adaptive_intervention_service._forecast_service = forecast_service
 
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)

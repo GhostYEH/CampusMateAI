@@ -286,3 +286,26 @@ def test_forecast_horizon_validation():
             user_id=user_id, as_of=AS_OF,
             forecast_type="DEADLINE_COMPLETION_RISK", horizon_days=31,
         )
+
+
+def test_course_workload_uses_only_tasks_owned_by_that_course():
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    deadline = (AS_OF + timedelta(days=1)).isoformat()
+    for course_id in ("course-a", "course-b", None):
+        container.personal_task_repository.create_task(
+            user_id=user_id, title="course task", course_id=course_id, deadline=deadline,
+        )
+    forecast = container.forecast_service.get_forecast(
+        user_id=user_id, as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD", course_id="course-b",
+    )
+    assert forecast.scope_type == "COURSE"
+    assert forecast.scope_id == "course-b"
+    assert forecast.value.task_count == 1
+    assert forecast.value.estimated_total_minutes == 45
+    assert forecast.evidence_summary.observed_task_count == 1
+    missing = container.forecast_service.get_forecast(
+        user_id=user_id, as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD", course_id="unknown-course",
+    )
+    assert missing.data_quality == "unavailable"
+    assert missing.probability is None

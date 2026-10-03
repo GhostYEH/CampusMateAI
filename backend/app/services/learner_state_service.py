@@ -1784,8 +1784,11 @@ class LearnerStateProjectionService:
                                 estimator_version=ESTIMATOR_VERSION, input_digest="",
                                 snapshots=snapshots, warnings=["projection_failed"])
 
-    def list_run_summaries(self, *, user_id: str, page: int, page_size: int):
-        return self.repository.list_runs(user_id=user_id, page=page, page_size=page_size)
+    def list_run_summaries(self, *, user_id: str, page: int, page_size: int,
+                           projection_kind: str = "CORE"):
+        return self.repository.list_runs(
+            user_id=user_id, page=page, page_size=page_size, projection_kind=projection_kind,
+        )
 
     def compare_runs(
         self, *, user_id: str, to_run_id: str, from_run_id: str | None,

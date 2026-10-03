@@ -57,6 +57,41 @@ def test_generate_without_llm_is_deterministic_and_budgeted() -> None:
     assert task.id in {item.get("task_id") for item in body["items"]}
 
 
+def test_generate_uses_real_forecasts_and_keeps_forecast_failure_recoverable(monkeypatch) -> None:
+    client, container, headers, _ = _setup()
+    user_id = container.user_repository.get_user_by_username("phase4_student").id
+    deadline = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    for index in range(40):
+        container.personal_task_repository.create_task(
+            user_id=user_id, title=f"待完成任务 {index}", deadline=deadline,
+        )
+    workload = client.get(
+        "/api/v1/learner-state/forecasts?forecast_type=UPCOMING_WORKLOAD", headers=headers,
+    )
+    assert workload.status_code == 200
+    assert workload.json()["items"][0]["value"]["pressure_band"] in {"HIGH", "VERY_HIGH"}
+
+    response = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "forecast_unavailable" not in body["warning_codes"]
+    assert all("forecast_workload_pressure" in item["explanation_codes"] for item in body["items"])
+    plan = container.learning_plan_repository.get_plan(body["plan_id"], user_id=user_id)
+    assert set(plan.run.knowledge_bindings["forecast_types"]) == {
+        "DEADLINE_COMPLETION_RISK", "UPCOMING_WORKLOAD", "SCHEDULE_CONFLICT_RISK",
+        "GOAL_PROGRESS_OUTLOOK", "ROUTINE_CONTINUITY",
+    }
+
+    def unavailable(**kwargs):
+        raise RuntimeError("forecast unavailable")
+
+    monkeypatch.setattr(container.forecast_service, "get_forecast", unavailable)
+    degraded = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers)
+    assert degraded.status_code == 200, degraded.text
+    assert degraded.json()["items"]
+    assert "forecast_unavailable" in degraded.json()["warning_codes"]
+
+
 
 def test_deadline_change_and_reject_cooldown_create_safe_new_or_suppressed_plan() -> None:
     client, container, headers, _ = _setup()

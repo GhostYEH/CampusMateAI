@@ -23,7 +23,7 @@ from .adaptive_agent.strategy_policy import (
 )
 from ..services.llm.base import LLMError
 
-PLANNER_VERSION = "campus-companion-plan-v1"
+PLANNER_VERSION = "campus-companion-plan-v2"
 PLAN_TTL = timedelta(minutes=15)
 REJECTION_COOLDOWN = timedelta(hours=6)
 MAX_TASKS = 200
@@ -131,8 +131,9 @@ class LearningPlannerService:
                 "SCHEDULE_CONFLICT_RISK", "GOAL_PROGRESS_OUTLOOK", "ROUTINE_CONTINUITY",
             ):
                 try:
-                    forecasts.append(self._forecast_service.forecast(
+                    forecasts.append(self._forecast_service.get_forecast(
                         user_id=user_id, as_of=now, forecast_type=forecast_type, horizon_days=7,
+                        goal_id=goal_id, course_id=course_id,
                     ))
                 except Exception:
                     # Forecasts are an enhancement; a plan remains usable if one is unavailable.

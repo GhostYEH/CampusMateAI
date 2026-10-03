@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
@@ -28,7 +28,7 @@ from ..schemas.forecast import (
     UpcomingWorkloadValue,
 )
 
-FORECAST_ESTIMATOR_VERSION = "forecast-baseline-v1"
+FORECAST_ESTIMATOR_VERSION = "forecast-baseline-v2"
 _FORECAST_TTL = timedelta(hours=1)
 _MIN_HORIZON_DAYS = 1
 _MAX_HORIZON_DAYS = 30
@@ -370,6 +370,8 @@ class ForecastService:
             "id": r.id, "status": r.status, "deadline": r.deadline,
             "created_at": r.created_at, "completed_at": getattr(r, "completed_at", None),
             "deleted_at": getattr(r, "deleted_at", None),
+            "course_id": getattr(r, "course_id", None),
+            "importance": getattr(r, "importance", "unknown"),
         }
 
     @staticmethod
@@ -423,6 +425,18 @@ class ForecastService:
         self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
     ) -> ForecastOut:
         ft = request.forecast_type
+        if request.scope_type == "COURSE":
+            # 教务 course_code 尚未映射到 CampusMate course_id；不能把全校课程
+            # 混入指定课程的预测。只使用能明确归属的记录，未知归属降级。
+            academic_rows = [*inputs.schedule_items, *inputs.exam_items]
+            unresolved = any(not row.get("course_id") for row in academic_rows)
+            inputs = replace(
+                inputs,
+                tasks=[row for row in inputs.tasks if row.get("course_id") == request.course_id],
+                schedule_items=[row for row in inputs.schedule_items if row.get("course_id") == request.course_id],
+                exam_items=[row for row in inputs.exam_items if row.get("course_id") == request.course_id],
+                read_failures=inputs.read_failures + (("course_mapping_unavailable",) if unresolved else ()),
+            )
         if ft == "DEADLINE_COMPLETION_RISK":
             return self._deadline_completion_risk(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
         if ft == "UPCOMING_WORKLOAD":

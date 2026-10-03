@@ -4,6 +4,8 @@
 
 先阅读 [接入约定与功能流程](integration.md)，按下表查模块，再通过 [字段字典](schemas.md) 查嵌套对象。接口工具可导入 [OpenAPI JSON](openapi.json)。没有完整响应模型的接口、文件和流式传输以 [实际响应补充](response-contracts.md) 为准。
 
+六层世界模型的后端完成情况、2026-10-03 接口修复、闭环联调顺序与仍待完善的能力见[六层世界模型后端接入](../world-model-backend.md)。状态历史接口增加 `projection_kind` 查询参数，HTTP 操作数量不变。
+
 ## 模块目录
 
 | 模块 | HTTP 操作数 | 文档 |

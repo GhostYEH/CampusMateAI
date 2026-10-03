@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CampusMate AI Web API",
-    "version": "2026-09-30",
-    "description": "2026-09-30 当前 CampusMate 后端注册路由快照。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充动态响应、通用分页元素、社区 extra 与 Agent Handler 输入的 9 个模型定义仅供文档引用。"
+    "version": "2026-10-03",
+    "description": "基础路由快照为 2026-09-30；六层世界模型的状态历史参数于 2026-10-03 与运行时同步。HTTPValidationError 为 FastAPI 默认声明；实际统一错误、动态响应、SSE、文件、WebSocket 与业务必填头详见 docs/api/integration.md 和 response-contracts.md。补充动态响应、通用分页元素、社区 extra 与 Agent Handler 输入的 9 个模型定义仅供文档引用。"
   },
   "paths": {
     "/api/v1/health": {
@@ -8100,6 +8100,17 @@
         ],
         "parameters": [
           {
+            "name": "projection_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(CORE|ACADEMIC|WORLD)$",
+              "default": "CORE",
+              "title": "Projection Kind"
+            }
+          },
+          {
             "name": "page",
             "in": "query",
             "required": false,
@@ -8194,6 +8205,17 @@
                 }
               ],
               "title": "To Run Id"
+            }
+          },
+          {
+            "name": "projection_kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(CORE|ACADEMIC|WORLD)$",
+              "default": "CORE",
+              "title": "Projection Kind"
             }
           },
           {

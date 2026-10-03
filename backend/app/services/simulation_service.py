@@ -27,7 +27,7 @@ from ..schemas.simulation import (
 )
 from .forecast_service import ForecastInputs, ForecastService, FORECAST_ESTIMATOR_VERSION
 
-SIMULATION_ESTIMATOR_VERSION = "simulation-baseline-v1"
+SIMULATION_ESTIMATOR_VERSION = "simulation-baseline-v2"
 _SIMULATION_TTL = timedelta(hours=1)
 _BASELINE_LIMITATIONS: tuple[SimulationLimitationCode, ...] = (
     "baseline_estimator_only",
@@ -134,11 +134,6 @@ class SimulationService:
             horizon_days=horizon_days,
             idempotency_key=idempotency_key,
         )
-        cache_key = self._cache_key(key)
-        cached = self._cache.get(cache_key)
-        if cached is not None and as_of < cached.expires_at:
-            return cached
-
         baseline_run = self._resolve_baseline_run(
             user_id=user_id, baseline_run_id=baseline_run_id, as_of=as_of,
         )
@@ -157,16 +152,30 @@ class SimulationService:
 
         baseline_inputs = self._forecast_service.collect_inputs(user_id=user_id, as_of=as_of)
         baseline_digest = self._baseline_digest(user_id=user_id, inputs=baseline_inputs, baseline_run=baseline_run)
+        cache_key = self._cache_key(key)
+        if plan is not None:
+            cache_key = _digest({
+                "request": cache_key, "status": plan.status,
+                "valid_until": plan.run.valid_until,
+                "items": [(item.item_id, item.estimated_minutes, item.execution_status) for item in plan.items],
+            })
+        cached = self._cache.get(cache_key)
+        if cached is not None and as_of < cached.expires_at and (
+            idempotency_key is not None or cached.baseline_digest == baseline_digest
+        ):
+            return cached
 
         horizon_start = as_of
         horizon_end = as_of + timedelta(days=horizon_days)
         baseline_forecasts = self._collect_baseline_forecasts(
             user_id=user_id, as_of=as_of, horizon_days=horizon_days,
+            goal_id=getattr(intervention, "goal_id", None),
         )
         baseline_snapshots = self._collect_baseline_snapshots(user_id=user_id, as_of=as_of)
 
         intervention_inputs, intervention_limitations = self._apply_intervention(
             inputs=baseline_inputs, intervention=intervention, as_of=as_of, plan=plan,
+            horizon_days=horizon_days,
         )
         intervention_forecasts = self._compute_intervention_forecasts(
             user_id=user_id, inputs=intervention_inputs,
@@ -202,6 +211,11 @@ class SimulationService:
         if not changed_forecasts and not changed_states:
             limitations.append("simulation_no_change")
 
+        expires_at = as_of + _SIMULATION_TTL
+        if plan is not None and plan.status in {"PROPOSED", "ACCEPTED"}:
+            plan_expiry = _parse(plan.run.valid_until)
+            if plan_expiry is not None and plan_expiry > as_of:
+                expires_at = min(expires_at, plan_expiry)
         response = SimulationResponse(
             simulation_id=f"sim_{uuid.uuid4().hex[:16]}",
             baseline_digest=baseline_digest,
@@ -214,7 +228,7 @@ class SimulationService:
             confidence=_confidence(data_quality),
             data_quality=data_quality,
             estimator_version=SIMULATION_ESTIMATOR_VERSION,
-            expires_at=as_of + _SIMULATION_TTL,
+            expires_at=expires_at,
         )
         self._cache[cache_key] = response
         return response
@@ -233,17 +247,13 @@ class SimulationService:
             return None
         if baseline_run_id is not None:
             return self._learner_state_repository.get_run(baseline_run_id, user_id=user_id)
-        if self._learner_state_service is not None:
-            try:
-                self._learner_state_service.project_user(user_id, as_of=as_of, trigger="simulation")
-            except Exception:
-                pass
         return self._learner_state_repository.get_current_run(
             user_id=user_id, projection_kind="CORE", projection_scope="__user__",
         )
 
     def _baseline_digest(self, *, user_id: str, inputs: ForecastInputs, baseline_run) -> str:
         payload = {
+            "truncated": inputs.truncated,
             "read_failures": inputs.read_failures,
             "tasks": inputs.tasks, "sessions": inputs.sessions, "goals": inputs.goals,
             "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
@@ -255,12 +265,14 @@ class SimulationService:
 
     def _collect_baseline_forecasts(
         self, *, user_id: str, as_of: datetime, horizon_days: int,
+        goal_id: str | None = None,
     ) -> dict[str, ForecastOut]:
         result: dict[str, ForecastOut] = {}
         for ft in _ALL_FORECAST_TYPES:
             try:
                 forecast = self._forecast_service.get_forecast(
                     user_id=user_id, as_of=as_of, forecast_type=ft, horizon_days=horizon_days,
+                    goal_id=goal_id if ft == "GOAL_PROGRESS_OUTLOOK" else None,
                 )
                 result[ft] = forecast
             except Exception as exc:
@@ -290,6 +302,7 @@ class SimulationService:
 
     def _apply_intervention(
         self, *, inputs: ForecastInputs, intervention, as_of: datetime, plan=None,
+        horizon_days: int = 7,
     ) -> tuple[ForecastInputs, list[SimulationLimitationCode]]:
         tasks = copy.deepcopy(inputs.tasks)
         sessions = copy.deepcopy(inputs.sessions)
@@ -306,6 +319,8 @@ class SimulationService:
         itype = intervention.intervention_type
         if itype == "ALLOCATE_FOCUS_MINUTES":
             target = intervention.target_date or as_of
+            if as_of <= target <= as_of + timedelta(days=horizon_days):
+                simulated_focus_minutes = intervention.focus_minutes
             sessions.append({
                 "id": f"sim_session_{uuid.uuid4().hex[:8]}",
                 "started_at": (target - timedelta(minutes=intervention.focus_minutes)).isoformat(),
@@ -489,6 +504,12 @@ class SimulationService:
             i_band = _risk_band(i.value) if i else None
             b_value = b.value.model_dump(mode="json") if b else None
             i_value = i.value.model_dump(mode="json") if i else None
+            if b is not None and i is not None and (
+                b.scope_type == i.scope_type and b.scope_id == i.scope_id
+                and b_value == i_value and b_prob == i_prob
+                and b.data_quality == i.data_quality
+            ):
+                continue
             delta = {}
             if b_value and i_value:
                 for key in set(b_value) & set(i_value):
@@ -507,8 +528,6 @@ class SimulationService:
             else:
                 magnitude = 0.0
                 direction = "unknown"
-            if direction == "unchanged" and b_band == i_band and b_prob == i_prob:
-                continue
             summaries.append(ChangedForecastSummary(
                 forecast_type=ft,
                 scope_type=(i.scope_type if i else b.scope_type),

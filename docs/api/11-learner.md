@@ -2,6 +2,8 @@
 
 > 对照日期：2026-09-30。本模块共 36 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
+> 2026-10-03 补充：状态历史支持 `projection_kind`，学业快照修复分页与元信息，计划与模拟修复预测接线、只读性和缓存。六层完成情况、实际局限与联调顺序见[六层世界模型后端接入](../world-model-backend.md)。
+
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
 ## 接口索引
@@ -352,12 +354,15 @@ Web 封装：`archiveStudentGoal`（[webreact/src/data/learnerStateApi.js](../..
 
 实现：[backend/app/api/routes/learner_state.py](../../backend/app/api/routes/learner_state.py)，`list_runs`。
 
+可选 query `projection_kind`：默认 CORE，允许 CORE/ACADEMIC/WORLD；只列出该类型运行，查询时会更新当前投影。现有 Web 封装尚未透传该参数。
+
 Web 封装：`getLearnerStateRuns`（[webreact/src/data/learnerStateApi.js](../../webreact/src/data/learnerStateApi.js)）
 
 参数：
 
 | 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- | --- |
+| query | `projection_kind` | string | 否 | default="CORE"; pattern="^(CORE\|ACADEMIC\|WORLD)$" | 选择运行历史所属投影 |
 | query | `page` | integer | 否 | default=1; minimum=1 | — |
 | query | `page_size` | integer | 否 | default=50; minimum=1; maximum=100 | — |
 
@@ -390,6 +395,8 @@ Web 封装：`getLearnerStateRuns`（[webreact/src/data/learnerStateApi.js](../.
 
 实现：[backend/app/api/routes/learner_state.py](../../backend/app/api/routes/learner_state.py)，`list_changes`。
 
+可选 query `projection_kind`：默认 CORE，允许 CORE/ACADEMIC/WORLD。未传 `to_run_id` 时选择该类型的当前投影；显式传入时以运行的实际类型为准。比较的两个运行必须属于本人且同一投影类型。现有 Web 封装尚未透传新增参数。
+
 Web 封装：`getLearnerStateChanges`（[webreact/src/data/learnerStateApi.js](../../webreact/src/data/learnerStateApi.js)）
 
 参数：
@@ -398,6 +405,7 @@ Web 封装：`getLearnerStateChanges`（[webreact/src/data/learnerStateApi.js](.
 | --- | --- | --- | --- | --- | --- |
 | query | `from_run_id` | string / null | 否 | string约束: minLength=1; maxLength=128 | — |
 | query | `to_run_id` | string / null | 否 | string约束: minLength=1; maxLength=128 | — |
+| query | `projection_kind` | string | 否 | default="CORE"; pattern="^(CORE\|ACADEMIC\|WORLD)$" | 未传 to_run_id 时选择当前投影 |
 | query | `scope_type` | string / null | 否 | string约束: pattern="^(USER\|COURSE\|TASK\|SOURCE\|KNOWLEDGE_COMPONENT\|SEMESTER)$" | — |
 | query | `state_type` | string / null | 否 | string约束: pattern="^(?:observed_learning_activity\|task_workload\|deadline_exposure\|course_participation\|data_source_health\|academic_course_load\|grade_observation\|knowledge_mastery_observation\|credit_progress\|exam_exposure\|schedule_load\|goal_state\|workload_pressure\|schedule_conflict\|academic_progress\|focus_rhythm\|goal_progress\|execution_consistency\|growth_momentum\|preference_profile)$" | — |
 | query | `page` | integer | 否 | default=1; minimum=1 | — |
@@ -522,6 +530,8 @@ Web 封装：`getSnapshotEvidence`（[webreact/src/data/learnerStateApi.js](../.
 
 用途：获取 ACADEMIC 投影快照：教务事实安全投影到学生状态世界模型。
 
+分页使用完整总数，`has_more = page * page_size < total`；条目包含 `estimator_version/input_digest/as_of/warning_codes/evidence_count`，与通用 snapshots 接口一致。
+
 鉴权：Bearer access token；角色 student。
 
 实现：[backend/app/api/routes/learner_state.py](../../backend/app/api/routes/learner_state.py)，`get_academic_state`。
@@ -561,6 +571,8 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 ### `GET /api/v1/learner-state/forecasts`
 
 用途：获取校园生活与目标执行风险预测。
+
+`course_id` 对工作负载/日程冲突预测只纳入明确归属该课程的记录。教务 course_code 尚未映射到本站 course_id，未知归属排除并降级；不据此承诺真实课表冲突已完整实现。详情见[预测边界](../world-model-backend.md#预测)。
 
 鉴权：Bearer access token；角色 student。
 
@@ -606,6 +618,8 @@ Web 封装：`getForecasts`（[webreact/src/data/learnerStateApi.js](../../webre
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
 ### `POST /api/v1/learner-state/simulations`
+
+模拟不写投影、快照、证据或任务。无幂等键时事实变化会刷新结果；显式幂等键用于当前进程内限期重放，接受计划的缓存也受计划状态和有效期约束。历史 baseline_run_id 只校验归属并锚定摘要，事实仍使用当前数据。具体干预语义与局限见[模拟接入](../world-model-backend.md#反事实模拟)。
 
 用途：反事实方案模拟 — 只读地比较校园行动方案的影响。
 

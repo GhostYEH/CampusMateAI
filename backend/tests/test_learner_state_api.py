@@ -1,5 +1,6 @@
 import re
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -92,3 +93,87 @@ def test_state_type_and_value_model_registries_never_drift():
         assert re.fullmatch(STATE_TYPE_PATTERN, state_type), state_type
     assert set(ACADEMIC_STATE_TYPES) <= state_types
     assert "knowledge_mastery_observation" in ACADEMIC_STATE_TYPES
+
+
+def test_academic_endpoint_keeps_total_pagination_and_evidence_metadata():
+    container, client = _client()
+    headers = _login(client, "student_demo")
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    response = client.get(
+        "/api/v1/learner-state/academic?page_size=1", headers=headers,
+    )
+    assert response.status_code == 200
+    first = response.json()
+    assert first["total"] > 1
+    assert first["has_more"] is True
+    snapshots = first["items"][:]
+    for page in range(2, first["total"] + 1):
+        response = client.get(
+            f"/api/v1/learner-state/academic?page_size=1&page={page}",
+            headers=headers,
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total"] == first["total"]
+        assert body["has_more"] is (page < first["total"])
+        snapshots.extend(body["items"])
+    assert len({item["state_type"] for item in snapshots}) == first["total"]
+    for item in snapshots:
+        run = container.learner_state_repository.get_run(item["run_id"], user_id=user_id)
+        assert item["projection_kind"] == "ACADEMIC"
+        assert item["estimator_version"] == run.estimator_version
+        assert item["input_digest"] == run.input_digest
+        assert item["as_of"] is not None
+        assert item["warning_codes"] == run.warnings
+        evidence = client.get(
+            f"/api/v1/learner-state/snapshots/{item['snapshot_id']}/evidence",
+            headers=headers,
+        )
+        assert evidence.status_code == 200
+        assert item["evidence_count"] == evidence.json()["total"]
+    empty = client.get(
+        f"/api/v1/learner-state/academic?page_size=1&page={first['total'] + 1}",
+        headers=headers,
+    ).json()
+    assert empty["items"] == []
+    assert empty["total"] == first["total"]
+    assert empty["has_more"] is False
+
+
+@pytest.mark.parametrize("projection_kind", ["CORE", "ACADEMIC", "WORLD"])
+def test_runs_and_implicit_changes_support_each_projection_family(projection_kind):
+    _, client = _client()
+    headers = _login(client, "student_demo")
+    runs = client.get(
+        "/api/v1/learner-state/runs",
+        params={"projection_kind": projection_kind}, headers=headers,
+    )
+    assert runs.status_code == 200
+    body = runs.json()
+    assert body["items"]
+    assert {item["projection_kind"] for item in body["items"]} == {projection_kind}
+    current_run = next(item for item in body["items"] if item["is_current"])
+    changes = client.get(
+        "/api/v1/learner-state/changes",
+        params={"projection_kind": projection_kind, "include_unchanged": True},
+        headers=headers,
+    )
+    assert changes.status_code == 200
+    assert changes.json()["to_run_id"] == current_run["run_id"]
+    assert changes.json()["total"] == current_run["snapshot_count"]
+    assert client.get(
+        "/api/v1/learner-state/changes",
+        params={"to_run_id": current_run["run_id"]},
+        headers=_login(client, "student_demo_01"),
+    ).status_code == 404
+
+
+@pytest.mark.parametrize("endpoint", ["runs", "changes"])
+def test_history_endpoints_reject_unknown_projection_family(endpoint):
+    _, client = _client()
+    response = client.get(
+        f"/api/v1/learner-state/{endpoint}",
+        params={"projection_kind": "UNKNOWN"},
+        headers=_login(client, "student_demo"),
+    )
+    assert response.status_code == 422

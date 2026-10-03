@@ -276,8 +276,8 @@
 | [webreact/src/data/http/authEndpoints.js:29](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:32](../../webreact/src/data/http/authEndpoints.js) | revokeTrustedDevice | POST | `/auth/trusted-device/revoke` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/client.js:77](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/learnerStateApi.js:52](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:56](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:52](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
+| [webreact/src/data/learnerStateApi.js:56](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
 | [webreact/src/data/learnerStateApi.js:67](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
 | [webreact/src/data/learnerStateApi.js:79](../../webreact/src/data/learnerStateApi.js) | getSnapshotEvidence | GET | `/learner-state/snapshots/{snapshotId}/evidence` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
 | [webreact/src/data/learnerStateApi.js:85](../../webreact/src/data/learnerStateApi.js) | generateLearningPlan | POST | `/learning-plans/generate` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
