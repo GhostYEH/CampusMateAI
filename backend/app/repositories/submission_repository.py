@@ -1036,7 +1036,6 @@ class SubmissionRepository:
         total_expected = sum(int(r["total_students"] or 0) for r in assignment_rows)
         total_graded = sum(int(r["graded"] or 0) for r in assignment_rows)
         total_late = sum(int(r["late"] or 0) for r in assignment_rows)
-        all_scores: list = []
         score_distribution = {"excellent": 0, "good": 0, "pass": 0, "fail": 0, "unscored": 0}
         assignment_summaries = []
         for r in assignment_rows:

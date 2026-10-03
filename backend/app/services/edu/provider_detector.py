@@ -27,7 +27,6 @@ from .discovery_constants import (
     PROVIDER_URP,
     PROVIDER_NEW_URP,
     PROVIDER_SHUWEI,
-    PROVIDER_CUSTOM,
     PROVIDER_UNKNOWN,
 )
 

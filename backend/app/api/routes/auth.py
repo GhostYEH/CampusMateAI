@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from ...core.config import Settings, get_settings
+from ...core.config import Settings
 from ...core.exceptions import (
     AppException,
     InvalidCredentials,

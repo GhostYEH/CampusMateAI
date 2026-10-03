@@ -209,10 +209,6 @@ export async function createStudentGoal(body) {
   return _post("/student-goals", body);
 }
 
-export async function getStudentGoal(goalId) {
-  return _get(`/student-goals/${goalId}`);
-}
-
 export async function updateStudentGoal(goalId, body) {
   return _patch(`/student-goals/${goalId}`, body);
 }

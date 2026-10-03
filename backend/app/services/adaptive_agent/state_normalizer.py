@@ -15,16 +15,6 @@ _QUALITY = {"verified": 1.0, "partial": 0.6, "stale": 0.25, "unavailable": 0.0}
 _PRESSURE = {"LOW": 0.2, "MODERATE": 0.5, "HIGH": 0.8, "VERY_HIGH": 1.0}
 
 
-def _parse(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
-
-
 class AdaptiveStateNormalizer:
     """Load baseline run ids and an as-of post-state, then normalize both."""
 
@@ -75,11 +65,6 @@ class AdaptiveStateNormalizer:
         result["before_run_ids"] = {k: v for k, v in baseline.items() if v}
         result["after_run_ids"] = {k: v for k, v in after.get("run_ids", {}).items() if v}
         return result
-
-    @staticmethod
-    def _fresh(metadata: dict[str, Any], as_of: datetime) -> bool:
-        valid_until = _parse(metadata.get("valid_until"))
-        return valid_until is None or valid_until >= as_of.astimezone(timezone.utc)
 
     def _feedback(self, user_id: str, plan_id: str | None) -> list[dict[str, Any]]:
         db = getattr(getattr(self.state_service, "repository", None), "_db", None)

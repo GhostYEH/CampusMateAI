@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from datetime import datetime, timezone
 
 from ..database.sqlite_db import Database

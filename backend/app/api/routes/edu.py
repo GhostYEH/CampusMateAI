@@ -25,10 +25,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from ...core.exceptions import AppException, Forbidden, Unauthorized
+from ...core.exceptions import AppException, Forbidden
 from ...models.edu import (
-    EDU_PROVIDER_UNKNOWN,
-    EDU_PROVIDER_UNSUPPORTED,
     EduSystemConfigRow,
 )
 from ...models.multi_role import UserRow
@@ -117,6 +115,26 @@ def _config_to_out(row: EduSystemConfigRow) -> EduSystemConfigOut:
         data_source=row.data_source,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _connection_to_out(conn, container: ServiceContainer) -> EduConnectionOut:
+    return EduConnectionOut(
+        id=conn.id,
+        user_id=conn.user_id,
+        edu_system_id=conn.edu_system_id,
+        university_id=conn.university_id,
+        state=conn.state,
+        provider=conn.provider,
+        login_execution_mode=conn.login_execution_mode,
+        portal_url=conn.portal_url,
+        allowed_origins=container.edu_connector.allowed_origins_for_connection(conn.id),
+        external_student_id=conn.external_student_id,
+        external_student_name=conn.external_student_name,
+        error_code=conn.error_code,
+        error_message=conn.error_message,
+        created_at=conn.created_at,
+        updated_at=conn.updated_at,
     )
 
 
@@ -668,23 +686,7 @@ def create_connection(
         provider=detect.provider,
         login_execution_mode=system.login_execution_mode,
     )
-    return EduConnectionOut(
-        id=conn.id,
-        user_id=conn.user_id,
-        edu_system_id=conn.edu_system_id,
-        university_id=conn.university_id,
-        state=conn.state,
-        provider=conn.provider,
-        login_execution_mode=conn.login_execution_mode,
-        portal_url=conn.portal_url,
-        allowed_origins=container.edu_connector.allowed_origins_for_connection(conn.id),
-        external_student_id=conn.external_student_id,
-        external_student_name=conn.external_student_name,
-        error_code=conn.error_code,
-        error_message=conn.error_message,
-        created_at=conn.created_at,
-        updated_at=conn.updated_at,
-    )
+    return _connection_to_out(conn, container)
 
 
 @router.get("/connections/{connection_id}", response_model=EduConnectionOut)
@@ -702,23 +704,7 @@ def get_connection(
         )
     if conn.user_id != user.id:
         raise Forbidden()
-    return EduConnectionOut(
-        id=conn.id,
-        user_id=conn.user_id,
-        edu_system_id=conn.edu_system_id,
-        university_id=conn.university_id,
-        state=conn.state,
-        provider=conn.provider,
-        login_execution_mode=conn.login_execution_mode,
-        portal_url=conn.portal_url,
-        allowed_origins=container.edu_connector.allowed_origins_for_connection(conn.id),
-        external_student_id=conn.external_student_id,
-        external_student_name=conn.external_student_name,
-        error_code=conn.error_code,
-        error_message=conn.error_message,
-        created_at=conn.created_at,
-        updated_at=conn.updated_at,
-    )
+    return _connection_to_out(conn, container)
 
 
 @router.post("/connections/{connection_id}/pre-login", response_model=EduPreLoginResult)
@@ -799,23 +785,7 @@ async def continue_connection(
         verification_session_id=request.verification_session_id,
     )
     updated = container.edu_connector.get_connection(connection_id)
-    return EduConnectionOut(
-        id=updated.id,
-        user_id=updated.user_id,
-        edu_system_id=updated.edu_system_id,
-        university_id=updated.university_id,
-        state=updated.state,
-        provider=updated.provider,
-        login_execution_mode=updated.login_execution_mode,
-        portal_url=updated.portal_url,
-        allowed_origins=container.edu_connector.allowed_origins_for_connection(updated.id),
-        external_student_id=updated.external_student_id,
-        external_student_name=updated.external_student_name,
-        error_code=updated.error_code,
-        error_message=updated.error_message,
-        created_at=updated.created_at,
-        updated_at=updated.updated_at,
-    )
+    return _connection_to_out(updated, container)
 
 
 @router.post("/connections/from-url", response_model=EduConnectionOut)
@@ -841,23 +811,7 @@ async def create_connection_from_url(
         portal_url=request.portal_url,
         university_id=university_id,
     )
-    return EduConnectionOut(
-        id=conn.id,
-        user_id=conn.user_id,
-        edu_system_id=conn.edu_system_id,
-        university_id=conn.university_id,
-        state=conn.state,
-        provider=conn.provider,
-        login_execution_mode=conn.login_execution_mode,
-        portal_url=conn.portal_url,
-        allowed_origins=container.edu_connector.allowed_origins_for_connection(conn.id),
-        external_student_id=conn.external_student_id,
-        external_student_name=conn.external_student_name,
-        error_code=conn.error_code,
-        error_message=conn.error_message,
-        created_at=conn.created_at,
-        updated_at=conn.updated_at,
-    )
+    return _connection_to_out(conn, container)
 
 
 @router.post("/discovery/probe", response_model=EduProbeResult)

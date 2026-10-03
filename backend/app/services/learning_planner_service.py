@@ -610,13 +610,14 @@ class LearningPlannerService:
         if plan.status == "EXPIRED": raise LearningPlanExpired()
         if plan.status == "STALE": raise LearningPlanStale()
         if plan.status in {"REJECTED", "UNDONE", "SUPERSEDED"}: raise InvalidTransition("当前计划状态不能执行")
-        if _parse(plan.run.valid_until) and datetime.now(timezone.utc) >= _parse(plan.run.valid_until):
+        valid_until = _parse(plan.run.valid_until)
+        if valid_until and datetime.now(timezone.utc) >= valid_until:
             self.repository.update_status(plan_id=plan_id, user_id=user_id, status="EXPIRED")
             raise LearningPlanExpired()
         self._check_freshness(plan, user_id=user_id)
         try:
             self.repository.execute_atomic(plan_id=plan_id, user_id=user_id, task_repository=self.task_repository)
-        except (LearningPlanStale, LearningPlanExpired, AppException):
+        except AppException:
             raise
         except Exception as exc:
             raise LearningPlanExecutionFailed() from exc

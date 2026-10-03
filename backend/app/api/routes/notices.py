@@ -1,13 +1,12 @@
 """通知结构化抽取路由。"""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timezone
 import asyncio
 import hashlib
 import json
 import re
-import sqlite3
 
 from fastapi import APIRouter, Depends, Header, Query
 

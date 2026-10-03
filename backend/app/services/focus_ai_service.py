@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ..core.config import Settings
-from .llm.base import LLMClient, LLMError, LLMTimeoutError
+from .llm.base import LLMClient, LLMError
 
 
 FOCUS_AI_SYSTEM_PROMPT = """你是 CampusMate 的 AI 导员，一位温柔、沉稳、可信赖的学习陪伴者。
@@ -26,20 +26,15 @@ class FocusAiService:
     async def ask(self, text: str) -> str:
         if self._llm is None or not self._settings.llm_available or not self._llm.available:
             raise FocusAiUnavailableError()
-        try:
-            response = await self._llm.chat(
-                [
-                    {"role": "system", "content": FOCUS_AI_SYSTEM_PROMPT},
-                    {"role": "user", "content": text},
-                ],
-                temperature=0.3,
-                max_tokens=350,
-                timeout=float(self._settings.llm_timeout_seconds),
-            )
-        except LLMTimeoutError:
-            raise
-        except LLMError:
-            raise
+        response = await self._llm.chat(
+            [
+                {"role": "system", "content": FOCUS_AI_SYSTEM_PROMPT},
+                {"role": "user", "content": text},
+            ],
+            temperature=0.3,
+            max_tokens=350,
+            timeout=float(self._settings.llm_timeout_seconds),
+        )
         answer = response.content.strip()
         if not answer:
             raise LLMError("LLM 未返回有效回答")

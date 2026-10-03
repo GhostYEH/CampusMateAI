@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, TYPE_CHECKING
 
-from ..llm.base import LLMClient, LLMError, LLMResponse
+from ..llm.base import LLMError, LLMResponse
 from .provider_errors import classify_provider_error, is_terminal_failure
 from .provider_registry import ProviderRegistry
 

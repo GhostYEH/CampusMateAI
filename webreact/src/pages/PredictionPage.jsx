@@ -1,4 +1,6 @@
-import { FORECAST_TYPE_LABEL, RISK_BAND_LABEL, PRESSURE_BAND_LABEL, OUTLOOK_BAND_LABEL, CONTINUITY_BAND_LABEL } from "../features/learnerState/forecastLabels.js";
+import { formatTime } from "../components/learningState/shared.jsx";
+import { formatForecastValue } from "../components/learningState/StateOverview.jsx";
+import { FORECAST_TYPE_LABEL } from "../features/learnerState/forecastLabels.js";
 import "../styles/prediction.css";
 /**
  * 趋势与方案比较页面 — 校园陪伴世界模型
@@ -64,40 +66,6 @@ function QualityBadge({ quality }) {
 function pct(v) {
   if (v == null) return "—";
   return `${Math.round(v * 100)}%`;
-}
-
-function formatTime(iso) {
-  if (!iso) return "未知";
-  try {
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60000) return "刚刚";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    return d.toLocaleDateString("zh-CN");
-  } catch { return "未知"; }
-}
-
-function formatForecastValue(f) {
-  const v = f.value;
-  if (!v) return "—";
-  if (f.forecast_type === "DEADLINE_COMPLETION_RISK") {
-    return `待办 ${v.pending_task_count || 0} · 逾期 ${v.overdue_task_count || 0} · 风险 ${RISK_BAND_LABEL[v.risk_band] || v.risk_band || "—"}`;
-  }
-  if (f.forecast_type === "UPCOMING_WORKLOAD") {
-    return `任务 ${v.task_count || 0} · 考试 ${v.exam_count || 0} · 压力 ${PRESSURE_BAND_LABEL[v.pressure_band] || v.pressure_band || "—"}`;
-  }
-  if (f.forecast_type === "SCHEDULE_CONFLICT_RISK") {
-    return `冲突 ${v.conflict_count || 0} · 可用窗口 ${v.available_window_count || 0} · 风险 ${RISK_BAND_LABEL[v.risk_band] || v.risk_band || "—"}`;
-  }
-  if (f.forecast_type === "GOAL_PROGRESS_OUTLOOK") {
-    return `活跃目标 ${v.active_goal_count || 0} · 平均进度 ${Math.round(v.average_progress_percent || 0)}% · 趋势 ${OUTLOOK_BAND_LABEL[v.outlook_band] || v.outlook_band || "—"}`;
-  }
-  if (f.forecast_type === "ROUTINE_CONTINUITY") {
-    return `学习次数 ${v.observed_session_count || 0} · 中位间隔 ${v.median_interval_hours || 0}h · 节律 ${CONTINUITY_BAND_LABEL[v.continuity_band] || v.continuity_band || "—"}`;
-  }
-  return "—";
 }
 
 function ForecastCard({ forecast }) {

@@ -20,10 +20,6 @@ class RealtimeVoiceUnavailableError(Exception):
     pass
 
 
-class RealtimeVoiceProviderError(Exception):
-    pass
-
-
 class RealtimeVoiceSessionNotFoundError(Exception):
     pass
 

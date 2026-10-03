@@ -6,7 +6,7 @@ CitationVerifier 校验引用是否存在、是否支持对应主张。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from ...models.course_research import CourseResearchSourceRow

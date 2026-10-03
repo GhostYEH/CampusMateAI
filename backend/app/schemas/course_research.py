@@ -5,7 +5,7 @@ academic_policy 与 assistance_mode 解耦:受限场景即使请求 FULL_SOLUTIO
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 

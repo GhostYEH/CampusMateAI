@@ -16,7 +16,6 @@ from typing import Optional
 
 from ....models.edu import (
     EDU_PROVIDER_MOCK,
-    EDU_PROVIDER_UNSUPPORTED,
     LOGIN_EXEC_BACKEND_HTTP,
     LOGIN_EXEC_CLIENT_WEBVIEW,
 )

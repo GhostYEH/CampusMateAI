@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .agent_contract_enums import RiskLevel
 
 
 class _StrictModel(BaseModel):

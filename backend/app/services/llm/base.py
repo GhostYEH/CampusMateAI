@@ -10,10 +10,6 @@ from __future__ import annotations
 from typing import List, Optional, Protocol
 
 
-class LLMMessage(dict):
-    """简化消息类型(对齐 OpenAI Chat Messages 格式)。"""
-
-
 class LLMResponse:
     """LLM 一次完整响应(非流式)。"""
 

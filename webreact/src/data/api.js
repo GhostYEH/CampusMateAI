@@ -15,7 +15,7 @@ export async function getDashboard() { return dataOf(await client.get("/dashboar
  */
 export async function getTodayAgenda() { return dataOf(await client.get("/agenda/today")); }
 export async function getCourses(params = {}) { return dataOf(await client.get("/courses", { params: { page_size: 100, ...params } })); }
-export async function getClasses(courseId) { return dataOf(await client.get("/classes", { params: { page_size: 100, ...(courseId ? { course_id: courseId } : {}) } })); }
+async function getClasses(courseId) { return dataOf(await client.get("/classes", { params: { page_size: 100, ...(courseId ? { course_id: courseId } : {}) } })); }
 
 export async function getCourse(courseId) { return dataOf(await client.get(`/courses/${courseId}`)); }
 
@@ -63,7 +63,7 @@ export async function downloadCourseResource(courseId, itemId, filename = "课�
 
 export async function getAssignments(params = {}) { return dataOf(await client.get("/student/assignments", { params: { page_size: 100, ...params } })); }
 export async function getTasks(params = {}) { return dataOf(await client.get("/tasks", { params: { page_size: 100, ...params } })); }
-export async function rankTasks(taskIds = null) { return dataOf(await client.post("/tasks/rank-importance", taskIds ? { task_ids: taskIds } : {})); }
+
 export async function getNotices(params = {}) { return dataOf(await client.get("/notices", { params: { page_size: 200, ...params } })); }
 export async function getTask(id) { return dataOf(await client.get(`/tasks/${id}`)); }
 export async function createTask(payload) { return dataOf(await client.post("/tasks", payload)); }
@@ -77,11 +77,7 @@ export async function getSubmission(id) { try { return dataOf(await client.get(`
 export async function saveSubmission(id, payload) { return dataOf(await client.post(`/assignments/${id}/submissions`, payload)); }
 export async function submitSubmission(id) { return dataOf(await client.post(`/submissions/${id}/submit`)); }
 
-export async function getActivities(params = {}) { return dataOf(await client.get("/activities", { params: { page_size: 100, ...params } })); }
-export async function getActivity(id) { return dataOf(await client.get(`/activities/${id}`)); }
-export async function getActivityRegistration(id) { return dataOf(await client.get(`/activities/${id}/registration`)); }
-export async function registerActivity(id) { return dataOf(await client.post(`/activities/${id}/registration`)); }
-export async function cancelActivityRegistration(id) { return dataOf(await client.delete(`/activities/${id}/registration`)); }
+
 export async function getAnnouncement(id) { return dataOf(await client.get(`/announcements/${id}`)); }
 export async function markAnnouncementRead(id) { return dataOf(await client.post(`/announcements/${id}/read`)); }
 export async function getProfile() { const data = dataOf(await client.get("/auth/me")); return data.user || data; }
@@ -162,7 +158,7 @@ export async function bindEdu(username, password, systemType = "undergrad") { re
 export async function unbindEdu() { return dataOf(await client.delete("/edu/binding")); }
 export async function syncEdu(type, params = {}) { return dataOf(await client.post(`/edu/sync/${type}`, null, { params })); }
 export async function getEduSyncRecords(limit = 20) { return dataOf(await client.get("/edu/sync/records", { params: { limit } })); }
-export async function submitEduUrl(url) { const status = await getAcademicStatus().catch(() => ({})); return dataOf(await client.post("/edu/discovery/submit-url", { university_id: status.university_id || "", candidate_url: url })); }
+
 export async function probeEduPortal(url) { return dataOf(await client.post("/edu/discovery/probe", { portal_url: url })); }
 export async function createEduConnection(url, universityId = null) { return dataOf(await client.post("/edu/connections/from-url", { portal_url: url, ...(universityId ? { university_id: universityId } : {}) })); }
 export async function getEduConnection(id) { return dataOf(await client.get(`/edu/connections/${id}`)); }
@@ -362,13 +358,6 @@ export async function replaceMagicClassStage(courseId, workspaceId, stageId, { r
   );
 }
 
-export async function deleteMagicClassStage(courseId, workspaceId, stageId, { revision }) {
-  return dataOf(
-    await client.delete(`/courses/${courseId}/workspaces/${workspaceId}/stages/${stageId}`, {
-      headers: revisionHeaders(revision),
-    }),
-  );
-}
 
 export async function generateMagicClassStage(courseId, workspaceId, { mode, prompt, roleMode = "preset", selectedRoleIds = [], idempotencyKey }) {
   return dataOf(await client.post(
@@ -492,9 +481,6 @@ export async function createMagicClassFolder(courseId, { name, parentId = null, 
   );
 }
 
-export async function getMagicClassFolder(courseId, folderId) {
-  return dataOf(await client.get(`/courses/${courseId}/folders/${folderId}`));
-}
 
 /** `parentId` 为 `null` 表示移动到根层；`undefined` 表示不改层级。 */
 export async function updateMagicClassFolder(courseId, folderId, { revision, name, parentId }) {

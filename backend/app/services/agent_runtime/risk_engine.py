@@ -7,7 +7,6 @@ MANUAL_ONLY: 认证、验证码、支付、正式注册、作业提交、外部�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from ...schemas.agent_contract_enums import RiskLevel
 

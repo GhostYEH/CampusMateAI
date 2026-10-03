@@ -98,7 +98,6 @@ from ..services.final_review_service import FinalReviewService
 from ..services.course_research import CourseResearchPipeline
 from ..services.course_research.citation_verifier import CitationVerifier
 from ..services.course_research.source_fetcher import ControlledSourceFetcher
-from ..services.magicclass.client import MagicClassClient
 from ..services.magicclass.classroom_service import MagicClassClassroomService
 from ..services.magicclass.result_store import MagicClassResultStore
 from ..services.magicclass.quiz_attempt_store import QuizAttemptStore

@@ -24,7 +24,6 @@ from .client import (
     normalize_step,
 )
 from .compatibility import (
-    COMPATIBLE,
     INCOMPATIBLE,
     UNKNOWN,
     VERSION_SOURCE_UNKNOWN,
@@ -52,7 +51,7 @@ from .requirement_builder import (
     mode_label,
     normalize_mode,
 )
-from .public_url import project_session_url, resolve_public_classroom_url
+from .public_url import project_session_url
 from .redaction import redact_public_text
 from .result_store import (
     MagicClassReservation,

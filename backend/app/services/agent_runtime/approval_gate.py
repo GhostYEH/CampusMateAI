@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from ...core.exceptions import AgentApprovalRequired, AgentRuntimeError
+from ...core.exceptions import AgentRuntimeError
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from ...schemas.agent_contract_enums import ApprovalStatus, RiskLevel
 
@@ -130,10 +130,5 @@ class ApprovalGate:
                 http_status=409,
             )
         return {"approval_id": approval_id, "status": target, "replayed": False}
-
-    def expire_all(self) -> int:
-        """过期所有超时审批。返回过期条数。"""
-        return self._repo.expire_approvals()
-
 
 __all__ = ["ApprovalGate"]

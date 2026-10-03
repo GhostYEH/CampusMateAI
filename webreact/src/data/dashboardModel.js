@@ -1,9 +1,3 @@
-function timestamp(value) {
-  if (!value) return Number.POSITIVE_INFINITY;
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed;
-}
-
 function examTimestamp(exam) {
   if (!exam?.exam_date) return Number.NaN;
   return new Date(`${exam.exam_date}T${exam.end_time || exam.start_time || "23:59"}`).getTime();
@@ -14,29 +8,6 @@ export function todayScheduleItems(items, now = new Date()) {
   return (items || [])
     .filter((item) => !item?.is_stale && Number(item?.weekday) === weekday)
     .sort((left, right) => Number(left.start_section || 0) - Number(right.start_section || 0));
-}
-
-export function buildDueItems(dashboard) {
-  return [
-    ...(dashboard?.due_soon_assignments || []).map((item) => ({
-      ...item,
-      kind: "作业",
-      due: item.deadline,
-      icon: "PhFileText",
-      tone: "red",
-      sourceType: "assignment",
-      route: `/tasks/assignment/${item.id}`,
-    })),
-    ...(dashboard?.due_soon_personal_tasks || []).map((item) => ({
-      ...item,
-      kind: "待办",
-      due: item.deadline,
-      icon: "PhCheckSquare",
-      tone: "amber",
-      sourceType: "personal-task",
-      route: `/tasks/personal/${item.id}`,
-    })),
-  ].sort((left, right) => timestamp(left.due) - timestamp(right.due)).slice(0, 6);
 }
 
 export function selectUpcomingExam(exams, now = new Date()) {

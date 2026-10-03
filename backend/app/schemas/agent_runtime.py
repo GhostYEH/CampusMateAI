@@ -11,17 +11,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .agent_contract_enums import (
     AGENT_CONTRACT_VERSION,
-    AcademicPolicy,
     AgentErrorCode,
     AgentEventType,
     ApprovalStatus,
     ArtifactType,
-    AssistanceMode,
     ModelRoutePolicy,
     RiskLevel,
     RunPhase,
     RunStatus,
-    SourcePolicy,
 )
 
 

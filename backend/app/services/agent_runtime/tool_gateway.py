@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ValidationError
 

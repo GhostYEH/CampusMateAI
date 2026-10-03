@@ -167,7 +167,7 @@ class ModelCapabilityRegistry:
 
     def fallback(self, request: ModelCapabilityRequest, payload: dict[str, Any], failure_code: str | None) -> dict[str, Any]:
         if request.capability_name == "learning_summary_v1":
-            claims = [code for code in payload["explanation_codes"] if code in {"PRIORITIZE_NEAR_DEADLINE", "USE_SHORT_SESSION", "DATA_QUALITY_PARTIAL"}]
+            claims = [code for code in payload["explanation_codes"] if code in SUMMARY_CLAIMS]
             summary = "建议按已提供的优先级安排短时学习。" if claims else "当前证据不足，建议先补充一次受控学习记录。"
             return {"summary": summary, "claim_codes": claims[:3]}
         return {"tool_name": None, "arguments": {}, "confidence": 0.0, "abstained": True}

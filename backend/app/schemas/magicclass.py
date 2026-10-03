@@ -1,13 +1,12 @@
 """互动课堂(magic class 适配层)API schema。"""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 from ..services.magicclass.requirement_builder import (
     CANONICAL_MODES,
-    LEGACY_MODE_ALIASES,
     normalize_mode,
 )
 

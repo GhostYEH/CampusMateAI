@@ -14,7 +14,7 @@ import json
 import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable
+from typing import Any
 
 from ..core.logging import logger
 from ..schemas.forecast import (

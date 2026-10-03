@@ -1,3 +1,4 @@
+import { formatTime } from "../../utils/date.js";
 import { itemsOf } from "../../data/contracts.js";
 import {
   noticeWorkflowStatusLabel,
@@ -148,15 +149,4 @@ function ActionControls({ action, onDecideAction, onExecuteAction, onOpenManual,
       )}
     </div>
   );
-}
-
-function formatTime(value) {
-  if (!value) return "—";
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return String(value);
-  }
 }

@@ -11,7 +11,7 @@ Plan versions 不可变:应用 adjustment 创建新版本而非覆盖旧版本�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

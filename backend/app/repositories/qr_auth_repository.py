@@ -9,20 +9,11 @@
 """
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
+from ._multi_role_common import _now_iso, _new_id
 from ..database.sqlite_db import Database
 from ..models.qr_auth import QrLoginSessionRow, TrustedDeviceRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:16]}"
 
 
 class QrLoginSessionRepository:

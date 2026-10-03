@@ -2,19 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.university import UniversityRow
 
 
 DEMO_UNIVERSITY_ID = "uni_demo_university"
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _stable_id(name: str) -> str:

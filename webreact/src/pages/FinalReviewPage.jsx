@@ -241,7 +241,7 @@ export default function FinalReviewPage() {
         <div className="agent-workspace final-review-workspace">
           <Panel className="workspace-main">
             <SectionHeading title="活动与计划" detail="计划版本不可变，调整由后端裁决并生成新版本。" />
-            <AsyncState loading={examsLoading} empty={examsLoading ? null : null}>
+            <AsyncState loading={examsLoading} empty={null}>
               {!campaign ? (
                 <FinalReviewCampaignForm
                   exams={exams}

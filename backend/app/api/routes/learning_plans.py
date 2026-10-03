@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
 
-from ...core.exceptions import InvalidTransition, ValidationFailed
+from ...core.exceptions import ValidationFailed
 from ...core.logging import logger
 from ...models.learning_plan import LearningPlanRow
 from ...models.multi_role import UserRow

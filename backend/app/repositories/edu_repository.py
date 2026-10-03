@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from typing import Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.edu import (
     BINDING_ACTIVE,
-    BINDING_UNBOUND,
     CONN_AUTH_REQUIRED,
     CONN_IDLE,
     CONN_WAITING_USER_LOGIN,
@@ -29,10 +28,6 @@ from ..models.edu import (
     SYSTEM_KEY_UNDERGRADUATE_MAIN,
     URL_NOT_DISCOVERED,
 )
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _uuid_like(seed: str) -> str:

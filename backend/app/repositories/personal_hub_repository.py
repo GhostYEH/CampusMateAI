@@ -8,15 +8,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import List, Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.personal_hub import FavoriteRow, PersonalFileRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _new_file_id() -> str:

@@ -25,7 +25,7 @@ from ..schemas.simulation import (
     SimulationResponse,
     UnchangedStateSummary,
 )
-from .forecast_service import ForecastInputs, ForecastService, FORECAST_ESTIMATOR_VERSION
+from .forecast_service import ForecastInputs, ForecastService
 
 SIMULATION_ESTIMATOR_VERSION = "simulation-baseline-v2"
 _SIMULATION_TTL = timedelta(hours=1)

@@ -21,7 +21,6 @@ from ...core.exceptions import AppException, Forbidden
 from ...models.edu import (
     BINDING_ACTIVE,
     BINDING_ERROR,
-    BINDING_UNBOUND,
     CONN_AUTHENTICATED,
     CONN_AUTH_FAILED,
     CONN_AUTH_REQUIRED,
@@ -29,14 +28,12 @@ from ...models.edu import (
     CONN_CONNECTING,
     CONN_ERROR,
     CONN_IDLE,
-    CONN_SESSION_EXPIRED,
     CONN_UNSUPPORTED,
     CONN_WAITING_USER_LOGIN,
     EDU_PROVIDER_MOCK,
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_UNSUPPORTED,
     EDU_PROVIDER_ZHENGFANG,
-    EDU_SYSTEM_UNKNOWN,
     KNOWN_PROVIDERS,
     LOGIN_EXEC_BACKEND_HTTP,
     LOGIN_EXEC_CLIENT_WEBVIEW,
@@ -48,10 +45,6 @@ from ...repositories.edu_data_repository import EduDataRepository, SyncStats
 from ...repositories.edu_repository import EduRepository
 from ...schemas.edu import (
     EduBindingOut,
-    EduExam,
-    EduGrade,
-    EduProfile,
-    EduSchedule,
     EduSyncResult,
 )
 
@@ -65,7 +58,7 @@ from .adapters.zhengfang_strategy import school_allowed_origins, school_config_f
 from .detector import DetectResult, SystemDetector
 from .provider_detector import ProviderDetector
 from .registry import SchoolRegistry
-from .session import EduSessionStore, InMemorySessionStore, PreLoginSessionStore, SessionManager
+from .session import EduSessionStore, PreLoginSessionStore, SessionManager
 
 
 _ADAPTERS: dict[str, EduAdapter] = {
@@ -268,7 +261,7 @@ class EduConnectorService:
         返回 (connection, system, probe_result)
         """
         probe = await self.probe_portal(portal_url)
-        provider = probe["provider"] if probe["provider"] != "unknown" else EDU_PROVIDER_UNKNOWN
+        provider = probe["provider"]
         login_mode = probe["suggested_login_mode"]
 
         edu_system = next(

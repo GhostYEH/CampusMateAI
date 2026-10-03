@@ -1,3 +1,4 @@
+import { formatTime } from "../../utils/date.js";
 import {
   approvalStatusLabel,
   riskLevelLabel,
@@ -106,15 +107,4 @@ export default function ApprovalPanel({
       )}
     </section>
   );
-}
-
-function formatTime(value) {
-  if (!value) return "—";
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return String(value);
-  }
 }

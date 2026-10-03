@@ -125,7 +125,7 @@ function StateTimeline({ changes }) {
   );
 }
 
-function ForecastSection({ forecasts, onViewEvidence }) {
+function ForecastSection({ forecasts }) {
   const items = forecasts?.items || [];
 
   const grouped = useMemo(() => {
@@ -192,4 +192,4 @@ function formatForecastValue(f) {
   return "—";
 }
 
-export { StateOverview, WorldSnapshotSection, StateTimeline, ForecastSection };
+export { StateOverview, WorldSnapshotSection, StateTimeline, ForecastSection, formatForecastValue };

@@ -6,16 +6,10 @@
  * 未知事件类型只记录、不解释、不崩溃。
  */
 
-const TERMINAL = new Set(["SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"]);
-
 function formatMs(value) {
   if (value === null || value === undefined) return "—";
   if (value < 1000) return `${Math.round(value)} ms`;
   return `${(value / 1000).toFixed(2)} s`;
-}
-
-export function isTerminalRunStatus(status) {
-  return TERMINAL.has(status);
 }
 
 export default function RunTrace({ trace, loading, error, onClose }) {

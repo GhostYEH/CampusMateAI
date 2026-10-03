@@ -64,10 +64,6 @@ export function isTrustedChaoxingUrl(raw) {
   }
 }
 
-export function agendaItemIsDone(item = {}) {
-  return TERMINAL_AGENDA_STATUSES.has(String(item?.status || ""));
-}
-
 /**
  * 把一个后端 agenda item 映射成前端展示用的稳定结构。
  * 未知字段一律回落成安全默认值，避免后端加字段就把页面搞崩。
@@ -159,10 +155,6 @@ export function normalizeTodayAgenda(payload) {
 
 export function agendaPendingItems(agenda) {
   return (agenda?.items || []).filter((item) => !item.done);
-}
-
-export function agendaCompletedItems(agenda) {
-  return (agenda?.items || []).filter((item) => item.done);
 }
 
 /**

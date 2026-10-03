@@ -10,33 +10,16 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..core.config import Settings, get_settings
 from ..core.exceptions import Forbidden, Unauthorized
-from ..core.security import JWTError, decode_jwt, hash_token
+from ..core.security import JWTError, decode_jwt
 from ..models.multi_role import UserRow
-from ..repositories.class_group_repository import ClassGroupRepository
-from ..repositories.course_repository import CourseRepository
-from ..repositories.enrollment_repository import EnrollmentRepository
-from ..repositories.refresh_token_repository import RefreshTokenRepository
-from ..repositories.user_repository import UserRepository
 from ..services.container import ServiceContainer, get_container
 
 _bearer = HTTPBearer(auto_error=False)
-
-
-def _container() -> ServiceContainer:
-    return get_container()
-
-
-def _user_repo(c: ServiceContainer = Depends(_container)) -> UserRepository:
-    return c.user_repository
-
-
-def _refresh_repo(c: ServiceContainer = Depends(_container)) -> RefreshTokenRepository:
-    return c.refresh_token_repository
 
 
 def get_settings_dep() -> Settings:
@@ -133,28 +116,9 @@ def student_only(user: UserRow = Depends(current_user)) -> UserRow:
     return user
 
 
-# ===== 业务权限辅助 =====
-
-
-def assert_student_in_class(class_id: str, user: UserRow) -> None:
-    if user.role == "admin":
-        return
-    if user.role != "student":
-        raise Forbidden("仅学生可访问此班级内容")
-    container = get_container()
-    cls = container.class_group_repository.get_class(class_id)
-    if cls is None:
-        from ..core.exceptions import ClassGroupNotFound
-        raise ClassGroupNotFound()
-    enr = container.enrollment_repository.get_enrollment(class_id, user.id)
-    if enr is None or enr.status != "active":
-        raise Forbidden("你未加入此班级")
-
-
 __all__ = [
     "current_user",
     "current_user_optional",
     "require_role",
     "student_only",
-    "assert_student_in_class",
 ]

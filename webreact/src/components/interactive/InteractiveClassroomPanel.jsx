@@ -74,7 +74,6 @@ function PlanCard({
   plan,
   planLoading,
   brief,
-  onBriefChange,
   onToggleMaterial,
   onGenerate,
   polling,
@@ -409,7 +408,6 @@ export function InteractiveClassroomView({
             plan={plan}
             planLoading={planLoading}
             brief={brief}
-            onBriefChange={onBriefChange}
             onToggleMaterial={onToggleMaterial}
             onGenerate={onGenerate}
             polling={polling}

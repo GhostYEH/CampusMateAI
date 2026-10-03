@@ -19,15 +19,11 @@ from __future__ import annotations
 import json
 import hashlib
 import uuid
-from datetime import datetime, timezone
 from typing import Any, List, Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.personal_task import PersonalTaskRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _new_id() -> str:

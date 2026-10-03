@@ -20,7 +20,7 @@ from ...services.chaoxing.sync_facts import last_chaoxing_sync_at
 from ..deps import require_role
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
-from ...schemas.notice import DuplicateNoticeCheckRequest, NoticeExtractResponse, RecentNoticeItem
+from ...schemas.notice import DuplicateNoticeCheckRequest, RecentNoticeItem
 from ...services.container import ServiceContainer, get_container
 
 router = APIRouter()

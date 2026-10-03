@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from ...core.logging import logger
-from ...models.adaptive_intervention import AdaptiveInterventionRow
+from ...models.adaptive_intervention import AdaptiveInterventionRow, InterventionEvaluationRow
 from ...repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
 from ...schemas.adaptive_intervention import (
     InterventionEvaluation,

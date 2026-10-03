@@ -14,7 +14,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, Protocol
+from typing import Optional, Protocol
 
 from ..llm.model_router import ModelRouter
 

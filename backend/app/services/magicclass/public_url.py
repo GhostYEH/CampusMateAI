@@ -90,16 +90,6 @@ def project_session_url(settings: Any, session: Any) -> tuple[Optional[str], Opt
     return url, (None if url else public_url_unavailable_reason(session))
 
 
-def is_internal_url_leaked(url: Optional[str], settings: Any) -> bool:
-    """诊断辅助：url 是否指向内部服务 Origin。"""
-    if not url:
-        return False
-    internal = getattr(settings, "magicclass_origin", "") or ""
-    if not internal:
-        return False
-    return str(url).startswith(internal)
-
-
 __all__ = [
     "CLASSROOM_ID_RE",
     "is_valid_classroom_id",
@@ -108,5 +98,4 @@ __all__ = [
     "public_classroom_url_for_session",
     "public_url_unavailable_reason",
     "project_session_url",
-    "is_internal_url_leaked",
 ]

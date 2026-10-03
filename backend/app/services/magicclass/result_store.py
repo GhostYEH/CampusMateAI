@@ -330,12 +330,6 @@ class MagicClassResultStore:
                 sessions.append(MagicClassSession.from_dict(data))
         return sessions
 
-    def active_session(self, *, user_id: str, course_id: str) -> Optional[MagicClassSession]:
-        for session in self.list_sessions(user_id=user_id, course_id=course_id):
-            if not session.is_terminal:
-                return session
-        return None
-
     def _prune(self, user_id: str, course_id: str) -> None:
         """把每用户每课程的历史记录裁剪到 max_results，只删最早的终态记录。"""
         sessions = self.list_sessions(user_id=user_id, course_id=course_id)

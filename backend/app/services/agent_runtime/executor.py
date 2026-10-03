@@ -9,7 +9,7 @@ from typing import Optional
 
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from .agent_registry import AgentRegistry
-from .cancellation import ensure_run_active, is_run_cancelled
+from .cancellation import is_run_cancelled
 from .event_store import AgentEventStore
 from .tool_registry import ToolRegistry
 
@@ -53,54 +53,8 @@ class AgentExecutor:
             run_id=run_id, role=role, phase=phase, sequence=sequence, summary=summary
         )
 
-    def emit_event(
-        self,
-        *,
-        run_id: str,
-        type: str,
-        status: str,
-        phase: str,
-        role: Optional[str] = None,
-        summary: Optional[str] = None,
-        progress: Optional[dict] = None,
-        artifact_id: Optional[str] = None,
-        approval_id: Optional[str] = None,
-    ) -> tuple[str, int]:
-        """发射事件。"""
-        return self._events.append(
-            run_id=run_id,
-            type=type,
-            status=status,
-            phase=phase,
-            role=role,
-            summary=summary,
-            progress=progress,
-            artifact_id=artifact_id,
-            approval_id=approval_id,
-        )
-
-    def validate_tool_for_role(
-        self,
-        *,
-        role: str,
-        tool_code: str,
-        args: dict,
-    ):
-        """校验角色是否有权调用工具。"""
-        role_spec = self._registry.get(role)
-        if not role_spec:
-            raise ValueError(f"未知角色: {role}")
-        return self._tools.validate(
-            tool_code=tool_code, role_tools=role_spec.tools, args=args
-        )
-
     def is_cancelled(self, run_id: str) -> bool:
         """在逻辑角色边界检查持久化取消状态。"""
         return is_run_cancelled(self._repo, run_id)
-
-    def assert_not_cancelled(self, run_id: str) -> dict:
-        """取消检查点:已取消或终态时抛异常,用于模型/工具执行前。"""
-        return ensure_run_active(self._repo, run_id)
-
 
 __all__ = ["AgentExecutor"]

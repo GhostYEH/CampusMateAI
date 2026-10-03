@@ -82,18 +82,11 @@ def cached_auth_state(user_id: str) -> str:
     return cached[1]
 
 
-def cached_auth_checked_at(user_id: str) -> float | None:
-    """最近一次登录态观测的时间（monotonic），供调用方判断新鲜度。"""
-    cached = auth_state_cache.get(user_id)
-    return cached[0] if cached else None
-
-
 __all__ = [
     "AUTH_STATE_TTL",
     "STATUS_CACHE_MAX_SIZE",
     "STATUS_CACHE_TTL",
     "auth_state_cache",
-    "cached_auth_checked_at",
     "cached_auth_state",
     "forget",
     "get_cached",

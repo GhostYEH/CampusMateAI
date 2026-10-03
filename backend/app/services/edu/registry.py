@@ -10,11 +10,8 @@ from typing import Optional
 from ...models.edu import (
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_UNSUPPORTED,
-    EDU_SYSTEM_UNKNOWN,
     EduSystemConfigRow,
     EduSystemRow,
-    SYSTEM_KEY_UNDERGRADUATE_MAIN,
-    URL_NOT_DISCOVERED,
 )
 from ...models.university import UniversityRow
 from ...repositories.edu_repository import EduRepository

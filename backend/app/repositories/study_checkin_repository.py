@@ -3,12 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.study_checkin import StudyCheckinRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 class StudyCheckinRepository:

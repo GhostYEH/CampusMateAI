@@ -26,11 +26,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, Response
-from fastapi.responses import JSONResponse
 
-from ...core.config import Settings, get_settings
+from ...core.config import Settings
 from ...core.exceptions import (
-    Forbidden,
     QrAlreadyConfirmed,
     QrAlreadyConsumed,
     QrAlreadyScanned,
@@ -45,7 +43,6 @@ from ...core.exceptions import (
     TrustedDeviceInvalid,
     TrustedDeviceRevoked,
     Unauthorized,
-    UserNotFound,
 )
 from ...core.qr_payload import build_qr_payload
 from ...core.security import hash_token

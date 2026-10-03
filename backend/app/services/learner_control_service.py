@@ -5,14 +5,12 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 import json
 from typing import Any, Optional
 
 from ..core.exceptions import (
-    LearnerCorrectionNotFound,
     LearnerCorrectionSnapshotMismatch,
-    LearnerModelDataNotFound,
     LearnerSourceNotSupported,
     NotFoundError,
 )

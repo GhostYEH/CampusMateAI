@@ -10,7 +10,7 @@ from typing import AsyncIterator, List, Optional
 
 import httpx
 
-from .base import LLMClient, LLMConfigError, LLMResponse, LLMTimeoutError, LLMError
+from .base import LLMConfigError, LLMResponse, LLMTimeoutError, LLMError
 
 
 class OpenAICompatibleClient:

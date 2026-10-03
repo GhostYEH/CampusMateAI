@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createAgentSseStream } from "../data/agentSseStream.js";
 import { agentRunStreamUrl } from "../data/agentRuntimeApi.js";
 import { BASE_URL, refreshAccessToken } from "../data/api.js";
-import { mergeEvents, lastEventSequence, SSE_RECONNECT_MAX_MS } from "../data/agentContracts.js";
+import { mergeEvents, lastEventSequence } from "../data/agentContracts.js";
 
 const STATUS_LABEL = {
   idle: "等待开始",
@@ -95,5 +95,3 @@ export function useAgentSse({ runId, onEvent, enabled = true, maxReconnects = 6 
     isLive: status === "open" || status === "connecting" || status === "reconnecting",
   };
 }
-
-export { STATUS_LABEL as AGENT_SSE_STATUS_LABEL, SSE_RECONNECT_MAX_MS };

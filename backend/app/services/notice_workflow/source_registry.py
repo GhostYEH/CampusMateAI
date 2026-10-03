@@ -8,9 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ...models.notice_workflow import NotificationSourceRow
 from ...repositories.notice_workflow_repository import NoticeWorkflowRepository
-from ...schemas.notice_workflow import SOURCE_CODES, SOURCE_KINDS
 
 
 @dataclass(frozen=True)
@@ -33,21 +31,11 @@ _REGISTRY: tuple[SourceDescriptor, ...] = (
 )
 
 
-def default_descriptors() -> tuple[SourceDescriptor, ...]:
-    """返回冻结的来源描述符元组。"""
-    return _REGISTRY
-
-
 def descriptor_for_code(code: str) -> Optional[SourceDescriptor]:
     for d in _REGISTRY:
         if d.code == code:
             return d
     return None
-
-
-def code_for_source_id(source_id: str, repo: NoticeWorkflowRepository) -> Optional[str]:
-    row = repo.get_source(source_id)
-    return row.code if row else None
 
 
 def ensure_sources_seeded(repo: NoticeWorkflowRepository) -> None:
@@ -65,29 +53,8 @@ def ensure_sources_seeded(repo: NoticeWorkflowRepository) -> None:
         )
 
 
-def resolve_source_by_code(code: str) -> SourceDescriptor:
-    """根据 code 解析来源描述符。未知 code 抛 ValueError。"""
-    d = descriptor_for_code(code)
-    if d is None:
-        raise ValueError(f"未知通知来源代码: {code}")
-    return d
-
-
-def is_valid_source_code(code: str) -> bool:
-    return code in SOURCE_CODES
-
-
-def is_valid_source_kind(kind: str) -> bool:
-    return kind in SOURCE_KINDS
-
-
 __all__ = [
     "SourceDescriptor",
-    "code_for_source_id",
-    "default_descriptors",
     "descriptor_for_code",
     "ensure_sources_seeded",
-    "is_valid_source_code",
-    "is_valid_source_kind",
-    "resolve_source_by_code",
 ]

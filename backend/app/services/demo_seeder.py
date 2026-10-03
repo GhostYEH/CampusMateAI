@@ -10,15 +10,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..core.config import Settings
 from ..core.security import hash_password
 from ..models.multi_role import UserRow
-from ..repositories.announcement_repository import AnnouncementRepository
-from ..repositories.assignment_repository import AssignmentRepository
-from ..repositories.class_group_repository import ClassGroupRepository
-from ..repositories.course_repository import CourseRepository
-from ..repositories.enrollment_repository import EnrollmentRepository
-from ..repositories.submission_repository import SubmissionRepository
 from ..repositories.user_repository import UserRepository
 from ..services.container import ServiceContainer
 

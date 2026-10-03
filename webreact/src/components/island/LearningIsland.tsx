@@ -437,7 +437,7 @@ function TinyRock({ variant }: { variant: number }) {
   );
 }
 
-function TinyHouse({ variant }: { variant: number }) {
+function TinyHouse() {
   const palette = usePalette();
   const woodColor = palette.treeTrunk;
   const roofColor = palette.villageRoof;
@@ -548,7 +548,7 @@ function TileDecoration({ tile, index, reducedMotion }: { tile: Tile; index: num
   if (kind === "water") return <TinyPond variant={index} />;
   if (kind === "river") return <RiverSurface />;
   if (kind === "waterfall") return <Waterfall />;
-  if (kind === "village") return <TinyHouse variant={index} />;
+  if (kind === "village") return <TinyHouse />;
   if (kind === "moss") {
     if ((tile.x * 7 + tile.z * 11 + 30) % 3 !== 0) return <TinyFern variant={index} />;
     return null;

@@ -21,9 +21,7 @@ from ...models.edu import (
     EDU_PROVIDER_UNKNOWN,
     EDU_PROVIDER_UNSUPPORTED,
     EDU_SYSTEM_UNKNOWN,
-    KNOWN_PROVIDERS,
 )
-from ...models.university import UniversityRow
 from .registry import SchoolRegistry
 
 

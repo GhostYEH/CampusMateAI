@@ -13,7 +13,7 @@ function checkedColor(checked, level) {
   };
 }
 
-export function Heatmap({ data, year, compact = false }) {
+export function Heatmap({ data, compact = false }) {
   const weeks = useMemo(() => {
     const result = [];
     let currentWeek = [];

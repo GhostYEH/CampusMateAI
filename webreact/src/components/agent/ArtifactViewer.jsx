@@ -1,3 +1,4 @@
+import { formatTime } from "../../utils/date.js";
 import { artifactTypeLabel } from "../../data/agentContracts.js";
 
 /**
@@ -84,15 +85,4 @@ function formatSize(bytes) {
 function shortHash(hash) {
   if (!hash || typeof hash !== "string") return "—";
   return hash.length > 16 ? `${hash.slice(0, 12)}…` : hash;
-}
-
-function formatTime(value) {
-  if (!value) return "—";
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
-  } catch {
-    return String(value);
-  }
 }

@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.student_goal import StudentGoalProgressRow, StudentGoalRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _id(prefix: str) -> str:

@@ -8,10 +8,9 @@ from typing import Optional
 from ..core.exceptions import (
     DocumentAlreadyExists,
     FileTooLarge,
-    FileNameUnsafe,
     FileTypeNotAllowed,
 )
-from ..core.security import is_path_traversal, sanitize_filename
+from ..core.security import sanitize_filename
 from ..core.config import Settings
 from ..repositories.document_repository import DocumentRepository, compute_content_hash
 from ..utils.file_parsers import parse_file

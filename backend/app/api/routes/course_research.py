@@ -32,15 +32,11 @@ from ...schemas.course_research import (
     ResearchSourceOut,
     SourcePolicyOut,
 )
-from ...services.agent_runtime.artifact_manager import ArtifactManager
-from ...services.agent_runtime.event_store import AgentEventStore
-from ...services.agent_runtime.executor import AgentExecutor
 from ...services.agent_runtime.run_manager import RunManager
 from ...services.course_research.citation_verifier import CitationVerifier
 from ...services.course_research.pipeline import CourseResearchPipeline
 from ...services.course_research.policy import SourcePolicy, build_effective_policy
 from ...services.course_research.source_fetcher import ControlledSourceFetcher
-from ...services.llm.model_router import ModelRouter
 from ..deps import ServiceContainer, current_user, get_container, student_only
 
 router = APIRouter(prefix="/course-research", tags=["course-research"])

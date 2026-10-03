@@ -78,7 +78,7 @@ export default function LearningStatePage() {
           />
           <WorldSnapshotSection snapshots={worldSnapshots.data} onViewEvidence={setEvidenceSnapshot} />
           <StateTimeline changes={changes.data} />
-          <ForecastSection forecasts={forecasts.data} onViewEvidence={setEvidenceSnapshot} />
+          <ForecastSection forecasts={forecasts.data} />
         </div>
         <div className="ls-layout__side">
           <GoalExecutionCenter goals={goals.data} plans={plans.data} jobs={runtimeJobs.data} summary={planSummary.data} activeRun={activeRunState.run} onGenerate={handleGoalGenerate} onControl={handleGoalRunControl} busy={busy} />

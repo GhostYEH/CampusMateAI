@@ -10,7 +10,6 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
-from ...schemas.agent_contract_enums import RiskLevel
 from ..llm.model_router import ModelRouter
 
 

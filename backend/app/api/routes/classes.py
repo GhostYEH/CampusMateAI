@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
@@ -23,11 +23,9 @@ from ...core.exceptions import (
 )
 from ...models.multi_role import ClassGroupRow, UserRow
 from ...schemas.multi_role import (
-    ClassCreate,
     ClassJoinRequest,
     ClassMemberOut,
     ClassOut,
-    ClassUpdate,
     Page,
 )
 from ...services.container import ServiceContainer, get_container

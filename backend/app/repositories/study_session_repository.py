@@ -42,16 +42,11 @@ def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:16]}"
 
 
-def _parse_iso(s: str) -> datetime:
-    """解析 ISO 8601(带时区),失败抛 ValueError。"""
-    return datetime.fromisoformat(s)
-
-
 def _seconds_between(start_iso: str, end_iso: str) -> int:
     """计算两个 ISO 时间戳之间的秒数(向下取整,负值返回 0)。"""
     try:
-        start = _parse_iso(start_iso)
-        end = _parse_iso(end_iso)
+        start = datetime.fromisoformat(start_iso)
+        end = datetime.fromisoformat(end_iso)
     except ValueError:
         return 0
     delta = (end - start).total_seconds()

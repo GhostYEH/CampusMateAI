@@ -14,7 +14,6 @@ from .interpreter import (
 from .source_registry import (
     SourceDescriptor,
     ensure_sources_seeded,
-    resolve_source_by_code,
 )
 from .workflow_service import (
     ActionStateConflict,
@@ -39,5 +38,4 @@ __all__ = [
     "content_fingerprint",
     "detect_manual_only_markers",
     "ensure_sources_seeded",
-    "resolve_source_by_code",
 ]

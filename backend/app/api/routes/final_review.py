@@ -21,7 +21,6 @@ from ...core.exceptions import (
     AgentApprovalRequired,
     AgentIdempotencyConflict,
     AgentRuntimeError,
-    Forbidden,
     NotFoundError,
     ValidationFailed,
 )
@@ -145,19 +144,6 @@ def _proposal_to_out(row) -> AdjustmentProposalOut:
         target_version=row.target_version,
         reason=row.reason,
         created_at=row.created_at,
-    )
-
-
-def _item_to_out(row) -> DailyItemOut:
-    return DailyItemOut(
-        item_id=row.item_id,
-        title=row.title,
-        course_name=row.course_name,
-        scheduled_minutes=row.scheduled_minutes,
-        sort_order=row.sort_order,
-        status=row.status,
-        personal_task_id=row.personal_task_id,
-        difficulty=row.difficulty,
     )
 
 

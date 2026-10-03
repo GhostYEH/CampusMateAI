@@ -87,34 +87,6 @@ export async function retryAgentRun(runId, idempotencyKey) {
   return _post(`/agent-runs/${runId}/retry`, {}, idempotencyKey);
 }
 
-export async function listAgentRuns(page = 1, pageSize = 50) {
-  return _get("/agent-runs", { page, page_size: pageSize });
-}
-
-export async function getAgentSkills() {
-  return _get("/agent-runtime/skills");
-}
-
-export async function listAgentMemories() {
-  return _get("/agent-memories");
-}
-
-export async function createAgentMemory(body) {
-  return _post("/agent-memories", body);
-}
-
-export async function withdrawAgentMemory(memoryId) {
-  return _post(`/agent-memories/${memoryId}/withdraw`, {});
-}
-
-export async function getAgentRunEvents(runId, params = {}) {
-  return _get(`/agent-runs/${runId}/events`, {
-    ...(params.page ? { page: params.page } : {}),
-    ...(params.pageSize ? { page_size: params.pageSize } : {}),
-    ...(params.fromSequence ? { from_sequence: params.fromSequence } : {}),
-  });
-}
-
 export async function resolveAgentApproval(approvalId, decision, reason = null, idempotencyKey) {
   return _post(`/agent-approvals/${approvalId}/decision`, { decision, ...(reason ? { reason } : {}) }, idempotencyKey);
 }
@@ -141,20 +113,12 @@ export async function getFinalReviewCampaigns(params = {}) {
   });
 }
 
-export async function getFinalReviewCampaign(campaignId) {
-  return _get(`/final-review/campaigns/${campaignId}`);
-}
-
 export async function generateFinalReviewPlan(campaignId, body, idempotencyKey) {
   return _post(`/final-review/campaigns/${campaignId}/plans/generate`, body, idempotencyKey);
 }
 
 export async function getFinalReviewPlanVersions(campaignId) {
   return _get(`/final-review/campaigns/${campaignId}/plan-versions`);
-}
-
-export async function getFinalReviewPlanVersion(campaignId, version) {
-  return _get(`/final-review/campaigns/${campaignId}/plan-versions/${version}`);
 }
 
 export async function activateFinalReviewCampaign(campaignId, version, idempotencyKey) {
@@ -175,10 +139,6 @@ export async function createDailyCheckin(campaignId, body, idempotencyKey) {
 
 export async function analyzeAdjustment(campaignId, body, idempotencyKey) {
   return _post(`/final-review/campaigns/${campaignId}/adjustments/analyze`, body, idempotencyKey);
-}
-
-export async function getAdjustmentProposals(campaignId) {
-  return _get(`/final-review/campaigns/${campaignId}/adjustment-proposals`);
 }
 
 export async function resolveAdjustmentProposal(proposalId, decision, reason = null, idempotencyKey) {
@@ -229,16 +189,7 @@ export async function createCourseResearchRun(body, idempotencyKey) {
   return _post("/course-research/runs", body, idempotencyKey);
 }
 
-export async function getCourseResearchRuns(params = {}) {
-  return _get("/course-research/runs", {
-    ...(params.page ? { page: params.page } : {}),
-    ...(params.pageSize ? { page_size: params.pageSize } : {}),
-  });
-}
 
-export async function getCourseResearchRun(runId) {
-  return _get(`/course-research/runs/${runId}`);
-}
 
 export async function cancelCourseResearchRun(runId, idempotencyKey) {
   return _post(`/course-research/runs/${runId}/cancel`, {}, idempotencyKey);

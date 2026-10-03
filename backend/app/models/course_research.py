@@ -5,7 +5,7 @@ Run 生命周期仍由 agent_runs 承载,本模块只承载领域输入、策略
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

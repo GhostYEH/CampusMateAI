@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
 from ...services.container import ServiceContainer, get_container
-from ..deps import current_user, require_role
+from ..deps import require_role
 
 router = APIRouter(tags=["student-tools"])
 

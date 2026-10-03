@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Optional
 import uuid
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.home_banner import HomeBannerRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 DEFAULT_HOME_BANNERS: tuple[dict[str, object], ...] = (

@@ -13,7 +13,6 @@ import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
-from typing import Any
 
 from ..database.sqlite_db import Database
 from ..models.adaptive_intervention import (

@@ -26,8 +26,6 @@ from ...repositories.agent_runtime_repository import build_request_hash
 from ...schemas.agent_contract_enums import (
     AGENT_CONTRACT_VERSION,
     AgentErrorCode,
-    ApprovalStatus,
-    RiskLevel,
 )
 from ...schemas.agent_runtime import (
     AgentApprovalDecisionIn,

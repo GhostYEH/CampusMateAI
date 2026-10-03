@@ -158,7 +158,7 @@ export default function IslandPage() {
         <div className="island-dock-panel__inner">
           <div className="island-heat">
             <div className="island-heat__heading"><span>足迹</span><small>今年探索了 {data.exploredDays} 天 · 最长旅程 {data.longestStreak} 天</small></div>
-            <div className="island-heat__scroll"><Heatmap data={data.heatData} year={data.year} compact /></div>
+            <div className="island-heat__scroll"><Heatmap data={data.heatData} compact /></div>
           </div>
           <div className="island-dock-panel__divider" aria-hidden="true" />
           <div className="island-sign">

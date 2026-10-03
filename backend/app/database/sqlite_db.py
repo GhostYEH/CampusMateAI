@@ -2738,13 +2738,6 @@ def init_db(settings: Settings) -> Database:
     return _db_instance
 
 
-def get_db() -> Database:
-    """FastAPI 依赖：返回全局 Database 实例。"""
-    if _db_instance is None:
-        raise RuntimeError("Database 未初始化，请先调用 init_db()")
-    return _db_instance
-
-
 def reset_db_for_tests() -> Database:
     """测试专用：创建一个全新的内存库并替换单例。"""
     global _db_instance
@@ -2759,4 +2752,4 @@ def reset_db_for_tests() -> Database:
     return _db_instance
 
 
-__all__ = ["Database", "init_db", "get_db", "reset_db_for_tests"]
+__all__ = ["Database", "init_db", "reset_db_for_tests"]

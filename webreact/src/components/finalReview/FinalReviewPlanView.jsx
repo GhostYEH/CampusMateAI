@@ -14,7 +14,6 @@ export default function FinalReviewPlanView({
   onGenerate,
   onActivate,
   onCheckin,
-  onResolveProposal,
   generating = false,
   activating = false,
   checkingIn = false,

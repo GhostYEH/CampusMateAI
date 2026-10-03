@@ -8,7 +8,7 @@ v1 由一个 AgentExecutor 切换角色执行,不启动独立进程。
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 

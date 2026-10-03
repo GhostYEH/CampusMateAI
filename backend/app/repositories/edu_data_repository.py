@@ -8,17 +8,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Any, Optional
 
+from ._multi_role_common import _now_iso
 from ..database.sqlite_db import Database
 from ..models.edu import EduBindingRow
-from ..schemas.edu import EduExam, EduExamItem, EduGrade, EduGradeItem, EduSchedule, EduScheduleItem
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from ..schemas.edu import EduExam, EduGrade, EduSchedule
 
 
 def _short_id(prefix: str, *parts: str) -> str:

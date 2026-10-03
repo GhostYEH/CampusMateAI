@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict
 
 from ...core.semver import parse_semver, version_satisfies
 
@@ -103,11 +103,6 @@ def unavailable_capabilities(service_capabilities: Dict[str, bool]) -> list:
 
 def is_degraded(service_capabilities: Dict[str, bool]) -> bool:
     return bool(unavailable_capabilities(service_capabilities))
-
-
-def describe_capabilities(caps: Dict[str, bool]) -> Optional[str]:  # pragma: no cover - 文案辅助
-    missing = [key for key, value in caps.items() if not value]
-    return "、".join(missing) if missing else None
 
 
 __all__ = [

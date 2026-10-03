@@ -9,38 +9,30 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 
-from ...core.config import Settings, get_settings
+from ...core.config import get_settings
 from ...core.exceptions import (
     AssignmentNotFound,
-    AttachmentTooLarge,
-    AttachmentTypeNotAllowed,
     ClassGroupNotFound,
-    FileNameUnsafe,
     Forbidden,
-    InvalidTransition,
     NotFoundError,
 )
-from ...core.security import is_path_traversal, sanitize_filename
+from ...core.security import is_path_traversal
 from ...models.multi_role import AssignmentAttachmentRow, AssignmentRow, UserRow
 from ...schemas.multi_role import (
     AssignmentAttachmentOut,
-    AssignmentCreate,
     AssignmentOut,
-    AssignmentStatsOut,
-    AssignmentUpdate,
     Page,
-    StudentStatusItem,
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
-from .classes import _assert_can_manage_class, _assert_can_view_class
+from .classes import _assert_can_view_class
 
 router = APIRouter(tags=["assignments"])
 

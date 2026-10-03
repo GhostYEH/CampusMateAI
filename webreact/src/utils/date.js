@@ -22,3 +22,14 @@ export function localDateKey(value = new Date()) {
 export function isSameLocalDate(left, right = new Date()) {
   return localDateKey(left) !== "" && localDateKey(left) === localDateKey(right);
 }
+
+export function formatTime(value) {
+  if (!value) return "—";
+  try {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d.toLocaleString("zh-CN", { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return String(value);
+  }
+}

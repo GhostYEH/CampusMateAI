@@ -16,20 +16,15 @@ from fastapi import APIRouter, Depends, Query
 from ...core.exceptions import (
     AnnouncementNotFound,
     ClassGroupNotFound,
-    Forbidden,
 )
 from ...models.multi_role import AnnouncementRow, UserRow
 from ...schemas.multi_role import (
-    AnnouncementCreate,
     AnnouncementOut,
-    AnnouncementUpdate,
     Page,
-    ReadReceiptOut,
-    ReadStatusOut,
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
-from .classes import _assert_can_manage_class, _assert_can_view_class
+from .classes import _assert_can_view_class
 
 router = APIRouter(tags=["announcements"])
 

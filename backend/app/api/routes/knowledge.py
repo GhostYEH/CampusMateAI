@@ -7,16 +7,13 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from ...core.exceptions import AppException, DocumentNotFound, FileNameUnsafe
-from ...core.logging import logger
+from ...core.exceptions import AppException, DocumentNotFound
 from ...core.security import sanitize_filename
 from ...schemas.knowledge import (
     DataManagementResponse,
     DeleteResponse,
-    DocumentMetadata,
     DocumentSummary,
     KnowledgeStatus,
     RebuildResponse,

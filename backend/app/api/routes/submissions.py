@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse
 
-from ...core.config import Settings, get_settings
+from ...core.config import get_settings
 from ...core.exceptions import (
     AssignmentClosed,
     AssignmentNotFound,
@@ -33,9 +33,7 @@ from ...core.security import is_path_traversal, sanitize_filename
 from ...models.multi_role import SubmissionRow, UserRow
 from ...schemas.multi_role import (
     AttachmentOut,
-    Page,
     SubmissionCreate,
-    SubmissionGrade,
     SubmissionOut,
     SubmissionUpdate,
 )

@@ -18,10 +18,9 @@ import secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 from cryptography.fernet import Fernet
-from passlib.context import CryptContext
 
 from .config import get_settings
 
@@ -36,8 +35,6 @@ def encrypt(data: str) -> str:
 
 def decrypt(token: str) -> str:
     return fernet.decrypt(token.encode()).decode()
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ===== 文件名 / 路径穿越校验 =====
 

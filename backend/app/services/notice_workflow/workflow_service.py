@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
-from ...core.exceptions import AppException, Forbidden, InvalidTransition, NotFoundError
+from ...core.exceptions import InvalidTransition, NotFoundError
 from ...models.notice_workflow import (
     NoticeWorkflowActionRow,
     NoticeWorkflowRow,
@@ -21,10 +21,6 @@ from ...models.notice_workflow import (
 from ...repositories.notice_workflow_repository import NoticeWorkflowRepository
 from ...repositories.personal_task_repository import PersonalTaskRepository
 from ...repositories.notice_repository import NoticeRepository
-from ...schemas.notice_workflow import (
-    ACTION_STATUSES,
-    WORKFLOW_STATUSES,
-)
 from .interpreter import (
     Interpretation,
     NoticeInterpreter,
@@ -32,7 +28,7 @@ from .interpreter import (
     detect_confirm_required_markers,
     detect_manual_only_markers,
 )
-from .source_registry import ensure_sources_seeded, resolve_source_by_code
+from .source_registry import ensure_sources_seeded
 
 
 # ===== 领域异常(不复用共享 exceptions.py,在此定义) =====
@@ -95,26 +91,6 @@ def classify_risk(action_type: str, notice_text: str) -> str:
         return "AUTO_SAFE"
     # 未知类型默认 MANUAL_ONLY(安全优先)
     return "MANUAL_ONLY"
-
-
-def _is_valid_workflow_transition(old: str, new: str) -> bool:
-    if old == new:
-        return True
-    if old in _TERMINAL_WORKFLOW:
-        return False
-    table = {
-        "CREATED": {"ANALYZING", "FAILED", "EXPIRED"},
-        "ANALYZING": {
-            "WAITING_CONFIRMATION",
-            "PROCESSING",
-            "COMPLETED",
-            "FAILED",
-            "EXPIRED",
-        },
-        "WAITING_CONFIRMATION": {"PROCESSING", "COMPLETED", "FAILED", "EXPIRED"},
-        "PROCESSING": {"COMPLETED", "FAILED", "EXPIRED"},
-    }
-    return new in table.get(old, set())
 
 
 def _is_valid_action_transition(old: str, new: str) -> bool:
