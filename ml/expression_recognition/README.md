@@ -40,6 +40,17 @@ v1 旧训练结果保留在 `manifests/`、`runs/`、`reports/generated/`、`exp
 
 ## 从零复现
 
+原始 FER2013 CSV 需先转换到新的派生目录（不会改写 CSV 或覆盖已有目录）：
+
+```powershell
+python -m expression_recognition.prepare_fer2013 --csv $env:FER2013_CSV --output-dir artifacts/prepared/FER2013
+python -m expression_recognition.unified_manifest --dataset-root artifacts/prepared --output-dir manifests_new
+```
+
+转换保留 `Training → train`、`PublicTest → validation`、`PrivateTest → test`；像素范围、尺寸、标签或 Usage 无效的行写入隔离记录。清单保留来源的显式验证集，仅对没有验证集的来源重新划分训练池。跨划分重复图优先保留 test，其次 validation，避免验证图重新流入训练。不同数据集的数字标签顺序不同，来源不明的数字目录应先隔离核对。
+
+对已逐文件核对作者标注索引的 RAF Basic `0..6` 目录，可在清单命令增加 `--raf-train-root $env:RAFDB_TRAIN_ROOT --raf-test-root $env:RAFDB_TEST_ROOT`。该路径显式采用 RAF 顺序 `surprise, fear, disgust, happy, sad, angry, neutral`；即使测试目录在本地名为 `valid`，仍保留为 test，并只从官方训练池划出 validation。类目录内的图片才参与导入，其他嵌套副本忽略。
+
 要求 Windows、`uv`、可用的 NVIDIA 驱动，以及通过 `CAMPUSMATE_EXPRESSION_DATASET_ROOT` 指定的只读数据源。脚本在本模块内创建 Python 3.12 独立环境，不修改系统 Python 或后端虚拟环境。
 
 ```powershell

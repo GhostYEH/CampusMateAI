@@ -17,7 +17,7 @@ All sources are unified onto the Android contract class order:
 Cleaning rules (read-only; raw files are never modified):
   * SHA-256 exact deduplication across ALL sources at once.
   * Cross-label hash conflicts are quarantined (label noise, never coerced).
-  * Cross-split duplicates keep the test-side canonical copy so the same image
+  * Cross-split duplicates prefer test, then validation, then train so the same image
     can never appear in both train and validation/test.
   * Train-pool images are stratified into train/validation by canonical label.
   * Every image originally in a test split is pooled into one independent test
@@ -58,7 +58,7 @@ TEXT_LABEL_MAP = {
     "surprise": "surprise", "surprised": "surprise", "surpris": "surprise",
 }
 
-# RAF-DB compound label coding (verified by the 12,271 train-image count and
+# RAF-DB basic label coding (verified by the 12,271 train-image count and
 # the surprise<fear<disgust<angry<happy class-size ordering on disk).
 RAFDB_NUMERIC_MAP = {
     "1": "surprise",
@@ -69,6 +69,7 @@ RAFDB_NUMERIC_MAP = {
     "6": "angry",
     "7": "neutral",
 }
+RAFDB_ZERO_BASED_MAP = {str(int(key) - 1): label for key, label in RAFDB_NUMERIC_MAP.items()}
 
 
 @dataclass
@@ -169,15 +170,19 @@ def detect_split_and_raw_label(source_root: Path, image_path: Path) -> tuple[str
     return split, raw_label, evidence
 
 
-def discover_images(root: Path) -> list[UnifiedRecord]:
+def discover_images(root: Path, excluded_roots: Iterable[Path] = ()) -> list[UnifiedRecord]:
     """Walk every dataset subdirectory under root and collect image records."""
     root = root.resolve()
+    excluded_roots = tuple(path.resolve() for path in excluded_roots)
     records: list[UnifiedRecord] = []
     sources = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.name.casefold())
     for source in sources:
+        if any(source.is_relative_to(excluded) for excluded in excluded_roots):
+            continue
         csv_labels = load_csv_labels(source)
         image_paths = sorted(
-            (p for p in source.rglob("*") if p.is_file() and p.suffix.casefold() in IMAGE_EXTENSIONS),
+            (p for p in source.rglob("*") if p.is_file() and p.suffix.casefold() in IMAGE_EXTENSIONS
+             and not any(p.is_relative_to(excluded) for excluded in excluded_roots)),
             key=lambda p: str(p).casefold(),
         )
         for path in tqdm(image_paths, desc=f"scan {source.name}", unit="img", leave=False):
@@ -223,6 +228,39 @@ def discover_images(root: Path) -> list[UnifiedRecord]:
     return records
 
 
+def discover_verified_rafdb(train_root: Path, test_root: Path) -> list[UnifiedRecord]:
+    """Explicit opt-in for author-index-verified RAF Basic folders numbered 0..6.
+
+    Roots represent the official splits regardless of their local directory names.
+    Only direct files in each class folder are used; unrelated nested copies are ignored.
+    """
+    records = []
+    for root, split in ((train_root.resolve(), "train"), (test_root.resolve(), "test")):
+        for raw_label, label in RAFDB_ZERO_BASED_MAP.items():
+            directory = root / raw_label
+            if not directory.is_dir():
+                raise FileNotFoundError(f"Missing RAF Basic class directory: {directory}")
+            for path in sorted(directory.iterdir(), key=lambda value: value.name.casefold()):
+                if not path.is_file() or path.suffix.casefold() not in IMAGE_EXTENSIONS:
+                    continue
+                if not path.name.casefold().startswith(f"{split}_"):
+                    raise ValueError(f"RAF filename disagrees with declared official split: {path}")
+                record = UnifiedRecord(str(path), "RAFDB_zero_based_verified", split, "", raw_label,
+                                       label, CLASS_TO_INDEX[label], sha256_file(path), 0, 0, 0, "",
+                                       reason="explicit_raf_basic_zero_based")
+                try:
+                    with Image.open(path) as image:
+                        image.load()
+                        record.width, record.height = image.size
+                        record.channels = len(image.getbands())
+                        record.image_format = image.format or ""
+                except (OSError, ValueError, UnidentifiedImageError) as error:
+                    record.status = "quarantined"
+                    record.reason = f"decode_error:{type(error).__name__}"
+                records.append(record)
+    return records
+
+
 def apply_duplicate_policy(records: list[UnifiedRecord]) -> dict[str, int]:
     """Globally deduplicate by SHA-256; quarantine cross-label conflicts."""
     hash_groups: dict[str, list[UnifiedRecord]] = defaultdict(list)
@@ -254,7 +292,7 @@ def apply_duplicate_policy(records: list[UnifiedRecord]) -> dict[str, int]:
         canonical = min(
             valid_group,
             key=lambda record: (
-                0 if record.original_split == "test" and len(splits) > 1 else 1,
+                {"test": 0, "validation": 1, "train": 2}.get(record.original_split, 3),
                 record.source_path.casefold(),
             ),
         )
@@ -266,7 +304,7 @@ def apply_duplicate_policy(records: list[UnifiedRecord]) -> dict[str, int]:
             record.status = "excluded"
             record.split = ""
             record.reason = (
-                "cross_split_duplicate_keep_test"
+                f"cross_split_duplicate_keep_{canonical.original_split}"
                 if len(splits) > 1
                 else "same_source_exact_duplicate"
             )
@@ -278,13 +316,32 @@ def apply_duplicate_policy(records: list[UnifiedRecord]) -> dict[str, int]:
 
 
 def assign_splits(records: list[UnifiedRecord], validation_fraction: float, seed: int) -> None:
-    """Stratified train/validation split of the train pool; test pool is held out."""
+    """Keep explicit source validation/test; split only sources without validation."""
+    explicit_validation_sources = {
+        record.source for record in records
+        if record.original_split == "validation"
+    }
+    clean_validation_sources = {
+        record.source for record in records
+        if record.status == "included" and record.original_split == "validation"
+    }
+    if missing := explicit_validation_sources - clean_validation_sources:
+        raise ValueError(f"No clean official validation records remain for: {sorted(missing)}")
+    for record in records:
+        if record.status == "included":
+            if record.original_split in {"test", "validation"}:
+                record.split = record.original_split
+            elif record.original_split == "train" and record.source in explicit_validation_sources:
+                record.split = "train"
     train_pool = [
         record for record in records
         if record.status == "included" and record.original_split == "train"
+        and record.source not in explicit_validation_sources
     ]
     if not train_pool:
-        raise ValueError("No clean training records remain after deduplication")
+        if not any(record.status == "included" and record.split == "train" for record in records):
+            raise ValueError("No clean training records remain after deduplication")
+        return
     indices = list(range(len(train_pool)))
     labels = [record.label for record in train_pool]
     train_indices, validation_indices = train_test_split(
@@ -331,10 +388,18 @@ def build_unified_manifest(
     output_dir: Path,
     validation_fraction: float = 0.15,
     seed: int = 20260731,
+    *,
+    raf_train_root: Path | None = None,
+    raf_test_root: Path | None = None,
 ) -> dict:
+    if (raf_train_root is None) != (raf_test_root is None):
+        raise ValueError("Both official RAF train and test roots must be specified")
     dataset_root = dataset_root.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    records = discover_images(dataset_root)
+    explicit_raf_roots = [raf_train_root, raf_test_root] if raf_train_root is not None else []
+    records = discover_images(dataset_root, excluded_roots=explicit_raf_roots)
+    if raf_train_root is not None:
+        records.extend(discover_verified_rafdb(raf_train_root, raf_test_root))
     duplicate_stats = apply_duplicate_policy(records)
     assign_splits(records, validation_fraction, seed)
 
@@ -378,6 +443,10 @@ def build_unified_manifest(
             "mapping": RAFDB_NUMERIC_MAP,
             "dataset": "RAF-DB aligned (verified by 12,271-image train count)",
         },
+        "RAFDB_zero_based_verified": {
+            "mapping": RAFDB_ZERO_BASED_MAP,
+            "note": "Explicit verified input roots preserve official train/test, independent of local folder names.",
+        },
         "unmapped_policy": "Drop unmapped labels; never coerce contempt/other/unknown into a canonical class.",
     }
     (output_dir / "label_mapping.json").write_text(
@@ -411,9 +480,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=20260731)
+    parser.add_argument("--raf-train-root", type=Path, help="Verified zero-based RAF Basic official training root")
+    parser.add_argument("--raf-test-root", type=Path, help="Verified zero-based RAF Basic official test root (may be named valid)")
     args = parser.parse_args()
     report = build_unified_manifest(
-        args.dataset_root, args.output_dir, args.validation_fraction, args.seed
+        args.dataset_root, args.output_dir, args.validation_fraction, args.seed,
+        raf_train_root=args.raf_train_root, raf_test_root=args.raf_test_root,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

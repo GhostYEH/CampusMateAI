@@ -46,8 +46,23 @@ The university mapping is:
 2 Write               WRITE
 3 OnPhone             PHONE_INTERACTION
 4 Bow_head            excluded from primary training
-5 Sleep               NO_VISIBLE_STUDY
+5 Leaning_over_table  NO_VISIBLE_STUDY
 ```
+
+The source names and counts can be checked against Table III of the
+[SCB-Dataset3 paper](https://arxiv.org/html/2310.02522). Source class 5 describes
+leaning over the table; its mapped product label does not establish that a
+student is asleep. The earlier `0.355k_university_yolo_Dataset` archive can
+share the same classroom sequences with the frame-interpolated 671-image
+archive. Audit its class mapping and frame overlap before using it; source
+directory names do not establish independent videos or additional samples.
+
+The university data contains only three video prefixes. Keep each complete
+prefix in one split, including when frames occur in different original
+train/validation folders. A three-way split therefore has just one video per
+split and cannot support subject-independent or front-camera quality claims.
+The ordered frames can support an offline temporal pilot, but frame labels
+provide neither verified person tracks nor event onset/offset annotations.
 
 Invalid boxes are rejected or clipped only in generated manifests. Original labels remain unchanged.
 
