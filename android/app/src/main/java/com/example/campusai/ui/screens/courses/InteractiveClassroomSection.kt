@@ -69,6 +69,7 @@ import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
 import com.example.campusai.ui.theme.Success
+import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -389,6 +390,8 @@ fun InteractiveClassroomSection(
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var showOptions by remember(course.id) { mutableStateOf(false) }
+    var showMaterials by remember(course.id) { mutableStateOf(false) }
     DisposableEffect(viewModel) {
         viewModel.resumeObservationIfNeeded()
         onDispose { viewModel.stopObservation() }
@@ -396,23 +399,25 @@ fun InteractiveClassroomSection(
     Column(
         Modifier.fillMaxWidth()
             .padding(top = 4.dp)
-            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFF9F7EC), androidx.compose.ui.graphics.Color(0xFFE6EEE1))), RoundedCornerShape(22.dp))
+            .background(Surface, RoundedCornerShape(22.dp))
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("互动课堂 · 从这门课出发", color = androidx.compose.ui.graphics.Color(0xFF22513F), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("选择课件与学习目标，生成讲解和练习", color = Muted, fontSize = 12.sp)
+                Text("生成设置", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("选择资料和目标，生成这门课的讲解与练习", color = Muted, fontSize = 12.sp)
             }
-            Text(state.serviceState.label, color = serviceColor(state.serviceState), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (state.loading) "检测中" else state.serviceState.label,
+                color = if (state.loading) Muted else serviceColor(state.serviceState),
+                fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         val serviceReady = state.serviceState == InteractiveClassroomServiceState.AVAILABLE ||
             state.serviceState == InteractiveClassroomServiceState.DEGRADED
         val canCreateClassroom = serviceReady && state.status?.browserEmbedAvailable == true
         if (!state.loading && !canCreateClassroom) {
             Text(
-                when (state.serviceState) {
+                state.status?.reason ?: state.status?.browserEmbedReason ?: state.error ?: when (state.serviceState) {
                     InteractiveClassroomServiceState.NOT_CONFIGURED -> "互动课堂暂未开通。课程资料和自习室仍可使用。"
                     InteractiveClassroomServiceState.INCOMPATIBLE -> "课堂服务版本暂不兼容，请稍后再试。"
                     InteractiveClassroomServiceState.CONFIGURED -> "课堂服务正在准备，请稍后重试。"
@@ -428,12 +433,14 @@ fun InteractiveClassroomSection(
         if (state.loading || (canCreateClassroom && state.planLoading)) {
             Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(7.dp)); Text("正在读取课程资料与生成计划…", color = Muted, fontSize = 11.sp) }
         }
-        if (canCreateClassroom) IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
         if (canCreateClassroom) state.plan?.let { plan ->
-            Text("推荐理由", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-            Text(plan.adaptiveReason ?: plan.reason ?: "根据课程资料为你安排一条学习路径。", color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
-            StudentBrief(state, viewModel)
-            MaterialsChooser(plan, state.selectedMaterialIds, viewModel::toggleMaterial)
+            StudentBrief(state, viewModel, showOptions)
+            MaterialsChooser(plan, state.selectedMaterialIds, showMaterials,
+                onExpand = { showMaterials = !showMaterials }, onToggle = viewModel::toggleMaterial)
+            OutlinedButton(onClick = { showOptions = !showOptions }) {
+                Text(if (showOptions) "收起更多设置" else "更多设置：学习方式、时长", fontSize = 12.sp)
+            }
+            if (showOptions) IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
             if (!state.confirmed) {
                 Button(
                     onClick = viewModel::confirmPlan,
@@ -469,8 +476,9 @@ private fun IntentChooser(mode: String, serviceState: InteractiveClassroomServic
 }
 
 @Composable
-private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: InteractiveClassroomViewModel) {
+private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: InteractiveClassroomViewModel, showOptions: Boolean) {
     OutlinedTextField(state.learningObjective, viewModel::updateLearningObjective, Modifier.fillMaxWidth(), label = { Text("学习目标（可选）") }, placeholder = { Text("例如：掌握链表插入与删除") }, singleLine = false, minLines = 2)
+    if (!showOptions) return
     OutlinedTextField(state.currentDifficulty, viewModel::updateCurrentDifficulty, Modifier.fillMaxWidth(), label = { Text("当前困惑（可选）") }, placeholder = { Text("例如：不知道如何判断边界") }, singleLine = false, minLines = 2)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
         Text("时长", color = Muted, fontSize = 11.sp)
@@ -485,9 +493,18 @@ private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: Interact
 }
 
 @Composable
-private fun MaterialsChooser(plan: InteractiveClassroomPlanDto, selected: Set<String>, onToggle: (String, Boolean) -> Unit) {
+private fun MaterialsChooser(
+    plan: InteractiveClassroomPlanDto,
+    selected: Set<String>,
+    expanded: Boolean,
+    onExpand: () -> Unit,
+    onToggle: (String, Boolean) -> Unit,
+) {
     if (plan.materials.isEmpty()) return
-    Text("使用课程资料", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+    OutlinedButton(onClick = onExpand) {
+        Text(if (expanded) "收起课程资料" else "选择课程资料 · 已选 ${selected.size}/${plan.materials.size}", fontSize = 12.sp)
+    }
+    if (!expanded) return
     Text("当前已同步文件名，正文未读取；课堂会结合课程、文件标题和你的学习目标生成。", color = Muted, fontSize = 11.sp)
     plan.materials.forEach { material ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

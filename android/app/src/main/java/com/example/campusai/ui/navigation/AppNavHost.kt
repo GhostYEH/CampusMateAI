@@ -33,6 +33,7 @@ import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.LibraryScreen
+import com.example.campusai.ui.screens.courses.InteractiveClassroomScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
@@ -317,11 +318,7 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() },
                 onConnectChaoxing = { go("chaoxing") },
                 onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
-                onOpenCounselor = { courseId, courseName, initialPrompt ->
-                    go(
-                        "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
-                    )
-                },
+                onOpenClassroom = { courseId -> go("course-classroom/${Uri.encode(courseId)}") },
             )
         }
         composable(
@@ -332,17 +329,39 @@ fun AppNavHost(
                 navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { backStackEntry ->
-            LibraryScreen(
+            val courseId = backStackEntry.arguments?.getString("courseId").orEmpty()
+            val sessionId = backStackEntry.arguments?.getString("session")
+            if (!sessionId.isNullOrBlank()) {
+                InteractiveClassroomScreen(
+                    courseId = courseId,
+                    repository = repository,
+                    onBack = { navController.popBackStack() },
+                    initialSessionId = sessionId,
+                )
+            } else {
+                LibraryScreen(
+                    repository = repository,
+                    focusRepository = modules.focus,
+                    initialCourseId = courseId,
+                    onBack = { navController.popBackStack() },
+                    onConnectChaoxing = { go("chaoxing") },
+                    onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
+                    onOpenClassroom = { id -> go("course-classroom/${Uri.encode(id)}") },
+                )
+            }
+        }
+        composable(
+            route = "course-classroom/{courseId}?session={session}",
+            arguments = listOf(
+                navArgument("courseId") { type = NavType.StringType },
+                navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { backStackEntry ->
+            InteractiveClassroomScreen(
+                courseId = backStackEntry.arguments?.getString("courseId").orEmpty(),
                 repository = repository,
-                focusRepository = modules.focus,
-                initialCourseId = backStackEntry.arguments?.getString("courseId"),
-                initialSessionId = backStackEntry.arguments?.getString("session"),
                 onBack = { navController.popBackStack() },
-                onConnectChaoxing = { go("chaoxing") },
-                onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
-                onOpenCounselor = { courseId, courseName, initialPrompt ->
-                    go("counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}")
-                },
+                initialSessionId = backStackEntry.arguments?.getString("session"),
             )
         }
         composable("profile") {

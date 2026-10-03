@@ -73,7 +73,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Course
-import com.example.campusai.data.model.FocusRecord
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.remote.CourseContentItemDto
 import com.example.campusai.data.remote.CourseContentSummaryDto
@@ -107,10 +106,9 @@ private val DetailGold = Color(0xFFAF925B)
 fun CoursesScreen(
     repository: AppRepository,
     onOpenSchedule: () -> Unit = {},
-    onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit = { _, _, _ -> },
+    onOpenClassroom: (String) -> Unit,
     initialCourseId: String? = null,
     initialTab: String? = null,
-    initialSessionId: String? = null,
 ) {
     val courses by repository.courses.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
@@ -213,13 +211,11 @@ fun CoursesScreen(
         CourseDetailSheet(
             course = course,
             repository = repository,
-            initialSessionId = initialSessionId,
             onDismiss = { selectedCourse = null },
-            onOpenCounselor = onOpenCounselor,
+            onOpenClassroom = onOpenClassroom,
         )
     }
 }
-
 @Composable
 private fun CoursesHeader(mockMode: Boolean, reduceMotion: Boolean) {
     Row(
@@ -234,7 +230,6 @@ private fun CoursesHeader(mockMode: Boolean, reduceMotion: Boolean) {
         ModeBadge(mockMode)
     }
 }
-
 @Composable
 private fun CourseHero(
     course: Course?,
@@ -528,11 +523,9 @@ private fun EmptyCourses() {
 internal fun CourseDetailSheet(
     course: Course,
     repository: AppRepository,
-    initialSessionId: String? = null,
     onDismiss: () -> Unit,
-    onOpenCounselor: (courseId: String, courseName: String, initialPrompt: String) -> Unit,
+    onOpenClassroom: (String) -> Unit,
     onStartFocus: (String) -> Unit = {},
-    courseRecords: List<FocusRecord> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -544,7 +537,6 @@ internal fun CourseDetailSheet(
     var selectedNotice by remember(course.id) { mutableStateOf<CourseContentItemDto?>(null) }
     var downloadFailure by remember(course.id) { mutableStateOf<Pair<CourseContentItemDto, String>?>(null) }
     var filter by remember(course.id) { mutableStateOf("全部") }
-    var showClassroom by remember(course.id, initialSessionId) { mutableStateOf(!initialSessionId.isNullOrBlank()) }
     val filters = listOf("全部", "章节", "资料", "作业", "通知", "考试", "讨论")
     val kinds = mapOf(
         "章节" to setOf("chapter"),
@@ -552,7 +544,12 @@ internal fun CourseDetailSheet(
         "作业" to setOf("assignment"), "通知" to setOf("notice"),
         "考试" to setOf("exam"), "讨论" to setOf("discussion"),
     )
-    val visible = kinds[filter]?.let { accepted -> content.filter { it.kind in accepted } } ?: content
+    val populatedFilters = filters.drop(1).filter { name ->
+        content.any { it.kind in kinds[name].orEmpty() }
+    }
+    val filterOptions = if (populatedFilters.size > 1) listOf("全部") + populatedFilters else populatedFilters.ifEmpty { listOf("全部") }
+    val activeFilter = filter.takeIf { it in filterOptions } ?: filterOptions.first()
+    val visible = kinds[activeFilter]?.let { accepted -> content.filter { it.kind in accepted } } ?: content
 
     androidx.compose.runtime.LaunchedEffect(course.id) {
         try {
@@ -575,112 +572,72 @@ internal fun CourseDetailSheet(
         ) {
             item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
                 .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF15362F), Color(0xFF376249), Color(0xFF806C46))))
-                .padding(20.dp), Arrangement.SpaceBetween, Alignment.Top) {
+                .padding(18.dp), Arrangement.SpaceBetween, Alignment.Top) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("CAMPUSMATE  /  COURSE", color = Color(0xFFF1DCA5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Text(course.name, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text("${course.code} · ${course.type}", color = Color.White.copy(alpha = .75f), fontSize = 12.sp)
-                }
-                Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = .18f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.MenuBook, null, tint = Color.White)
+                    Text(course.name, color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(listOf(summary?.teacher_name ?: course.teacher, summary?.class_name ?: course.code)
+                        .filter(String::isNotBlank).joinToString(" · "),
+                        color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
                 }
             } }
-            item { Text("课程信息", color = DetailForest, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
-            item { DetailRow(Icons.Default.Person, "授课教师", summary?.teacher_name ?: course.teacher) }
-            summary?.school_name?.let { school -> item { DetailRow(Icons.Default.LocationOn, "开课学校", school) } }
-            summary?.class_name?.let { clazz -> item { DetailRow(Icons.Default.Class, "教学班", clazz) } }
             item {
                 Button(
-                    onClick = { onStartFocus("学习《${course.name}》") },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    onClick = { onOpenClassroom(course.id) },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22513F)),
-                ) {
-                    Icon(Icons.Default.Schedule, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("带着这门课去自习室", fontWeight = FontWeight.Bold)
-                }
-            }
-            item {
-                Button(
-                    onClick = { showClassroom = !showClassroom },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF315F55), contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = DetailForest, contentColor = Color.White),
                 ) {
                     Icon(Icons.Default.Class, null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (showClassroom) "收起互动课堂" else "进入互动课堂 · 生成讲解与练习", fontWeight = FontWeight.Bold)
-                }
-            }
-            if (showClassroom) item {
-                InteractiveClassroomSection(course = course, repository = repository, initialSessionId = initialSessionId)
-            }
-            item {
-                Button(
-                    onClick = {
-                        onOpenCounselor(
-                            course.id,
-                            course.name,
-                            "请结合《${course.name}》这门课的内容，帮我梳理一下本课程的学习重点、难点和复习方法。",
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF477365), contentColor = Color.White),
-                ) {
-                    Icon(Icons.Default.AutoAwesome, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("问 CPM · 围绕本课程学习", fontWeight = FontWeight.Bold)
+                    Text("进入互动课堂", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.ArrowForward, null)
                 }
             }
             item {
-                Button(
-                onClick = {
-                    syncing = true
-                    error = null
-                    scope.launch {
-                        try {
-                            val loaded = repository.syncCourseContent(course.id)
-                            summary = loaded.first
-                            content = loaded.second
-                        } catch (_: Exception) { error = "同步失败，旧数据没有被清空" }
-                        finally { syncing = false }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("从课程资料生成讲解与练习", color = Muted, fontSize = 12.sp)
+                    Text("去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.campusClickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("课程内容", color = DetailForest, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("${content.size} 项", color = Muted, fontSize = 12.sp)
+                    Box(Modifier.size(42.dp).clip(CircleShape).campusClickable(enabled = !syncing) {
+                        syncing = true
+                        error = null
+                        scope.launch {
+                            try {
+                                val loaded = repository.syncCourseContent(course.id)
+                                summary = loaded.first
+                                content = loaded.second
+                            } catch (_: Exception) { error = "更新失败，已保留原有内容" }
+                            finally { syncing = false }
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                        if (syncing) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Refresh, contentDescription = "更新课程内容", tint = DetailForest)
                     }
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = DetailForest),
-                enabled = !syncing,
-            ) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text(if (syncing) "同步中…" else "更新章节、资料、作业与通知", fontWeight = FontWeight.Bold) }
+                }
             }
             if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
-            item { Text("课程内容 · 分栏目更新", color = DetailForest, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-            item { Text("直接点击即可更新，无须预先打开学习通；本学期只影响书架排序。栏目内容由任课教师提供，登录失效或需要验证时请重新连接。", color = Muted, fontSize = 12.sp) }
             summary?.sections?.let { sections ->
-                if (sections.isNotEmpty()) item {
-                    val names = mapOf("chapters" to "章节", "materials" to "资料", "assignments" to "作业", "notices" to "通知")
-                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        names.forEach { (key, name) ->
-                            val section = sections.firstOrNull { it.section == key } ?: return@forEach
-                            val result = when (section.status) {
-                                "complete" -> if (section.item_count == 0) "该课暂无内容" else "${section.item_count} 条"
-                                "partial" -> "已读取 ${section.item_count} 条，部分来源受限"
-                                "failed" -> if (section.error_code in listOf("reauth_required", "verification_required")) "需要重新登录或完成验证" else "同步失败"
-                                "unavailable" -> "暂不可用"
-                                else -> "尚未同步"
-                            }
-                            Text("$name：$result", color = Muted, fontSize = 11.sp)
-                        }
-                    }
+                val blocked = sections.filter { it.status == "failed" || it.status == "partial" }
+                if (blocked.isNotEmpty()) item {
+                    Text(if (blocked.any { it.error_code in listOf("reauth_required", "verification_required") })
+                        "部分栏目需要重新登录学习通或完成验证" else "部分栏目暂未更新成功，已保留现有内容",
+                        color = Muted, fontSize = 12.sp)
                 }
             }
             if (!loading) {
-                item {
+                if (content.isNotEmpty()) item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(filters) { _, item ->
-                            val selected = filter == item
+                        itemsIndexed(filterOptions) { _, item ->
+                            val selected = activeFilter == item
+                            val count = if (item == "全部") content.size else content.count { it.kind in kinds[item].orEmpty() }
                             Box(
                                 Modifier.clip(CircleShape)
                                     .background(if (selected) DetailForest else Color.White.copy(alpha = .55f))
@@ -688,18 +645,18 @@ internal fun CourseDetailSheet(
                                     .campusClickable { filter = item }
                                     .padding(horizontal = 17.dp, vertical = 9.dp),
                                 contentAlignment = Alignment.Center,
-                            ) { Text(item, color = if (selected) Color.White else DetailForest, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
+                            ) { Text("$item $count", color = if (selected) Color.White else DetailForest, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
                         }
                     }
                 }
                 if (visible.isEmpty()) item {
-                    val section = summary?.sections?.firstOrNull { it.section == mapOf("章节" to "chapters", "资料" to "materials", "作业" to "assignments", "通知" to "notices", "考试" to "exams", "讨论" to "discussions")[filter] }
+                    val section = summary?.sections?.firstOrNull { it.section == mapOf("章节" to "chapters", "资料" to "materials", "作业" to "assignments", "通知" to "notices", "考试" to "exams", "讨论" to "discussions")[activeFilter] }
                     val text = when {
                         section?.error_code in listOf("reauth_required", "verification_required") -> "学习通要求重新登录或验证，请完成后重试"
                         section?.status == "failed" -> "本次同步失败，正在保留上次数据"
                         section?.status == "partial" -> "已读取部分内容，其他来源暂时受限"
                         section?.status == "unavailable" -> "学习通当前未开放此栏目"
-                        section?.status == "complete" -> if (filter == "资料") "该课程的学习通资料栏暂无文件" else "学习通返回的列表为空"
+                        section?.status == "complete" -> if (activeFilter == "资料") "该课程的学习通资料栏暂无文件" else "学习通返回的列表为空"
                         else -> "尚未同步此栏目"
                     }
                     Text(text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
@@ -763,22 +720,6 @@ internal fun CourseDetailSheet(
                     }
                 }
             }
-            if (courseRecords.isNotEmpty()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("这门课的学习足迹", color = Color(0xFF22513F), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    courseRecords.take(3).forEach { record ->
-                        Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                                .background(Color.White.copy(alpha = .72f)).padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            Text(record.goal.orEmpty(), color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text("${record.date} · ${record.actualMinutes} 分钟", color = Muted, fontSize = 11.sp)
-                            record.selfReport?.takeIf(String::isNotBlank)?.let { Text("我的回顾：$it", color = TextPrimary, fontSize = 12.sp) }
-                        }
-                    }
-                }
-            }
         }
     }
     selectedNotice?.let { notice ->
@@ -822,18 +763,5 @@ internal fun CourseDetailSheet(
             dismissButton = { Button(onClick = { downloadFailure = null }) { Text("返回") } },
             containerColor = Color(0xFFF5F2E8),
         )
-    }
-}
-
-@Composable
-private fun DetailRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(DetailForest.copy(alpha = .1f)), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = DetailForest, modifier = Modifier.size(19.dp))
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, color = Muted, fontSize = 10.sp)
-            Text(value, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        }
     }
 }

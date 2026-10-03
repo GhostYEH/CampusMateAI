@@ -71,14 +71,12 @@ fun LibraryScreen(
     repository: AppRepository,
     focusRepository: ApiFocusRepository,
     initialCourseId: String? = null,
-    initialSessionId: String? = null,
     onBack: () -> Unit,
     onConnectChaoxing: () -> Unit,
-    onOpenCounselor: (String, String, String) -> Unit,
     onStartFocus: (String) -> Unit,
+    onOpenClassroom: (String) -> Unit,
 ) {
     val courses by repository.courses.collectAsStateWithLifecycle()
-    val focusRecords by focusRepository.records.collectAsStateWithLifecycle()
     val realCourses = courses.filter { it.provider.equals("chaoxing", ignoreCase = true) }
     val today = LocalDate.now()
     val termStart = currentTermStart(today)
@@ -211,11 +209,9 @@ fun LibraryScreen(
         CourseDetailSheet(
             course = course,
             repository = repository,
-            initialSessionId = initialSessionId,
             onDismiss = { selectedCourse = null },
-            onOpenCounselor = onOpenCounselor,
             onStartFocus = onStartFocus,
-            courseRecords = focusRecords.filter { it.goal?.contains("《${course.name}》") == true },
+            onOpenClassroom = onOpenClassroom,
         )
     }
 }
