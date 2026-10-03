@@ -68,6 +68,21 @@ Invalid boxes are rejected or clipped only in generated manifests. Original labe
 
 ## Commands
 
+When the V3.4 training checkpoint is unavailable, `onnx_finetune.OnnxBehaviorModel`
+can reconstruct its existing fused inference graph as a differentiable module.
+It retains the trained convolution/Gemm weights and classification head, and
+supports only the operators in that graph. Before using it, verify both logits
+and predicted classes against the original ONNX Runtime model on random and
+real ROI inputs. Fused BatchNorm cannot recover its old running statistics;
+fine-tuning updates the equivalent fused parameters. Save new checkpoints
+separately with the original graph hash; this offline checkpoint type requires
+the matching source graph and is not accepted by the standard baseline exporter.
+Its `export_onnx` method writes updated tensors into the same graph and refuses
+existing output paths. Verify exported logits before considering deployment.
+It does not update deployment assets. Use the same preprocessing and fixed
+video splits to compare the original and fine-tuned models, and do not describe
+the re-split data as unseen by the inherited model without its old split manifest.
+
 Run tests:
 
 ```powershell

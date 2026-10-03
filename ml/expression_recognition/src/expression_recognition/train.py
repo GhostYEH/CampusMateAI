@@ -20,6 +20,19 @@ from tqdm import tqdm
 from .data import class_weights, create_loader, create_mixed_domain_loader
 from .models import build_model, parameter_count
 from .utils import load_config, save_json, seed_everything
+from .unified_manifest import sha256_file
+
+
+def load_initial_model(model: nn.Module, path: Path, config: dict) -> dict:
+    """Load recognition weights only; a fine-tune starts a fresh optimizer and schedule."""
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    source_config = checkpoint["config"]
+    for key in ("model", "input_size", "input_channels", "normalization"):
+        if source_config.get(key) != config.get(key):
+            raise ValueError(f"Fine-tune checkpoint contract differs: {key}")
+    model.load_state_dict(checkpoint["model_state"], strict=True)
+    return {"source_checkpoint": str(path.resolve()), "source_sha256": sha256_file(path),
+            "source_epoch": checkpoint.get("epoch"), "optimizer_reset": True}
 
 
 class FocalLoss(nn.Module):
@@ -207,6 +220,9 @@ def save_checkpoint(
 
 
 def train(args: argparse.Namespace) -> Path:
+    initialize_from = getattr(args, "initialize_from", None)
+    if initialize_from is not None and args.resume:
+        raise ValueError("Choose checkpoint fine-tuning or full-state resume, not both")
     config = load_config(args.config)
     seed_everything(int(config["seed"]))
     if not torch.cuda.is_available() and not args.allow_cpu:
@@ -261,7 +277,10 @@ def train(args: argparse.Namespace) -> Path:
         return train_dataset, train_loader, validation_loader
 
     train_dataset, train_loader, validation_loader = build_loaders(effective_batch_size)
-    model = build_model(config).to(device)
+    model = build_model(config, allow_download=initialize_from is None).to(device)
+    if initialize_from is not None:
+        lineage = load_initial_model(model, Path(initialize_from), config)
+        save_json(run_dir / "initialization.json", lineage)
     criterion = build_criterion(config, train_dataset.targets, device)
     optimizer = AdamW(
         model.parameters(),
@@ -380,6 +399,8 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, default=Path("runs"))
     parser.add_argument("--run-dir", type=Path)
     parser.add_argument("--resume", type=Path)
+    parser.add_argument("--initialize-from", type=Path,
+                        help="Fine-tune an existing recognition checkpoint with fresh optimizer/scheduler state.")
     parser.add_argument("--max-epochs", type=int)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--max-batches", type=int, default=4)

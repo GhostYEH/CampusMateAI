@@ -64,6 +64,8 @@ if (-not $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT) { throw 'Set CAMPUSMATE_EXPRES
 
 ## 恢复中断训练
 
+微调已有识别模型时使用 `--initialize-from`，严格恢复模型权重和输入契约，使用新配置中的小学习率、新优化器及调度器；不会重新加载 ImageNet 权重。该选项与完整状态恢复的 `--resume` 互斥。输出必须选择新的运行目录，并在同一固定划分上对比原模型与微调模型；再下载旧数据不等于新增外部测试集。
+
 下面示例从 ResNet18 的 `last.pt` 恢复；恢复时继续沿用 checkpoint 内保存的模型、优化器、调度器、AMP scaler、epoch、早停计数和历史：
 
 ```powershell
