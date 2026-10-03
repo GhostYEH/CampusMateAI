@@ -31,6 +31,30 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.ui.theme.Muted
 
+/** Some Android WebViews report a zero CSS viewport for `100vh` inside a Compose dialog. */
+private val classroomViewportFix = """
+    (function () {
+      if (!document.body) return;
+      if (window.__campusClassroomViewportFix) return;
+      window.__campusClassroomViewportFix = true;
+      function applyHeight() {
+        var height = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+        if (!height || !document.body) return;
+        var pixels = height + 'px';
+        document.documentElement.style.setProperty('height', pixels, 'important');
+        document.body.style.setProperty('height', pixels, 'important');
+        Array.prototype.forEach.call(document.body.children, function (element) {
+          if (element.classList && element.classList.contains('h-screen')) {
+            element.style.setProperty('height', pixels, 'important');
+          }
+        });
+      }
+      applyHeight();
+      window.addEventListener('resize', applyHeight);
+      new MutationObserver(applyHeight).observe(document.body, { childList: true });
+    })();
+""".trimIndent()
+
 /** A classroom remains inside CampusMate; navigation is confined to its trusted origin. */
 @Composable
 internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
@@ -46,10 +70,10 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
         if (pageFinished && loadError == null) {
             kotlinx.coroutines.delay(10000)
             webView?.evaluateJavascript(
-                "JSON.stringify({title:document.title, body:(document.body?.innerText||'').trim().length})",
+                "!(document.body?.innerText||'').trim() || document.body?.querySelector(':scope > .h-screen')?.getBoundingClientRect().height === 0",
             ) { result ->
-                if (result.contains("\"body\":0")) {
-                    loadError = "课堂网页已打开，但课堂组件没有完成渲染。请重新加载；如果仍失败，请检查手机 WebView。"
+                if (result == "true") {
+                    loadError = "课堂网页已打开，但页面高度异常。请重新加载课堂。"
                 }
             }
         }
@@ -100,6 +124,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                 }
 
                                 override fun onPageFinished(view: WebView, pageUrl: String?) {
+                                    view.evaluateJavascript(classroomViewportFix, null)
                                     loading = false
                                     pageFinished = true
                                 }
