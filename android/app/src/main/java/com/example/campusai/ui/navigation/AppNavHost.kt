@@ -34,6 +34,7 @@ import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.counselor.CounselorScreen
 import com.example.campusai.ui.screens.courses.LibraryScreen
 import com.example.campusai.ui.screens.courses.InteractiveClassroomScreen
+import com.example.campusai.ui.screens.courses.ClassroomHubScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
@@ -320,6 +321,9 @@ fun AppNavHost(
                 onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                 onOpenClassroom = { courseId -> go("course-classroom/${Uri.encode(courseId)}") },
             )
+        }
+        composable("classroom-hub") {
+            ClassroomHubScreen(repository, onBack = { navController.popBackStack() }, onOpenCourses = { go("courses") })
         }
         composable(
             route = "courses/{courseId}?tab={tab}&session={session}",

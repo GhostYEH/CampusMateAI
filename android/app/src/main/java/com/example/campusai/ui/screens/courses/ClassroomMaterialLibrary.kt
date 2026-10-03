@@ -1,5 +1,8 @@
 package com.example.campusai.ui.screens.courses
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,9 +38,15 @@ internal fun ClassroomMaterialLibrary(
     materials: List<InteractiveClassroomMaterialDto>,
     selected: Set<String>,
     onToggle: (String, Boolean) -> Unit,
+    uploadBusy: Boolean,
+    uploadMessage: String?,
+    onPickFile: (Uri) -> Unit,
     onDone: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) onPickFile(uri)
+    }
     val visible = remember(query, materials) { materials.filter { it.title.contains(query.trim(), ignoreCase = true) } }
     BackHandler(onBack = onDone)
     Dialog(onDismissRequest = onDone, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -54,9 +63,17 @@ internal fun ClassroomMaterialLibrary(
                 .background(Brush.horizontalGradient(listOf(Color(0xFF173E34), Color(0xFF59734D), Color(0xFF8A7650)))).padding(18.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("已选 ${selected.size} / ${materials.size} 项", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("当前只读取文件名，尚未读取文件正文", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
+                    Text("支持添加可解析的个人资料，并用于这节课。", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
                 }
             }
+            Text(if (uploadBusy) "正在添加资料…" else "+ 添加资料（PDF / DOCX / TXT / Markdown，限 2 MB）",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(16.dp)).background(Color(0xFF214C3E))
+                    .clickable(enabled = !uploadBusy) {
+                        picker.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown"))
+                    }.padding(15.dp), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            uploadMessage?.let { Text(it, color = Color(0xFF214C3E), fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 20.dp)) }
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 label = { Text("搜索资料") }, singleLine = true, shape = RoundedCornerShape(16.dp))
             LazyColumn(modifier = Modifier.weight(1f), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

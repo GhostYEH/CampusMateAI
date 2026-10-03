@@ -38,6 +38,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import android.net.Uri
+import android.provider.OpenableColumns
+import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -225,6 +232,11 @@ class InteractiveClassroomViewModel(
         viewModelScope.launch { loadPlan(normalized) }
     }
 
+    fun refreshPlan() {
+        _uiState.update { it.copy(planLoading = true) }
+        viewModelScope.launch { loadPlan(_uiState.value.selectedMode) }
+    }
+
     fun updateLearningObjective(value: String) = _uiState.update { it.copy(learningObjective = value.take(500)) }
     fun updateCurrentDifficulty(value: String) = _uiState.update { it.copy(currentDifficulty = value.take(500)) }
     fun updateDuration(value: Int) = _uiState.update { it.copy(desiredDurationMinutes = value) }
@@ -395,7 +407,11 @@ fun InteractiveClassroomSection(
         factory = factory,
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showMaterials by remember(course.id) { mutableStateOf(false) }
+    var uploadBusy by remember(course.id) { mutableStateOf(false) }
+    var uploadMessage by remember(course.id) { mutableStateOf<String?>(null) }
     var viewerUrl by remember(course.id) { mutableStateOf<String?>(null) }
     DisposableEffect(viewModel) {
         viewModel.resumeObservationIfNeeded()
@@ -449,7 +465,7 @@ fun InteractiveClassroomSection(
                         }
                         Text("›", color = Color(0xFF1D493B), fontSize = 24.sp)
                     }
-                    Text("当前只读取资料文件名，尚未读取正文", color = Muted, fontSize = 11.sp)
+                    Text("个人上传的可解析资料会读取正文；学习通资料以已同步内容为准。", color = Muted, fontSize = 11.sp)
                 }
             }
             if (!state.confirmed && state.progress.sessionId == null) {
@@ -472,7 +488,59 @@ fun InteractiveClassroomSection(
         HistoryCard(state.history, state.status, onOpen = { viewerUrl = it })
     }
     if (showMaterials) state.plan?.let { plan ->
-        ClassroomMaterialLibrary(course.name, plan.materials, state.selectedMaterialIds, viewModel::toggleMaterial) { showMaterials = false }
+        ClassroomMaterialLibrary(
+            courseName = course.name,
+            materials = plan.materials,
+            selected = state.selectedMaterialIds,
+            onToggle = viewModel::toggleMaterial,
+            uploadBusy = uploadBusy,
+            uploadMessage = uploadMessage,
+            onPickFile = { uri: Uri ->
+                if (!uploadBusy) scope.launch {
+                    uploadBusy = true
+                    uploadMessage = null
+                    try {
+                        val nameAndBytes = withContext(Dispatchers.IO) {
+                            val resolver = context.contentResolver
+                            val fallbackName = when (resolver.getType(uri)) {
+                                "application/pdf" -> "资料.pdf"
+                                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "资料.docx"
+                                "text/markdown" -> "资料.md"
+                                else -> "资料.txt"
+                            }
+                            val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                                if (cursor.moveToFirst()) cursor.getString(0) else null
+                            } ?: fallbackName
+                            val bytes = resolver.openInputStream(uri)?.use { stream ->
+                                val output = ByteArrayOutputStream()
+                                val chunk = ByteArray(8192)
+                                while (true) {
+                                    val read = stream.read(chunk)
+                                    if (read <= 0) break
+                                    output.write(chunk, 0, read)
+                                    if (output.size() > 2 * 1024 * 1024) throw IllegalArgumentException("单份资料不能超过 2 MB")
+                                }
+                                output.toByteArray()
+                            } ?: throw IllegalArgumentException("无法读取所选文件")
+                            name to bytes
+                        }
+                        repository.uploadClassroomMaterial(course.id, nameAndBytes.first, nameAndBytes.second)
+                            .onSuccess { uploaded ->
+                                if (uploaded.extractionStatus == "extracted" && uploaded.textChars > 0) {
+                                    viewModel.toggleMaterial(uploaded.id, true)
+                                    viewModel.refreshPlan()
+                                    uploadMessage = "已添加并选中：${uploaded.filename}"
+                                } else {
+                                    uploadMessage = "文件已上传，但暂无法提取正文，不能用于生成课堂。"
+                                }
+                            }.onFailure { uploadMessage = it.message ?: "资料上传失败" }
+                    } catch (error: Exception) {
+                        uploadMessage = error.message ?: "无法读取文件"
+                    } finally { uploadBusy = false }
+                }
+            },
+            onDone = { showMaterials = false },
+        )
     }
     viewerUrl?.let { ClassroomViewer(it) { viewerUrl = null } }
 }

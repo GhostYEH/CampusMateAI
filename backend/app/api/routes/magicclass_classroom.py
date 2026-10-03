@@ -12,9 +12,9 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Dict, Optional, Sequence
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from ...core.exceptions import NotFoundError
+from ...core.exceptions import Forbidden, NotFoundError
 from ...models.multi_role import UserRow
 from ...schemas.magicclass import (
     MODE_INTENT_LABELS,
@@ -32,6 +32,7 @@ from ...services.magicclass.classroom_service import MagicClassClassroomService
 from ...services.magicclass.course_context import (
     ContextLimits,
     LearningContext,
+    MaterialRef,
     assert_course_access,
     build_learning_context,
 )
@@ -42,9 +43,12 @@ from ...services.magicclass.requirement_builder import (
     mode_label,
     normalize_mode,
 )
+from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ..deps import current_user
 
 router = APIRouter(prefix="/courses", tags=["interactive-classroom"])
+self_router = APIRouter(prefix="/self-classroom", tags=["interactive-classroom"])
+SELF_COURSE_ID = "__self_study__"
 
 
 def _container() -> ServiceContainer:
@@ -55,8 +59,157 @@ def _service(c: ServiceContainer = Depends(_container)) -> MagicClassClassroomSe
     return c.magicclass_classroom_service
 
 
+def _self_student(user: UserRow) -> None:
+    if user.role != "student":
+        raise Forbidden("仅学生可生成互动课堂")
+
+
+@self_router.get("/status", response_model=MagicClassStatusOut)
+async def self_classroom_status(
+    user: UserRow = Depends(current_user),
+    service: MagicClassClassroomService = Depends(_service),
+) -> MagicClassStatusOut:
+    _self_student(user)
+    return MagicClassStatusOut(**await service.status())
+
+
+@self_router.post("/generate", response_model=MagicClassGenerateOut, status_code=202)
+async def generate_self_classroom(
+    req: MagicClassGenerateRequest,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    service: MagicClassClassroomService = Depends(_service),
+) -> MagicClassGenerateOut:
+    _self_student(user)
+    topic = (req.learning_objective or "").strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="请先输入想学的内容")
+    if req.selected_material_ids:
+        raise HTTPException(status_code=400, detail="自主课堂暂不接受课程资料 ID，请从课程内建立课堂")
+    context = LearningContext(text=f"学生自主选题：{topic}", sources={"topic": "student"})
+    session = await service.generate(
+        user_id=user.id,
+        course_id=SELF_COURSE_ID,
+        context=context,
+        mode=req.mode,
+        brief=_brief(req, context),
+        request_snapshot=_snapshot_of(req),
+    )
+    return MagicClassGenerateOut(
+        accepted=True,
+        session=MagicClassSessionOut.from_session(session, settings=container.settings),
+        poll_interval_ms=container.settings.magicclass_poll_interval_ms,
+        mode=session.mode,
+        requested_mode=session.requested_mode or req.mode,
+        adaptive_reason=session.adaptive_reason,
+        request_source="request",
+    )
+
+
+@self_router.get("/jobs/{session_id}", response_model=MagicClassSessionOut)
+async def self_classroom_job(
+    session_id: str,
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+    service: MagicClassClassroomService = Depends(_service),
+) -> MagicClassSessionOut:
+    _self_student(user)
+    session = service.get_session(user_id=user.id, course_id=SELF_COURSE_ID, session_id=session_id)
+    if session is None:
+        raise NotFoundError("课堂生成任务不存在")
+    return MagicClassSessionOut.from_session(await service.poll(session), settings=container.settings)
+
+
+@self_router.get("", response_model=MagicClassClassroomsOut)
+async def list_self_classrooms(
+    user: UserRow = Depends(current_user),
+    service: MagicClassClassroomService = Depends(_service),
+) -> MagicClassClassroomsOut:
+    _self_student(user)
+    status = await service.status()
+    return MagicClassClassroomsOut(
+        enabled=status.get("enabled", False),
+        items=service.list_classrooms(user_id=user.id, course_id=SELF_COURSE_ID),
+    )
+
+
 def _limits(container: ServiceContainer) -> ContextLimits:
     return ContextLimits(total_chars=container.settings.magicclass_course_context_max_chars)
+
+
+def _material_client(container: ServiceContainer) -> MagicClassFusionClient:
+    settings = container.settings
+    return MagicClassFusionClient(
+        base_url=settings.magicclass_service_url,
+        secret=settings.magicclass_internal_secret,
+        timeout_seconds=settings.magicclass_service_timeout_seconds,
+    )
+
+
+async def _uploaded_materials_for_plan(
+    container: ServiceContainer, user: UserRow, course_id: str
+) -> tuple[list[MagicClassMaterialOut], list[str]]:
+    if not container.settings.magicclass_fusion_enabled:
+        return [], []
+    try:
+        payload = await _material_client(container).list_materials(
+            user_id=str(user.id), course_id=course_id, limit=50, cursor=None
+        )
+    except Exception:
+        return [], ["个人上传资料暂时无法读取"]
+    return [
+        MagicClassMaterialOut(id=item["id"], title=item["filename"], kind="个人上传")
+        for item in payload.get("items", [])
+        if item.get("extraction_status") == "extracted" and item.get("text_chars", 0) > 0
+    ], []
+
+
+async def _attach_uploaded_materials(
+    container: ServiceContainer, user: UserRow, course_id: str, context: LearningContext
+) -> LearningContext:
+    missing = list(context.unresolved_material_ids)
+    if not missing or not container.settings.magicclass_fusion_enabled:
+        return context
+    try:
+        client = _material_client(container)
+        resolved = await client.resolve_materials(
+            user_id=str(user.id), course_id=course_id, material_ids=missing
+        )
+        refs = list(context.materials)
+        paragraphs = []
+        accepted = list(context.selected_material_ids)
+        limit = container.settings.magicclass_course_context_max_chars
+        per_file = max(0, limit // max(2, len(missing) * 2) - 100)
+        clipped = False
+        for item in resolved.get("resolved", []):
+            if item.get("extraction_status") != "extracted":
+                continue
+            detail = await client.get_material(
+                user_id=str(user.id), course_id=course_id, material_id=item["id"]
+            )
+            body = str(detail.get("text") or "").strip()
+            if not body or per_file == 0:
+                continue
+            if len(body) > per_file:
+                clipped = True
+                body = body[:per_file] + "\n[资料正文已截断]"
+            accepted.append(item["id"])
+            refs.append(MaterialRef(id=item["id"], title=item["filename"], kind="个人上传"))
+            paragraphs.append(f"[个人上传资料：{item['filename']}]\n{body}")
+        extra = "\n".join(paragraphs)
+        remaining = max(0, limit - len(extra) - 1)
+        return replace(
+            context,
+            materials=tuple(refs),
+            selected_material_ids=tuple(accepted),
+            unresolved_material_ids=tuple(mid for mid in missing if mid not in accepted),
+            text=(extra + "\n" + context.text[:remaining])[:limit],
+            material_text=(extra + "\n" + context.material_text[:remaining])[:limit],
+            truncated=context.truncated or clipped,
+            warnings=[*context.warnings, *(["个人上传资料正文较长，已截取片段用于课堂"] if clipped else [])],
+        )
+    except Exception:
+        return replace(context, warnings=[*context.warnings, "个人上传资料读取失败，请稍后重试"])
 
 
 def _brief(req: MagicClassGenerateRequest, context: LearningContext) -> StudentBrief:
@@ -170,6 +323,7 @@ async def get_plan(
     context = build_learning_context(
         container, user, course, limits=_limits(container)
     )
+    uploaded, upload_warnings = await _uploaded_materials_for_plan(container, user, course_id)
     resolved = requested
     adaptive_reason: Optional[str] = None
     if requested == "adaptive":
@@ -189,12 +343,12 @@ async def get_plan(
         materials=[
             MagicClassMaterialOut(id=ref.id, title=ref.title, kind=ref.kind)
             for ref in context.materials
-        ],
+        ] + uploaded,
         selected_material_ids=[],
         context_sources=context.sources,
         context_updated_at=context.updated_at,
         context_truncated=context.truncated,
-        context_warnings=list(context.warnings),
+        context_warnings=[*context.warnings, *upload_warnings],
         capabilities=status.get("capabilities", {}) or {},
         external_3d_available=bool(container.settings.magicclass_external_3d_available),
         can_generate=bool(status.get("enabled")),
@@ -222,6 +376,7 @@ async def generate_classroom(
         limits=_limits(container),
         selected_material_ids=req.selected_material_ids,
     )
+    context = await _attach_uploaded_materials(container, user, course_id, context)
     session = await service.generate(
         user_id=user.id,
         course_id=course_id,
@@ -358,6 +513,7 @@ async def retry_session(
         limits=_limits(container),
         selected_material_ids=snapshot.selected_material_ids,
     )
+    context = await _attach_uploaded_materials(container, user, course_id, context)
     resolved = set(context.selected_material_ids)
     titles = tuple(ref.title for ref in context.materials if ref.id in resolved)
     new_session = await service.generate(

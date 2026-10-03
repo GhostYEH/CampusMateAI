@@ -678,6 +678,13 @@ data class InteractiveClassroomMaterialDto(
     @Json(name = "kind") val kind: String? = null,
 )
 
+data class UploadedClassroomMaterialDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "filename") val filename: String,
+    @Json(name = "extraction_status") val extractionStatus: String = "unsupported",
+    @Json(name = "text_chars") val textChars: Int = 0,
+)
+
 /** 生成**之前**的计划（只读，不创建任何任务）。 */
 data class InteractiveClassroomPlanDto(
     @Json(name = "course_id") val courseId: String,
@@ -1291,6 +1298,26 @@ interface ApiService {
         @Path("courseId") courseId: String,
         @Path("sessionId") sessionId: String,
     ): Response<InteractiveClassroomCompositionDto>
+
+    @GET("self-classroom/status")
+    suspend fun getSelfClassroomStatus(): Response<InteractiveClassroomStatusDto>
+
+    @POST("self-classroom/generate")
+    suspend fun generateSelfClassroom(@Body body: InteractiveClassroomGenerateRequest): Response<InteractiveClassroomGenerateResponse>
+
+    @GET("self-classroom/jobs/{sessionId}")
+    suspend fun getSelfClassroomJob(@Path("sessionId") sessionId: String): Response<InteractiveClassroomSessionDto>
+
+    @GET("self-classroom")
+    suspend fun getSelfClassrooms(): Response<InteractiveClassroomDto>
+
+    @Multipart
+    @POST("courses/{courseId}/materials")
+    suspend fun uploadClassroomMaterial(
+        @Path("courseId") courseId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Part file: MultipartBody.Part,
+    ): Response<UploadedClassroomMaterialDto>
 
     @GET("courses/{courseId}/resources/{itemId}/open")
     suspend fun openCourseResource(

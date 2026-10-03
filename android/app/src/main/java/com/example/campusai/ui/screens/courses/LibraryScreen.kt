@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.R
 import com.example.campusai.data.model.Course
@@ -90,6 +91,7 @@ fun LibraryScreen(
     var lastSyncedAt by remember { mutableStateOf<String?>(null) }
     var syncing by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
+    var showSyncDialog by remember { mutableStateOf(false) }
     var selectedCourse by remember { mutableStateOf<Course?>(null) }
     var statusRefreshToken by remember { mutableIntStateOf(0) }
 
@@ -133,53 +135,16 @@ fun LibraryScreen(
                 }
             }
             item {
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xEF153B34), Color(0xEF305442), Color(0xE8736848))))
-                        .border(1.dp, Color(0x99E9D7A8), RoundedCornerShape(22.dp)).padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFE9D7A8))
-                        Column {
-                            Text("我的课程书架", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                when (accountStatus) {
-                                    "online" -> "已连接学习通 · ${realCourses.size} 门课程"
-                                    "expired" -> "学习通登录已失效，请重新连接"
-                                    "offline" -> "连接学习通后，课程会摆上书架"
-                                    "checking" -> "正在检查学习通连接…"
-                                    else -> "暂时无法确认连接，请检查网络"
-                                }, color = Color.White.copy(alpha = .78f), fontSize = 12.sp,
-                            )
-                        }
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text("我的课程书架", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("${realCourses.size} 门课程", color = Color.White.copy(alpha = .76f), fontSize = 12.sp)
                     }
-                    if (accountStatus == "online") {
-                        lastSyncedAt?.let { Text("上次同步：${it.take(16).replace('T', ' ')}", color = Color.White.copy(alpha = .7f), fontSize = 11.sp) }
-                        Text("这里更新课程书架；打开一本课程可分别更新章节、资料、作业与通知。", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
-                        LibraryAction("同步课程", onClick = {
-                            if (!syncing) scope.launch {
-                                syncing = true
-                                val result = repository.syncChaoxing()
-                                if (result.first) {
-                                    repository.refreshCourses()
-                                    lastSyncedAt = repository.getChaoxingStatus()?.last_synced_at
-                                    syncMessage = "课程已更新"
-                                } else {
-                                    syncMessage = if (result.second == "reauth_required" || result.second == "verification_required") {
-                                        accountStatus = "expired"
-                                        "登录已失效，请重新连接"
-                                    } else "同步失败：${result.second}"
-                                }
-                                syncing = false
-                            }
-                        }, busy = syncing)
-                    } else if (accountStatus == "offline" || accountStatus == "expired") {
-                        LibraryAction(if (accountStatus == "expired") "重新连接学习通" else "连接学习通", onConnectChaoxing)
-                    } else if (accountStatus == "unavailable") {
-                        LibraryAction("重试连接", onClick = { statusRefreshToken++ })
-                    }
-                    syncMessage?.let { Text(it, color = Color.White, fontSize = 12.sp) }
+                    Text("同步课程", color = Color(0xFF2A433B), fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xFFF2DFC0))
+                            .clickable { showSyncDialog = true }.padding(horizontal = 14.dp, vertical = 10.dp))
                 }
             }
             if (accountStatus == "online") {
@@ -203,6 +168,51 @@ fun LibraryScreen(
                 }
             }
             item { Text("轻触书脊打开课程", color = Color.White.copy(alpha = .72f), fontSize = 12.sp) }
+        }
+    }
+    if (showSyncDialog) {
+        Dialog(onDismissRequest = { showSyncDialog = false }) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                .background(Brush.linearGradient(listOf(Color(0xFF173B35), Color(0xFF4D6247))))
+                .border(1.dp, Color(0x99E9D7A8), RoundedCornerShape(24.dp)).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("同步课程", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                Text(when (accountStatus) {
+                    "online" -> "已连接学习通 · ${realCourses.size} 门课程"
+                    "expired" -> "学习通登录已失效"
+                    "offline" -> "尚未连接学习通"
+                    "checking" -> "正在检查连接…"
+                    else -> "暂时无法确认连接，请检查网络"
+                }, color = Color.White.copy(alpha = .88f), fontSize = 13.sp)
+                if (accountStatus == "online") {
+                    lastSyncedAt?.let { Text("上次同步：${it.take(16).replace('T', ' ')}", color = Color.White.copy(alpha = .73f), fontSize = 12.sp) }
+                    Text("更新书架后，可打开课程更新章节、资料、作业与通知。",
+                        color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
+                    LibraryAction("同步课程", onClick = {
+                        if (!syncing) scope.launch {
+                            syncing = true
+                            val result = repository.syncChaoxing()
+                            if (result.first) {
+                                repository.refreshCourses()
+                                lastSyncedAt = repository.getChaoxingStatus()?.last_synced_at
+                                syncMessage = "课程已更新"
+                            } else {
+                                syncMessage = if (result.second == "reauth_required" || result.second == "verification_required") {
+                                    accountStatus = "expired"; "登录已失效，请重新连接"
+                                } else "同步失败：${result.second}"
+                            }
+                            syncing = false
+                        }
+                    }, busy = syncing)
+                } else if (accountStatus == "offline" || accountStatus == "expired") {
+                    LibraryAction(if (accountStatus == "expired") "重新连接学习通" else "连接学习通", onConnectChaoxing)
+                } else if (accountStatus == "unavailable") {
+                    LibraryAction("重试连接", onClick = { statusRefreshToken++ })
+                }
+                syncMessage?.let { Text(it, color = Color.White, fontSize = 12.sp) }
+                Text("关闭", color = Color.White, modifier = Modifier.align(Alignment.End)
+                    .clickable { showSyncDialog = false }.padding(8.dp))
+            }
         }
     }
     selectedCourse?.let { course ->
