@@ -50,6 +50,32 @@ def _login(client: TestClient, username: str) -> dict[str, str]:
     }
 
 
+def test_trusted_device_token_revocation_is_scoped_to_owning_user() -> None:
+    settings = Settings(app_env="test", database_url="sqlite:///:memory:")
+    container = reset_container_for_tests(settings)
+    owner = container.user_repository.create_user(
+        username="trusted_device_owner", password_hash="not-used", role="student"
+    )
+    device = container.trusted_device_repository.create_device(
+        user_id=owner.id,
+        device_id="browser-1",
+        token_hash="hashed-token",
+        device_name="Browser",
+        browser_name=None,
+        os_name=None,
+        user_agent=None,
+        expires_at="2999-01-01T00:00:00+00:00",
+    )
+
+    assert not container.trusted_device_repository.revoke_by_token_hash(
+        "hashed-token", user_id="other-user"
+    )
+    assert container.trusted_device_repository.get_by_id(device.id).revoked_at is None
+    assert container.trusted_device_repository.revoke_by_token_hash(
+        "hashed-token", user_id=owner.id
+    )
+
+
 def _qr_create(client: TestClient, device_id: str = "test-device-001") -> dict:
     resp = client.post(
         "/api/v1/auth/qr/create",

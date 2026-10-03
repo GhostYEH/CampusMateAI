@@ -14,9 +14,11 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from functools import partial
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
+from starlette.concurrency import run_in_threadpool
 
 from ...core.exceptions import AgentRuntimeError
 from ...core.logging import logger
@@ -35,6 +37,11 @@ RETRYABLE_ERROR_CODES = frozenset({"AGENT_PROVIDER_UNAVAILABLE"})
 
 # 默认退避:1s / 5s / 15s(超出后沿用最后一次)。
 DEFAULT_RETRY_BACKOFF_SECONDS = (1, 5, 15)
+
+
+async def _offload(func, /, *args, **kwargs):
+    """Run one bounded synchronous repository call outside the event loop."""
+    return await run_in_threadpool(partial(func, *args, **kwargs))
 
 
 def _utc_now() -> datetime:
@@ -161,7 +168,7 @@ class AgentWorker:
             return recovered
         if self._mode == WORKER_MODE_DISABLED:
             return WorkerRunReport(action="skipped")
-        run = self._repo.claim_next_run(
+        run = await _offload(self._repo.claim_next_run,
             owner=self.worker_id,
             now=_iso(now),
             lease_expires_at=_iso(now + timedelta(seconds=self._lease_seconds)),
@@ -172,7 +179,8 @@ class AgentWorker:
 
     async def _recover_expired_leases(self, now: datetime) -> Optional[WorkerRunReport]:
         """租约过期后按 Handler 决策收口;有效租约绝不抢占。"""
-        for run in self._repo.list_expired_lease_runs(now=_iso(now)):
+        expired_runs = await _offload(self._repo.list_expired_lease_runs, now=_iso(now))
+        for run in expired_runs:
             expires_at = _parse_iso(run.get("lease_expires_at"))
             if expires_at is None or expires_at > now:
                 continue
@@ -186,15 +194,15 @@ class AgentWorker:
         """把中断的运行交回 Handler 决策:重排(从 checkpoint 继续)或明确失败。"""
         run_id = run["run_id"]
         handler = self._registry.get(run.get("handler_code") or "")
-        context = self._build_context(run)
+        context = await _offload(self._build_context, run)
         # 先留下可审计的观测点,再交回 Handler 决策。
-        self._events.append(
+        await _offload(self._events.append,
             run_id=run_id, type="RUN_RECOVERY_STARTED", status=run["status"],
             phase="RECOVERY_CHECKING", role="runtime",
             summary="检测到执行中断，正在检查安全恢复点",
         )
         if handler is None:
-            return self._fail_run(
+            return await self._fail_run(
                 run, error_code="AGENT_CAPABILITY_DISABLED",
                 error_message="运行对应的处理器已不可用", now=now,
                 event_type="RUN_FAILED", summary="运行对应的能力已下线，已终止",
@@ -202,17 +210,17 @@ class AgentWorker:
         try:
             decision = await handler.recover(context)
         except AgentRuntimeError as exc:
-            return self._fail_run(
+            return await self._fail_run(
                 run, error_code=exc.code, error_message=str(exc)[:256], now=now,
                 event_type="RUN_FAILED", summary="运行无法恢复，已终止",
             )
         except Exception as exc:  # noqa: BLE001 - 恢复失败必须稳定收口
-            return self._fail_run(
+            return await self._fail_run(
                 run, error_code="AGENT_INVALID_STATE", error_message=str(exc)[:256], now=now,
                 event_type="RUN_FAILED", summary="运行恢复检查失败，已终止",
             )
         if decision is None or decision.action is RecoveryAction.FAIL:
-            return self._fail_run(
+            return await self._fail_run(
                 run,
                 error_code=(getattr(decision, "error_code", None) or "AGENT_INVALID_STATE"),
                 error_message="运行中断后无法安全恢复",
@@ -220,7 +228,7 @@ class AgentWorker:
                 summary="运行中断后无法安全恢复，已终止",
             )
         try:
-            self._repo.transition_run_with_event(
+            await _offload(self._repo.transition_run_with_event,
                 run_id, "QUEUED",
                 expected_statuses=["RUNNING", "QUEUED"],
                 phase="IDLE", clear_lease=True,
@@ -241,9 +249,9 @@ class AgentWorker:
         try:
             result = await self._invoke_handler(run)
         except AgentRuntimeError as exc:
-            return self._handle_failure(run, exc, now)
+            return await self._handle_failure(run, exc, now)
         except Exception as exc:  # noqa: BLE001 - 未建模异常统一转成 FAILED
-            return self._handle_failure(
+            return await self._handle_failure(
                 run,
                 AgentRuntimeError(str(exc)[:256], code="AGENT_INVALID_STATE", http_status=409),
                 now,
@@ -254,7 +262,7 @@ class AgentWorker:
                 await heartbeat
             except (asyncio.CancelledError, Exception):  # noqa: B014
                 pass
-        return self._finish_success(run, result, now)
+        return await self._finish_success(run, result, now)
 
     async def _invoke_handler(self, run: dict):
         handler = self._registry.get(run.get("handler_code") or "")
@@ -262,7 +270,7 @@ class AgentWorker:
             raise AgentRuntimeError(
                 "运行对应的处理器已不可用", code="AGENT_CAPABILITY_DISABLED", http_status=409
             )
-        context = self._build_context(run)
+        context = await _offload(self._build_context, run)
         return await handler.execute(context)
 
     def _build_context(self, run: dict) -> HandlerContext:
@@ -294,10 +302,14 @@ class AgentWorker:
             attempt_no=int(run.get("attempt_no") or 0),
         )
 
-    def _finish_success(self, run: dict, result, now: datetime) -> WorkerRunReport:
+    async def _finish_success(self, run: dict, result, now: datetime) -> WorkerRunReport:
         run_id = run["run_id"]
+        await _offload(self._persist_success, run_id, result)
+        return WorkerRunReport(action="executed", run_id=run_id)
+
+    def _persist_success(self, run_id: str, result) -> None:
         if getattr(result, "status", None) == "AWAITING_APPROVAL":
-            # 审批等待不占 Worker:释放租约,由审批结果重新排队。
+            # Approval wait releases the lease but does not finish the Run.
             self._repo.transition_run_with_event(
                 run_id, "AWAITING_APPROVAL",
                 expected_statuses=["RUNNING"], lease_owner=self.worker_id,
@@ -307,10 +319,10 @@ class AgentWorker:
                 event_phase="WAITING_FOR_APPROVAL",
                 event_summary=getattr(result, "summary", None) or "需要用户确认后继续",
             )
-            return WorkerRunReport(action="executed", run_id=run_id)
+            return
         checkpoint = getattr(result, "checkpoint", None)
         if checkpoint:
-            # checkpoint 先落库:此后即使进程崩溃,重放也不会产生第二次领域副作用。
+            # Checkpoint persists before the final transition to make replay safe.
             self._repo.save_checkpoint(
                 run_id, self.worker_id, checkpoint,
                 heartbeat_at=_iso(self._clock()),
@@ -325,9 +337,8 @@ class AgentWorker:
             event_role="planner",
             event_summary=getattr(result, "summary", None),
         )
-        return WorkerRunReport(action="executed", run_id=run_id)
 
-    def _handle_failure(self, run: dict, exc: AgentRuntimeError, now: datetime) -> WorkerRunReport:
+    async def _handle_failure(self, run: dict, exc: AgentRuntimeError, now: datetime) -> WorkerRunReport:
         run_id = run["run_id"]
         max_attempts = self._max_attempts_for(run)
         attempt_no = int(run.get("attempt_no") or 1)
@@ -336,7 +347,7 @@ class AgentWorker:
                 min(attempt_no - 1, len(DEFAULT_RETRY_BACKOFF_SECONDS) - 1)
             ]
             try:
-                self._repo.transition_run_with_event(
+                await _offload(self._repo.transition_run_with_event,
                     run_id, "QUEUED",
                     expected_statuses=["RUNNING"], lease_owner=self.worker_id,
                     phase="IDLE", clear_lease=True,
@@ -349,18 +360,18 @@ class AgentWorker:
                 return WorkerRunReport(action="executed", run_id=run_id)
             except AgentRuntimeError:
                 pass  # 并发下已被其它路径收口,落到下面的明确失败
-        self._fail_run(
+        await self._fail_run(
             run, error_code=exc.code or "AGENT_INVALID_STATE", error_message=str(exc)[:256],
             now=now, event_type="RUN_FAILED", summary="运行失败，请稍后重试",
         )
         return WorkerRunReport(action="executed", run_id=run_id)
 
-    def _fail_run(
+    async def _fail_run(
         self, run: dict, *, error_code: str, error_message: str, now: datetime,
         event_type: str, summary: str,
     ) -> bool:
         try:
-            self._repo.transition_run_with_event(
+            await _offload(self._repo.transition_run_with_event,
                 run["run_id"], "FAILED",
                 expected_statuses=["RUNNING", "QUEUED"],
                 lease_owner=self.worker_id if run.get("status") == "RUNNING" else None,
@@ -392,7 +403,7 @@ class AgentWorker:
                 return
             now = self._clock()
             try:
-                self._repo.renew_run_lease(
+                await _offload(self._repo.renew_run_lease,
                     run_id, self.worker_id,
                     heartbeat_at=_iso(now),
                     lease_expires_at=_iso(now + timedelta(seconds=self._lease_seconds)),

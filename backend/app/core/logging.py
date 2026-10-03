@@ -25,13 +25,15 @@ class _InterceptHandler(logging.Handler):
         logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
-def _redact_filter(record: Any) -> None:
+def _redact_filter(record: Any) -> bool:
     """脱敏：把记录中可能存在的敏感字段替换为 ***。"""
     msg = record.get("message", "")
     lower = msg.lower()
     sensitive_markers = ("api_key", "apikey", "authorization", "password", "token")
     if any(m in lower for m in sensitive_markers):
         record["message"] = "[redacted: 含敏感字段，已脱敏]"
+    record.setdefault("extra", {}).setdefault("request_id", "-")
+    return True
 
 
 def configure_logging(settings: Settings) -> None:
@@ -54,7 +56,7 @@ def configure_logging(settings: Settings) -> None:
         enqueue=False,
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
+            "<level>{level: <8}</level> | request_id={extra[request_id]} | "
             "<cyan>{name}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
         ),
     )

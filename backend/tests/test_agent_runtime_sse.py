@@ -1,7 +1,10 @@
 """Agent runtime SSE 测试 —— resumable + sequence + Last-Event-ID。"""
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +13,8 @@ from app.core.config import Settings
 from app.main import create_app
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
+from app.api.routes.agent_runtime import stream_events
+from app.models.multi_role import UserRow
 
 
 def _client():
@@ -117,3 +122,51 @@ def test_list_events_after_sequence():
     events = resp.json()
     assert len(events) == 4
     assert events[0]["sequence"] == 3
+
+
+@pytest.mark.asyncio
+async def test_sse_database_wait_does_not_block_event_loop():
+    query_started = threading.Event()
+    release_query = threading.Event()
+
+    class SlowRepository:
+        def __init__(self):
+            self.run_reads = 0
+
+        def get_run(self, run_id):
+            self.run_reads += 1
+            return {"run_id": run_id, "user_id": "u1", "status": "RUNNING" if self.run_reads == 1 else "SUCCEEDED"}
+
+        def list_events(self, run_id, *, after_sequence, limit):
+            query_started.set()
+            if not release_query.wait(timeout=5):
+                raise TimeoutError("SSE query was not released")
+            return []
+
+    class RequestStub:
+        async def is_disconnected(self):
+            return False
+
+    repo = SlowRepository()
+    container = SimpleNamespace(
+        agent_runtime_repository=repo,
+        agent_event_notifier=SimpleNamespace(wait=lambda *args, **kwargs: None),
+    )
+    response = await stream_events(
+        "run1", RequestStub(), user=UserRow(id="u1", username="u1", password_hash="x"),
+        container=container, last_event_id=None,
+    )
+    tick = asyncio.Event()
+    stream_task = asyncio.create_task(response.body_iterator.__anext__())
+    try:
+        assert await asyncio.to_thread(query_started.wait, 3)
+
+        async def event_loop_probe():
+            tick.set()
+
+        await event_loop_probe()
+        assert tick.is_set()
+    finally:
+        release_query.set()
+    with pytest.raises(StopAsyncIteration):
+        await asyncio.wait_for(stream_task, timeout=3)

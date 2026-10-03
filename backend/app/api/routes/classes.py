@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -63,25 +64,10 @@ def list_classes(
 ) -> Page:
     if user.role == "student":
         # 学生只看自己已加入的班级
-        enrolls = container.enrollment_repository.list_user_classes(user.id)
-        items: List[ClassOut] = []
-        for e in enrolls:
-            if course_id and e["course_id"] != course_id:
-                continue
-            c = container.class_group_repository.get_class(e["class_id"])
-            if c is None:
-                continue
-            items.append(_class_to_out(c))
-        total = len(items)
-        start = (page - 1) * page_size
-        end = start + page_size
-        return Page(
-            items=items[start:end],
-            total=total,
-            page=page,
-            page_size=page_size,
-            has_more=end < total,
+        rows, total = container.enrollment_repository.list_user_class_page(
+            user.id, course_id=course_id, page=page, page_size=page_size
         )
+        return Page.from_rows([_class_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
     # admin: 全部班级
     rows, total = container.class_group_repository.list_classes(
         course_id=course_id,
@@ -136,9 +122,15 @@ def join_class(
                 user_id=user.id,
                 member_role="student",
             )
-        except Exception:
-            # 重复插入忽略
-            pass
+        except sqlite3.IntegrityError as exc:
+            existing = container.enrollment_repository.get_enrollment(class_id, user.id)
+            if (
+                "unique constraint failed: enrollments.class_group_id, enrollments.user_id"
+                not in str(exc).lower()
+                or existing is None
+                or existing.status != "active"
+            ):
+                raise
     return _class_to_out(cls)
 
 

@@ -13,7 +13,7 @@ from app.services.demo_seeder import seed_demo_data
 
 
 def _setup() -> tuple[TestClient, object]:
-    settings = Settings(app_env="test1test", database_url="sqlite:///:memory:", auto_seed_demo_users=True, auto_import_demo=False)
+    settings = Settings(app_env="test", database_url="sqlite:///:memory:", auto_seed_demo_users=True, auto_import_demo=False)
     container = reset_container_for_tests(settings)
     seed_demo_data(container, force=True)
     now = datetime.now(timezone.utc).isoformat()

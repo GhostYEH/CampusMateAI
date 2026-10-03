@@ -59,6 +59,50 @@ class CommunityRepository:
                 [*params, page_size, (page - 1) * page_size],
             ).fetchall()
         return [dict(row) for row in rows], total
+
+    def post_output_metadata(self, post_ids: list[str], viewer_id: str) -> dict[str, dict[str, Any]]:
+        if not post_ids:
+            return {}
+        marks = ",".join("?" for _ in post_ids)
+        with self.db.query() as conn:
+            rows = conn.execute(
+                f"""SELECT p.id, u.display_name, u.username,
+                           EXISTS(SELECT 1 FROM forum_likes l WHERE l.post_id=p.id AND l.user_id=?) AS liked,
+                           EXISTS(SELECT 1 FROM forum_favorites f WHERE f.post_id=p.id AND f.user_id=?) AS favorited
+                    FROM forum_posts p LEFT JOIN users u ON u.id=p.author_id
+                    WHERE p.id IN ({marks})""",
+                [viewer_id, viewer_id, *post_ids],
+            ).fetchall()
+        return {
+            row["id"]: {
+                "author_name": row["display_name"] or row["username"] or "已注销用户",
+                "liked": bool(row["liked"]),
+                "favorited": bool(row["favorited"]),
+            }
+            for row in rows
+        }
+
+    def comment_author_names_for_post(self, post_id: str) -> dict[str, str]:
+        with self.db.query() as conn:
+            rows = conn.execute(
+                """SELECT c.id, u.display_name, u.username FROM forum_comments c
+                    LEFT JOIN users u ON u.id=c.author_id
+                    WHERE c.post_id=? AND c.status='published'""",
+                (post_id,),
+            ).fetchall()
+        return {row["id"]: row["display_name"] or row["username"] or "已注销用户" for row in rows}
+
+    def report_author_names(self, report_ids: list[str]) -> dict[str, str]:
+        if not report_ids:
+            return {}
+        marks = ",".join("?" for _ in report_ids)
+        with self.db.query() as conn:
+            rows = conn.execute(
+                f"""SELECT r.id, u.display_name, u.username FROM forum_reports r
+                    LEFT JOIN users u ON u.id=r.reporter_id WHERE r.id IN ({marks})""",
+                report_ids,
+            ).fetchall()
+        return {row["id"]: row["display_name"] or row["username"] or "已注销用户" for row in rows}
     def update_post(self, post_id: str, *, title: Optional[str] = None, content: Optional[str] = None,
                     category: Optional[str] = None, images: Optional[list[str]] = None,
                     is_anonymous: Optional[bool] = None, extra: Optional[dict] = None) -> Optional[dict]:

@@ -6,6 +6,7 @@ import pytest
 from app.api.routes.assignments import list_assignments, list_student_assignments
 from app.api.routes.courses import list_courses
 from app.api.routes.notices import list_notices
+from app.api.routes import health as health_route
 from app.database.sqlite_db import Database
 from app.models.multi_role import UserRow
 from app.repositories.multi_role_repository import (
@@ -13,6 +14,10 @@ from app.repositories.multi_role_repository import (
     EnrollmentRepository, SubmissionRepository, UserRepository,
 )
 from app.repositories.notice_repository import NoticeRepository
+from app.repositories.announcement_repository import AnnouncementRepository
+from app.repositories.community_repository import CommunityRepository
+from app.repositories.course_content_repository import CourseContentRepository
+from app.repositories.document_repository import DocumentRepository
 
 
 @pytest.fixture
@@ -40,6 +45,10 @@ def container():
         class_group_repository=ClassGroupRepository(db), enrollment_repository=EnrollmentRepository(db),
         assignment_repository=AssignmentRepository(db), submission_repository=SubmissionRepository(db),
         notice_repository=NoticeRepository(db),
+        announcement_repository=AnnouncementRepository(db),
+        community_repository=CommunityRepository(db),
+        course_content_repository=CourseContentRepository(db),
+        document_repository=DocumentRepository(db),
     )
     yield result
     db.dispose()
@@ -138,3 +147,129 @@ def test_assignment_page_batches_authors_and_attachments(container):
         student_page = list_student_assignments(status=None, search=None, sort_by="deadline", sort_desc=False, page=1, page_size=100, user=student(), container=container)
     assert student_page.total == 100 and len(queries) == 3
     assert {item["author_name"] for item in student_page.items} == {"Admin", "B"}
+
+
+def test_health_does_not_rebuild_the_retrieval_index(monkeypatch, container):
+    calls = []
+    container.retrieval = SimpleNamespace(
+        rebuild=lambda: calls.append("rebuild"), is_ready=True, chunk_count=3
+    )
+    container.settings = SimpleNamespace(
+        app_env="test", app_version="1", llm_provider="none",
+        llm_available=False, enable_fallback_mode=True,
+    )
+    container.llm = None
+    monkeypatch.setattr(health_route, "get_container", lambda: container)
+
+    result = health_route.health()
+
+    assert calls == []
+    assert result["document_count"] == 0
+    assert result["chunk_count"] == 3
+
+
+def test_community_page_batches_post_authors_and_viewer_flags(container):
+    repo = container.community_repository
+    with container.db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO universities (id,name,country,created_at,updated_at) VALUES ('uni','Uni','China','now','now')"
+        )
+        conn.executemany(
+            """INSERT INTO forum_posts
+               (id,university_id,author_id,title,content,category,images_json,is_anonymous,status,extra_json,created_at,updated_at)
+               VALUES (?, 'uni', 'a', ?, 'body', 'study', '[]', 0, 'published', '{}', 'now', 'now')""",
+            [(f"post{i}", f"Post {i}") for i in range(30)],
+        )
+        conn.execute("INSERT INTO forum_likes (post_id,user_id,created_at) VALUES ('post0','a','now')")
+        conn.execute("INSERT INTO forum_favorites (post_id,user_id,created_at) VALUES ('post0','a','now')")
+    rows, total = repo.list_posts("uni", q=None, page=1, page_size=30)
+    with select_statements(container.db) as queries:
+        metadata = repo.post_output_metadata([row["id"] for row in rows], "a")
+    assert total == 30 and len(metadata) == 30
+    assert metadata["post0"]["liked"] and metadata["post0"]["favorited"]
+    assert metadata["post1"]["author_name"] == "A"
+    assert len(queries) == 1
+
+
+def test_announcement_page_batches_author_and_read_state(container):
+    with container.db.transaction() as conn:
+        conn.executemany(
+            """INSERT INTO announcements
+               (id,class_group_id,author_id,title,content,status,published_at,created_at,updated_at)
+               VALUES (?, 'g1', 'admin', ?, 'body', 'published', 'now', 'now', 'now')""",
+            [(f"annx{i}", f"Announcement {i}") for i in range(30)],
+        )
+        conn.execute("INSERT INTO announcement_read_receipts VALUES ('annx0','a','now')")
+    with select_statements(container.db) as queries:
+        rows, total = container.announcement_repository.list_announcements_for_user(
+            "g1", status="published", page=1, page_size=30, student_id="a"
+        )
+    assert total == 30 and len(rows) == 30
+    assert rows[0][1] == "Admin"
+    assert rows[0][2] is True
+    assert all(entry[2] is False for entry in rows[1:])
+    assert len(queries) == 2
+
+
+def test_student_class_page_filters_and_paginates_in_sql(container):
+    with container.db.transaction() as conn:
+        conn.executemany(
+            "INSERT INTO class_groups (id,course_id,name,invite_code,created_at,updated_at) VALUES (?, 'shared', ?, ?, 'now', 'now')",
+            [(f"page{i}", f"Page {i}", f"PAGE{i}") for i in range(30)],
+        )
+        conn.executemany(
+            "INSERT INTO enrollments (id,class_group_id,user_id,status,joined_at) VALUES (?, ?, 'a', 'active', ?) " ,
+            [(f"enpage{i}", f"page{i}", f"{i:03}") for i in range(30)],
+        )
+    with select_statements(container.db) as queries:
+        rows, total = container.enrollment_repository.list_user_class_page(
+            "a", course_id="shared", page=2, page_size=10
+        )
+    assert total == 32  # The two pre-existing active memberships remain visible.
+    assert len(rows) == 10 and rows[0].id == "page21"
+    assert len(queries) == 2
+
+
+def test_course_content_page_batches_cache_probe_and_lru_touch(container):
+    with container.db.transaction() as conn:
+        conn.executemany(
+            """INSERT INTO course_content_items
+               (id,user_id,course_id,external_id,kind,title,created_at,updated_at)
+               VALUES (?, ?, 'shared', ?, 'document', ?, 'now', 'now')""",
+            [("item1", "a", "ext1", "Item 1"), ("item2", "a", "ext2", "Item 2")],
+        )
+        conn.executemany(
+            """INSERT INTO course_resource_cache
+               (item_id,user_id,course_id,relative_path,content_hash,file_size,cached_at,last_accessed_at)
+               VALUES (?, ?, 'shared', ?, ?, 1, '2000', '2000')""",
+            [("item1", "a", "a/1", "h1"), ("item2", "a", "a/2", "h2"), ("item1", "b", "b/1", "h3")],
+        )
+    with select_statements(container.db) as queries:
+        cached = container.course_content_repository.list_cached_item_ids(
+            item_ids=["item1", "item2", "missing"], user_id="a"
+        )
+    assert cached == {"item1", "item2"}
+    assert len(queries) == 1
+    with container.db.query() as conn:
+        touched = conn.execute(
+            "SELECT COUNT(*) AS n FROM course_resource_cache WHERE user_id='a' AND last_accessed_at > '2000'"
+        ).fetchone()["n"]
+        other_user_untouched = conn.execute(
+            "SELECT last_accessed_at FROM course_resource_cache WHERE item_id='item1' AND user_id='b'"
+        ).fetchone()["last_accessed_at"]
+    assert touched == 2 and other_user_untouched == "2000"
+
+
+def test_notice_workflow_lookup_is_single_notice_and_owner_scoped(container):
+    first = container.notice_repository.create_or_update_notice(
+        "a", "chaoxing", "notice-a", "A notice", content="body"
+    )
+    container.notice_repository.create_or_update_notice(
+        "a", "chaoxing", "notice-b", "Another notice", content="body"
+    )
+    with select_statements(container.db) as queries:
+        found = container.notice_repository.get_notice("a", first.id)
+    assert found is not None and found.id == first.id
+    assert len(queries) == 1
+    assert "WHERE user_id = 'a' AND id =" in queries[0]
+    assert container.notice_repository.get_notice("b", first.id) is None

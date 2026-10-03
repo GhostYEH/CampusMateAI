@@ -165,8 +165,7 @@ class NoticeWorkflowService:
             if existing:
                 return existing
         # 读取 notice
-        notice = self._notice_repo.list_notices(user_id)
-        notice_row = next((n for n in notice if n.id == notice_id), None)
+        notice_row = self._notice_repo.get_notice(user_id, notice_id)
         if notice_row is None:
             raise WorkflowNotFound("通知不存在或无权访问")
         content = notice_row.content or notice_row.title or ""
@@ -203,10 +202,7 @@ class NoticeWorkflowService:
             existing = self._repo.find_workflow_by_idempotency(user_id, idempotency_key)
             if existing:
                 return existing
-        notice_row = next(
-            (n for n in self._notice_repo.list_notices(user_id) if n.id == notice_id),
-            None,
-        )
+        notice_row = self._notice_repo.get_notice(user_id, notice_id)
         if notice_row is None:
             raise WorkflowNotFound("通知不存在或无权访问")
         content = notice_row.content or notice_row.title or ""
@@ -437,8 +433,7 @@ class NoticeWorkflowService:
             if existing:
                 return wf
         # 读取 notice 内容
-        notice = self._notice_repo.list_notices(user_id)
-        notice_row = next((n for n in notice if n.id == wf.notice_id), None)
+        notice_row = self._notice_repo.get_notice(user_id, wf.notice_id)
         content = (notice_row.content or notice_row.title or "") if notice_row else ""
         source_code = "manual_input"
         if wf.source_id:

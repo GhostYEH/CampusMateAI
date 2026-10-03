@@ -13,7 +13,7 @@ from app.services.demo_seeder import seed_demo_data
 
 def _setup() -> TestClient:
     settings = Settings(
-        app_env="test-home-banners",
+        app_env="test",
         database_url="sqlite:///:memory:",
         auto_seed_demo_users=True,
         auto_import_demo=False,

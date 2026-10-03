@@ -617,7 +617,7 @@ def revoke_trusted_device(
         if not cookie_token:
             return {"ok": True, "message": "无当前设备凭据"}
         token_hash = hash_token(cookie_token)
-        trusted_repo.revoke_by_token_hash(token_hash)
+        trusted_repo.revoke_by_token_hash(token_hash, user_id=user.id)
         _clear_trusted_device_cookie(response, cookie_name)
         return {"ok": True, "message": "已撤销当前设备"}
     # 撤销指定 device_id 的所有有效记录

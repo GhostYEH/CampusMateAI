@@ -140,6 +140,43 @@ class AnnouncementRepository:
             rows = cur.fetchall()
         return [AnnouncementRow.from_row(r) for r in rows], total
 
+    def list_announcements_for_user(
+        self, class_group_id: str, *, status: Optional[str], page: int, page_size: int,
+        student_id: Optional[str] = None,
+    ) -> tuple[list[tuple[AnnouncementRow, Optional[str], Optional[bool]]], int]:
+        """Page announcements with author and optional read state in one data query."""
+        conditions = ["a.class_group_id = ?"]
+        params: list = [class_group_id]
+        if status:
+            conditions.append("a.status = ?")
+            params.append(status)
+        where = " WHERE " + " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        with self._db.query() as conn:
+            total = int(conn.execute(
+                f"SELECT COUNT(*) AS n FROM announcements a{where}", params
+            ).fetchone()["n"])
+            rows = conn.execute(
+                f"""SELECT a.*, u.display_name AS _author_display_name, u.username AS _author_username,
+                           CASE WHEN ? IS NULL THEN NULL ELSE EXISTS(
+                               SELECT 1 FROM announcement_read_receipts r
+                               WHERE r.announcement_id=a.id AND r.student_id=?
+                           ) END AS _has_read
+                    FROM announcements a LEFT JOIN users u ON u.id=a.author_id{where}
+                    ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC
+                    LIMIT ? OFFSET ?""",
+                [student_id, student_id, *params, page_size, offset],
+            ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            author_name = data.pop("_author_display_name")
+            username = data.pop("_author_username")
+            author_name = author_name or username
+            has_read = data.pop("_has_read")
+            result.append((AnnouncementRow.from_row(data), author_name, bool(has_read) if has_read is not None else None))
+        return result, total
+
     # ===== 已读回执 =====
 
     def mark_read(

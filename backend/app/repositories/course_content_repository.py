@@ -255,6 +255,26 @@ class CourseContentRepository:
                 )
         return dict(row) if row else None
 
+    def list_cached_item_ids(self, *, item_ids: list[str], user_id: str) -> set[str]:
+        """Return cached IDs for a page and touch their LRU timestamps in one transaction."""
+        if not item_ids:
+            return set()
+        marks = ",".join("?" for _ in item_ids)
+        now = _now()
+        with self._db.transaction() as conn:
+            rows = conn.execute(
+                f"SELECT item_id FROM course_resource_cache WHERE user_id=? AND item_id IN ({marks})",
+                [user_id, *item_ids],
+            ).fetchall()
+            cached_ids = {str(row["item_id"]) for row in rows}
+            if cached_ids:
+                cached_marks = ",".join("?" for _ in cached_ids)
+                conn.execute(
+                    f"UPDATE course_resource_cache SET last_accessed_at=? WHERE user_id=? AND item_id IN ({cached_marks})",
+                    [now, user_id, *cached_ids],
+                )
+        return cached_ids
+
     def delete_cache(self, *, item_id: str, user_id: str) -> Optional[str]:
         """Remove one cache record and return its relative file path."""
         with self._db.transaction() as conn:

@@ -79,10 +79,13 @@ def list_content(course_id: str, kind: str | None = Query(None),
     rows = container.course_content_repository.list_items(
         user_id=user.id, course_id=course_id, kind=kind, page=page, page_size=page_size
     )
+    cached_ids = container.course_content_repository.list_cached_item_ids(
+        item_ids=[row.id for row in rows], user_id=user.id
+    )
     items = []
     downloadable = {"document", "video", "audio", "image", "material"}
     for row in rows:
-        cached = container.course_content_repository.get_cache(item_id=row.id, user_id=user.id) is not None
+        cached = row.id in cached_ids
         values = vars(row).copy()
         for private in ("user_id", "course_id", "provider", "remote_object_id",
                         "source_url", "is_stale", "last_synced_at", "created_at", "updated_at"):

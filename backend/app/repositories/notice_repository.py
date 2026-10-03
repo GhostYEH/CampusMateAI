@@ -79,6 +79,15 @@ class NoticeRepository:
             )
             return [NoticeRow.from_row(r) for r in cur.fetchall()]
 
+    def get_notice(self, user_id: str, notice_id: str) -> Optional[NoticeRow]:
+        """Fetch one notice while enforcing ownership in the query."""
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM notices WHERE user_id = ? AND id = ?",
+                (user_id, notice_id),
+            ).fetchone()
+        return NoticeRow.from_row(row) if row else None
+
     def list_visible_notices(
         self,
         user_id: str,

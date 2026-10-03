@@ -85,18 +85,16 @@ def list_announcements(
         status_filter = "published"
     else:
         status_filter = status  # 教师可看草稿等
-    rows, total = container.announcement_repository.list_announcements(
+    rows, total = container.announcement_repository.list_announcements_for_user(
         class_id,
         status=status_filter,
         page=page,
         page_size=page_size,
+        student_id=user.id if user.role == "student" else None,
     )
     items: List[AnnouncementOut] = []
-    for r in rows:
-        has_read: Optional[bool] = None
-        if user.role == "student":
-            has_read = container.announcement_repository.is_read(r.id, user.id)
-        items.append(_announcement_to_out(r, author_name=_author_name(container, r.author_id), has_read=has_read))
+    for r, author_name, has_read in rows:
+        items.append(_announcement_to_out(r, author_name=author_name, has_read=has_read))
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 

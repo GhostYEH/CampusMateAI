@@ -9,11 +9,10 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health() -> dict:
+def health() -> dict:
     """返回服务健康状态。"""
     container = get_container()
     s = container.settings
-    container.retrieval.rebuild()  # 确保最新
     return {
         "status": "ok",
         "mode": "real_backend",

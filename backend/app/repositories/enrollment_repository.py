@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 from ..database.sqlite_db import Database
 from ..models.multi_role import EnrollmentRow
+from ..models.multi_role import ClassGroupRow
 from ._multi_role_common import _new_id, _now_iso
 
 
@@ -184,6 +185,28 @@ class EnrollmentRepository:
             }
             for r in rows
         ]
+
+    def list_user_class_page(
+        self, user_id: str, *, course_id: Optional[str], page: int, page_size: int,
+    ) -> tuple[list[ClassGroupRow], int]:
+        conditions = ["e.user_id = ?", "e.status = 'active'"]
+        params: list = [user_id]
+        if course_id:
+            conditions.append("g.course_id = ?")
+            params.append(course_id)
+        where = " WHERE " + " AND ".join(conditions)
+        offset = (page - 1) * page_size
+        with self._db.query() as conn:
+            total = int(conn.execute(
+                f"SELECT COUNT(*) AS n FROM enrollments e JOIN class_groups g ON g.id=e.class_group_id{where}",
+                params,
+            ).fetchone()["n"])
+            rows = conn.execute(
+                f"""SELECT g.* FROM enrollments e JOIN class_groups g ON g.id=e.class_group_id
+                    {where} ORDER BY e.joined_at DESC LIMIT ? OFFSET ?""",
+                [*params, page_size, offset],
+            ).fetchall()
+        return [ClassGroupRow.from_row(row) for row in rows], total
 
     def is_member(self, class_group_id: str, user_id: str) -> bool:
         with self._db.query() as conn:

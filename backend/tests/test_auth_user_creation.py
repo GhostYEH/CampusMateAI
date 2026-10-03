@@ -1,12 +1,15 @@
 """公开注册和管理员建号共享创建流程时的接口契约。"""
 
 from secrets import token_urlsafe
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
 
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
+from app.services.container import get_container
 from app.services.container import reset_container_for_tests
 
 
@@ -117,3 +120,35 @@ def test_creation_rejects_duplicate_identifiers_and_invalid_role_fields() -> Non
         json={**base, "username": "invalid_admin_teacher", "role": "admin", "teacher_number": "T3001"},
     )
     assert invalid_admin_teacher.status_code == 422
+
+
+def test_concurrent_registration_maps_student_number_unique_conflict(monkeypatch) -> None:
+    client, _admin_headers = _client_and_admin_headers()
+    repository = get_container().user_repository
+    original_create = repository.create_user
+    both_checked = Barrier(2)
+    insert_lock = Lock()
+
+    def synchronized_create(**kwargs):
+        # Both requests pass the preflight lookup before either inserts.
+        both_checked.wait(timeout=5)
+        with insert_lock:
+            return original_create(**kwargs)
+
+    monkeypatch.setattr(repository, "create_user", synchronized_create)
+    password = token_urlsafe(12)
+
+    def register(username):
+        return client.post("/api/v1/auth/register", json={
+            "username": username,
+            "password": password,
+            "role": "student",
+            "student_number": "S-RACE-1",
+        })
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(register, ("racing_student_a", "racing_student_b")))
+
+    assert sorted(response.status_code for response in responses) == [201, 409]
+    conflict = next(response for response in responses if response.status_code == 409)
+    assert conflict.json()["code"] == "STUDENT_NUMBER_EXISTS"

@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -86,17 +87,25 @@ def _create_user(req: RegisterRequest | UserCreate, container: ServiceContainer)
         raise UsernameExists()
     if req.student_number and user_repo.get_user_by_student_number(req.student_number):
         raise StudentNumberExists()
-    created = user_repo.create_user(
-        username=req.username,
-        password_hash=hash_password(req.password),
-        role=req.role,
-        display_name=req.display_name,
-        student_number=req.student_number,
-        teacher_number=req.teacher_number,
-        college=req.college,
-        major=req.major,
-        grade=req.grade,
-    )
+    try:
+        created = user_repo.create_user(
+            username=req.username,
+            password_hash=hash_password(req.password),
+            role=req.role,
+            display_name=req.display_name,
+            student_number=req.student_number,
+            teacher_number=req.teacher_number,
+            college=req.college,
+            major=req.major,
+            grade=req.grade,
+        )
+    except sqlite3.IntegrityError as exc:
+        constraint = str(exc).lower()
+        if "unique constraint failed: users.username" in constraint:
+            raise UsernameExists() from exc
+        if "unique constraint failed: users.student_number" in constraint:
+            raise StudentNumberExists() from exc
+        raise
     return UserPublic(**created.to_public_dict())
 
 
@@ -185,7 +194,7 @@ def logout(
     cookie_token = request.cookies.get(cookie_name)
     if cookie_token:
         try:
-            container.trusted_device_repository.revoke_by_token_hash(hash_token(cookie_token))
+            container.trusted_device_repository.revoke_by_token_hash(hash_token(cookie_token), user_id=user.id)
         except Exception as exc:
             logger.warning("trusted_device_logout_revoke_failed exception_type={}", type(exc).__name__)
             raise AppException("可信设备授权撤销失败，请重试", http_status=503) from exc

@@ -7,7 +7,7 @@ import ipaddress
 import math
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import List, Literal
 from urllib.parse import urlparse
 
 from pydantic import field_validator, model_validator
@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     )
 
     # ===== 应用基础 =====
-    app_env: str = "development"
+    app_env: Literal["development", "test", "production"] = "development"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_version: str = "0.2.0"

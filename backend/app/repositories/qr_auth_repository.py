@@ -309,12 +309,12 @@ class TrustedDeviceRepository:
             )
             return cur.rowcount > 0
 
-    def revoke_by_token_hash(self, token_hash: str) -> bool:
+    def revoke_by_token_hash(self, token_hash: str, *, user_id: str) -> bool:
         now = _now_iso()
         with self._db.transaction() as conn:
             cur = conn.execute(
-                "UPDATE trusted_devices SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
-                (now, token_hash),
+                "UPDATE trusted_devices SET revoked_at = ? WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL",
+                (now, token_hash, user_id),
             )
             return cur.rowcount > 0
 

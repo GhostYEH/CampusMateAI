@@ -44,7 +44,7 @@ def test_database_drops_legacy_campus_activity_tables(tmp_path):
 def test_removed_activity_urls_return_404():
     reset_container_for_tests(
         Settings(
-            app_env="test-activity-removal",
+            app_env="test",
             database_url="sqlite:///:memory:",
             auto_seed_demo_users=False,
             auto_import_demo=False,

@@ -20,7 +20,6 @@ import asyncio
 import json
 import os
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, List, Tuple
 
@@ -99,6 +98,8 @@ def _login(client: TestClient, username: str = "student_demo") -> Dict[str, str]
 def _bootstrap(
     tmp_path,
     handler: Callable[[httpx.Request], httpx.Response],
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
     **overrides,
 ) -> Tuple[ServiceContainer, TestClient, Dict[str, str], MagicClassResultStore]:
     settings = _test_settings(**overrides)
@@ -112,7 +113,7 @@ def _bootstrap(
         base_url=BASE,
         timeout_seconds=5.0,
         origin=BASE,
-        transport=httpx.MockTransport(handler),
+        transport=transport or httpx.MockTransport(handler),
         access_code=settings.magicclass_access_code,
     )
     container.magicclass_result_store = store
@@ -555,7 +556,8 @@ def test_wrong_access_code_is_rejected(tmp_path):
 # ===== 3. 并发只提交一次 + 复用返回真实 mode =====
 
 
-def test_concurrent_generate_submits_exactly_once(tmp_path):
+@pytest.mark.asyncio
+async def test_concurrent_generate_submits_exactly_once(tmp_path):
     recorder: List[httpx.Request] = []
     lock = threading.Lock()
 
@@ -574,26 +576,35 @@ def test_concurrent_generate_submits_exactly_once(tmp_path):
         if _is_probe(request):
             return _probe_not_found()
         if request.method == "POST" and path.endswith("/api/generate-classroom"):
-            # 拉大窗口，让并发请求真的重叠
-            time.sleep(0.2)
             return httpx.Response(202, json={"success": True, "jobId": "job_once"})
         return httpx.Response(
             200,
             json={"success": True, "status": "running", "step": "researching", "progress": 20},
         )
 
-    _, tc, headers, _ = _bootstrap(tmp_path, handler)
+    class AsyncSleepingTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "POST" and request.url.path.endswith("/api/generate-classroom"):
+                # Yield the shared ASGI event loop so the remaining requests overlap.
+                await asyncio.sleep(0.2)
+            return handler(request)
+
+    _, tc, headers, _ = _bootstrap(tmp_path, handler, transport=AsyncSleepingTransport())
     cid = _first_course(tc, headers)
     url = f"/api/v1/courses/{cid}/interactive-classroom/generate"
     # 混入旧值：必须被归一化后接受，不能 4xx
     # 混入旧值：必须被归一化后接受，不能 4xx
     modes = ["adaptive", "explore", "practice", "project", "explain", "adaptive", "explore", "practice"]
 
-    with ThreadPoolExecutor(max_workers=len(modes)) as pool:
-        futures = [
-            pool.submit(tc.post, url, headers=headers, json={"mode": m}) for m in modes
-        ]
-        responses = [f.result() for f in futures]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=tc.app), base_url="http://testserver"
+    ) as client:
+        responses = await asyncio.wait_for(
+            asyncio.gather(*(
+                client.post(url, headers=headers, json={"mode": mode}) for mode in modes
+            )),
+            timeout=10,
+        )
 
     assert all(r.status_code == 202 for r in responses), [r.text for r in responses]
     submits = [

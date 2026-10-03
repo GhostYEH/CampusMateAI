@@ -42,16 +42,17 @@ def _scope(user: UserRow) -> str:
     return user.university_id
 
 
-def _post_out(row: dict, c: ServiceContainer, viewer_id: str | None = None) -> dict:
+def _post_out(row: dict, c: ServiceContainer, viewer_id: str | None = None,
+              metadata: dict | None = None) -> dict:
     row = dict(row)
     anonymous = bool(row["is_anonymous"])
-    author = c.user_repository.get_user_by_id(row["author_id"])
+    author = None if metadata is not None else c.user_repository.get_user_by_id(row["author_id"])
     images = json.loads(row.pop("images_json", "[]"))
     extra = json.loads(row.pop("extra_json", "{}") or "{}")
     is_owner = viewer_id is not None and row["author_id"] == viewer_id
-    liked = False
-    favorited = False
-    if viewer_id:
+    liked = bool(metadata.get("liked")) if metadata is not None else False
+    favorited = bool(metadata.get("favorited")) if metadata is not None else False
+    if viewer_id and metadata is None:
         liked = c.community_repository.is_liked(row["id"], viewer_id)
         favorited = c.community_repository.is_favorited(row["id"], viewer_id)
     return {
@@ -60,7 +61,10 @@ def _post_out(row: dict, c: ServiceContainer, viewer_id: str | None = None) -> d
         "extra": extra,
         "is_anonymous": anonymous,
         "author_id": None if anonymous else row["author_id"],
-        "author_name": "校园同学" if anonymous else ((author.display_name or author.username) if author else "已注销用户"),
+        "author_name": "校园同学" if anonymous else (
+            metadata.get("author_name") if metadata is not None else
+            ((author.display_name or author.username) if author else "已注销用户")
+        ),
         "liked": liked,
         "favorited": favorited,
         "is_owner": is_owner,
@@ -103,7 +107,8 @@ def list_posts(q: str | None = Query(None, max_length=200),
     rows, total = c.community_repository.list_posts(
         _scope(user), q=q, page=page, page_size=page_size, category=category, sort=sort
     )
-    return {"items": [_post_out(row, c, user.id) for row in rows], "page": page, "page_size": page_size, "total": total}
+    metadata = c.community_repository.post_output_metadata([row["id"] for row in rows], user.id)
+    return {"items": [_post_out(row, c, user.id, metadata.get(row["id"])) for row in rows], "page": page, "page_size": page_size, "total": total}
 
 
 @router.post("/posts", status_code=201)
@@ -190,14 +195,15 @@ async def upload_image(image: UploadFile = File(...),
 def list_comments(post_id: str, user: UserRow = Depends(current_user), c: ServiceContainer = Depends(_container)) -> dict:
     _ensure_visible(post_id, user, c)
     rows = c.community_repository.list_comments(post_id)
-    return {"items": [_comment_out(row, c) for row in rows], "page": 1, "page_size": len(rows), "total": len(rows)}
+    names = c.community_repository.comment_author_names_for_post(post_id)
+    return {"items": [_comment_out(row, c, names.get(row["id"])) for row in rows], "page": 1, "page_size": len(rows), "total": len(rows)}
 
 
-def _comment_out(row: dict, c: ServiceContainer) -> dict:
+def _comment_out(row: dict, c: ServiceContainer, author_name: str | None = None) -> dict:
     anonymous = bool(row["is_anonymous"])
-    author = c.user_repository.get_user_by_id(row["author_id"])
+    author = c.user_repository.get_user_by_id(row["author_id"]) if author_name is None else None
     return {**row, "is_anonymous": anonymous, "author_id": None if anonymous else row["author_id"],
-            "author_name": "校园同学" if anonymous else ((author.display_name or author.username) if author else "已注销用户")}
+            "author_name": "校园同学" if anonymous else (author_name if author_name is not None else ((author.display_name or author.username) if author else "已注销用户"))}
 
 
 @router.post("/posts/{post_id}/comments", status_code=201)
@@ -266,13 +272,14 @@ def admin_list_posts(q: str | None = Query(None, max_length=200),
     rows, total = c.community_repository.list_posts_admin(
         university_id=user.university_id or None, status=status, q=q, page=page, page_size=page_size,
     )
-    return {"items": [_post_out(row, c, user.id) for row in rows], "page": page, "page_size": page_size, "total": total}
+    metadata = c.community_repository.post_output_metadata([row["id"] for row in rows], user.id)
+    return {"items": [_post_out(row, c, user.id, metadata.get(row["id"])) for row in rows], "page": page, "page_size": page_size, "total": total}
 
 
-def _report_out(row: dict, c: ServiceContainer) -> dict:
+def _report_out(row: dict, c: ServiceContainer, reporter_name: str | None = None) -> dict:
     row = dict(row)
-    reporter = c.user_repository.get_user_by_id(row["reporter_id"])
-    return {**row, "reporter_name": (reporter.display_name or reporter.username) if reporter else "已注销用户"}
+    reporter = c.user_repository.get_user_by_id(row["reporter_id"]) if reporter_name is None else None
+    return {**row, "reporter_name": reporter_name if reporter_name is not None else ((reporter.display_name or reporter.username) if reporter else "已注销用户")}
 
 
 @admin_router.get("/reports")
@@ -284,7 +291,8 @@ def admin_list_reports(status: str | None = Query(None, pattern="^(pending|resol
     rows, total = c.community_repository.list_reports(
         user.university_id or None, status=status, page=page, page_size=page_size,
     )
-    return {"items": [_report_out(row, c) for row in rows], "page": page, "page_size": page_size, "total": total}
+    names = c.community_repository.report_author_names([row["id"] for row in rows])
+    return {"items": [_report_out(row, c, names.get(row["id"])) for row in rows], "page": page, "page_size": page_size, "total": total}
 
 
 @admin_router.post("/reports/{report_id}/resolve")

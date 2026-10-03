@@ -2666,7 +2666,7 @@ class Database:
             try:
                 yield conn
                 conn.commit()
-            except Exception:
+            except BaseException:
                 conn.rollback()
                 raise
             finally:
@@ -2675,12 +2675,24 @@ class Database:
     @contextmanager
     def query(self) -> Iterator[sqlite3.Connection]:
         """只读查询上下文(自动关闭连接)。"""
-        with self._lock:
-            conn = self._connect()
-            try:
-                yield conn
-            finally:
-                self._release(conn)
+        if self._is_memory:
+            # Memory databases share one Connection, including its transaction state.
+            # Keep the full context serialized to prevent concurrent use/close.
+            with self._lock:
+                conn = self._connect()
+                try:
+                    yield conn
+                finally:
+                    self._release(conn)
+            return
+
+        # File-backed queries own independent connections. WAL allows these readers
+        # to run beside a writer, so do not hold the instance lock across user code.
+        conn = self._connect()
+        try:
+            yield conn
+        finally:
+            self._release(conn)
 
     def dispose(self) -> None:
         """释放底层连接(主要用于测试清理)。

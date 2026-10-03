@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,9 +38,22 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         raw = request.headers.get("x-request-id", "")
         request_id = raw[:128] if raw else f"req_{uuid.uuid4().hex[:16]}"
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["x-request-id"] = request_id
-        return response
+        started = time.perf_counter()
+        with logger.contextualize(request_id=request_id):
+            response = None
+            try:
+                response = await call_next(request)
+                response.headers["x-request-id"] = request_id
+                return response
+            finally:
+                if get_settings().log_requests:
+                    logger.info(
+                        "http_request method={} path={} status={} headers_duration_ms={:.1f}",
+                        request.method,
+                        request.url.path,
+                        response.status_code if response is not None else "error",
+                        (time.perf_counter() - started) * 1000,
+                    )
 
 
 @asynccontextmanager
