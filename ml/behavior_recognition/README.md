@@ -159,6 +159,36 @@ not general four-class accuracy. SCB test remains an exposed diagnostic.
 Checkpoints, comparison and parity records stay in the new run directory;
 production assets are never replaced by this command.
 
+### Blending original and SAV-adapted models
+
+`sav_blend_experiment` compares parameter interpolation (one unchanged graph)
+and an arithmetic mixture of the two models' softmax probabilities (two
+forwards). These are different methods; averaging raw logits is not probability
+fusion. It reuses the preceding SAV run's validation-selected `replay_plus_sav`
+checkpoint and verified ROI caches, without further training.
+Saved SAV labels and split rows must exactly match a fresh reconstruction from
+the preceding run's fingerprinted official annotations.
+
+```powershell
+python -m behavior_recognition.sav_blend_experiment `
+  --source-onnx $env:CAMPUSMATE_BEHAVIOR_SOURCE_ONNX `
+  --sav-run $env:CAMPUSMATE_SAV_RUN `
+  --replay-manifests $env:CAMPUSMATE_BEHAVIOR_MANIFESTS `
+  --replay-cache $env:CAMPUSMATE_BEHAVIOR_REPLAY_CACHE `
+  --output-dir artifacts/sav_blend_new_run --workers 2
+```
+
+Both methods use the predeclared adaptation weights
+`0, .01, .025, .05, .075, .1, .15, .2, .3, .4, .5, .75, 1`.
+The preceding validation guards and ranking remain in effect. Exact ranking
+ties prefer one forward, then the smaller adaptation weight. If no blend
+qualifies, the experiment retains the original model. The selection is saved before testing;
+only the endpoints and locked choice are evaluated on test. Both test sets
+are now exposed diagnostics. Reusing validation for this grid is exploratory
+and does not provide independent confirmation. A selected parameter blend is
+exported separately and checked for parity; probability fusion writes a
+two-model recipe. The command never modifies production assets or thresholds.
+
 Run tests:
 
 ```powershell
