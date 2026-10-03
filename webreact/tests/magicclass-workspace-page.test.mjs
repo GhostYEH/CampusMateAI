@@ -15,8 +15,10 @@ test("workspace route restores owned content and exposes truthful generation rec
   assert.match(page, /listMagicClassStages\(courseId, workspaceId/);
   assert.match(page, /generateMagicClassStage\(courseId, workspaceId/);
   assert.match(page, /getMagicClassJob\(courseId, jobId\)/);
-  assert.match(page, /cancelMagicClassJob\(courseId, job\.id\)/);
+  assert.match(page, /cancelMagicClassJob\(courseId, jobId\)/);
   assert.match(page, /retryMagicClassJob\(courseId, job\.id\)/);
+  assert.match(page, /routeMine !== routeEpoch\.current/);
+  assert.match(page, /pollEpoch\.current \+= 1/);
   assert.match(page, /StageEditorPanel/);
   assert.match(page, /StagePlayerPanel/);
   assert.match(page, /exportMagicClassStageFormat\(courseId, workspaceId, stage\.id, "pptx"\)/);

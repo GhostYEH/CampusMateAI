@@ -153,10 +153,13 @@ export default function MagicClassClassroomStage({
   // 动作计划来自服务端、参数来自已授权的舞台文档；播放状态只属于当前场景。
   // 两者分开后，播放器不会为了猜一个 `elementId` 而把效果施加到错误的画布上。
   const [actionSession, setActionSession] = React.useState(null);
+  const actionSessionRef = React.useRef(actionSession);
+  actionSessionRef.current = actionSession;
   const [playbackNotice, setPlaybackNotice] = React.useState("");
   const resetActionTimeline = React.useCallback(() => {
     useCanvasStore.resetEffects();
     useCanvasStore.pauseVideo();
+    actionSessionRef.current = null;
     setActionSession(null);
     setPlaybackNotice("");
   }, []);
@@ -170,15 +173,18 @@ export default function MagicClassClassroomStage({
   }, [currentId, resetActionTimeline]);
 
   const toggleActionTimeline = React.useCallback(() => {
-    setActionSession((previous) => {
-      if (previous?.status === "playing") return { ...previous, status: "paused", clearEffects: false };
-      if (previous?.status === "paused") return { ...previous, status: "playing", clearEffects: false };
-      const next = startActionTimeline(current, scene);
+    const previous = actionSessionRef.current;
+    let next;
+    if (previous?.status === "playing") next = { ...previous, status: "paused", clearEffects: false };
+    else if (previous?.status === "paused") next = { ...previous, status: "playing", clearEffects: false };
+    else {
+      next = startActionTimeline(current, scene);
       useCanvasStore.resetEffects();
       useCanvasStore.pauseVideo();
       setPlaybackNotice(next.status === "completed" ? "这一页没有可执行的播放动作。" : "正在播放本页动作…");
-      return next;
-    });
+    }
+    actionSessionRef.current = next;
+    setActionSession(next);
   }, [current, scene]);
 
   React.useEffect(() => {
@@ -195,6 +201,7 @@ export default function MagicClassClassroomStage({
       } else if (result.next?.status === "completed") {
         setPlaybackNotice("本页动作已播放完成。");
       }
+      actionSessionRef.current = result.next;
       setActionSession(result.next);
     }, 260);
     return () => window.clearTimeout(timer);
@@ -280,6 +287,20 @@ export default function MagicClassClassroomStage({
     }
   }, [courseId, topic, discussing]);
 
+  const onSelectScene = React.useCallback((id) => {
+    const next = scenes.findIndex((entry) => entry.id === id);
+    if (next >= 0) go(next);
+  }, [go, scenes]);
+  const onPrevScene = React.useMemo(() => index > 0 ? () => go(index - 1) : undefined, [go, index]);
+  const onNextScene = React.useMemo(() => index < scenes.length - 1 ? () => go(index + 1) : undefined, [go, index, scenes.length]);
+  const onToggleSidebar = React.useCallback(() => setCollapsed((value) => !value), []);
+  const onTogglePresentation = React.useCallback(() => setIsPresenting((value) => !value), []);
+  const renderSlideThumbnail = React.useCallback(({ slide, sceneId }) => (
+    <SlideThumbnail canvas={slide} sceneId={sceneId} />
+  ), []);
+  const sidebarHeader = React.useMemo(() => <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">{"magic class"}</span>, []);
+  const sidebarProps = React.useMemo(() => ({ headerSlot: sidebarHeader, renderSlideThumbnail }), [renderSlideThumbnail, sidebarHeader]);
+
   if (loading) {
     return <div className="maic-root flex-1 flex items-center justify-center bg-gray-50" aria-busy="true">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
@@ -322,30 +343,18 @@ export default function MagicClassClassroomStage({
       title={plan?.title || fallbackTitle}
       scenes={sidebarScenes}
       currentSceneId={currentId}
-      onSelectScene={(id) => {
-        const next = scenes.findIndex((entry) => entry.id === id);
-        if (next >= 0) go(next);
-      }}
-      onPrevScene={index > 0 ? () => go(index - 1) : undefined}
-      onNextScene={index < scenes.length - 1 ? () => go(index + 1) : undefined}
+      onSelectScene={onSelectScene}
+      onPrevScene={onPrevScene}
+      onNextScene={onNextScene}
       sidebarCollapsed={collapsed}
-      onToggleSidebar={() => setCollapsed((value) => !value)}
+      onToggleSidebar={onToggleSidebar}
       isPresenting={isPresenting}
-      onTogglePresentation={() => setIsPresenting((value) => !value)}
+      onTogglePresentation={onTogglePresentation}
       // 参考项目侧栏顶部是 `<img src="/logo-horizontal.png">`。目标仓库没有这个
       // 品牌图，直接沿用会渲染成一张破图（alt 文本裸露、占据 h-6 高度）。把上游
       // 二进制搬进来要走 third_party 的 LICENSE/NOTICE/清单流程，不属于本次范围，
       // 所以用同槽位的文字字标替代：视觉角色一致（一行品牌标识），且不会破图。
-      sidebarProps={{
-        headerSlot: <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">{"magic class"}</span>,
-        // 侧栏缩略图走**同一份**正文：有真实画布就画真实缩略图，没有就交给移植层
-        // 自带的占位分支。参考项目这里用的是 `SlideThumbnail`，本仓库没有该组件，
-        // 所以复用播放画布（`MaicSlideSurface`）在缩略图尺寸下渲染——缩略图与大图
-        // 因此不可能不一致。
-        renderSlideThumbnail: ({ slide, sceneId }) => (
-          <SlideThumbnail canvas={slide} sceneId={sceneId} />
-        ),
-      }}
+      sidebarProps={sidebarProps}
       backControl={onExit ? <Button
         type="button"
         variant="secondary"
@@ -693,10 +702,10 @@ function indexScenesById(stageDocument) {
  * 没有 `elements` 的历史画布返回 `null`：让移植层的占位分支接管，而不是画一块
  * 空白色矩形冒充缩略图。
  */
-function SlideThumbnail({ canvas }) {
+const SlideThumbnail = React.memo(function SlideThumbnail({ canvas }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
   if (!elements || elements.length === 0) return null;
   return <div className="h-full w-full">
     <MaicSlideSurface canvas={canvas} effectsEnabled={false} />
   </div>;
-}
+});

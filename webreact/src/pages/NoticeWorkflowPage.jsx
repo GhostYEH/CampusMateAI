@@ -11,7 +11,7 @@ import "../styles/agent-workspaces.css";
  * - AUTO_SAFE 动作由后端执行；CONFIRM_REQUIRED 提供决策入口；MANUAL_ONLY 仅引导。
  * - 稳定 Idempotency-Key 保存在组件状态。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageFrame, Panel, SectionHeading, BackLink } from "../components/Primitives.jsx";
 import AgentErrorBoundary from "../components/agent/ErrorBoundary.jsx";
 import RunProgress from "../components/agent/RunProgress.jsx";
@@ -28,10 +28,24 @@ export default function NoticeWorkflowPage() {
   const [error, setError] = useState(null);
   const [resolvingActionId, setResolvingActionId] = useState(null);
   const [actionKeys, setActionKeys] = useState(() => ({}));
+  const workflowPollEpoch = useRef(0);
+  const mounted = useRef(false);
+  const workflowIdRef = useRef(null);
+  workflowIdRef.current = workflow?.workflow_id || null;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      workflowPollEpoch.current += 1;
+    };
+  }, []);
 
   const run = useAgentRun({ runId: activeRunId });
 
   const handleSubmit = useCallback(async ({ content, source_label, manual_key, workflow_key }) => {
+    workflowPollEpoch.current += 1;
+    workflowIdRef.current = null;
     setSubmitting(true);
     setError(null);
     setWorkflow(null);
@@ -43,28 +57,47 @@ export default function NoticeWorkflowPage() {
       }, manual_key);
       if (!notice?.notice_id) throw new Error("未收到服务端通知 ID，请重试");
       const created = await api.createNoticeWorkflow(notice.notice_id, { idempotency_key: workflow_key }, workflow_key);
+      if (!mounted.current) return;
+      workflowIdRef.current = created?.workflow_id || null;
       setWorkflow(created);
       if (created?.run_id) setActiveRunId(created.run_id);
     } catch (err) {
-      setError(err);
+      if (mounted.current) setError(err);
     } finally {
-      setSubmitting(false);
+      if (mounted.current) setSubmitting(false);
     }
   }, []);
 
-  const refreshWorkflow = useCallback(async (workflowId) => {
-    if (!workflowId) return;
+  const refreshWorkflow = useCallback(async (workflowId, expectedEpoch = null) => {
+    if (!workflowId) return null;
+    const requestEpoch = expectedEpoch ?? workflowPollEpoch.current;
+    if (!mounted.current || requestEpoch !== workflowPollEpoch.current || workflowIdRef.current !== workflowId) return null;
     try {
       const data = await api.getNoticeWorkflow(workflowId);
+      if (!mounted.current || requestEpoch !== workflowPollEpoch.current || workflowIdRef.current !== workflowId) return null;
       setWorkflow(data);
-    } catch { /* 忽略轮询错误 */ }
+      return data;
+    } catch { return null; /* 忽略轮询错误 */ }
   }, []);
 
   useEffect(() => {
-    if (!workflow?.workflow_id) return;
-    const timer = setInterval(() => refreshWorkflow(workflow.workflow_id), 8000);
-    return () => clearInterval(timer);
-  }, [workflow?.workflow_id, refreshWorkflow]);
+    const workflowId = workflow?.workflow_id;
+    if (!workflowId || ["COMPLETED", "EXPIRED", "FAILED"].includes(String(workflow.status).toUpperCase())) return undefined;
+    const mine = ++workflowPollEpoch.current;
+    let timer = null;
+    const poll = async () => {
+      if (mine !== workflowPollEpoch.current) return;
+      const latest = await refreshWorkflow(workflowId, mine);
+      if (mine !== workflowPollEpoch.current) return;
+      if (latest && ["COMPLETED", "EXPIRED", "FAILED"].includes(String(latest.status).toUpperCase())) return;
+      timer = window.setTimeout(poll, 8000);
+    };
+    timer = window.setTimeout(poll, 8000);
+    return () => {
+      workflowPollEpoch.current += 1;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [workflow?.workflow_id, workflow?.status, refreshWorkflow]);
 
   const getActionKey = useCallback((actionId) => {
     setActionKeys((prev) => {

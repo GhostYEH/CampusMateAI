@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { Icon } from "../components/Icon.jsx";
@@ -107,7 +107,6 @@ export default function CommunityPage() {
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [sort, setSort] = useState("time");
@@ -117,45 +116,108 @@ export default function CommunityPage() {
   const [reportTarget, setReportTarget] = useState(null);
   const [reportReason, setReportReason] = useState("垃圾广告");
   const [reportDetails, setReportDetails] = useState("");
+  const filterEpoch = useRef(0);
+  const listEpoch = useRef(0);
+  const postMutationEpoch = useRef(new Map());
+  const postOverrides = useRef(new Map());
+  const pageRef = useRef(1);
+  const mounted = useRef(false);
 
   const categoryOptions = categories.length ? categories : FALLBACK_CATS;
   const categorySidebarItems = [{ key: "all", label: "全部", icon: "PhSquaresFour" }, ...categoryOptions];
   const hasMore = items.length < total;
 
   useEffect(() => {
-    let alive = true;
+    mounted.current = true;
+    let categoriesCurrent = true;
     (async () => {
-      try { const data = await api.getCommunityCategories(); if (alive) setCategories(data.items || []); } catch { /* keep fallback */ }
+      try { const data = await api.getCommunityCategories(); if (categoriesCurrent) setCategories(data.items || []); } catch { /* keep fallback */ }
     })();
-    return () => { alive = false; };
+    return () => {
+      categoriesCurrent = false;
+      mounted.current = false;
+      filterEpoch.current += 1;
+      listEpoch.current += 1;
+      postMutationEpoch.current.clear();
+      postOverrides.current.clear();
+    };
   }, []);
 
-  async function load(reset = false) {
-    const targetPage = reset ? 1 : page;
-    if (reset) { setPage(1); setItems([]); }
+  async function load(reset = false, targetPage = pageRef.current, filterVersion = filterEpoch.current) {
+    const requestVersion = ++listEpoch.current;
+    const effectivePage = reset ? 1 : targetPage;
+    if (reset) { pageRef.current = 1; setItems([]); }
     setLoading(true); setError("");
+    const isCurrent = () => mounted.current
+      && requestVersion === listEpoch.current
+      && filterVersion === filterEpoch.current;
     try {
-      const params = { page: targetPage, page_size: PAGE_SIZE, sort };
+      const params = { page: effectivePage, page_size: PAGE_SIZE, sort };
       if (query.trim()) params.q = query.trim();
       if (category) params.category = category;
       const data = await api.getCommunityPosts(params);
-      const next = data.items || [];
+      if (!isCurrent()) return;
+      const next = (data.items || []).map((item) => ({ ...item, ...(postOverrides.current.get(item.id) || {}) }));
+      if (!reset) {
+        pageRef.current = effectivePage;
+      }
       setItems((current) => reset ? next : [...current, ...next.filter((item) => !current.some((e) => e.id === item.id))]);
       setTotal(Number(data.total || 0));
     } catch (e) {
+      if (!isCurrent()) return;
+      if (!reset) {
+        pageRef.current = Math.max(1, effectivePage - 1);
+      }
       setError(e.response?.data?.code === "UNIVERSITY_REQUIRED" ? "请先选择你的大学，再进入校园论坛。" : (e.response?.data?.message || "论坛加载失败"));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
 
-  useEffect(() => { load(true); }, [query, category, sort]);
+  useEffect(() => {
+    const filterVersion = ++filterEpoch.current;
+    listEpoch.current += 1;
+    postMutationEpoch.current.clear();
+    postOverrides.current.clear();
+    pageRef.current = 1;
+    setItems([]);
+    setTotal(0);
+    setLoading(true);
+    const timer = window.setTimeout(() => load(true, 1, filterVersion), 220);
+    return () => window.clearTimeout(timer);
+  }, [query, category, sort]);
 
   async function onLike(post) {
-    try { const next = await (post.liked ? api.unlikePost(post.id) : api.likePost(post.id)); setItems((current) => current.map((item) => item.id === next.id ? next : item)); } catch (e) { setError(e.response?.data?.message || "操作失败"); }
+    const scope = filterEpoch.current;
+    const key = `${post.id}:like`;
+    const mutationVersion = (postMutationEpoch.current.get(key) || 0) + 1;
+    postMutationEpoch.current.set(key, mutationVersion);
+    try {
+      const next = await (post.liked ? api.unlikePost(post.id) : api.likePost(post.id));
+      if (mounted.current && scope === filterEpoch.current && mutationVersion === postMutationEpoch.current.get(key)) {
+        const patch = { liked: next.liked, like_count: next.like_count };
+        postOverrides.current.set(next.id, { ...postOverrides.current.get(next.id), ...patch });
+        setItems((current) => current.map((item) => item.id === next.id ? { ...item, ...patch } : item));
+      }
+    } catch (e) {
+      if (mounted.current && scope === filterEpoch.current && mutationVersion === postMutationEpoch.current.get(key)) setError(e.response?.data?.message || "操作失败");
+    }
   }
   async function onFavorite(post) {
-    try { const next = await (post.favorited ? api.unfavoritePost(post.id) : api.favoritePost(post.id)); setItems((current) => current.map((item) => item.id === next.id ? next : item)); } catch (e) { setError(e.response?.data?.message || "操作失败"); }
+    const scope = filterEpoch.current;
+    const key = `${post.id}:favorite`;
+    const mutationVersion = (postMutationEpoch.current.get(key) || 0) + 1;
+    postMutationEpoch.current.set(key, mutationVersion);
+    try {
+      const next = await (post.favorited ? api.unfavoritePost(post.id) : api.favoritePost(post.id));
+      if (mounted.current && scope === filterEpoch.current && mutationVersion === postMutationEpoch.current.get(key)) {
+        const patch = { favorited: next.favorited, favorite_count: next.favorite_count };
+        postOverrides.current.set(next.id, { ...postOverrides.current.get(next.id), ...patch });
+        setItems((current) => current.map((item) => item.id === next.id ? { ...item, ...patch } : item));
+      }
+    } catch (e) {
+      if (mounted.current && scope === filterEpoch.current && mutationVersion === postMutationEpoch.current.get(key)) setError(e.response?.data?.message || "操作失败");
+    }
   }
   function onReport(post) { setReportTarget(post); setReportReason("垃圾广告"); setReportDetails(""); setShowReport(true); }
   async function submitReport() {
@@ -163,7 +225,10 @@ export default function CommunityPage() {
     try { await api.reportPost({ target_id: reportTarget.id, reason: reportReason, details: reportDetails || null }); setShowReport(false); } catch (e) { setError(e.response?.data?.message || "举报失败"); }
   }
   function chooseTopic(topic) { setQuery(topic); }
-  function loadMore() { const next = page + 1; setPage(next); load(false); }
+  function loadMore() {
+    const next = pageRef.current + 1;
+    load(false, next, filterEpoch.current);
+  }
 
   return (
     <main className="forum-page">

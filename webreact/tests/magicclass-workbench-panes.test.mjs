@@ -84,6 +84,8 @@ const { createMockClient } = await import("./helpers/mock-client.mjs");
 const COURSE = "crs_panes";
 const WORKSPACE = "ws_panes";
 const STAGE = "stg_panes";
+const COURSE_B = "crs_route_b";
+const WORKSPACE_B = "ws_route_b";
 
 let mock = null;
 function installHandlers() {
@@ -144,10 +146,14 @@ const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { act } = React;
 const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+const { useNavigate } = await import("react-router-dom");
 const { readFile } = await import("node:fs/promises");
 const { fileURLToPath: toPath } = await import("node:url");
 const { default: MagicClassWorkbenchPage } = await vite.ssrLoadModule(
   "/src/pages/magicclassWorkbenchPage.jsx",
+);
+const { default: MagicClassWorkspacePage } = await vite.ssrLoadModule(
+  "/src/pages/magicclassWorkspacePage.jsx",
 );
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -157,17 +163,31 @@ function setNarrow(value) {
   for (const handler of mediaListeners) handler({ matches: value, media: "(max-width: 1023px)" });
 }
 
-async function mount() {
+async function mount(entry = `/courses/${COURSE}/workspaces/${WORKSPACE}`, withRouteControls = false) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => {
+    function RouteControls() {
+      const navigate = useNavigate();
+      if (!withRouteControls) return null;
+      return React.createElement("div", { "data-testid": "route-controls" },
+        React.createElement("button", { onClick: () => navigate(`/courses/${COURSE_B}/workspaces/${WORKSPACE_B}?prompt=route-b-submit`) }, "切到 B"),
+        React.createElement("button", { onClick: () => navigate(`/workspace/${COURSE_B}/${WORKSPACE_B}?prompt=route-b-submit`) }, "切到旧版 B"));
+    }
     root.render(React.createElement(MemoryRouter, {
-      initialEntries: [`/courses/${COURSE}/workspaces/${WORKSPACE}`],
-    }, React.createElement(Routes, null, React.createElement(Route, {
-      path: "/courses/:courseId/workspaces/:workspaceId",
-      element: React.createElement(MagicClassWorkbenchPage),
-    }))));
+      initialEntries: [entry],
+    }, React.createElement(React.Fragment, null,
+      React.createElement(RouteControls),
+      React.createElement(Routes, null,
+        React.createElement(Route, {
+          path: "/courses/:courseId/workspaces/:workspaceId",
+          element: React.createElement(MagicClassWorkbenchPage),
+        }),
+        React.createElement(Route, {
+          path: "/workspace/:courseId/:workspaceId",
+          element: React.createElement(MagicClassWorkspacePage),
+        })))));
   });
   // 工作台的数据加载是异步的；等到舞台出现为止。
   for (let i = 0; i < 60; i += 1) {
@@ -176,6 +196,227 @@ async function mount() {
   }
   return { host, unmount: () => act(async () => root.unmount()) };
 }
+
+function installRouteB({ fail = false } = {}) {
+  if (fail) {
+    mock.onError("get", `/courses/${COURSE_B}/workspaces/${WORKSPACE_B}`, 503, { detail: "B 工作台读取失败" });
+  } else {
+    mock.onGet(`/courses/${COURSE_B}/workspaces/${WORKSPACE_B}`, {
+      id: WORKSPACE_B, course_id: COURSE_B, name: "B 工作台", revision: 1,
+    });
+  }
+  mock.onGet(`/courses/${COURSE_B}/workspaces/${WORKSPACE_B}/stages`, { items: [], next_cursor: null });
+  mock.onGet(`/courses/${COURSE_B}/workspaces/${WORKSPACE_B}/stages/${STAGE}/outline`, {
+    id: STAGE, title: "B stage", revision: 1, scenes: [],
+  });
+  mock.onPost(`/courses/${COURSE_B}/workspaces/${WORKSPACE_B}/generate`, {
+    job: { id: "job_b_fresh", status: "completed", progress: 100 },
+  });
+}
+
+async function clickButton(host, label) {
+  const button = [...host.querySelectorAll("button")].find((node) => node.textContent.trim() === label);
+  assert.ok(button, `找不到按钮「${label}」`);
+  await act(async () => { button.dispatchEvent(new window.Event("click", { bubbles: true })); });
+}
+
+async function waitFor(host, predicate, description) {
+  for (let i = 0; i < 80; i += 1) {
+    if (predicate()) return;
+    await act(async () => { await sleep(20); });
+  }
+  assert.fail(`等待超时：${description}；页面文本：${host.textContent}`);
+}
+
+test("an in-flight launch response after unmount cannot reload or restart job polling", async () => {
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const workspaceUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}`;
+  const stagesUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/stages`;
+  mock.onGet(stagesUrl, { items: [], next_cursor: null });
+  let releaseGeneration;
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  mock.onPost(generationUrl, (config) => new Promise((resolve) => {
+    releaseGeneration = () => resolve({
+      status: 200,
+      data: { job: { id: "job_late", status: "queued" } },
+      config,
+      headers: {},
+    });
+    markStarted();
+  }));
+
+  const { unmount } = await mount(`/courses/${COURSE}/workspaces/${WORKSPACE}?prompt=late-launch`);
+  await started;
+  const workspaceReadsBeforeUnmount = mock.requests.filter((request) => request.url === workspaceUrl).length;
+  const stagesReadsBeforeUnmount = mock.requests.filter((request) => request.url === stagesUrl).length;
+  await unmount();
+  releaseGeneration();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal(mock.requests.filter((request) => request.url === workspaceUrl).length, workspaceReadsBeforeUnmount,
+    "a stale generation response must not trigger a post-unmount workspace reload");
+  assert.equal(mock.requests.filter((request) => request.url === stagesUrl).length, stagesReadsBeforeUnmount,
+    "a stale generation response must not trigger a post-unmount stage reload");
+  assert.equal(mock.requests.filter((request) => request.url.includes("/jobs/job_late")).length, 0,
+    "a stale queued response must not restart job polling");
+  installHandlers();
+});
+
+test("a late cancel failure from route A cannot replace route B's load error", async () => {
+  mock.reset(); installHandlers(); installRouteB({ fail: true });
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const jobId = "job_cancel_route_a";
+  mock.onGet(`/courses/${COURSE}/workspaces/${WORKSPACE}/stages`, { items: [], next_cursor: null });
+  mock.onPost(generationUrl, { job: { id: jobId, status: "queued", progress: 10 } });
+  let releaseCancel;
+  let cancelStarted;
+  const started = new Promise((resolve) => { cancelStarted = resolve; });
+  mock.onPost(`/courses/${COURSE}/jobs/${jobId}/cancel`, (config) => new Promise((resolve, reject) => {
+    releaseCancel = () => reject({ config, response: { status: 503, data: { detail: "A cancel failed" }, config } });
+    cancelStarted();
+  }));
+  const { host, unmount } = await mount(`/courses/${COURSE}/workspaces/${WORKSPACE}?prompt=make-job`, true);
+  await waitFor(host, () => [...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "中断"), "生成取消入口");
+  await clickButton(host, "中断");
+  await started;
+  await clickButton(host, "切到 B");
+  await waitFor(host, () => host.textContent.includes("B 工作台读取失败"), "B 路由读取错误");
+  releaseCancel();
+  await act(async () => { await sleep(30); });
+  assert.ok(host.textContent.includes("B 工作台读取失败"));
+  assert.ok(!host.textContent.includes("A cancel failed"), "旧取消错误不得覆盖新路由错误");
+  assert.ok(!host.textContent.includes(jobId), "旧路由 job 不得出现在新路由");
+  await unmount();
+  installHandlers();
+});
+
+test("a late retry success from route A cannot show its job or restart A polling on route B", async () => {
+  mock.reset(); installHandlers(); installRouteB();
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const jobId = "job_retry_route_a";
+  const jobUrl = `/courses/${COURSE}/jobs/${jobId}`;
+  mock.onGet(`/courses/${COURSE}/workspaces/${WORKSPACE}/stages`, { items: [], next_cursor: null });
+  mock.onPost(generationUrl, { job: { id: jobId, status: "failed", progress: 30, error: "生成失败" } });
+  mock.onGet(jobUrl, { id: jobId, status: "failed", progress: 30, error: "生成失败" });
+  let releaseRetry;
+  let retryStarted;
+  const started = new Promise((resolve) => { retryStarted = resolve; });
+  mock.onPost(`${jobUrl}/retry`, (config) => new Promise((resolve) => {
+    releaseRetry = () => resolve({
+      status: 200, data: { id: jobId, status: "queued", progress: 0 }, config, headers: {},
+    });
+    retryStarted();
+  }));
+  const { host, unmount } = await mount(`/courses/${COURSE}/workspaces/${WORKSPACE}?prompt=make-job`, true);
+  await waitFor(host, () => [...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "重试生成"), "生成重试入口");
+  await clickButton(host, "重试生成");
+  await started;
+  await clickButton(host, "切到 B");
+  await waitFor(host, () => host.textContent.includes("B 工作台"), "B 工作台加载");
+  const pollsBeforeRelease = mock.requests.filter((request) => request.method === "get" && request.url === jobUrl).length;
+  releaseRetry();
+  await act(async () => { await sleep(80); });
+  assert.equal(mock.requests.filter((request) => request.method === "get" && request.url === jobUrl).length, pollsBeforeRelease,
+    "切路由后 retry 的旧响应不能重新启动 A job polling");
+  assert.ok(!host.textContent.includes(jobId), "旧 retry 响应不能把 A job 显示在 B 页面");
+  await waitFor(host, () => mock.requests.some((request) => request.method === "post" && request.url === `/courses/${COURSE_B}/workspaces/${WORKSPACE_B}/generate`), "B 路由可提交生成任务");
+  await unmount();
+  installHandlers();
+});
+
+test("the separate workspace page drops late cancel errors after its course changes", async () => {
+  mock.reset(); installHandlers(); installRouteB({ fail: true });
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const jobId = "job_workspace_cancel_route_a";
+  mock.onGet(`/courses/${COURSE}/jobs/${jobId}`, { id: jobId, status: "queued", progress: 10 });
+  mock.onGet(`/courses/${COURSE}/workspaces/${WORKSPACE}/stages`, { items: [], next_cursor: null });
+  mock.onPost(generationUrl, { job: { id: jobId, status: "queued", progress: 10 } });
+  let releaseCancel;
+  let cancelStarted;
+  const started = new Promise((resolve) => { cancelStarted = resolve; });
+  mock.onPost(`/courses/${COURSE}/jobs/${jobId}/cancel`, (config) => new Promise((resolve, reject) => {
+    releaseCancel = () => reject({ config, response: { status: 503, data: { detail: "A legacy cancel failed" }, config } });
+    cancelStarted();
+  }));
+  const { host, unmount } = await mount(`/workspace/${COURSE}/${WORKSPACE}?prompt=make-job`, true);
+  await waitFor(host, () => [...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "中断"), "workspace 取消入口");
+  await clickButton(host, "中断");
+  await started;
+  await clickButton(host, "切到旧版 B");
+  await waitFor(host, () => host.textContent.includes("B 工作台读取失败"), "workspace B 读取错误");
+  releaseCancel();
+  await act(async () => { await sleep(30); });
+  assert.ok(host.textContent.includes("B 工作台读取失败"));
+  assert.ok(!host.textContent.includes("A legacy cancel failed"));
+  assert.ok(!host.textContent.includes(jobId));
+  await unmount();
+  installHandlers();
+});
+
+test("the separate workspace page drops late retry success and cannot restart old-route polling", async () => {
+  mock.reset(); installHandlers(); installRouteB();
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const jobId = "job_workspace_retry_route_a";
+  const jobUrl = `/courses/${COURSE}/jobs/${jobId}`;
+  mock.onGet(`/courses/${COURSE}/workspaces/${WORKSPACE}/stages`, { items: [], next_cursor: null });
+  mock.onPost(generationUrl, { job: { id: jobId, status: "failed", progress: 30, error: "生成失败" } });
+  mock.onGet(jobUrl, { id: jobId, status: "failed", progress: 30, error: "生成失败" });
+  let releaseRetry;
+  let retryStarted;
+  const started = new Promise((resolve) => { retryStarted = resolve; });
+  mock.onPost(`${jobUrl}/retry`, (config) => new Promise((resolve) => {
+    releaseRetry = () => resolve({ status: 200, data: { id: jobId, status: "queued", progress: 0 }, config, headers: {} });
+    retryStarted();
+  }));
+  const { host, unmount } = await mount(`/workspace/${COURSE}/${WORKSPACE}?prompt=make-job`, true);
+  await waitFor(host, () => [...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "重试"), "workspace 重试入口");
+  await clickButton(host, "重试");
+  await started;
+  await clickButton(host, "切到旧版 B");
+  await waitFor(host, () => host.textContent.includes("B 工作台"), "workspace B 加载");
+  const pollsBeforeRelease = mock.requests.filter((request) => request.method === "get" && request.url === jobUrl).length;
+  releaseRetry();
+  await act(async () => { await sleep(80); });
+  assert.equal(mock.requests.filter((request) => request.method === "get" && request.url === jobUrl).length, pollsBeforeRelease,
+    "旧路由 retry 响应不能重新启动 job polling");
+  assert.ok(!host.textContent.includes(jobId), "旧路由 retry job 不得显示在新页面");
+  await waitFor(host, () => mock.requests.some((request) => request.method === "post" && request.url === `/courses/${COURSE_B}/workspaces/${WORKSPACE_B}/generate`), "workspace B 可提交生成任务");
+  await unmount();
+  installHandlers();
+});
+
+test("a pre-cancel in-flight running poll cannot overwrite the cancelled job", async () => {
+  mock.reset(); installHandlers();
+  const generationUrl = `/courses/${COURSE}/workspaces/${WORKSPACE}/generate`;
+  const jobId = "job_cancel_poll_race";
+  const jobUrl = `/courses/${COURSE}/jobs/${jobId}`;
+  mock.onGet(`/courses/${COURSE}/workspaces/${WORKSPACE}/stages`, { items: [], next_cursor: null });
+  mock.onPost(generationUrl, { job: { id: jobId, status: "queued", progress: 10 } });
+  let releasePoll;
+  let pollStarted;
+  const started = new Promise((resolve) => { pollStarted = resolve; });
+  mock.onGet(jobUrl, (config) => new Promise((resolve) => {
+    releasePoll = () => resolve({ status: 200, data: { id: jobId, status: "running", progress: 70 }, config, headers: {} });
+    pollStarted();
+  }));
+  mock.onPost(`/courses/${COURSE}/jobs/${jobId}/cancel`, {
+    id: jobId, status: "cancelled", progress: 10,
+  });
+  const { host, unmount } = await mount(`/courses/${COURSE}/workspaces/${WORKSPACE}?prompt=make-job`);
+  await started;
+  await waitFor(host, () => [...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "中断"), "取消入口");
+  await clickButton(host, "中断");
+  await waitFor(host, () => ![...host.querySelectorAll("button")].some((node) => node.textContent.trim() === "中断"), "取消完成");
+  releasePoll();
+  await act(async () => { await sleep(50); });
+  assert.equal(mock.requests.filter((request) => request.method === "get" && request.url === jobUrl).length, 1,
+    "迟到的 running poll 不得重排下一次轮询");
+  assert.ok(host.textContent.includes("已请求中断生成。"));
+  assert.equal(host.querySelector(".ow-progress"), null, "迟到的 running 响应不得重新显示活跃进度");
+  await unmount();
+  installHandlers();
+});
 
 /** 当前在场（在 DOM 里）的面板类名。 */
 function panesInDom(host) {

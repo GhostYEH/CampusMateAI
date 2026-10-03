@@ -9,7 +9,7 @@ import "../styles/prediction.css";
  *
  * 中性产品语言，避免心理画像/能力判定等负面表述。
  */
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useAsyncResource as useAsync } from "../hooks/useAsyncResource.js";
 import { Link } from "react-router-dom";
 import * as api from "../data/learnerStateApi.js";
@@ -394,8 +394,8 @@ function SimulationResult({ result }) {
               </thead>
               <tbody>
                 {changedForecasts.map((d, i) => (
-                  <>
-                  <tr key={`${d.forecast_type}-${d.scope_type}-${d.scope_id}-${i}`}>
+                  <Fragment key={`${d.forecast_type}-${d.scope_type}-${d.scope_id}-${i}`}>
+                  <tr>
                     <td>{FORECAST_TYPE_LABEL[d.forecast_type] || d.forecast_type}</td>
                     <td>{d.scope_type}/{d.scope_id}</td>
                     <td>{d.baseline_probability != null ? pct(d.baseline_probability) : "—"}</td>
@@ -405,8 +405,8 @@ function SimulationResult({ result }) {
                       {d.magnitude > 0 ? "+" : ""}{pct(d.magnitude)}
                     </td>
                   </tr>
-                  <tr key={`${d.forecast_type}-${d.scope_id}-${i}-detail`} className="pred-sim-table__detail"><td colSpan="6">基线：{JSON.stringify(d.baseline_value || {})} · 模拟：{JSON.stringify(d.intervention_value || {})} · 差值：{JSON.stringify(d.delta || {})}</td></tr>
-                  </>
+                  <tr className="pred-sim-table__detail"><td colSpan="6">基线：{JSON.stringify(d.baseline_value || {})} · 模拟：{JSON.stringify(d.intervention_value || {})} · 差值：{JSON.stringify(d.delta || {})}</td></tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { useApp } from "../app/AppContext.jsx";
@@ -54,6 +54,11 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [noticeReminder, setNoticeReminder] = useState(() => localStorage.getItem("campus_notice_reminder") !== "false");
   const [form, setForm] = useState({ display_name: "", college: "", major: "", grade: "", email: "" });
+  const loadEpoch = useRef(0);
+  const saveEpoch = useRef(0);
+  const formEpoch = useRef(0);
+  const editingRef = useRef(false);
+  const mounted = useRef(false);
 
   function signOut() {
     logout();
@@ -86,6 +91,8 @@ export default function ProfilePage() {
   ];
 
   async function load() {
+    const mine = ++loadEpoch.current;
+    const formVersion = formEpoch.current;
     setLoading(true);
     setError("");
     try {
@@ -94,38 +101,48 @@ export default function ProfilePage() {
         api.getDashboard().catch(() => null),
         api.getStudySessions().catch(() => []),
       ]);
+      if (!mounted.current || mine !== loadEpoch.current) return;
       setProfile(profileData || {});
       setDashboard(dashboardData);
       setSessions(Array.isArray(sessionData) ? sessionData : sessionData?.items || []);
-      setForm({
-        display_name: profileData?.display_name || "",
-        college: profileData?.college || "",
-        major: profileData?.major || "",
-        grade: profileData?.grade || "",
-        email: profileData?.email || "",
-      });
+      if (formVersion === formEpoch.current && !editingRef.current) {
+        setForm({
+          display_name: profileData?.display_name || "",
+          college: profileData?.college || "",
+          major: profileData?.major || "",
+          grade: profileData?.grade || "",
+          email: profileData?.email || "",
+        });
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || "个人资料加载失败，请稍后重试。");
+      if (mounted.current && mine === loadEpoch.current) setError(err.response?.data?.detail || "个人资料加载失败，请稍后重试。");
     } finally {
-      setLoading(false);
+      if (mounted.current && mine === loadEpoch.current) setLoading(false);
     }
   }
 
   async function save(event) {
     event.preventDefault();
     if (saving) return;
+    const mine = ++saveEpoch.current;
+    const formVersion = formEpoch.current;
+    loadEpoch.current += 1;
+    setLoading(false);
     setSaving(true);
     setError("");
     try {
       const next = await api.updateProfile(form);
-      setProfile(next?.user || next || form);
-      setEditing(false);
-      setSaved("资料已保存");
-      window.setTimeout(() => setSaved(""), 2200);
+      if (mounted.current && mine === saveEpoch.current && formVersion === formEpoch.current) {
+        setProfile(next?.user || next || form);
+        editingRef.current = false;
+        setEditing(false);
+        setSaved("资料已保存");
+        window.setTimeout(() => setSaved(""), 2200);
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || "资料保存失败，请重试。");
+      if (mounted.current && mine === saveEpoch.current) setError(err.response?.data?.detail || "资料保存失败，请重试。");
     } finally {
-      setSaving(false);
+      if (mounted.current && mine === saveEpoch.current) setSaving(false);
     }
   }
 
@@ -142,7 +159,32 @@ export default function ProfilePage() {
     localStorage.setItem("campus_notice_reminder", String(value));
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      loadEpoch.current += 1;
+      saveEpoch.current += 1;
+    };
+  }, []);
+
+  function beginEditing() {
+    formEpoch.current += 1;
+    editingRef.current = true;
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    formEpoch.current += 1;
+    editingRef.current = false;
+    setEditing(false);
+  }
+
+  function updateForm(field, value) {
+    formEpoch.current += 1;
+    setForm((current) => ({ ...current, [field]: value }));
+  }
 
   return (
     <main className="student-page campus-redesign profile-redesign">
@@ -240,7 +282,7 @@ export default function ProfilePage() {
                     <h2>基本资料</h2>
                     <div className="panel-head-actions">
                       {saved && <span className="redesign-status success"><Icon name="PhCheckCircle" />{saved}</span>}
-                      {!editing && <button className="text-action" onClick={() => setEditing(true)}><Icon name="PhPencil" />编辑资料</button>}
+                      {!editing && <button className="text-action" onClick={beginEditing}><Icon name="PhPencil" />编辑资料</button>}
                     </div>
                   </div>
                   {!editing ? (
@@ -255,13 +297,13 @@ export default function ProfilePage() {
                     </dl>
                   ) : (
                     <form className="profile-edit-form" onSubmit={save}>
-                      <label>姓名<input value={form.display_name} autoComplete="name" onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></label>
+                      <label>姓名<input value={form.display_name} autoComplete="name" onChange={(e) => updateForm("display_name", e.target.value)} /></label>
                       <label>学号<input value={profile.student_number || "暂未填写"} disabled /></label>
-                      <label>学院<input value={form.college} autoComplete="organization" onChange={(e) => setForm({ ...form, college: e.target.value })} /></label>
-                      <label>专业<input value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /></label>
-                      <label>年级<input value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} /></label>
-                      <label>邮箱<input value={form.email} type="email" autoComplete="email" onChange={(e) => setForm({ ...form, email: e.target.value })} /></label>
-                      <div className="profile-edit-actions"><button type="button" className="redesign-button secondary" onClick={() => setEditing(false)}>取消</button><button className="redesign-button primary" disabled={saving}>{saving ? "保存中…" : "保存资料"}</button></div>
+                      <label>学院<input value={form.college} autoComplete="organization" onChange={(e) => updateForm("college", e.target.value)} /></label>
+                      <label>专业<input value={form.major} onChange={(e) => updateForm("major", e.target.value)} /></label>
+                      <label>年级<input value={form.grade} onChange={(e) => updateForm("grade", e.target.value)} /></label>
+                      <label>邮箱<input value={form.email} type="email" autoComplete="email" onChange={(e) => updateForm("email", e.target.value)} /></label>
+                      <div className="profile-edit-actions"><button type="button" className="redesign-button secondary" onClick={cancelEditing}>取消</button><button className="redesign-button primary" disabled={saving}>{saving ? "保存中…" : "保存资料"}</button></div>
                     </form>
                   )}
                 </article>

@@ -233,6 +233,7 @@ export default function Prism({
       io?.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("mouseleave", onLeave);
+      try { gl.getExtension("WEBGL_lose_context")?.loseContext(); } catch { /* Context cleanup is best-effort. */ }
       if (gl.canvas.parentElement === container) container.removeChild(gl.canvas);
     };
   }, [animationType, baseWidth, bloom, colorFrequency, glow, height, hueShift, inertia, lightMode, noise, offset?.x, offset?.y, paused, scale, suspendWhenOffscreen, timeScale, transparent, hoverStrength]);

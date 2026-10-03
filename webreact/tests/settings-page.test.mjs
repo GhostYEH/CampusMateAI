@@ -4,6 +4,7 @@ import test from "node:test";
 
 const pageSource = fs.readFileSync(new URL("../src/pages/SettingsPage.jsx", import.meta.url), "utf8");
 const toggleSource = fs.readFileSync(new URL("../src/components/settings/SettingToggle.jsx", import.meta.url), "utf8");
+const switchSource = fs.readFileSync(new URL("../src/components/settings/SkeuomorphicGlassToggle.jsx", import.meta.url), "utf8");
 const preferenceSource = fs.readFileSync(new URL("../src/features/settings/settingsPreferences.js", import.meta.url), "utf8");
 const styleSource = fs.readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
@@ -14,7 +15,10 @@ test("React settings page follows the light Vue reference composition", () => {
   assert.match(pageSource, /className="settings-notifications"/);
   assert.match(pageSource, /className="settings-privacy"/);
   assert.match(pageSource, /className="settings-display"/);
-  assert.match(toggleSource, /aria-pressed=\{value\}/);
+  assert.match(switchSource, /role="switch"/);
+  assert.match(switchSource, /aria-checked=\{Boolean\(value\)\}/);
+  assert.match(switchSource, /onClick=\{\(\) => onChange\(!value\)\}/);
+  assert.doesNotMatch(toggleSource, /aria-pressed/);
   assert.match(preferenceSource, /campus_exam_reminder/);
   assert.match(preferenceSource, /campus_task_due/);
   assert.match(preferenceSource, /campus_announcement_notify/);

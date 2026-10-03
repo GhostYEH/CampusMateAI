@@ -228,7 +228,9 @@ test("the classroom header survives a 320px viewport", () => {
 test("presentation mode is a real classroom state with an Escape exit", () => {
   assert.match(stageSource, /const \[isPresenting, setIsPresenting\] = React\.useState\(false\)/,
     "课堂必须拥有可验证的演示模式状态");
-  assert.match(stageSource, /onTogglePresentation=\{\(\) => setIsPresenting\(\(value\) => !value\)\}/,
+  assert.match(stageSource, /const onTogglePresentation = React\.useCallback\(\(\) => setIsPresenting\(\(value\) => !value\), \[\]\)/,
+    "演示切换回调应稳定且只更新当前状态");
+  assert.match(stageSource, /onTogglePresentation=\{onTogglePresentation\}/,
     "头部演示按钮必须切换课堂状态");
   assert.match(stageSource, /event\.key !== "Escape"/,
     "演示模式必须监听 Escape");

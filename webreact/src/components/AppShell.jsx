@@ -38,30 +38,48 @@ function TopbarGlass({ children, className, disableEffects = false, ...props }) 
   return <GlassSurface {...topbarGlassProps} {...props} className={`topbar-chrome-glass ${className}`} displace={disableEffects ? 0 : 10}>{children}</GlassSurface>;
 }
 
-function SearchBox({ disableEffects = false }) {
+export function SearchBox({ disableEffects = false }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const timer = useRef();
+  const searchEpoch = useRef(0);
+  const mounted = useRef(false);
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return undefined; }
+    mounted.current = true;
+    const mine = ++searchEpoch.current;
     clearTimeout(timer.current);
+    if (query.trim().length < 2) {
+      setResults([]);
+      setLoading(false);
+      return () => { searchEpoch.current += 1; };
+    }
     timer.current = setTimeout(async () => {
+      if (!mounted.current || mine !== searchEpoch.current) return;
       setLoading(true);
       try {
         const [courses, assignments] = await Promise.all([getCourses(), getAssignments()]);
+        if (!mounted.current || mine !== searchEpoch.current) return;
         const needle = query.trim().toLocaleLowerCase();
         const includes = (...values) => values.some((value) => String(value || "").toLocaleLowerCase().includes(needle));
         setResults([
           ...(list(courses).filter((item) => includes(item.name, item.code, item.semester)).map((item) => ({ title: item.name, detail: item.code || "课程详情", path: `/courses/${item.id}` }))),
           ...(list(assignments).filter((item) => includes(item.title, item.course_name, item.class_name)).map((item) => ({ title: item.title, detail: item.course_name || "课程作业", path: `/tasks/assignment/${item.id}` }))),
         ].slice(0, 8));
-      } catch { setResults([]); } finally { setLoading(false); }
+      } catch {
+        if (mounted.current && mine === searchEpoch.current) setResults([]);
+      } finally {
+        if (mounted.current && mine === searchEpoch.current) setLoading(false);
+      }
     }, 220);
-    return () => clearTimeout(timer.current);
+    return () => {
+      clearTimeout(timer.current);
+      searchEpoch.current += 1;
+    };
   }, [query]);
+  useEffect(() => () => { mounted.current = false; searchEpoch.current += 1; clearTimeout(timer.current); }, []);
   const submitSearch = (event) => { if (event.key === "Enter" && query.trim()) { event.preventDefault(); navigate(`/home?q=${encodeURIComponent(query.trim())}`); setOpen(false); } };
   return <div className="search-wrap"><TopbarGlass className="topbar-search-surface" width="100%" disableEffects={disableEffects} role="search" aria-label="全局搜索"><SearchField className="topbar-search" label="全局搜索" name="global-search" value={query} onFocus={() => setOpen(true)} onValueChange={(value) => { setQuery(value); setOpen(true); }} onKeyDown={submitSearch} placeholder="搜索课程、作业…" /><kbd className="topbar-search-shortcut">⌘ K</kbd></TopbarGlass>{open && query.trim().length >= 2 && <div className="search-results" role="listbox">{loading ? <span>正在搜索…</span> : <>{results.map((item) => <button key={item.path} onClick={() => { navigate(item.path); setQuery(""); setOpen(false); }}><Icon name="PhArrowUpRight" size={15} /><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>)}<button className="search-home-result" onClick={() => { navigate(`/home?q=${encodeURIComponent(query.trim())}`); setQuery(""); setOpen(false); }}><Icon name="PhMagnifyingGlass" size={15} /><span><strong>在首页筛选全部结果</strong><small>{query.trim()}</small></span></button></>}</div>}</div>;
 }

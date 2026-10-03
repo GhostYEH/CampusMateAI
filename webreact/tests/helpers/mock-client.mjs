@@ -54,8 +54,9 @@ export function createMockClient(client) {
     },
 
     onPost(url, data, status = 200) {
-      handlers.set(`post:${url}`, (config) =>
-        Promise.resolve({ status, data, config: config || {}, headers: {} }));
+      handlers.set(`post:${url}`, typeof data === "function"
+        ? data
+        : (config) => Promise.resolve({ status, data, config: config || {}, headers: {} }));
       return api;
     },
 
@@ -72,8 +73,9 @@ export function createMockClient(client) {
     },
 
     onDelete(url, data, status = 200) {
-      handlers.set(`delete:${url}`, (config) =>
-        Promise.resolve({ status, data, config: config || {}, headers: {} }));
+      handlers.set(`delete:${url}`, typeof data === "function"
+        ? data
+        : (config) => Promise.resolve({ status, data, config: config || {}, headers: {} }));
       return api;
     },
 

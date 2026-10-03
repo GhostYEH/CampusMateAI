@@ -12,7 +12,7 @@ import TiltedCard from "../components/TiltedCard.jsx";
 import RippleDistortion from "../components/RippleDistortion.jsx";
 
 export default function LoginPage() {
-  const { session, login, applyQrLoginResult, tryTrustedLogin } = useApp();
+  const { session, login, applyQrLoginResult, tryTrustedLogin, reduceMotion } = useApp();
   const navigate = useNavigate();
   const [mode, setMode] = useState("account");
   const [username, setUsername] = useState("");
@@ -23,9 +23,11 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const [qr, setQr] = useState({ state: "idle", image: "", session: null, error: "" });
   const pollRef = useRef();
+  const qrEpoch = useRef(0);
 
   function stopQrPolling() {
-    clearInterval(pollRef.current);
+    qrEpoch.current += 1;
+    clearTimeout(pollRef.current);
     pollRef.current = undefined;
   }
 
@@ -61,41 +63,50 @@ export default function LoginPage() {
 
   async function generateQr() {
     stopQrPolling();
+    const mine = qrEpoch.current;
     setQr({ state: "generating", image: "", session: null, error: "" });
     try {
       const data = await qrCreate();
+      if (mine !== qrEpoch.current) return;
       const image = await QRCode.toDataURL(data.qr_payload, {
         width: 220,
         margin: 1,
         color: { dark: "#17232d", light: "#fff" },
       });
+      if (mine !== qrEpoch.current) return;
       const sessionData = { session_id: data.session_id, browser_token: data.browser_token };
       setQr({ state: "pending", image, session: sessionData, error: "" });
-      pollRef.current = setInterval(async () => {
+      const poll = async () => {
+        if (mine !== qrEpoch.current) return;
         try {
           const status = await qrStatus(sessionData.session_id, sessionData.browser_token);
+          if (mine !== qrEpoch.current) return;
           const next = qrStatusState(status.status);
           if (next.state === "confirmed") {
-            stopQrPolling();
             setQr((current) => ({ ...current, state: "confirmed" }));
             try {
               const tokenPair = await qrExchange(sessionData.session_id, sessionData.browser_token);
+              if (mine !== qrEpoch.current) return;
               applyQrLoginResult(tokenPair);
               navigate("/home", { replace: true });
             } catch (exchangeError) {
+              if (mine !== qrEpoch.current) return;
               setQr((current) => ({ ...current, state: "error", error: exchangeError?.response?.data?.detail || exchangeError?.message || "二维码登录失败，请重新生成" }));
             }
             return;
           }
           if (next.state !== "pending") {
-            if (["expired", "cancelled", "error"].includes(next.state)) stopQrPolling();
             setQr((current) => ({ ...current, ...next }));
+            if (["expired", "cancelled", "error"].includes(next.state)) return;
           }
         } catch {
           // Keep polling through transient status errors.
         }
-      }, 1000);
+        if (mine === qrEpoch.current) pollRef.current = setTimeout(poll, 1000);
+      };
+      pollRef.current = setTimeout(poll, 1000);
     } catch (err) {
+      if (mine !== qrEpoch.current) return;
       setQr({ state: "error", image: "", session: null, error: err.message || "生成二维码失败" });
     }
   }
@@ -106,7 +117,7 @@ export default function LoginPage() {
 
   return (
     <main className="login-page">
-      <RippleDistortion className="login-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} />
+      <RippleDistortion className="login-ripple" src="/assets/login-campus.mp4" brushSize={180} strength={0.16} swirl={1} rings={4} grayscale={false} quality="low" trigger="both" clickStrength={2.5} tint="#4a7dff" tintAmount={0.08} glint={0.3} enabled={!reduceMotion} />
       <div className="login-shade" />
 
       <section className="login-story">

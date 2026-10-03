@@ -2,6 +2,7 @@ import React from "react";
 import { Button, LinkButton, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
+import { createPollScope } from "../../data/pollScope.js";
 import { formatDateTime } from "../../utils/date.js";
 import StageEditorPanel from "./StageEditorPanel.jsx";
 import {
@@ -78,33 +79,57 @@ export default function WorkspacePanel({
   const [stages, setStages] = React.useState([]);
   const [stageTitle, setStageTitle] = React.useState("");
   const [editingStageId, setEditingStageId] = React.useState("");
+  const courseIdRef = React.useRef(courseId);
+  const openWorkspaceIdRef = React.useRef(openWorkspaceId);
+  courseIdRef.current = courseId;
+  openWorkspaceIdRef.current = openWorkspaceId;
   // 切换课程后迟到的响应不得写进新课程上下文。
-  const epoch = React.useRef(0);
+  const listEpoch = React.useRef(0);
+  const stagesEpoch = React.useRef(0);
+  const videoPollScope = React.useRef(null);
+  if (!videoPollScope.current) videoPollScope.current = createPollScope();
+  const videoWaitResolve = React.useRef(null);
   const importInputRef = React.useRef(null);
   const pptxInputRef = React.useRef(null);
   const [localReject, setLocalReject] = React.useState("");
   // 同一个用户动作的幂等键必须在重试之间保持不变，所以它跟着"这次提交"走，
   // 而不是每次请求现生成。
   const pendingKey = React.useRef(null);
+  const isCurrentWorkspace = (expectedCourseId, expectedWorkspaceId = null) =>
+    courseIdRef.current === expectedCourseId
+      && (expectedWorkspaceId === null || openWorkspaceIdRef.current === expectedWorkspaceId);
+
+  const stopVideoExport = React.useCallback((resetBusy = false) => {
+    const resolveWait = videoWaitResolve.current;
+    videoWaitResolve.current = null;
+    videoPollScope.current.stop();
+    resolveWait?.();
+    if (resetBusy) setBusy(false);
+  }, []);
 
   const load = React.useCallback(async () => {
+    if (!isCurrentWorkspace(courseId)) return;
+    const mine = ++listEpoch.current;
     setLoading(true);
     setError("");
     try {
       const payload = await api.listMagicClassWorkspaces(courseId, { limit: WORKSPACE_PAGE_LIMIT });
+      if (mine !== listEpoch.current || !isCurrentWorkspace(courseId)) return;
       setItems(normalizeWorkspaceList(payload));
       setCursor(nextCursorOf(payload));
       // 只有服务端上报过 folder 能力时才会去读文件夹；否则归档下拉框根本不渲染。
       if (canFile) {
         const folderPayload = await api.listMagicClassFolders(courseId, { limit: DISCOVERY_PAGE_LIMIT });
+        if (mine !== listEpoch.current || !isCurrentWorkspace(courseId)) return;
         setFolders(normalizeFolderList(folderPayload));
       }
     } catch (err) {
+      if (mine !== listEpoch.current || !isCurrentWorkspace(courseId)) return;
       setItems([]);
       setCursor(null);
       setError(describeWorkspaceError(err).message);
     } finally {
-      setLoading(false);
+      if (mine === listEpoch.current && isCurrentWorkspace(courseId)) setLoading(false);
     }
   }, [canFile, courseId]);
 
@@ -112,18 +137,30 @@ export default function WorkspacePanel({
     pendingKey.current = null;
     setName("");
     setNotice("");
-    void load();
-  }, [courseId, load]);
+    courseIdRef.current = courseId;
+    openWorkspaceIdRef.current = "";
+    setOpenWorkspaceId("");
+    setStages([]);
+    setBusy(false);
+    return () => {
+      listEpoch.current += 1;
+      stagesEpoch.current += 1;
+      stopVideoExport();
+    };
+  }, [courseId, stopVideoExport]);
+
+  React.useEffect(() => { void load(); }, [load]);
 
   const loadStages = React.useCallback(async (workspaceId) => {
-    const mine = (epoch.current += 1);
+    if (!isCurrentWorkspace(courseId, workspaceId)) return;
+    const mine = (stagesEpoch.current += 1);
     setError("");
     try {
       const payload = await api.listMagicClassStages(courseId, workspaceId, { limit: WORKSPACE_PAGE_LIMIT });
-      if (mine !== epoch.current) return;
+      if (mine !== stagesEpoch.current || !isCurrentWorkspace(courseId, workspaceId)) return;
       setStages(normalizeStageList(payload));
     } catch (err) {
-      if (mine !== epoch.current) return;
+      if (mine !== stagesEpoch.current || !isCurrentWorkspace(courseId, workspaceId)) return;
       setStages([]);
       setError(describeWorkspaceError(err).message);
     }
@@ -131,9 +168,12 @@ export default function WorkspacePanel({
 
   async function toggleStages(item) {
     const next = openWorkspaceId === item.id ? "" : item.id;
+    openWorkspaceIdRef.current = next;
     setOpenWorkspaceId(next);
     setEditingStageId("");
     setStages([]);
+    stagesEpoch.current += 1;
+    stopVideoExport(true);
     setLocalReject("");
     if (importInputRef.current) importInputRef.current.value = "";
     if (pptxInputRef.current) pptxInputRef.current.value = "";
@@ -143,6 +183,7 @@ export default function WorkspacePanel({
   }
 
   async function addStage(workspaceId) {
+    const expectedCourseId = courseId;
     const title = stageTitle.trim();
     if (!title) return;
     setBusy(true);
@@ -153,13 +194,15 @@ export default function WorkspacePanel({
         title,
         idempotencyKey: api.newIdempotencyKey(),
       });
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       setStageTitle("");
       setNotice(`已新增内容「${title}」`);
       await loadStages(workspaceId);
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       setError(describeWorkspaceError(err).message);
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId, workspaceId)) setBusy(false);
     }
   }
 
@@ -170,55 +213,78 @@ export default function WorkspacePanel({
    */
   async function exportStage(workspaceId, stage) {
     if (busy) return;
+    const expectedCourseId = courseId;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       const result = await api.exportMagicClassStage(courseId, workspaceId, stage.id);
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       saveBlob(result.blob, filenameFromContentDisposition(result.disposition));
       setNotice(`已导出「${stage.title}」`);
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       setError(describeArchiveError(err).message);
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId, workspaceId)) setBusy(false);
     }
   }
 
   async function exportFormat(workspaceId, stage, format) {
     if (busy) return;
+    const expectedCourseId = courseId;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       const result = await api.exportMagicClassStageFormat(courseId, workspaceId, stage.id, format);
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       saveBlob(result.blob, filenameFromContentDisposition(result.disposition));
       setNotice(`已导出「${stage.title}」为 ${format.toUpperCase()}`);
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       setError(describeArchiveError(err).message);
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId, workspaceId)) setBusy(false);
     }
   }
 
   async function exportVideo(workspaceId, stage) {
     if (busy) return;
+    stopVideoExport();
+    const token = videoPollScope.current.begin();
+    const deadline = Date.now() + 120_000;
     setBusy(true); setError(""); setNotice("");
     try {
       const queued = await api.enqueueMagicClassStageVideo(courseId, workspaceId, stage.id, { idempotencyKey: api.newIdempotencyKey() });
+      if (!videoPollScope.current.isCurrent(token)) return;
       let job = queued.job || null;
       const jobId = queued.job_id || job?.id;
       if (!jobId) throw new Error("受管服务未返回视频导出任务");
       while (job && ["queued", "running"].includes(job.status)) {
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        if (Date.now() >= deadline) throw new Error("视频导出超时");
+        await new Promise((resolve) => {
+          videoWaitResolve.current = resolve;
+          videoPollScope.current.arm(() => {
+            videoWaitResolve.current = null;
+            videoPollScope.current.disarm();
+            resolve();
+          }, Math.min(800, deadline - Date.now()), token);
+        });
+        if (!videoPollScope.current.isCurrent(token)) return;
         job = await api.getMagicClassJob(courseId, jobId);
+        if (!videoPollScope.current.isCurrent(token)) return;
       }
       if (!job || job.status !== "completed" || !job.artifact_id) throw new Error(job?.error_code || "视频导出失败");
       const artifact = await api.getMagicClassArtifact(courseId, job.artifact_id);
+      if (!videoPollScope.current.isCurrent(token)) return;
       saveBlob(artifact.blob, filenameFromContentDisposition(artifact.disposition) || `${stage.title}.mp4`);
       setNotice(`已导出「${stage.title}」为 MP4`);
     } catch (err) {
-      setError(describeArchiveError(err).message || err.message || "视频导出失败");
-    } finally { setBusy(false); }
+      if (videoPollScope.current.isCurrent(token)) setError(describeArchiveError(err).message || err.message || "视频导出失败");
+    } finally {
+      if (videoPollScope.current.isCurrent(token)) setBusy(false);
+    }
   }
 
   /**
@@ -228,6 +294,7 @@ export default function WorkspacePanel({
    * 可重试的失败复用同一个幂等键，否则重试会真的产生第二份内容。
    */
   async function importArchive(workspaceId) {
+    const expectedCourseId = courseId;
     const file = importInputRef.current?.files?.[0] || null;
     const rejected = validateImportCandidate(file);
     if (rejected) {
@@ -245,6 +312,7 @@ export default function WorkspacePanel({
         file,
         idempotencyKey: pendingKey.current,
       });
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       pendingKey.current = null;
       if (importInputRef.current) importInputRef.current.value = "";
       const imported = normalizeImportedStage(payload);
@@ -255,16 +323,18 @@ export default function WorkspacePanel({
       );
       await loadStages(workspaceId);
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       const described = describeArchiveError(err);
       // 只有"这个档案本身不合格"才弃键；可重试的失败必须复用同一个键。
       if (!described.retryable) pendingKey.current = null;
       setError(described.message);
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId, workspaceId)) setBusy(false);
     }
   }
 
   async function importPptx(workspaceId) {
+    const expectedCourseId = courseId;
     const file = pptxInputRef.current?.files?.[0] || null;
     if (!file) {
       setLocalReject("请选择一个 .pptx 课件。");
@@ -288,19 +358,23 @@ export default function WorkspacePanel({
         file,
         idempotencyKey: api.newIdempotencyKey(),
       });
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       if (pptxInputRef.current) pptxInputRef.current.value = "";
       const imported = normalizeImportedStage(payload);
       setNotice(imported ? `已导入 PPTX「${imported.title}」` : "已导入 PPTX");
       await loadStages(workspaceId);
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId, workspaceId)) return;
       setError(describeArchiveError(err).message);
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId, workspaceId)) setBusy(false);
     }
   }
 
   async function loadMore() {
     if (!cursor) return;
+    const expectedCourseId = courseId;
+    const mine = listEpoch.current;
     setBusy(true);
     setError("");
     try {
@@ -308,17 +382,20 @@ export default function WorkspacePanel({
         limit: WORKSPACE_PAGE_LIMIT,
         cursor,
       });
+      if (mine !== listEpoch.current || !isCurrentWorkspace(expectedCourseId)) return;
       setItems((current) => [...current, ...normalizeWorkspaceList(payload)]);
       setCursor(nextCursorOf(payload));
     } catch (err) {
+      if (mine !== listEpoch.current || !isCurrentWorkspace(expectedCourseId)) return;
       setError(describeWorkspaceError(err).message);
     } finally {
-      setBusy(false);
+      if (mine === listEpoch.current && isCurrentWorkspace(expectedCourseId)) setBusy(false);
     }
   }
 
   async function create(event) {
     event.preventDefault();
+    const expectedCourseId = courseId;
     const normalized = normalizeWorkspaceName(name);
     if (!normalized) return;
     // 同一次提交的键：失败后重试拿回同一个工作台，而不是再建一个。
@@ -332,22 +409,25 @@ export default function WorkspacePanel({
         folderId: canFile && targetFolder ? targetFolder : undefined,
         idempotencyKey: pendingKey.current,
       });
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       pendingKey.current = null;
       setName("");
       setTargetFolder("");
       setNotice(`已创建「${created.name}」`);
       await load();
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       const described = describeWorkspaceError(err);
       setError(described.message);
       if (described.kind === "idempotency") pendingKey.current = null;
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId)) setBusy(false);
     }
   }
 
   /** 归档/取消归档。revision 必须用服务端最近一次返回的值。 */
   async function moveToFolder(item, folderId) {
+    const expectedCourseId = courseId;
     setBusy(true);
     setError("");
     setNotice("");
@@ -356,33 +436,38 @@ export default function WorkspacePanel({
         revision: item.revision,
         folderId: folderId || null,
       });
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       setNotice(folderId ? `已把「${item.name}」移入文件夹` : `已把「${item.name}」移到未归档`);
       await load();
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       const described = describeWorkspaceError(err);
       setError(described.message);
       if (described.kind === "conflict") await load();
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId)) setBusy(false);
     }
   }
 
   async function remove(item) {
+    const expectedCourseId = courseId;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       // revision 用服务端最近一次返回的值；不本地推算。
       await api.deleteMagicClassWorkspace(courseId, item.id, { revision: item.revision });
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       setNotice(`已删除「${item.name}」`);
       await load();
     } catch (err) {
+      if (!isCurrentWorkspace(expectedCourseId)) return;
       const described = describeWorkspaceError(err);
       setError(described.message);
       // 409 表示手上的副本过期：重新读取，而不是原样重试。
       if (described.kind === "conflict") await load();
     } finally {
-      setBusy(false);
+      if (isCurrentWorkspace(expectedCourseId)) setBusy(false);
     }
   }
 

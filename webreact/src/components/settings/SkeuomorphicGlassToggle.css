@@ -1,17 +1,35 @@
 .skeuomorphic-glass-toggle {
   position: relative;
+  display: flex;
   flex: 0 0 auto;
   width: 176px;
   height: 148px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
   overflow: hidden;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, .92);
   border-radius: 18px;
-  box-shadow: 0 8px 18px rgba(54, 77, 125, .08);
+  color: #53618a;
+  background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(230,236,251,.85));
+  box-shadow: 0 8px 18px rgba(54, 77, 125, .08), inset 0 1px 0 #fff;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
-.skeuomorphic-glass-toggle__scene {
-  width: 100%;
-  height: 100%;
-}
+.skeuomorphic-glass-toggle:hover { box-shadow: 0 10px 22px rgba(54, 77, 125, .13), inset 0 1px 0 #fff; }
+.skeuomorphic-glass-toggle:active { transform: translateY(1px); }
+.skeuomorphic-glass-toggle:focus-visible { outline: 3px solid rgba(50, 103, 214, .32); outline-offset: 3px; }
+.skeuomorphic-glass-toggle__label { max-width: 100%; overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.skeuomorphic-glass-toggle__track { position: relative; display: block; width: 78px; height: 40px; border: 1px solid #cbd4ec; border-radius: 999px; background: #d9dfed; box-shadow: inset 0 2px 5px rgba(42,55,91,.13); transition: background-color .18s ease; }
+.skeuomorphic-glass-toggle__thumb { position: absolute; top: 4px; left: 4px; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(145deg, #fff, #f3f6ff); box-shadow: 0 2px 6px rgba(40,55,96,.22); transition: transform .18s ease; }
+.skeuomorphic-glass-toggle[data-state="on"] .skeuomorphic-glass-toggle__track { border-color: #627ce0; background: #6b83e7; }
+.skeuomorphic-glass-toggle[data-state="on"] .skeuomorphic-glass-toggle__thumb { transform: translateX(38px); }
+.skeuomorphic-glass-toggle__value { color: #7a86a5; font-size: 11px; }
+.skeuomorphic-glass-toggle[data-state="on"] .skeuomorphic-glass-toggle__value { color: #5269c7; }
 
 .settings-toggle.settings-toggle-shell {
   display: block;
@@ -26,13 +44,10 @@
 }
 
 .preference-toggle.preference-toggle-shell {
-  display: block;
   width: 176px;
   height: 148px;
+  min-width: 0;
   padding: 0;
-  border: 0;
-  border-radius: 18px;
-  background: transparent;
 }
 
 @media (max-width: 760px) {
@@ -45,7 +60,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeuomorphic-glass-toggle {
-    box-shadow: none;
-  }
+  .skeuomorphic-glass-toggle { box-shadow: none; transition: none; }
+  .skeuomorphic-glass-toggle__track,
+  .skeuomorphic-glass-toggle__thumb { transition: none; }
 }

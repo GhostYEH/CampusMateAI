@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
@@ -123,8 +123,48 @@ export default function TasksPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
-  async function load() { setLoading(true); setError(""); try { const [assignments, tasks] = await Promise.all([api.getAssignments(), api.getTasks()]); setData([assignments, tasks]); await refreshAgenda(); } catch (err) { setError(errorText(err, "待办数据加载失败")); } finally { setLoading(false); } }
-  useEffect(() => { load(); }, []);
+  const loadEpoch = useRef(0);
+  const pendingMutationCount = useRef(0);
+  const editorEpoch = useRef(0);
+  const mounted = useRef(false);
+  function openEditor(value) {
+    editorEpoch.current += 1;
+    setEditor(value);
+  }
+  function closeEditor() {
+    editorEpoch.current += 1;
+    setEditor(null);
+  }
+  async function load() {
+    const mine = ++loadEpoch.current;
+    const isCurrent = () => mounted.current && mine === loadEpoch.current;
+    setLoading(true); setError("");
+    try {
+      const [assignments, tasks] = await Promise.all([api.getAssignments(), api.getTasks()]);
+      if (!isCurrent()) return;
+      setData([assignments, tasks]);
+      await refreshAgenda();
+    } catch (err) {
+      if (isCurrent()) setError(errorText(err, "待办数据加载失败"));
+    } finally {
+      if (isCurrent()) setLoading(false);
+    }
+  }
+  function beginMutation() {
+    loadEpoch.current += 1;
+    setLoading(false);
+    pendingMutationCount.current += 1;
+    if (mounted.current) setSaving(true);
+  }
+  function endMutation() {
+    pendingMutationCount.current = Math.max(0, pendingMutationCount.current - 1);
+    if (mounted.current) setSaving(pendingMutationCount.current > 0);
+  }
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => { mounted.current = false; loadEpoch.current += 1; pendingMutationCount.current = 0; };
+  }, []);
   const tasks = useMemo(() => {
     const [assignments, personal] = data || [[], []];
     return [...list(assignments).map((item) => ({ ...item, kind: "assignment", typeLabel: "课程作业", sourceId: item.id, source: item.course_name || item.class_name || "课程作业", done: isCompletedSubmissionStatus(item.submission_status), progress: item.progress ?? taskAssignmentProgress(item.submission_status), statusLabel: taskAssignmentStatusLabel(item.submission_status), priority: item.priority || "medium", importance: item.importance || "unknown" })), ...list(personal).map((item) => ({ ...item, kind: "personal", typeLabel: item.source === "chaoxing" ? "学习通作业" : "个人待办", sourceId: item.id, source: item.source_name || "个人安排", done: item.status === "completed", progress: item.progress ?? (item.status === "completed" ? 100 : 0), statusLabel: item.status === "completed" ? "已完成" : "待完成", priority: item.priority || "medium", importance: item.importance || "unknown", readOnly: item.source === "chaoxing" })), ...localTasks.map((item) => ({ ...item, kind: "local", typeLabel: "本地待办", sourceId: item.id, source: "当前浏览器", deadline: item.deadline || (item.due && item.due !== "待设置" ? item.due : null), description: item.description || item.details || "", done: Boolean(item.done), progress: item.progress ?? (item.done ? 100 : 0), statusLabel: item.done ? "已完成" : "待完成", priority: item.priority || "medium", importance: item.importance || "unknown" }))];
@@ -160,21 +200,70 @@ export default function TasksPage() {
     return todayAgenda ? { ...base, today: todayAgenda.summary.pending, overdue: todayAgenda.summary.overdue } : base;
   }, [tasks, todayAgenda]);
   const completionTrend = useMemo(() => weeklyTrend(tasks.filter((item) => item.done), new Date(), "completed_at"), [tasks]);
-  async function toggle(task) { setSaving(true); try { await api.completeTask(task.sourceId, !task.done); setNotice(task.done ? "已恢复待办" : "任务已完成"); await load(); } catch (err) { setNotice(errorText(err)); } finally { setSaving(false); } }
-  async function saveTask(form) { setSaving(true); try { if (editor?.kind === "local") { updateLocalTask(editor.sourceId, { ...form, due: form.deadline || "待设置" }); setNotice("本地待办已更新"); } else if (editor?.id) { await api.updateTask(editor.id, form); setNotice("待办已更新"); } else { await api.createTask({ ...form, source_name: "个人安排" }); setNotice("待办已加入清单"); } setEditor(null); if (editor?.kind !== "local") await load(); } catch (err) { setNotice(errorText(err)); } finally { setSaving(false); } }
-  async function remove(task) { if (!window.confirm("确认删除这条个人待办吗？")) return; try { if (task.kind === "local") { deleteLocalTask(task.sourceId); } else { await api.deleteTask(task.sourceId); await load(); } setNotice("待办已删除"); } catch (err) { setNotice(errorText(err)); } }
-  async function postpone(task) { const date = task.deadline ? new Date(task.deadline) : new Date(); date.setDate(date.getDate() + 1); try { if (task.kind === "local") { updateLocalTask(task.sourceId, { deadline: date.toISOString(), due: date.toISOString() }); } else { await api.updateTask(task.sourceId, { deadline: date.toISOString() }); await load(); } setNotice("已延期一天"); } catch (err) { setNotice(errorText(err)); } }
+  async function toggle(task) {
+    beginMutation();
+    try {
+      await api.completeTask(task.sourceId, !task.done);
+      if (!mounted.current) return;
+      setNotice(task.done ? "已恢复待办" : "任务已完成");
+      await load();
+    } catch (err) { if (mounted.current) setNotice(errorText(err)); }
+    finally { endMutation(); }
+  }
+  async function saveTask(form) {
+    const editorVersion = editorEpoch.current;
+    const currentEditor = editor;
+    beginMutation();
+    try {
+      if (editor?.kind === "local") { updateLocalTask(editor.sourceId, { ...form, due: form.deadline || "待设置" }); }
+      else if (editor?.id) { await api.updateTask(editor.id, form); }
+      else { await api.createTask({ ...form, source_name: "个人安排" }); }
+      if (!mounted.current) return;
+      setNotice(currentEditor?.kind === "local" ? "本地待办已更新" : currentEditor?.id ? "待办已更新" : "待办已加入清单");
+      if (editorVersion === editorEpoch.current) closeEditor();
+      if (currentEditor?.kind !== "local") await load();
+    } catch (err) { if (mounted.current) setNotice(errorText(err)); }
+    finally { endMutation(); }
+  }
+  async function remove(task) {
+    if (!window.confirm("确认删除这条个人待办吗？")) return;
+    beginMutation();
+    try {
+      if (task.kind === "local") deleteLocalTask(task.sourceId);
+      else await api.deleteTask(task.sourceId);
+      if (!mounted.current) return;
+      setNotice("待办已删除");
+      if (task.kind !== "local") await load();
+    } catch (err) { if (mounted.current) setNotice(errorText(err)); }
+    finally { endMutation(); }
+  }
+  async function postpone(task) {
+    beginMutation();
+    const date = task.deadline ? new Date(task.deadline) : new Date(); date.setDate(date.getDate() + 1);
+    try {
+      if (task.kind === "local") updateLocalTask(task.sourceId, { deadline: date.toISOString(), due: date.toISOString() });
+      else await api.updateTask(task.sourceId, { deadline: date.toISOString() });
+      if (!mounted.current) return;
+      setNotice("已延期一天");
+      if (task.kind !== "local") await load();
+    } catch (err) { if (mounted.current) setNotice(errorText(err)); }
+    finally { endMutation(); }
+  }
   async function commitImport(drafts) {
-    await api.commitTaskImport({ tasks: drafts.map((draft) => {
-      const task = { title: draft.title.trim() };
-      ["description", "deadline", "materials", "submission_method", "location", "source_name", "source_text", "priority", "importance", "reminder_minutes"].forEach((field) => {
-        if (draft[field] !== undefined && draft[field] !== null && draft[field] !== "") task[field] = draft[field];
-      });
-      if (!task.source_name) task.source_name = "学习材料";
-      return task;
-    }) });
-    setNotice("导入任务已保存");
-    await load();
+    beginMutation();
+    try {
+      await api.commitTaskImport({ tasks: drafts.map((draft) => {
+        const task = { title: draft.title.trim() };
+        ["description", "deadline", "materials", "submission_method", "location", "source_name", "source_text", "priority", "importance", "reminder_minutes"].forEach((field) => {
+          if (draft[field] !== undefined && draft[field] !== null && draft[field] !== "") task[field] = draft[field];
+        });
+        if (!task.source_name) task.source_name = "学习材料";
+        return task;
+      }) });
+      if (!mounted.current) return;
+      setNotice("导入任务已保存");
+      await load();
+    } finally { endMutation(); }
   }
   function reorderTask(target) {
     if (!dragging || taskKey(dragging) === taskKey(target)) return;
@@ -184,16 +273,16 @@ export default function TasksPage() {
     const [moved] = order.splice(from, 1); order.splice(to, 0, moved);
     setManualOrder(order); setSort("custom"); setDragging(null); setNotice("任务顺序已更新");
   }
-  return <PageFrame eyebrow="Work / Tasks" title="待办与作业" description="把课程作业和个人安排放在一起，专注今天真正重要的事情。" actions={<><Button variant="secondary" icon="PhUpload" onClick={() => setImportOpen(true)}>导入材料</Button><Button icon="PhPlus" onClick={() => setEditor({})}>新建待办</Button></>}>
+  return <PageFrame eyebrow="Work / Tasks" title="待办与作业" description="把课程作业和个人安排放在一起，专注今天真正重要的事情。" actions={<><Button variant="secondary" icon="PhUpload" onClick={() => setImportOpen(true)}>导入材料</Button><Button icon="PhPlus" onClick={() => openEditor({})}>新建待办</Button></>}>
     {notice && <div className="page-notice notice-info" role="status">{notice}</div>}
     <AsyncState loading={loading} error={error} onRetry={load}>
       <div className="stack reveal"><div className="stat-grid"><StatCard label="今日待办" value={metrics.today} detail={metrics.overdue ? `${metrics.overdue} 项已逾期` : "今天安排"} icon="PhClipboardText" tone="violet" /><StatCard label="即将截止" value={metrics.upcoming} detail="未来 7 天" icon="PhCalendarBlank" tone="orange" /><StatCard label="已完成" value={metrics.completed} detail={`${metrics.total ? Math.round(metrics.completed / metrics.total * 100) : 0}% 完成率`} icon="PhCheckCircle" tone="green" /><StatCard label="待处理" value={metrics.pending} detail="继续推进" icon="PhTimer" tone="blue" /></div><Panel className="task-trend-panel"><SectionHeading title="近七日完成趋势" detail={`${metrics.completed} 项任务已完成`} /><div className="trend-bars" aria-label="近七日完成趋势">{completionTrend.map((item) => <span key={item.date}><i style={{ height: `${Math.max(item.count ? 14 : 4, Math.round(item.count / Math.max(...completionTrend.map((value) => value.count), 1) * 100))}%` }} /><small>{item.label}</small><b>{item.count || ""}</b></span>)}</div></Panel>
-        <Panel className="task-focus-panel"><SectionHeading title="优先处理" detail="先从逾期和今天到期的事项开始" />{tasks.filter((task) => ["overdue", "today"].includes(taskGroupState(task)) && !task.done).slice(0, 3).map((task) => <button className="focus-task" key={`${task.kind}-${task.sourceId}`} onClick={() => task.kind === "assignment" ? navigate(`/tasks/assignment/${task.sourceId}`) : setEditor(task)}><Icon name={taskGroupState(task) === "overdue" ? "PhWarningCircle" : "PhFlag"} size={18} /><span><strong>{task.title || "未命名任务"}</strong><small>{taskGroupState(task) === "overdue" ? "已逾期" : "今天截止"} · {dateText(task.deadline)}</small></span><Icon name="PhArrowUpRight" size={16} /></button>)}{!tasks.some((task) => ["overdue", "today"].includes(taskGroupState(task)) && !task.done) && <div className="inline-empty">当前没有紧迫事项，适合安排一次专注。</div>}</Panel>
+        <Panel className="task-focus-panel"><SectionHeading title="优先处理" detail="先从逾期和今天到期的事项开始" />{tasks.filter((task) => ["overdue", "today"].includes(taskGroupState(task)) && !task.done).slice(0, 3).map((task) => <button className="focus-task" key={`${task.kind}-${task.sourceId}`} onClick={() => task.kind === "assignment" ? navigate(`/tasks/assignment/${task.sourceId}`) : openEditor(task)}><Icon name={taskGroupState(task) === "overdue" ? "PhWarningCircle" : "PhFlag"} size={18} /><span><strong>{task.title || "未命名任务"}</strong><small>{taskGroupState(task) === "overdue" ? "已逾期" : "今天截止"} · {dateText(task.deadline)}</small></span><Icon name="PhArrowUpRight" size={16} /></button>)}{!tasks.some((task) => ["overdue", "today"].includes(taskGroupState(task)) && !task.done) && <div className="inline-empty">当前没有紧迫事项，适合安排一次专注。</div>}</Panel>
         <div className="filter-bar task-toolbar"><label className="search-field-wrap"><Icon name="PhMagnifyingGlass" size={17} /><input className="search-field" name="task-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务标题或课程…" /></label><select aria-label="任务类型" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">全部类型</option><option value="personal">个人待办</option><option value="assignment">课程作业</option><option value="exam">考试</option><option value="class">今日课程</option><option value="local">本地待办</option></select><select aria-label="任务状态" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">全部状态</option><option value="pending">未完成</option><option value="today">今日</option><option value="upcoming">即将截止</option><option value="overdue">已逾期</option><option value="done">已完成</option></select><select aria-label="任务排序" value={sort} onChange={(event) => setSort(event.target.value)}><option value="deadline">截止时间</option><option value="latest">最近创建</option><option value="title">标题</option><option value="custom">自定义顺序</option></select><LinkButton to="/study" variant="quiet" icon="PhTimer">开始专注</LinkButton></div>
-        {groupedCount ? <div className="task-list task-list-grouped">{Object.entries(groups).filter(([, rows]) => rows.length).map(([group, groupTasks]) => <section className="task-group" key={group}><header className="task-group-head"><button type="button" className="task-group-toggle" aria-expanded={!collapsedGroups[group]} onClick={() => setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))}><Icon name={collapsedGroups[group] ? "PhCaretRight" : "PhCaretDown"} size={14} /><Icon name={taskGroupMeta[group][1]} size={15} /><strong>{taskGroupMeta[group][0]}</strong><b>{groupTasks.length}</b></button>{group === "today" && <span className="task-group-hint">逾期事项优先显示</span>}</header>{!collapsedGroups[group] && <div className="task-group-items">{groupTasks.map((task) => task.kindLabel ? <AgendaTaskRow key={task.id} task={task} onOpen={(item) => item.route && navigate(item.route)} onToggle={toggle} /> : <TaskRow key={taskKey(task)} task={task} onToggle={task.kind === "local" ? (item) => toggleTask(item.sourceId) : toggle} onEdit={(item) => item.kind === "personal" || item.kind === "local" ? setEditor(item) : navigate(`/tasks/${item.kind}/${item.sourceId}`)} onDelete={remove} onPostpone={postpone} onOpen={task.kind === "local" ? undefined : (item) => navigate(`/tasks/${item.kind}/${item.sourceId}`)} onDragStart={setDragging} onDrop={reorderTask} />)}</div>}</section>)}</div> : <div className="state-card empty-state"><Icon name="PhStack" size={34} /><p>还没有匹配的任务</p><Button onClick={() => setEditor({})}>新建待办</Button></div>}
+        {groupedCount ? <div className="task-list task-list-grouped">{Object.entries(groups).filter(([, rows]) => rows.length).map(([group, groupTasks]) => <section className="task-group" key={group}><header className="task-group-head"><button type="button" className="task-group-toggle" aria-expanded={!collapsedGroups[group]} onClick={() => setCollapsedGroups((current) => ({ ...current, [group]: !current[group] }))}><Icon name={collapsedGroups[group] ? "PhCaretRight" : "PhCaretDown"} size={14} /><Icon name={taskGroupMeta[group][1]} size={15} /><strong>{taskGroupMeta[group][0]}</strong><b>{groupTasks.length}</b></button>{group === "today" && <span className="task-group-hint">逾期事项优先显示</span>}</header>{!collapsedGroups[group] && <div className="task-group-items">{groupTasks.map((task) => task.kindLabel ? <AgendaTaskRow key={task.id} task={task} onOpen={(item) => item.route && navigate(item.route)} onToggle={toggle} /> : <TaskRow key={taskKey(task)} task={task} onToggle={task.kind === "local" ? (item) => toggleTask(item.sourceId) : toggle} onEdit={(item) => item.kind === "personal" || item.kind === "local" ? openEditor(item) : navigate(`/tasks/${item.kind}/${item.sourceId}`)} onDelete={remove} onPostpone={postpone} onOpen={task.kind === "local" ? undefined : (item) => navigate(`/tasks/${item.kind}/${item.sourceId}`)} onDragStart={setDragging} onDrop={reorderTask} />)}</div>}</section>)}</div> : <div className="state-card empty-state"><Icon name="PhStack" size={34} /><p>还没有匹配的任务</p><Button onClick={() => openEditor({})}>新建待办</Button></div>}
       </div>
     </AsyncState>
-    {editor && <TaskEditor task={editor.id ? editor : null} saving={saving} onClose={() => setEditor(null)} onSave={saveTask} />}
+    {editor && <TaskEditor task={editor.id ? editor : null} saving={saving} onClose={closeEditor} onSave={saveTask} />}
     {importOpen && <ImportEditor saving={saving} onClose={() => setImportOpen(false)} onAnalyze={api.analyzeTaskImport} onCommit={commitImport} />}
   </PageFrame>;
 }

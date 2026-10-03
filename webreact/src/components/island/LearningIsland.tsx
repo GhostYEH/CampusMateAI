@@ -1,9 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import { MathUtils, type Group } from "three";
+import { useApp } from "../../app/AppContext.jsx";
 
 // ── 小单元、绵密感 ──
 const UNIT = 0.34;
@@ -318,9 +319,10 @@ const totalTiles = tiles.length;
 // ── 装饰组件（按新比例缩小） ──
 // ============================================================
 
-function NewTileSparkle({ color }: { color: string }) {
+function NewTileSparkle({ color, reducedMotion }: { color: string; reducedMotion: boolean }) {
   const group = useRef<Group>(null);
   useFrame((state) => {
+    if (reducedMotion) return;
     if (!group.current) return;
     const t = state.clock.elapsedTime;
     group.current.children.forEach((child, i) => {
@@ -361,11 +363,11 @@ function NewTileSparkle({ color }: { color: string }) {
   );
 }
 
-function TinyTree({ variant }: { variant: number }) {
+function TinyTree({ variant, reducedMotion }: { variant: number; reducedMotion: boolean }) {
   const palette = usePalette();
   const crown = useRef<Group>(null);
   useFrame((state) => {
-    if (!crown.current) return;
+    if (reducedMotion || !crown.current) return;
     crown.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + variant * 0.7) * 0.03;
     crown.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.7 + variant) * 0.015;
   });
@@ -540,7 +542,7 @@ function TinyPond({ variant }: { variant: number }) {
   );
 }
 
-function TileDecoration({ tile, index }: { tile: Tile; index: number }) {
+function TileDecoration({ tile, index, reducedMotion }: { tile: Tile; index: number; reducedMotion: boolean }) {
   const { kind } = tile;
   if (kind === "rock") return <TinyRock variant={index} />;
   if (kind === "water") return <TinyPond variant={index} />;
@@ -552,7 +554,7 @@ function TileDecoration({ tile, index }: { tile: Tile; index: number }) {
     return null;
   }
   // forest
-  return <TinyTree variant={index} />;
+  return <TinyTree variant={index} reducedMotion={reducedMotion} />;
 }
 
 // ============================================================
@@ -563,14 +565,12 @@ function GrowingTile({
   tile,
   index,
   reducedMotion,
-  isUnlocked,
   isTodayNew,
   isFloating,
 }: {
   tile: Tile;
   index: number;
   reducedMotion: boolean;
-  isUnlocked: boolean;
   isTodayNew: boolean;
   isFloating: boolean;
 }) {
@@ -582,13 +582,13 @@ function GrowingTile({
 
   useFrame((state, delta) => {
     if (!group.current) return;
-    if (!isUnlocked) { group.current.visible = false; return; }
-    group.current.visible = true;
     const raw = reducedMotion ? 1 : MathUtils.clamp((state.clock.elapsedTime - tile.delay) / 0.55, 0, 1);
     const progress = 1 - Math.pow(1 - raw, 3);
-    hoverOffset.current = MathUtils.damp(hoverOffset.current, hovered.current ? 0.25 : 0, 10, delta);
+    hoverOffset.current = reducedMotion
+      ? (hovered.current ? 0.25 : 0)
+      : MathUtils.damp(hoverOffset.current, hovered.current ? 0.25 : 0, 10, delta);
     // 浮空单元微微上下浮动
-    const floatBob = isFloating ? Math.sin(state.clock.elapsedTime * 1.2 + tile.x * 0.5 + tile.z * 0.7) * 0.08 : 0;
+    const floatBob = isFloating && !reducedMotion ? Math.sin(state.clock.elapsedTime * 1.2 + tile.x * 0.5 + tile.z * 0.7) * 0.08 : 0;
     group.current.position.y = baseY + hoverOffset.current + floatBob;
     group.current.scale.set(0.7 + progress * 0.3, Math.max(progress, 0.001), 0.7 + progress * 0.3);
   });
@@ -607,7 +607,7 @@ function GrowingTile({
     <group
       ref={group}
       position={[tile.x * UNIT, baseY, tile.z * UNIT]}
-      scale={[0.7, 0.001, 0.7]}
+      scale={[0.7, 1, 0.7]}
       onPointerOver={(e) => { e.stopPropagation(); hovered.current = true; document.body.style.cursor = "pointer"; }}
       onPointerOut={() => { hovered.current = false; document.body.style.cursor = "default"; }}
     >
@@ -628,12 +628,12 @@ function GrowingTile({
       </mesh>
       {/* 装饰 */}
       <group position={[0, tile.height + 0.04, 0]}>
-        <TileDecoration tile={tile} index={index} />
+        <TileDecoration tile={tile} index={index} reducedMotion={reducedMotion} />
       </group>
       {/* 今日标记 */}
       {isTodayNew && (
         <group position={[0, tile.height + 0.22, 0]}>
-          <NewTileSparkle color="#fff9c4" />
+          <NewTileSparkle color="#fff9c4" reducedMotion={reducedMotion} />
         </group>
       )}
     </group>
@@ -644,9 +644,8 @@ function GrowingTile({
 // ── 主岛 ──
 // ============================================================
 
-function Island({ unlockedCount, todayCount }: { unlockedCount: number; todayCount: number }) {
+function Island({ unlockedCount, todayCount, reducedMotion }: { unlockedCount: number; todayCount: number; reducedMotion: boolean }) {
   const island = useRef<Group>(null);
-  const reducedMotion = useReducedMotion();
 
   useFrame((state) => {
     if (!island.current || reducedMotion) return;
@@ -659,6 +658,7 @@ function Island({ unlockedCount, todayCount }: { unlockedCount: number; todayCou
     <group ref={island} rotation={[0, -0.18, 0]}>
       {tiles.map((tile, index) => {
         const isUnlocked = tile.unlockOrder <= unlockedCount;
+        if (!isUnlocked) return null;
         const isTodayNew = todayCount > 0 && tile.unlockOrder >= todayStartOrder && tile.unlockOrder <= unlockedCount;
         const isFloating = tile.elevation > 0.6;
         return (
@@ -667,7 +667,6 @@ function Island({ unlockedCount, todayCount }: { unlockedCount: number; todayCou
             tile={tile}
             index={index}
             reducedMotion={reducedMotion}
-            isUnlocked={isUnlocked}
             isTodayNew={isTodayNew}
             isFloating={isFloating}
           />
@@ -677,11 +676,23 @@ function Island({ unlockedCount, todayCount }: { unlockedCount: number; todayCou
   );
 }
 
-function useReducedMotion() {
-  return useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    []
-  );
+function useSystemReducedMotion() {
+  const [reducedMotion, setReducedMotion] = useState(() => typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    media.addListener?.(update);
+    return () => {
+      media.removeEventListener?.("change", update);
+      media.removeListener?.(update);
+    };
+  }, []);
+  return reducedMotion;
 }
 
 // ── 场景光：跟随 palette（雪/雨两套完全不同的环境色） ──
@@ -709,6 +720,9 @@ export function LearningIsland({
   totalHours = 0,
   todayCheckins = 0,
 }: LearningIslandProps) {
+  const { reduceMotion: appReduceMotion } = useApp();
+  const systemReduceMotion = useSystemReducedMotion();
+  const reducedMotion = appReduceMotion || systemReduceMotion;
   const unlockedCount = Math.min(totalTiles, INITIAL_TILES + totalCheckins * TILES_PER_CHECKIN);
 
   // ── 场景 → PALETTE：自动跟随 html[data-scene] 切换 ──
@@ -757,7 +771,7 @@ export function LearningIsland({
             shadow-camera-top={8}
             shadow-camera-bottom={-8}
           />
-          <Island unlockedCount={unlockedCount} todayCount={todayCheckins} />
+          <Island unlockedCount={unlockedCount} todayCount={todayCheckins} reducedMotion={reducedMotion} />
           <OrbitControls
             makeDefault
             enablePan={false}

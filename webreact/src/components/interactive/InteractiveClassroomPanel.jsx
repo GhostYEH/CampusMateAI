@@ -620,7 +620,9 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   // 轮询作用域：**停止查看**必须作废所有在途 poll，否则在途响应会把轮询重新点着。
-  const pollScope = useRef(createPollScope()).current;
+  const pollScopeRef = useRef(null);
+  if (!pollScopeRef.current) pollScopeRef.current = createPollScope();
+  const pollScope = pollScopeRef.current;
   // 课程/会话作用域的 epoch：异步结果写回前必须确认自己没被切换作废。
   const guard = useRef(createEpochGuard()).current;
   const isCurrent = (myEpoch) => guard.isCurrent(myEpoch);

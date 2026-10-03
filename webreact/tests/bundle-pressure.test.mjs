@@ -48,6 +48,13 @@ test("the homepage iframe wrapper does not fetch the separate 3D engine", () => 
   assert.ok(!modules.some((id) => id.includes("node_modules/three/") || id.includes("node_modules/@react-three/")));
 });
 
+test("the profile route no longer pulls the settings-only Three UI engine", () => {
+  const profile = output.find((item) => item.type === "chunk" && item.facadeModuleId?.endsWith("/pages/ProfilePage.jsx"));
+  assert.ok(profile, "profile chunk exists");
+  const modules = dependencies(profile).flatMap((chunk) => Object.keys(chunk.modules));
+  assert.ok(!modules.some((id) => id.includes("node_modules/three/") || id.includes("node_modules/@react-three/") || id.includes("node_modules/@designcodeio/threeui/")));
+});
+
 test("a direct classroom entry includes its progress and error styles", () => {
   const classroom = output.find((item) => item.type === "chunk" && item.facadeModuleId?.endsWith("/pages/magicclassClassroomEntryPage.jsx"));
   assert.ok(classroom, "classroom entry chunk exists");

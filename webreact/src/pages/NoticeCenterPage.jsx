@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { itemsOf, normalizeNotice } from "../data/contracts.js";
@@ -40,23 +40,47 @@ export default function NoticeCenterPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notice, setNotice] = useState("");
+  const loadEpoch = useRef(0);
+  const readEpoch = useRef(new Map());
+  const extractEpoch = useRef(0);
+  const draftEpoch = useRef(0);
+  const dataMutationEpoch = useRef(0);
+  const saveEpoch = useRef(0);
+  const mounted = useRef(false);
 
   async function load() {
+    const mine = ++loadEpoch.current;
+    const mutationVersion = dataMutationEpoch.current;
     setLoading(true);
     setError("");
     try {
-      setItems(itemsOf(await api.getNotices()).map(normalizeNotice));
+      const data = await api.getNotices();
+      if (mounted.current && mine === loadEpoch.current && mutationVersion === dataMutationEpoch.current) {
+        setItems(itemsOf(data).map(normalizeNotice));
+      }
     } catch (cause) {
-      setError(errorText(cause, "通知加载失败，请稍后重试"));
+      if (mounted.current && mine === loadEpoch.current && mutationVersion === dataMutationEpoch.current) {
+        setError(errorText(cause, "通知加载失败，请稍后重试"));
+      }
     } finally {
-      setLoading(false);
+      if (mounted.current && mine === loadEpoch.current && mutationVersion === dataMutationEpoch.current) setLoading(false);
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      loadEpoch.current += 1;
+      extractEpoch.current += 1;
+      dataMutationEpoch.current += 1;
+      saveEpoch.current += 1;
+    };
+  }, []);
   useEffect(() => {
     const initial = searchParams.get("extract");
-    if (initial) setExtractText(initial);
+    if (initial) updateExtractText(initial);
   }, [searchParams]);
 
   const sources = useMemo(() => [...new Set(items.map((item) => item.source).filter(Boolean))], [items]);
@@ -70,11 +94,21 @@ export default function NoticeCenterPage() {
   async function toggle(item) {
     setExpanded((current) => current === item.id ? null : item.id);
     if (item.kind === "announcement" && !item.has_read) {
+      const mine = (readEpoch.current.get(item.id) || 0) + 1;
+      readEpoch.current.set(item.id, mine);
+      dataMutationEpoch.current += 1;
+      loadEpoch.current += 1;
+      setLoading(false);
       try {
         await api.markAnnouncementRead(item.id);
-        setItems((current) => current.map((value) => value.id === item.id ? { ...value, has_read: true } : value));
+        if (mounted.current && readEpoch.current.get(item.id) === mine) {
+          dataMutationEpoch.current += 1;
+          loadEpoch.current += 1;
+          setLoading(false);
+          setItems((current) => current.map((value) => value.id === item.id ? { ...value, has_read: true } : value));
+        }
       } catch {
-        setNotice("通知已打开，但已读状态同步失败");
+        if (mounted.current && readEpoch.current.get(item.id) === mine) setNotice("通知已打开，但已读状态同步失败");
       }
     }
   }
@@ -94,19 +128,31 @@ export default function NoticeCenterPage() {
 
   async function extract() {
     if (!extractText.trim() || extracting) return;
+    const mine = ++extractEpoch.current;
+    const sourceText = extractText.trim();
     setExtracting(true);
     setSaved(false);
     setExtracted(null);
     try {
-      setExtracted(await api.extractNotice(extractText.trim()));
+      const result = await api.extractNotice(sourceText);
+      if (mounted.current && mine === extractEpoch.current) setExtracted(result);
     } catch (cause) {
-      setExtracted({ error: errorText(cause, "提取失败，请检查通知内容") });
+      if (mounted.current && mine === extractEpoch.current) setExtracted({ error: errorText(cause, "提取失败，请检查通知内容") });
     } finally {
-      setExtracting(false);
+      if (mounted.current && mine === extractEpoch.current) setExtracting(false);
     }
   }
 
+  function updateExtractText(value) {
+    extractEpoch.current += 1;
+    draftEpoch.current += 1;
+    setExtracting(false);
+    setSaved(false);
+    setExtractText(value);
+  }
+
   function updateDraft(field, value) {
+    draftEpoch.current += 1;
     setSaved(false);
     setExtracted((current) => updateNoticeTaskDraft(current, field, value));
   }
@@ -115,6 +161,9 @@ export default function NoticeCenterPage() {
     const draft = noticeTaskDraft(extracted);
     const extractedTask = extracted?.tasks?.[0] || extracted || {};
     if (!draft.title.trim() || saving || saved) return;
+    const mine = ++saveEpoch.current;
+    const sourceVersion = extractEpoch.current;
+    const draftVersion = draftEpoch.current;
     setSaving(true);
     try {
       await api.createTask({
@@ -129,12 +178,15 @@ export default function NoticeCenterPage() {
         priority: ["high", "urgent"].includes(extractedTask.importance) ? "high" : "medium",
         importance: extractedTask.importance || "unknown"
       });
-      setSaved(true);
-      setNotice("已保存为个人待办");
+      if (mounted.current && mine === saveEpoch.current
+        && sourceVersion === extractEpoch.current && draftVersion === draftEpoch.current) {
+        setSaved(true);
+        setNotice("已保存为个人待办");
+      }
     } catch (cause) {
-      setNotice(errorText(cause, "保存待办失败"));
+      if (mounted.current && mine === saveEpoch.current) setNotice(errorText(cause, "保存待办失败"));
     } finally {
-      setSaving(false);
+      if (mounted.current && mine === saveEpoch.current) setSaving(false);
     }
   }
 
@@ -194,7 +246,7 @@ export default function NoticeCenterPage() {
         <div className="notice-step-heading"><span className="notice-step-number">1</span><SectionHeading title="从通知生成待办" detail="提取结果仅作为草稿，保存前请核对截止时间和提交方式。" /></div>
         <label className="notice-textarea-field">
           <span className="sr-only">通知原文</span>
-          <textarea value={extractText} onChange={(event) => setExtractText(event.target.value)} rows="6" maxLength="20000" placeholder="粘贴教务处、学院或学生工作部门的通知原文" aria-label="通知原文" />
+          <textarea value={extractText} onChange={(event) => updateExtractText(event.target.value)} rows="6" maxLength="20000" placeholder="粘贴教务处、学院或学生工作部门的通知原文" aria-label="通知原文" />
           <small>{extractText.length} / 5000</small>
         </label>
         <div className="form-footer notice-extract-actions">

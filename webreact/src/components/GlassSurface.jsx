@@ -35,6 +35,7 @@ export default function GlassSurface({
   const greenChannelRef = useRef(null);
   const blueChannelRef = useRef(null);
   const gaussianBlurRef = useRef(null);
+  const updateDisplacementMapRef = useRef(() => {});
 
   function generateDisplacementMap() {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -65,6 +66,7 @@ export default function GlassSurface({
   function updateDisplacementMap() {
     feImageRef.current?.setAttribute("href", generateDisplacementMap());
   }
+  updateDisplacementMapRef.current = updateDisplacementMap;
 
   useEffect(() => {
     updateDisplacementMap();
@@ -96,13 +98,24 @@ export default function GlassSurface({
 
   useEffect(() => {
     if (!containerRef.current || typeof ResizeObserver === "undefined") return undefined;
-    const resizeObserver = new ResizeObserver(() => setTimeout(updateDisplacementMap, 0));
+    let timer = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        updateDisplacementMapRef.current();
+      }, 0);
+    });
     resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
+    return () => {
+      resizeObserver.disconnect();
+      if (timer !== null) clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
-    setTimeout(updateDisplacementMap, 0);
+    const timer = setTimeout(() => updateDisplacementMapRef.current(), 0);
+    return () => clearTimeout(timer);
   }, [width, height]);
 
   useEffect(() => {

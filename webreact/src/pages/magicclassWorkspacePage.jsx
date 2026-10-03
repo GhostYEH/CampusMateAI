@@ -63,8 +63,9 @@ export default function MagicClassWorkspacePage() {
   const [providerStatus, setProviderStatus] = useState(null);
   const [fusionStatus, setFusionStatus] = useState(null);
   const [mode, setMode] = useState("slide"); const [prompt, setPrompt] = useState(""); const [job, setJob] = useState(null); const [busy, setBusy] = useState(false); const [playing, setPlaying] = useState(false);
-  const epoch = useRef(0); const polling = useRef(null);
+  const epoch = useRef(0); const pollEpoch = useRef(0); const polling = useRef(null);
   const launchStarted = useRef(false);
+  const routeEpoch = useRef(0);
 
   const load = useCallback(async () => {
     const mine = ++epoch.current; setLoading(true); setError("");
@@ -87,34 +88,88 @@ export default function MagicClassWorkspacePage() {
     catch { setFusionStatus(null); }
   }, []);
 
-  useEffect(() => { setJob(null); setPlaying(false); void load(); void loadProviderStatus(); void loadFusionStatus(); return () => { epoch.current += 1; if (polling.current) window.clearTimeout(polling.current); }; }, [load, loadProviderStatus, loadFusionStatus]);
+  useEffect(() => {
+    routeEpoch.current += 1;
+    pollEpoch.current += 1;
+    launchStarted.current = false;
+    setJob(null); setBusy(false); setNotice(""); setPlaying(false); void load(); void loadProviderStatus(); void loadFusionStatus();
+    return () => { routeEpoch.current += 1; epoch.current += 1; pollEpoch.current += 1; if (polling.current) window.clearTimeout(polling.current); polling.current = null; };
+  }, [load, loadProviderStatus, loadFusionStatus]);
 
   useEffect(() => {
     // A refreshed deep link may still carry the original prompt, but an
     // already populated workspace is the durable proof that the launch ran.
     // Do not enqueue the same classroom again just because the browser reloaded.
-    if (loading || !workspace || !launchPrompt || stages.length > 0 || launchStarted.current) return;
+    if (loading || busy || !workspace || !launchPrompt || stages.length > 0 || launchStarted.current) return;
     launchStarted.current = true;
     setPrompt(launchPrompt);
     void generatePrompt(launchPrompt);
-  }, [loading, workspace, stages.length, launchPrompt]);
+  }, [loading, busy, workspace, stages.length, launchPrompt]);
 
-  const pollJob = useCallback(async (jobId) => {
+  const pollJob = useCallback(async (jobId, routeMine = routeEpoch.current, pollMine = pollEpoch.current + 1) => {
+    if (routeMine !== routeEpoch.current) return;
+    if (pollMine > pollEpoch.current) pollEpoch.current = pollMine;
+    const mine = epoch.current;
     try {
-      const current = await api.getMagicClassJob(courseId, jobId); if (current?.id !== jobId) return; setJob(current);
-      if (["queued", "running"].includes(current.status)) polling.current = window.setTimeout(() => void pollJob(jobId), 800);
-      else if (current.status === "completed") { setNotice("学习内容已生成，并已写入当前工作台。"); await load(); }
-    } catch (failure) { setError(errorText(failure, "生成进度读取失败")); }
+      const current = await api.getMagicClassJob(courseId, jobId);
+      if (mine !== epoch.current || routeMine !== routeEpoch.current || pollMine !== pollEpoch.current || current?.id !== jobId) return;
+      setJob(current);
+      if (["queued", "running"].includes(current.status)) polling.current = window.setTimeout(() => {
+        if (routeMine === routeEpoch.current && pollMine === pollEpoch.current) void pollJob(jobId, routeMine, pollMine);
+      }, 800);
+      else if (current.status === "completed") {
+        setNotice("学习内容已生成，并已写入当前工作台。");
+        if (routeMine === routeEpoch.current) await load();
+      }
+    } catch (failure) {
+      if (mine !== epoch.current || routeMine !== routeEpoch.current || pollMine !== pollEpoch.current) return;
+      setError(errorText(failure, "生成进度读取失败"));
+    }
   }, [courseId, load]);
 
   async function generatePrompt(value) {
+    const routeMine = routeEpoch.current;
     const normalized = String(value || "").trim(); if (!normalized || busy) return; setBusy(true); setError(""); setNotice("");
-    try { const result = await api.generateMagicClassStage(courseId, workspaceId, { mode, prompt: normalized, roleMode: launchRoleMode, selectedRoleIds: launchRoleIds, idempotencyKey: api.newIdempotencyKey() }); setJob(result.job || null); setPrompt(""); await load(); if (result.job?.id && result.job.status !== "completed") void pollJob(result.job.id); else setNotice("学习内容已生成，并已写入当前工作台。"); }
-    catch (failure) { setError(errorText(failure, "生成失败，原工作台内容未改变")); } finally { setBusy(false); }
+    try { const result = await api.generateMagicClassStage(courseId, workspaceId, { mode, prompt: normalized, roleMode: launchRoleMode, selectedRoleIds: launchRoleIds, idempotencyKey: api.newIdempotencyKey() }); if (routeMine !== routeEpoch.current) return; setJob(result.job || null); setPrompt(""); await load(); if (routeMine !== routeEpoch.current) return; if (result.job?.id && result.job.status !== "completed") void pollJob(result.job.id); else setNotice("学习内容已生成，并已写入当前工作台。"); }
+    catch (failure) { if (routeMine === routeEpoch.current) setError(errorText(failure, "生成失败，原工作台内容未改变")); } finally { if (routeMine === routeEpoch.current) setBusy(false); }
   }
   async function generate(event) { event.preventDefault(); await generatePrompt(prompt); }
-  async function cancelJob() { if (!job?.id) return; setBusy(true); try { setJob(await api.cancelMagicClassJob(courseId, job.id)); setNotice("已请求中断生成。"); } catch (failure) { setError(errorText(failure, "中断失败")); } finally { setBusy(false); } }
-  async function retryJob() { if (!job?.id) return; setBusy(true); try { const next = await api.retryMagicClassJob(courseId, job.id); setJob(next); void pollJob(next.id); } catch (failure) { setError(errorText(failure, "重试失败")); } finally { setBusy(false); } }
+  async function cancelJob() {
+    if (!job?.id) return;
+    const routeMine = routeEpoch.current;
+    const jobId = job.id;
+    pollEpoch.current += 1;
+    if (polling.current) window.clearTimeout(polling.current);
+    polling.current = null;
+    setBusy(true);
+    try {
+      const cancelled = await api.cancelMagicClassJob(courseId, jobId);
+      if (routeMine !== routeEpoch.current) return;
+      setJob(cancelled); setNotice("已请求中断生成。");
+      if (["queued", "running"].includes(cancelled?.status)) void pollJob(jobId, routeMine);
+    } catch (failure) {
+      if (routeMine === routeEpoch.current) {
+        setError(errorText(failure, "中断失败"));
+        if (["queued", "running"].includes(job?.status)) void pollJob(jobId, routeMine);
+      }
+    } finally { if (routeMine === routeEpoch.current) setBusy(false); }
+  }
+  async function retryJob() {
+    if (!job?.id) return;
+    const routeMine = routeEpoch.current;
+    pollEpoch.current += 1;
+    if (polling.current) window.clearTimeout(polling.current);
+    polling.current = null;
+    setBusy(true);
+    try {
+      const next = await api.retryMagicClassJob(courseId, job.id);
+      if (routeMine !== routeEpoch.current) return;
+      setJob(next);
+      if (routeMine === routeEpoch.current && next?.id) void pollJob(next.id);
+    } catch (failure) {
+      if (routeMine === routeEpoch.current) setError(errorText(failure, "重试失败"));
+    } finally { if (routeMine === routeEpoch.current) setBusy(false); }
+  }
 
   const selectedStage = useMemo(() => stages.find((stage) => stage.id === selectedStageId) || null, [stages, selectedStageId]);
   const jobBusy = job && ["queued", "running"].includes(job.status);

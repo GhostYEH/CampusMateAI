@@ -55,6 +55,12 @@ export default function StudyPage() {
   const [pomodoro, setPomodoro] = useState(readPomodoroState);
   const pomodoroRef = useRef(pomodoro); pomodoroRef.current = pomodoro;
   const activeRef = useRef(active); activeRef.current = active;
+  const sessionLoadEpoch = useRef(0);
+  const sessionMutationEpoch = useRef(0);
+  const historyEpoch = useRef(0);
+  const taskRefreshEpoch = useRef(0);
+  const goalEpoch = useRef(0);
+  const mounted = useRef(false);
   const whiteNoise = useWhiteNoise();
   const [sceneState, setSceneState] = useState(() => readStudyScene());
   const ambient = useAmbientSound(sceneState);
@@ -64,7 +70,7 @@ export default function StudyPage() {
   }
   const commitPomodoro = (next) => { pomodoroRef.current = next; setPomodoro(next); setSeconds(remainingAt(next, Date.now())); try { window.localStorage.setItem(POMODORO_STORAGE_KEY, JSON.stringify(next)); } catch { /* The active timer continues when local storage is unavailable. */ } };
 
-  function syncPomodoroWithSession(current) {
+  function syncPomodoroWithSession(current, sessionVersion = sessionMutationEpoch.current) {
     if (current) {
       const plannedMinutes = Math.max(5, Math.round(Number(current.planned_duration_seconds || 0) / 60) || selectedMinutes);
       const started = new Date(current.started_at).getTime();
@@ -77,8 +83,15 @@ export default function StudyPage() {
       commitPomodoro(next);
       if (remaining <= 0) {
         setActive(null);
-        void api.finishStudySession(current.id, { self_report: null }).then(() => api.getStudySessions()).then((value) => setSessions(list(value))).catch((err) => { logApiError("study-finish", err); setError(userErrorMessage(err, "专注已完成，但记录同步失败")); });
-        setNotice("专注完成，进入短暂休息");
+        void api.finishStudySession(current.id, { self_report: null }).then(() => {
+          if (!mounted.current) return;
+          return refreshSessionHistory();
+        }).catch((err) => {
+          if (!mounted.current || sessionVersion !== sessionMutationEpoch.current) return;
+          logApiError("study-finish", err);
+          setError(userErrorMessage(err, "专注已完成，但记录同步失败"));
+        });
+        if (mounted.current && sessionVersion === sessionMutationEpoch.current) setNotice("专注完成，进入短暂休息");
       }
       return;
     }
@@ -89,7 +102,10 @@ export default function StudyPage() {
     // 今日待办的唯一来源是 /agenda/today。此前这里直接拉 /tasks 的全部未完成项，
     // 于是把历史遗留的所有未完成个人待办都算成了"今天"（出现过"77 件待完成"）。
     // 这里只刷新共享数据，列表与总数/完成数都取同一份 summary。
+    const mine = ++taskRefreshEpoch.current;
+    const mutationVersion = sessionMutationEpoch.current;
     return refreshAgenda().then((agenda) => {
+      if (!mounted.current || mine !== taskRefreshEpoch.current || mutationVersion !== sessionMutationEpoch.current) return null;
       const sidebar = selectAgendaForSidebar(agenda);
       setTasks(sidebar.items);
       setTaskStats({
@@ -97,11 +113,28 @@ export default function StudyPage() {
         completed: sidebar.summary.completed,
         pending: sidebar.summary.pending,
       });
-      return sidebar;
+    return sidebar;
     });
   }
 
+  async function refreshSessionHistory() {
+    const mine = ++historyEpoch.current;
+    try {
+      const value = await api.getStudySessions();
+      if (mounted.current && mine === historyEpoch.current) setSessions(list(value));
+    } catch (err) {
+      if (mounted.current && mine === historyEpoch.current) logApiError("study-history", err);
+    }
+  }
+
   async function load() {
+    const mine = ++sessionLoadEpoch.current;
+    const mutationVersion = sessionMutationEpoch.current;
+    const goalVersion = goalEpoch.current;
+    const historyVersion = ++historyEpoch.current;
+    const isCurrent = () => mounted.current
+      && mine === sessionLoadEpoch.current
+      && mutationVersion === sessionMutationEpoch.current;
     setLoading(true); setError("");
     try {
       const [current, history, storeGoal] = await Promise.all([
@@ -109,19 +142,42 @@ export default function StudyPage() {
         api.getStudySessions(),
         api.getDailyStudyGoal().catch(() => ({ target_minutes: 60 })),
       ]);
+      if (!isCurrent()) return;
       setActive(current);
-      setSessions(list(history));
-      setDailyGoal(storeGoal?.target_minutes ? storeGoal : { target_minutes: 60 });
-      syncPomodoroWithSession(current);
+      if (historyVersion === historyEpoch.current) setSessions(list(history));
+      if (goalVersion === goalEpoch.current) setDailyGoal(storeGoal?.target_minutes ? storeGoal : { target_minutes: 60 });
+      syncPomodoroWithSession(current, mutationVersion);
       await refreshTasks();
     } catch (err) {
-      logApiError("study-load", err);
-      setError(userErrorMessage(err, "学习数据加载失败"));
+      if (isCurrent()) {
+        logApiError("study-load", err);
+        setError(userErrorMessage(err, "学习数据加载失败"));
+      }
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
-  useEffect(() => { load(); }, []);
+  function beginSessionMutation() {
+    sessionLoadEpoch.current += 1;
+    sessionMutationEpoch.current += 1;
+    setLoading(false);
+    return sessionMutationEpoch.current;
+  }
+  function isCurrentSessionMutation(mine) {
+    return mounted.current && mine === sessionMutationEpoch.current;
+  }
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      sessionLoadEpoch.current += 1;
+      sessionMutationEpoch.current += 1;
+      historyEpoch.current += 1;
+      taskRefreshEpoch.current += 1;
+      goalEpoch.current += 1;
+    };
+  }, []);
   useEffect(() => {
     const tick = () => {
       const current = pomodoroRef.current;
@@ -158,25 +214,39 @@ export default function StudyPage() {
   }
   async function start(goalOverride = goal) {
     const current = pomodoroRef.current;
+    if (current.mode !== "break" && activeRef.current) return;
+    const mine = beginSessionMutation();
     if (current.mode === "break") { commitPomodoro(startPomodoro(current, Date.now())); return; }
-    if (activeRef.current) return;
     try {
       const result = await api.startStudySession({ goal: goalOverride.trim() || "完成一段专注学习", mode, minutes: selectedMinutes, relatedTaskId });
+      if (!isCurrentSessionMutation(mine)) return;
       setActive(result);
       setGoal(goalOverride.trim());
       commitPomodoro(startPomodoro({ ...createPomodoroState({ focusMinutes: selectedMinutes, breakMinutes: 5 }), remaining: selectedMinutes * 60 }, Date.now()));
       setNotice(`已开始 ${selectedMinutes} 分钟专注`);
     } catch (err) {
+      if (!isCurrentSessionMutation(mine)) return;
       logApiError("study-start", err);
       setError(userErrorMessage(err, "无法开始学习会话"));
     }
   }
   async function togglePause() {
+    const mine = beginSessionMutation();
     const current = pomodoroRef.current;
     try {
-      if (current.isRunning) { if (activeRef.current) setActive(await api.pauseStudySession(activeRef.current.id, "主动休息")); commitPomodoro(pausePomodoro(current, Date.now())); }
-      else { if (activeRef.current) setActive(await api.resumeStudySession(activeRef.current.id)); commitPomodoro(startPomodoro(current, Date.now())); }
+      if (current.isRunning) {
+        const session = activeRef.current ? await api.pauseStudySession(activeRef.current.id, "主动休息") : null;
+        if (!isCurrentSessionMutation(mine)) return;
+        if (session) setActive(session);
+        commitPomodoro(pausePomodoro(current, Date.now()));
+      } else {
+        const session = activeRef.current ? await api.resumeStudySession(activeRef.current.id) : null;
+        if (!isCurrentSessionMutation(mine)) return;
+        if (session) setActive(session);
+        commitPomodoro(startPomodoro(current, Date.now()));
+      }
     } catch (err) {
+      if (!isCurrentSessionMutation(mine)) return;
       logApiError("study-pause", err);
       setError(userErrorMessage(err, "学习状态更新失败"));
     }
@@ -190,12 +260,15 @@ export default function StudyPage() {
     const session = review?.session;
     setReview(null);
     if (!session) return;
+    const mine = beginSessionMutation();
     try {
       await api.finishStudySession(session.id, { self_report: selfReport.trim() || null });
     } catch (err) {
+      if (!isCurrentSessionMutation(mine)) return;
       logApiError("study-finish", err);
       setError(userErrorMessage(err, "结束会话失败"));
     }
+    if (!isCurrentSessionMutation(mine)) return;
     setActive((current) => (current?.id === session.id ? null : current));
     setRelatedTaskId(null);
     setSelfReport("");
@@ -205,38 +278,63 @@ export default function StudyPage() {
   }
   async function completePomodoroRound() {
     const session = activeRef.current;
+    const mine = beginSessionMutation();
     if (session) {
-      try { await api.finishStudySession(session.id, { self_report: null }); } catch (err) { logApiError("study-round", err); setError(userErrorMessage(err, "专注完成，但记录保存失败")); }
+      activeRef.current = null;
       setActive(null);
-      void api.getStudySessions().then((value) => setSessions(list(value))).catch(() => {});
     }
+    if (session) {
+      try { await api.finishStudySession(session.id, { self_report: null }); } catch (err) {
+        if (mounted.current && mine === sessionMutationEpoch.current && !activeRef.current) {
+          logApiError("study-round", err); setError(userErrorMessage(err, "专注完成，但记录保存失败"));
+        }
+      }
+      void refreshSessionHistory();
+    }
+    if (!mounted.current || mine !== sessionMutationEpoch.current) return;
     setNotice("专注完成，进入短暂休息");
   }
   async function resetTimer() {
+    const mine = beginSessionMutation();
     if (activeRef.current) {
-      try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) { logApiError("study-reset", err); setError(userErrorMessage(err, "计时已重置，但记录保存失败")); }
+      try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) {
+        if (!isCurrentSessionMutation(mine)) return;
+        logApiError("study-reset", err); setError(userErrorMessage(err, "计时已重置，但记录保存失败"));
+      }
+      if (!isCurrentSessionMutation(mine)) return;
       setActive(null);
     }
+    if (!isCurrentSessionMutation(mine)) return;
     commitPomodoro(resetPomodoro(pomodoroRef.current));
     setSelfReport("");
     setNotice("计时已重置");
   }
   async function skipTimer() {
+    const mine = beginSessionMutation();
     const currentMode = pomodoroRef.current.mode;
     if (activeRef.current) {
-      try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) { logApiError("study-skip", err); setError(userErrorMessage(err, "阶段已跳过，但记录保存失败")); }
+      try { await api.finishStudySession(activeRef.current.id, { self_report: selfReport.trim() || null }); } catch (err) {
+        if (!isCurrentSessionMutation(mine)) return;
+        logApiError("study-skip", err); setError(userErrorMessage(err, "阶段已跳过，但记录保存失败"));
+      }
+      if (!isCurrentSessionMutation(mine)) return;
       setActive(null);
     }
+    if (!isCurrentSessionMutation(mine)) return;
     commitPomodoro(skipPomodoro(pomodoroRef.current));
     setSelfReport("");
     setNotice(currentMode === "break" ? "已跳过休息，准备下一轮专注" : "已跳过当前专注阶段");
   }
   async function saveDailyGoal(value) {
     const target = Math.max(15, Math.min(480, Number(value) || dailyGoal.target_minutes || 60));
+    const mine = ++goalEpoch.current;
     try {
-      setDailyGoal(await api.updateDailyStudyGoal(target));
+      const next = await api.updateDailyStudyGoal(target);
+      if (!mounted.current || mine !== goalEpoch.current) return;
+      setDailyGoal(next);
       setNotice(`今日目标已调整为 ${target} 分钟`);
     } catch (err) {
+      if (!mounted.current || mine !== goalEpoch.current) return;
       logApiError("study-goal", err);
       setError(userErrorMessage(err, "今日目标保存失败"));
     }

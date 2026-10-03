@@ -8,7 +8,7 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 const unused = { args: "none", caughtErrors: "none", varsIgnorePattern: "^_" };
 
 export default [
-  { ignores: ["dist/**", "node_modules/**"] },
+  { ignores: ["dist/**", "node_modules/**", "src/maic/**"] },
   {
     files: ["src/**/*.{js,jsx,ts,tsx}"],
     languageOptions: {
@@ -22,6 +22,7 @@ export default [
       ...js.configs.recommended.rules,
       "no-unused-vars": ["error", unused],
       "react/jsx-uses-vars": "error",
+      "react/jsx-key": "error",
       "react-hooks/rules-of-hooks": "error",
     },
   },
