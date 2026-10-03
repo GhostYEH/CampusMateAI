@@ -72,6 +72,8 @@ test/**/failures/
 .codeartsdoer/
 .mimocode/
 .workbuddy-ai/
+/.codegraph/
+/.codex-ppt-build/
 
 # Local Git worktrees
 .worktrees/
@@ -90,6 +92,8 @@ backend/backend.txt
 # 汇报/答辩交付物(PPTX 等二进制,本地保留,不入库)
 deliverables/
 /*.pptx
+# Office lock files are temporary, not document deliverables
+~$*
 *.mp4
 !android/app/src/main/res/raw/login_campus.mp4
 !harmony/entry/src/main/resources/base/media/login_campus.mp4
