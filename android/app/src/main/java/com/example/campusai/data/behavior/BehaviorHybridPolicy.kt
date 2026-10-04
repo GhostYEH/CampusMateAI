@@ -34,7 +34,7 @@ object BehaviorHybridPolicy {
     private const val PERIODIC_TEMPORAL_INTERVAL_MS = 3_000L
     private const val LOW_CONFIDENCE = 0.45f
     private const val NARROW_MARGIN = 0.10f
-    private const val MINIMUM_CONFIDENCE = 0.35f
+    const val MINIMUM_CONFIDENCE = 0.35f
     private const val MINIMUM_MARGIN = 0.05f
 
     fun shouldRunTemporal(

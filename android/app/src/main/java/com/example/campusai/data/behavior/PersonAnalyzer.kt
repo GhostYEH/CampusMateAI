@@ -116,7 +116,8 @@ class PersonAnalyzer(
         val timestampMs = frame.timestampMs
         if (
             !running ||
-            timestampMs - lastInferenceAtMs < config.inferenceIntervalMs ||
+            (lastInferenceAtMs != Long.MIN_VALUE &&
+                timestampMs - lastInferenceAtMs < config.inferenceIntervalMs) ||
             !inferenceInFlight.compareAndSet(false, true)
         ) {
             return

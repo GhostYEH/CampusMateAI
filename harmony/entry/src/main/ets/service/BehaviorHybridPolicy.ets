@@ -81,7 +81,7 @@ export class BehaviorHybridPolicy {
   private static readonly PERIODIC_TEMPORAL_INTERVAL_MS: number = 3000;
   private static readonly LOW_CONFIDENCE: number = 0.45;
   private static readonly NARROW_MARGIN: number = 0.10;
-  private static readonly MINIMUM_CONFIDENCE: number = 0.35;
+  static readonly MINIMUM_CONFIDENCE: number = 0.35;
   private static readonly MINIMUM_MARGIN: number = 0.05;
   private static readonly SINGLE_LABELS: BehaviorV34Label[] = [
     BehaviorV34Label.READ,

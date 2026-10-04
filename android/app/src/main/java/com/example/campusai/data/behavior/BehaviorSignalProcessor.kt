@@ -84,7 +84,10 @@ class BehaviorSignalProcessor(
         }
 
         val top = prediction.probabilities
-            .filterKeys { it in UI_BEHAVIORS }
+            .filterKeys {
+                it in UI_BEHAVIORS &&
+                    (!prediction.isCalibratedBehaviorModel() || it == prediction.stableBehavior)
+            }
             .maxByOrNull { it.value }
             ?: return BehaviorDisplayState.NoStableBehavior
         behaviorSamples.addLast(

@@ -255,6 +255,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private temporalDegraded: boolean = false;
   private readonly runToken: BehaviorProviderRunToken = new BehaviorProviderRunToken();
   private activeRun: number = 0;
+  private previousRuntimeModel: BehaviorRuntimeModel | undefined = undefined;
   private readonly temporalSmoother: BehaviorPredictionTemporalSmoother = new BehaviorPredictionTemporalSmoother(0.35);
   private readonly signalProcessor: BehaviorSignalProcessor = new BehaviorSignalProcessor();
   private readonly continuityStateMachine: LearningContinuityStateMachine = new LearningContinuityStateMachine();
@@ -355,6 +356,8 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     const selected: BehaviorRuntimeModel = BehaviorModelSelection.select(
       model !== null, v32Model !== null, hasPersonRoi
     );
+    if (selected !== this.previousRuntimeModel) this.temporalSmoother.reset();
+    this.previousRuntimeModel = selected;
     if (selected === BehaviorRuntimeModel.UNAVAILABLE) {
       this.resetTemporalState();
       this.signal = undefined;
@@ -401,14 +404,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         fused = v32Result;
         this.previousSingleTop = this.topSingleLabel(fused);
       }
-      const smoothedProbabilities: number[] = this.temporalSmoother.smooth(fused.probabilities);
-      const smoothedFused: BehaviorV34Result = {
-        label: fused.label,
-        confidence: fused.confidence,
-        margin: fused.margin,
-        isStable: fused.isStable,
-        probabilities: smoothedProbabilities
-      };
+      const smoothedFused: BehaviorV34Result = this.temporalSmoother.smoothResult(fused);
       const displayState: BehaviorDisplayState = this.signalProcessor.processDisplayState(
         smoothedFused, frame.timestamp
       );

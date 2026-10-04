@@ -36,7 +36,23 @@ class BehaviorPredictionTemporalSmoother(
 
         previousModelState = raw.modelState
         smoothedProbabilities = next
-        return raw.copy(probabilities = next)
+        val minimumConfidence = when (raw.modelState) {
+            BehaviorV34Contract.MODEL_STATE -> BehaviorV34Contract.MINIMUM_CONFIDENCE
+            BehaviorHybridPolicy.MODEL_STATE -> BehaviorHybridPolicy.MINIMUM_CONFIDENCE
+            else -> return raw.copy(probabilities = next)
+        }
+        val ranked = next.entries.sortedByDescending { it.value }
+        val top = ranked.first()
+        val margin = top.value - (ranked.getOrNull(1)?.value ?: 0f)
+        // Require agreement with the accepted runtime decision. This also preserves
+        // hybrid restrictions such as writing eligibility and computer confirmation.
+        val accepted = raw.stableBehavior != StudyBehavior.UNCERTAIN &&
+            top.key == raw.stableBehavior &&
+            top.value >= minimumConfidence && margin >= BehaviorV34Contract.MINIMUM_MARGIN
+        return raw.copy(
+            probabilities = next,
+            stableBehavior = if (accepted) top.key else StudyBehavior.UNCERTAIN,
+        )
     }
 
     fun reset() {

@@ -6,6 +6,55 @@ import org.junit.Test
 
 class BehaviorPredictionTemporalSmootherTest {
     @Test
+    fun calibratedPhoneSpikeIsRejectedUntilSmoothedEvidenceAgrees() {
+        val smoother = BehaviorPredictionTemporalSmoother()
+        smoother.smooth(calibratedPrediction(0.9f, 0.1f, StudyBehavior.READING))
+
+        val spike = smoother.smooth(calibratedPrediction(0.1f, 0.9f, StudyBehavior.PHONE_USE))
+        assertEquals(StudyBehavior.UNCERTAIN, spike.stableBehavior)
+        assertEquals(0.62f, spike.probabilities.getValue(StudyBehavior.READING), 0.001f)
+
+        var sustained = spike
+        repeat(5) {
+            sustained = smoother.smooth(calibratedPrediction(0.1f, 0.9f, StudyBehavior.PHONE_USE))
+        }
+        assertEquals(StudyBehavior.PHONE_USE, sustained.stableBehavior)
+    }
+
+    @Test
+    fun smoothingDoesNotReviveRejectedPhoneEvidence() {
+        val smoother = BehaviorPredictionTemporalSmoother()
+        smoother.smooth(calibratedPrediction(0.1f, 0.9f, StudyBehavior.PHONE_USE))
+        val rejected = smoother.smooth(calibratedPrediction(0.4f, 0.6f, StudyBehavior.UNCERTAIN))
+        assertEquals(StudyBehavior.UNCERTAIN, rejected.stableBehavior)
+    }
+
+    @Test
+    fun smoothingDoesNotBypassHybridWritingEligibility() {
+        val raw = BehaviorPrediction(
+            probabilities = mapOf(
+                StudyBehavior.READING to 0.4f,
+                StudyBehavior.WRITING to 0.5f,
+                StudyBehavior.PHONE_USE to 0.1f,
+            ),
+            timestampMs = 1000L,
+            modelState = BehaviorHybridPolicy.MODEL_STATE,
+            stableBehavior = StudyBehavior.READING,
+        )
+        val smoothed = BehaviorPredictionTemporalSmoother().smooth(raw)
+        assertEquals(StudyBehavior.UNCERTAIN, smoothed.stableBehavior)
+    }
+
+    @Test
+    fun smoothedNearTieDoesNotRetainAnAcceptedRawLabel() {
+        val smoother = BehaviorPredictionTemporalSmoother()
+        smoother.smooth(calibratedPrediction(0.7f, 0.3f, StudyBehavior.READING))
+        val nearTie = smoother.smooth(calibratedPrediction(0.1f, 0.9f, StudyBehavior.PHONE_USE))
+        assertEquals(0.49f, nearTie.probabilities.getValue(StudyBehavior.READING), 0.001f)
+        assertEquals(StudyBehavior.UNCERTAIN, nearTie.stableBehavior)
+    }
+
+    @Test
     fun firstPredictionPassesThroughWithoutWarmupDelay() {
         val smoother = BehaviorPredictionTemporalSmoother(
             BehaviorSmoothingConfig(emaAlpha = 0.35f),
@@ -85,4 +134,12 @@ class BehaviorPredictionTemporalSmootherTest {
         timestampMs = 1L,
         modelState = modelState,
     )
+
+    private fun calibratedPrediction(reading: Float, phone: Float, accepted: StudyBehavior) =
+        BehaviorPrediction(
+            probabilities = mapOf(StudyBehavior.READING to reading, StudyBehavior.PHONE_USE to phone),
+            timestampMs = 1000L,
+            modelState = BehaviorV34Contract.MODEL_STATE,
+            stableBehavior = accepted,
+        )
 }

@@ -6,6 +6,23 @@ import org.junit.Test
 
 class BehaviorHybridSignalIntegrationTest {
     @Test
+    fun displayUsesAcceptedHybridLabelRatherThanIneligibleProbabilityMaximum() {
+        val processor = BehaviorSignalProcessor(
+            BehaviorSignalConfig(startupWarmupMs = 0L, stableBehaviorAverageConfidence = 0.3f),
+        )
+        val prediction = BehaviorPrediction(
+            probabilities = mapOf(StudyBehavior.WRITING to 0.5f, StudyBehavior.READING to 0.4f),
+            timestampMs = 1000L,
+            modelState = BehaviorHybridPolicy.MODEL_STATE,
+            stableBehavior = StudyBehavior.READING,
+        )
+        assertEquals(
+            BehaviorDisplayState.Stable(StudyBehavior.READING, 0.4f),
+            processor.processDisplayState(prediction),
+        )
+    }
+
+    @Test
     fun confirmedComputerIsShownAndCountsAsLearningEvidence() {
         val processor = BehaviorSignalProcessor(
             BehaviorSignalConfig(
