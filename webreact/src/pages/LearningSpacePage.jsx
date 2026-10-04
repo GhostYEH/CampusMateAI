@@ -4,19 +4,22 @@ import "../styles/learning-space.css";
  *
  * 学习空间是上游 magic class 应用以**独立进程、独立 Origin** 运行的那一份
  * （仓库根目录 `magicclass-app/`，版本与 `third_party/magicclass/` 固定的来源一致）。
- * 这一页只做三件事：
+ * 本页负责服务可用性、可信内嵌及账号之间的共同课堂：
  *
  * 1. 向后端要「是否可用 + 允许从哪个公开 Origin 内嵌」；未配置公开 Origin 时
  *    fail-closed，不渲染任何 iframe。
  * 2. 可用时交给 `ClassroomEmbed` —— 全站**唯一**的 iframe 渲染点，不在这里另开一个，
  *    也就不可能在别处悄悄放宽 sandbox。
  * 3. 不可用时说清是链条上哪一段没起来、以及怎么起来，不摆一个点了没反应的假入口。
+ * 4. 通过受校验的消息桥准备课堂文件，邀请 UID 对应的同学加入并交流。
  *
  * 不在这里重新实现 magic class 的任何界面：那是它自己的产品。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import ClassroomEmbed from "../components/interactive/ClassroomEmbed.jsx";
+import LearningRoomPanel from "../components/interactive/LearningRoomPanel.jsx";
+import { learningSpaceEmbedUrl } from "../data/learningRoomBridge.js";
 import { Icon } from "../components/Icon.jsx";
 import { Button, PageFrame } from "../components/Primitives.jsx";
 import {
@@ -92,6 +95,7 @@ export function blockerFor({ status, origins, origin }) {
 }
 
 export default function LearningSpacePage() {
+  const iframeRef = useRef(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -160,11 +164,13 @@ export default function LearningSpacePage() {
       {ready && (
         <section className="learning-space-stage" aria-label="学习空间">
           <ClassroomEmbed
-            url={origin}
+            iframeRef={iframeRef}
+            url={learningSpaceEmbedUrl(origin, window.location.origin)}
             trustedOrigins={origins}
             title="学习空间"
             onOpenExternal={openExternal}
           />
+          <LearningRoomPanel origin={origin} iframeRef={iframeRef} />
         </section>
       )}
 

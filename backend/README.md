@@ -15,6 +15,7 @@
 | 知识库 | `/api/v1/knowledge/*` | MD/TXT/PDF/DOCX 导入、去重、BM25 检索与管理；当前聊天链路仍会使用它 |
 | 课程内互动课堂 | `/api/v1/courses/{course_id}/interactive-classroom/*` 及课程 workspace 路由 | 按课程权限读取上下文、生成、查询进度和真实内容组成；由 `magicclass-service` 提供受管能力 |
 | 学习空间状态 | `GET /api/v1/magicclass/learning-space/status` | 返回独立 `magicclass-app` 的可用性与公开 Origin，供 Web 导航入口使用 |
+| 学习空间共同课堂 | `/api/v1/magicclass/learning-space/identity`、`/rooms`、`/invitations` | 复用账号唯一 ID 作为 UID，保存课堂文件、邀请、成员、翻页和文字消息；接受邀请后才允许读取内容 |
 | Agent Runtime | `/api/v1/agent-jobs`、`/agent-runs` 等 | 持久化任务、运行事件、审批及产物接口；与普通聊天接口不同 |
 
 完整路径以 [`app/api/router.py`](app/api/router.py) 中实际注册的路由为准；请求/响应契约以 FastAPI `/docs` 和对应 schema 为准。

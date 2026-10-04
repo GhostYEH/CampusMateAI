@@ -1,6 +1,11 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Embedded development pages also need access to Next's scripts and HMR.
+  // Reuse the explicitly configured frame ancestors instead of a wildcard.
+  allowedDevOrigins: (process.env.ALLOWED_FRAME_ANCESTORS ?? '').split(/\s+/).flatMap((origin) => {
+    try { return [new URL(origin).hostname]; } catch { return []; }
+  }),
   output: process.env.VERCEL ? undefined : 'standalone',
   outputFileTracingIncludes: {
     '/*': [

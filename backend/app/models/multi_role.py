@@ -51,6 +51,7 @@ class UserRow:
         """返回不含 password_hash 的安全字段(用于响应序列化)。"""
         return {
             "id": self.id,
+            "uid": self.id,
             "username": self.username,
             "role": self.role,
             # Kept for Android clients that predate the display_name field.

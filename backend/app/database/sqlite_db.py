@@ -22,6 +22,39 @@ from typing import Callable, Iterator
 from app.core.config import Settings
 
 
+LEARNING_ROOM_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learning_rooms (
+    id TEXT PRIMARY KEY,
+    host_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    stage_id TEXT NOT NULL,
+    archive BLOB NOT NULL,
+    scene_index INTEGER NOT NULL DEFAULT 0,
+    scene_count INTEGER NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS learning_room_members (
+    room_id TEXT NOT NULL REFERENCES learning_rooms(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'declined', 'left')),
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_room_members_user ON learning_room_members(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_learning_rooms_host ON learning_rooms(host_id, active);
+CREATE TABLE IF NOT EXISTS learning_room_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id TEXT NOT NULL REFERENCES learning_rooms(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(room_id, user_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_room_messages_room ON learning_room_messages(room_id, id);
+"""
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS documents (
     document_id TEXT PRIMARY KEY,
@@ -2056,6 +2089,7 @@ class Database:
         return (
             _SchemaStep("core", SCHEMA_SQL),
             _SchemaStep("multi_role", MULTI_ROLE_SCHEMA_SQL),
+            _SchemaStep("learning_room", LEARNING_ROOM_SCHEMA_SQL),
             _SchemaStep("university", UNIVERSITY_SCHEMA_SQL),
             _SchemaStep("community", COMMUNITY_SCHEMA_SQL),
             _SchemaStep("academic", ACADEMIC_SCHEMA_SQL),

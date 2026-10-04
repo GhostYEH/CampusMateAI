@@ -129,6 +129,15 @@ describe('classroom ZIP media collection', () => {
     expect(collected[0].zipPath).toBe('media/asset-1.png');
   });
 
+  it('does not archive a failed HTTP response as shared classroom media', async () => {
+    const ref = 'ast_shared_missing';
+    const poolUrl = 'blob:shared-error';
+    mocks.poolResolve.mockResolvedValue(poolUrl);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('error page', { status: 404 })));
+    const collected = await collectMediaFiles('stage-1', [entry(ref)], { requireOk: true });
+    expect(collected).toEqual([]);
+  });
+
   it('collects a referenced asset whose bytes exist only in the pool', async () => {
     // No compatibility row (never written, or pruned): the pre-manifest scan
     // could not see this asset at all, but the document references it and the

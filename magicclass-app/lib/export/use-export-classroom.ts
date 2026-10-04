@@ -81,6 +81,7 @@ export async function buildClassroomExportZip(
   stage: Stage,
   scenes: Scene[],
   deps: DocumentMigrationDeps = {},
+  options: { requireCompleteAssets?: boolean } = {},
 ): Promise<ClassroomExportZip> {
   const JSZip = (await import('jszip')).default;
   const zip = new JSZip();
@@ -117,7 +118,7 @@ export async function buildClassroomExportZip(
 
     // 5. Collect referenced audio and generated media.
     const audioFiles = await collectAudioFiles(audioEntries);
-    const mediaFiles = await collectMediaFiles(stage.id, mediaEntries);
+    const mediaFiles = await collectMediaFiles(stage.id, mediaEntries, { requireOk: options.requireCompleteAssets });
 
     // 6. Build audioId → zipPath mapping for manifest
     const audioIdToPath = new Map<string, string>();
@@ -132,6 +133,22 @@ export async function buildClassroomExportZip(
       exportScenes,
       audioIdToPath,
     );
+    if (options.requireCompleteAssets) {
+      const collectedRefs = new Set([...audioFiles, ...mediaFiles, ...legacyAudioBlobs].map((file) => file.sourceRef));
+      for (const scene of exportScenes) {
+        for (const action of scene.actions ?? []) {
+          if (action.type !== 'speech') continue;
+          const legacyUrl = (action as { audioUrl?: string }).audioUrl;
+          if (legacyUrl && audioUrlToPath.has(legacyUrl) && action.audioId) collectedRefs.add(action.audioId);
+          if (legacyUrl && !audioUrlToPath.has(legacyUrl) && !(action.audioId && audioIdToPath.has(action.audioId))) {
+            throw new Error('课堂语音尚未就绪，请恢复资源后重试邀请');
+          }
+        }
+      }
+      if (assetManifest.entries.some((entry) => !collectedRefs.has(entry.ref))) {
+        throw new Error('课堂图片、视频或语音尚未就绪，请完成生成或恢复资源后重试邀请');
+      }
+    }
 
     // 7. Build manifest
     const manifestStage: ManifestStage = {

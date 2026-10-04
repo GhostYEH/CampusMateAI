@@ -1,5 +1,7 @@
 'use client';
 
+import { requestClassroomEntry } from '@/lib/classroom/campusmate-entry';
+
 import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1049,7 +1051,7 @@ function GenerationPreviewContent() {
 
       sessionStorage.removeItem('generationSession');
       await store.saveToStorage();
-      router.push(`/classroom/${stage.id}`);
+      await requestClassroomEntry(stage.id, (url) => router.push(url));
     } catch (err) {
       setIsOutlineStreaming(false);
       // AbortError is expected when navigating away — don't show as error

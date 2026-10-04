@@ -188,6 +188,7 @@ export async function collectAudioFiles(
 export async function collectMediaFiles(
   stageId: string,
   entries: readonly AssetManifestEntry[],
+  options: { requireOk?: boolean } = {},
 ): Promise<CollectedMedia[]> {
   const collected: CollectedMedia[] = [];
   for (const [index, entry] of entries.entries()) {
@@ -195,7 +196,7 @@ export async function collectMediaFiles(
     const record = await db.mediaFiles.get(mediaFileKey(stageId, ref)).catch(() => undefined);
     const blob = await resolveStoredBytes(ref, {
       record,
-      fetchPolicy: { requireOk: false, requireNonEmpty: true },
+      fetchPolicy: { requireOk: options.requireOk ?? false, requireNonEmpty: true },
     });
     // Referenced but with bytes nowhere (pending generation, pruned, failed):
     // the archive simply lacks the file, as it did when no row existed.

@@ -15,7 +15,7 @@ import {
 } from '@/lib/export/classroom-zip-types';
 import { rewriteAudioRefsToIds } from '@/lib/export/classroom-zip-utils';
 import { createLogger } from '@/lib/logger';
-import { canonicalizeLegacyScene, mutateDocument, type AppDocument } from '@/lib/document-store';
+import { canonicalizeLegacyScene, clearCurrentScene, mutateDocument, saveCurrentScene, type AppDocument } from '@/lib/document-store';
 import { isConcreteMediaAddress } from '@/lib/media/resolve-media-ref';
 import { isGeneratedMediaPlaceholder } from '@/lib/media/media-ref';
 import type JSZip from 'jszip';
@@ -342,14 +342,8 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      // Reset input so same file can be re-selected
-      e.target.value = '';
-
+  const importFile = useCallback(
+    async (file: File, options: { initialSceneIndex?: number } = {}): Promise<string | undefined> => {
       setImporting(true);
       setPhase('parsing');
       const toastId = toast.loading(t('import.parsing'));
@@ -442,6 +436,8 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
         );
 
         const document: AppDocument = {
+          // A portable archive contains its complete snapshot, without resumable outlines.
+          outline: { outlines: [], generationComplete: true, createdAt: now, updatedAt: now },
           stage: {
             id: newStageId,
             name: manifest.stage.name || 'Imported Classroom',
@@ -520,6 +516,10 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
           {},
           { mode: 'replace' },
         );
+        if (options.initialSceneIndex !== undefined) {
+          const initialScene = document.scenes[options.initialSceneIndex] ?? document.scenes[0];
+          if (initialScene) await saveCurrentScene(newStageId, initialScene.id);
+        }
         importCommitted = true;
         setPhase('done');
       } catch (error) {
@@ -540,6 +540,7 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
         };
         if (!importCommitted && importedStageId) {
           const stageId = importedStageId;
+          await cleanup('playback position', () => clearCurrentScene(stageId));
           await cleanup('document', async () => {
             await mutateDocument(stageId, async (_document, store) =>
               store.deleteDocument(stageId),
@@ -560,12 +561,24 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
       if (importCommitted) {
         toast.success(t('import.success'), { id: toastId });
         onSuccess?.(importedStageId!);
+        return importedStageId!;
       }
     },
     [t, onSuccess],
   );
 
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = '';
+      await importFile(file);
+    },
+    [importFile],
+  );
+
   return {
+    importFile,
     importing,
     phase,
     fileInputRef,

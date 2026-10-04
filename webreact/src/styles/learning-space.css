@@ -9,15 +9,63 @@
   padding: 94px 24px 20px;
 }
 
+.route-stage > .learning-space-page {
+  height: calc(100dvh - var(--floating-nav-clearance, 88px));
+}
+
 /* 不再为独立应用再套一张卡片：舞台直接占满 CampusMate 内容区。
    深色背景仅用于 iframe 被浏览器拦截时的可读降级状态。 */
 .learning-space-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
   position: relative;
   min-height: 0;
   overflow: hidden;
   background: #12161f;
   box-shadow: 0 20px 50px rgba(30, 42, 72, .11);
 }
+
+.learning-space-stage > .interactive-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
+
+.learning-room-panel {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 14px;
+  background: var(--surface, #fff);
+  color: var(--ink, #243046);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+.learning-room-panel h2 { margin: 0; font-size: 17px; }
+.learning-room-panel h3 { margin: 0; font-size: 15px; }
+.learning-room-panel p { margin: 0; line-height: 1.6; }
+.learning-room-identity { display: flex; flex-direction: column; gap: 6px; }
+.learning-room-identity code { overflow-wrap: anywhere; user-select: all; font-size: 11px; }
+.learning-room-notice { padding: 10px; border-radius: 8px; background: #eef3ff; color: #334b78; }
+.learning-room-invitation { padding: 12px; background: #f2f6ff; border-radius: 8px; }
+.learning-room-invitation p { margin: 8px 0; }
+.learning-room-hint, .learning-room-members { color: #64748b; }
+.learning-room-panel input:not([type="checkbox"]), .learning-room-panel textarea {
+  width: 100%; min-width: 0; padding: 9px; border: 1px solid #cbd5e1; border-radius: 6px;
+  color: inherit; background: var(--surface, #fff); font: inherit;
+}
+.learning-room-panel textarea { min-height: 70px; resize: vertical; }
+.learning-room-invite-form, .learning-room-chat-form { display: grid; gap: 7px; }
+.learning-room-follow { display: flex; align-items: center; gap: 6px; }
+.learning-room-messages { min-height: 110px; max-height: 300px; overflow: auto; display: grid; gap: 8px; }
+.learning-room-messages article { padding: 10px; background: #f1f5f9; border-radius: 7px; }
+.learning-room-messages article.is-self { background: #eaf0ff; }
+.learning-room-messages strong { font-size: 11px; color: #64748b; }
+.learning-room-messages p { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .learning-space-feedback {
   display: grid;
@@ -53,6 +101,12 @@
   font-size: 12px;
 }
 
+@media (max-width: 1439px) {
+  .route-stage > .learning-space-page {
+    height: calc(100dvh - var(--floating-nav-clearance, 76px) - var(--floating-nav-bottom-clearance, 112px) - env(safe-area-inset-bottom));
+  }
+}
+
 @media (max-width: 760px) {
   .learning-space-page {
     min-height: 480px;
@@ -60,6 +114,8 @@
   }
 
   .learning-space-stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(280px, 1fr) minmax(0, 220px);
     height: auto;
     min-height: 0;
   }

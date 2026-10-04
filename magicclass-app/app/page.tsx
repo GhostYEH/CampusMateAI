@@ -1,5 +1,7 @@
 'use client';
 
+import { requestClassroomEntry } from '@/lib/classroom/campusmate-entry';
+
 import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1301,7 +1303,7 @@ function HomePage() {
                               confirmingDelete={pendingDeleteId === classroom.id}
                               onConfirmDelete={() => confirmDelete(classroom.id)}
                               onCancelDelete={() => setPendingDeleteId(null)}
-                              onClick={() => router.push(`/classroom/${classroom.id}`)}
+                              onClick={() => { void requestClassroomEntry(classroom.id, (url) => router.push(url)); }}
                               overlay={
                                 <>
                                   <MoveToFolderMenu

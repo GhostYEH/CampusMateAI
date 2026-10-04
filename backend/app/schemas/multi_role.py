@@ -64,6 +64,7 @@ class LogoutRequest(BaseModel):
 
 class UserPublic(BaseModel):
     id: str
+    uid: str = ""
     username: str
     role: str
     # Legacy Android builds decode this field as required. Keep it alongside

@@ -29,6 +29,7 @@ export default function ClassroomEmbed({
   trustedOrigins = [],
   title = "智能辅导互动课堂",
   onOpenExternal = null,
+  iframeRef = null,
 }) {
   const [blocked, setBlocked] = useState(false);
   const origins = normalizeTrustedOrigins(trustedOrigins);
@@ -66,6 +67,7 @@ export default function ClassroomEmbed({
 
   return (
     <iframe
+      ref={iframeRef}
       className="interactive-frame"
       src={url}
       title={title}

@@ -1,6 +1,6 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-09-30。本模块共 54 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-04。本模块共 68 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -62,6 +62,22 @@
 | GET | `/api/v1/magicclass/fusion/providers` | 提供方状态 |
 | GET | `/api/v1/courses/{course_id}/magicclass-context` | 这门课已同步的知识点、章节与可用资料（脱敏，只含标题） |
 | GET | `/api/v1/magicclass/learning-space/status` | 独立学习空间状态 |
+| GET | `/api/v1/magicclass/learning-space/identity` | 当前账号 UID 与显示名 |
+| GET | `/api/v1/magicclass/learning-space/students/{uid}` | 按 UID 校验邀请对象（仅 UID、显示名） |
+| GET | `/api/v1/magicclass/learning-space/rooms` | 已加入的共同课堂 |
+| POST | `/api/v1/magicclass/learning-space/rooms` | 上传完整课件并创建共同课堂 |
+| GET | `/api/v1/magicclass/learning-space/invitations` | 待接受的邀请 |
+| POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/invitations` | 发起人按 UID 邀请同学 |
+| POST | `/api/v1/magicclass/learning-space/invitations/{room_id}/accept` | 接受邀请 |
+| POST | `/api/v1/magicclass/learning-space/invitations/{room_id}/decline` | 拒绝邀请 |
+| GET | `/api/v1/magicclass/learning-space/rooms/{room_id}` | 成员、课程及共享页码 |
+| GET | `/api/v1/magicclass/learning-space/rooms/{room_id}/archive` | 成员下载同一份课件 |
+| PATCH | `/api/v1/magicclass/learning-space/rooms/{room_id}/cursor` | 发起人更新共享页码 |
+| GET | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 按消息 ID 增量读取交流记录 |
+| POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 发送文字消息 |
+| POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/leave` | 离开课堂；发起人操作时结束课堂 |
+
+共同课堂接口均要求 Bearer 登录。UID 复用账号已有的唯一 `id`，注册、登录和个人信息响应同步提供 `uid` 字段。创建课堂用 multipart 的 `title`、`stage_id`、`file` 上传 `.maic.zip`（最多 64 MB）；邀请用 `{ "uid": "usr_…" }`。未接受邀请的用户不能读取课件、成员或消息。翻页用 `{ "scene_index": 0 }`；消息用 `{ "content": "一起讨论", "client_id": "客户端生成的唯一 ID" }`，同一成员在同一课堂重复提交同一个 `client_id` 不会重复写入。消息读取接受 `after`（默认 0），每次最多返回 100 条，按服务端 ID 升序排列。每位发起人最多保留 20 个活动课堂，每个课堂最多 8 位已加入或待接受的成员。
 
 ## 接口契约
 
