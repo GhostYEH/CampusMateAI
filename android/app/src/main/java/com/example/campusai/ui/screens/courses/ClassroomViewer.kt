@@ -37,6 +37,7 @@ import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONTokener
+import org.json.JSONObject
 
 /** Some Android WebViews report a zero CSS viewport for `100vh` inside a Compose dialog. */
 private val classroomViewportFix = """
@@ -62,6 +63,58 @@ private val classroomViewportFix = """
     })();
 """.trimIndent()
 
+/** Keep the upstream desktop classroom readable in a narrow Android WebView. */
+private val classroomMobileFix = """
+    (function () {
+      if (document.getElementById('campus-mobile-classroom-style')) return;
+      var style = document.createElement('style');
+      style.id = 'campus-mobile-classroom-style';
+      style.textContent = `
+        nextjs-portal { display: none !important; }
+        @media (max-width: 700px) {
+          header.h-20 { height: 66px !important; padding: 4px 12px !important; gap: 6px !important; }
+          header.h-20 > div:first-child > button:first-child { display: none !important; }
+          header.h-20 > div:first-child { min-width: 0 !important; flex: 1 1 auto !important; }
+          header.h-20 h1 { font-size: 16px !important; line-height: 20px !important;
+            white-space: normal !important; display: -webkit-box !important;
+            -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden !important; max-height: 40px !important; }
+          header.h-20 > div:last-child { max-width: 136px !important; flex: 0 0 auto !important;
+            overflow-x: auto !important; }
+          div[class*="h-[192px]"][class*="backdrop-blur"],
+          div[class*="rounded-[2.5rem]"][class*="backdrop-blur"] {
+            backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+          }
+          [aria-live="polite"][class*="group/bubble"],
+          div[class*="max-h-[110px]"][class*="group/bubble"] {
+            position: fixed !important; left: 16px !important; right: 16px !important;
+            bottom: 94px !important; width: auto !important; max-width: none !important;
+            max-height: min(32vh, 250px) !important; overflow-y: auto !important;
+            z-index: 80 !important;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    })();
+""".trimIndent()
+
+/** Read the current classroom speech bubble only while the upstream player is running. */
+private val classroomNarrationSnapshot = """
+    (function () {
+      var playing = !!document.querySelector('button[aria-label="Pause"]');
+      var cards = Array.prototype.slice.call(document.querySelectorAll(
+        '[aria-live="polite"][class*="group/bubble"], div[class*="max-h-[110px]"][class*="group/bubble"]'));
+      var card = cards.find(function (node) {
+        var r = node.getBoundingClientRect();
+        return r.width > 30 && r.height > 30;
+      });
+      var spoken = card && card.querySelector('p');
+      return JSON.stringify({ playing: playing,
+        browserSpeaking: !!(window.speechSynthesis && window.speechSynthesis.speaking),
+        text: spoken ? spoken.innerText.trim().slice(0, 1800) : '' });
+    })()
+""".trimIndent()
+
 /** A classroom remains inside CampusMate; navigation is confined to its trusted origin. */
 @Composable
 internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
@@ -73,6 +126,10 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     var loadError by remember(url) { mutableStateOf<String?>(null) }
     var speaking by remember(url) { mutableStateOf(false) }
     var speechError by remember(url) { mutableStateOf<String?>(null) }
+    var autoSpeaking by remember(url) { mutableStateOf(false) }
+    var candidateSpeech by remember(url) { mutableStateOf("") }
+    var candidateCount by remember(url) { mutableIntStateOf(0) }
+    var lastNarratedSpeech by remember(url) { mutableStateOf("") }
     val speaker = remember(url) { AndroidTextToSpeechSynthesizer(context) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     BackHandler { if (webView?.canGoBack() == true) webView?.goBack() else onClose() }
@@ -89,6 +146,36 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
             }
         }
     }
+    LaunchedEffect(pageFinished, loadError) {
+        while (pageFinished && loadError == null) {
+            webView?.evaluateJavascript(classroomNarrationSnapshot) { raw ->
+                val snapshot = runCatching {
+                    JSONObject(JSONTokener(raw).nextValue() as String)
+                }.getOrNull()
+                val playing = snapshot?.optBoolean("playing") == true
+                val browserSpeaking = snapshot?.optBoolean("browserSpeaking") == true
+                val line = snapshot?.optString("text").orEmpty().trim()
+                if (!playing) {
+                    if (autoSpeaking) { speaker.stop(); autoSpeaking = false }
+                    candidateSpeech = ""; candidateCount = 0; lastNarratedSpeech = ""
+                } else if (browserSpeaking) {
+                    if (autoSpeaking) { speaker.stop(); autoSpeaking = false }
+                    candidateSpeech = line; candidateCount = 2; lastNarratedSpeech = line
+                } else if (!speaking && line.isNotBlank()) {
+                    if (line == candidateSpeech) candidateCount++
+                    else { candidateSpeech = line; candidateCount = 1 }
+                    if (candidateCount >= 2 && line != lastNarratedSpeech) {
+                        lastNarratedSpeech = line
+                        autoSpeaking = true
+                        speaker.speak(line,
+                            onDone = { },
+                            onError = { message -> mainHandler.post { autoSpeaking = false; speechError = message } })
+                    }
+                }
+            }
+            kotlinx.coroutines.delay(550)
+        }
+    }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Column(Modifier.fillMaxSize().background(Color(0xFFF2F1E8)).statusBarsPadding().navigationBarsPadding()) {
@@ -100,6 +187,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                     if (speaking) {
                         speaker.stop(); speaking = false
                     } else {
+                        if (autoSpeaking) { speaker.stop(); autoSpeaking = false }
                         webView?.evaluateJavascript("""
                             (function () {
                               var center = document.elementFromPoint(innerWidth * .5, innerHeight * .42);
@@ -162,6 +250,8 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                 override fun onPageStarted(view: WebView, pageUrl: String?, favicon: Bitmap?) {
                                     speaker.stop()
                                     speaking = false
+                                    autoSpeaking = false
+                                    lastNarratedSpeech = ""
                                     speechError = null
                                     loading = true
                                     pageFinished = false
@@ -170,6 +260,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
 
                                 override fun onPageFinished(view: WebView, pageUrl: String?) {
                                     view.evaluateJavascript(classroomViewportFix, null)
+                                    view.evaluateJavascript(classroomMobileFix, null)
                                     loading = false
                                     pageFinished = true
                                 }
