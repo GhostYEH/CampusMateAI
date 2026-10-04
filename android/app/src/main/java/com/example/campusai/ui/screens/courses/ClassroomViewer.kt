@@ -1,7 +1,10 @@
 package com.example.campusai.ui.screens.courses
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.webkit.ConsoleMessage
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -9,6 +12,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -31,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
 import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
@@ -130,10 +136,31 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     var candidateSpeech by remember(url) { mutableStateOf("") }
     var candidateCount by remember(url) { mutableIntStateOf(0) }
     var lastNarratedSpeech by remember(url) { mutableStateOf("") }
+    var pendingAudioRequest by remember(url) { mutableStateOf<PermissionRequest?>(null) }
     val speaker = remember(url) { AndroidTextToSpeechSynthesizer(context) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = pendingAudioRequest
+        pendingAudioRequest = null
+        if (request != null) {
+            if (granted && origin != null && ClassroomUrlPolicy.originOf(request.origin.toString()) == origin &&
+                ClassroomUrlPolicy.originOf(webView?.url) == origin &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            ) {
+                request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                speechError = null
+            } else {
+                request.deny()
+                if (!granted) speechError = "麦克风未获授权。请在系统设置中允许录音后重试。"
+            }
+        }
+    }
     BackHandler { if (webView?.canGoBack() == true) webView?.goBack() else onClose() }
-    DisposableEffect(url) { onDispose { speaker.shutdown(); webView?.stopLoading(); webView?.destroy() } }
+    DisposableEffect(url) { onDispose {
+        pendingAudioRequest?.deny()
+        pendingAudioRequest = null
+        speaker.shutdown(); webView?.stopLoading(); webView?.destroy()
+    } }
     LaunchedEffect(pageFinished, loadError) {
         if (pageFinished && loadError == null) {
             kotlinx.coroutines.delay(10000)
@@ -234,6 +261,30 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                             settings.setSupportMultipleWindows(false)
                             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                             webChromeClient = object : WebChromeClient() {
+                                override fun onPermissionRequest(request: PermissionRequest) {
+                                    mainHandler.post {
+                                        val audioOnly = request.resources.toSet() == setOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                                        val trustedOrigin = origin != null && ClassroomUrlPolicy.originOf(request.origin.toString()) == origin &&
+                                            ClassroomUrlPolicy.originOf(webView?.url) == origin
+                                        if (!audioOnly || !trustedOrigin) {
+                                            request.deny()
+                                        } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                            request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                                            speechError = null
+                                        } else {
+                                            pendingAudioRequest?.deny()
+                                            pendingAudioRequest = request
+                                            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    }
+                                }
+
+                                override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                                    mainHandler.post {
+                                        if (pendingAudioRequest === request) pendingAudioRequest = null
+                                    }
+                                }
+
                                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                                     if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
                                         (message.message().contains("Uncaught") || message.message().contains("ChunkLoadError"))
@@ -248,6 +299,8 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                     ClassroomUrlPolicy.originOf(request.url.toString()) != origin
 
                                 override fun onPageStarted(view: WebView, pageUrl: String?, favicon: Bitmap?) {
+                                    pendingAudioRequest?.deny()
+                                    pendingAudioRequest = null
                                     speaker.stop()
                                     speaking = false
                                     autoSpeaking = false
