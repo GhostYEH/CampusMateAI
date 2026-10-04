@@ -256,6 +256,54 @@ private val classroomNarrationSnapshot = """
     })()
 """.trimIndent()
 
+/** Q&A addresses the teacher directly; the upstream multi-agent director can end without dispatching anyone. */
+private val classroomTeacherQuestionFix = """
+    (function () {
+      if (window.__campusTeacherQuestionFix) return;
+      window.__campusTeacherQuestionFix = true;
+      var originalFetch = window.fetch;
+      window.fetch = function (input, init) {
+        var rawUrl = typeof input === 'string' ? input : input && input.url;
+        var path;
+        try { path = new URL(rawUrl, location.href).pathname; } catch (_) { path = ''; }
+        if (path !== '/api/chat' || !init || !init.body ||
+            String(init.method || 'GET').toUpperCase() !== 'POST') {
+          return originalFetch.apply(this, arguments);
+        }
+        try {
+          var request = JSON.parse(init.body);
+          if (!request.config || request.config.sessionType !== 'qa') {
+            return originalFetch.apply(this, arguments);
+          }
+          var configs = Array.isArray(request.config.agentConfigs)
+            ? request.config.agentConfigs : [];
+          var selected = Array.isArray(request.config.agentIds)
+            ? request.config.agentIds : [];
+          var teacher = configs.find(function (agent) {
+            return agent.role === 'teacher' && selected.indexOf(agent.id) !== -1;
+          });
+          if (teacher) {
+            request.config.agentIds = [teacher.id];
+            request.config.agentConfigs = [teacher];
+          } else {
+            // The generated roster may not have hydrated yet. The built-in teacher
+            // is always available on the classroom server.
+            request.config.agentIds = ['default-1'];
+            delete request.config.agentConfigs;
+            console.warn('CAMPUS_QA_TEACHER_FALLBACK');
+          }
+          delete request.config.triggerAgentId;
+          return originalFetch.call(this, input, Object.assign({}, init, {
+            body: JSON.stringify(request)
+          }));
+        } catch (error) {
+          console.warn('CAMPUS_QA_TEACHER_ROUTING_FAILED', String(error));
+          return originalFetch.apply(this, arguments);
+        }
+      };
+    })();
+""".trimIndent()
+
 /** A classroom remains inside CampusMate; navigation is confined to its trusted origin. */
 @Composable
 internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRepository? = null) {
@@ -485,6 +533,12 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                                         detail.contains("totalAgents: 0")) {
                                         speechError = "老师没有生成回复。请稍后重试提问，并检查课堂模型服务额度。"
                                     }
+                                    if (detail.contains("CAMPUS_QA_TEACHER_FALLBACK")) {
+                                        speechError = "当前课堂老师配置未加载，已改用通用老师回答。"
+                                    }
+                                    if (detail.contains("CAMPUS_QA_TEACHER_ROUTING_FAILED")) {
+                                        speechError = "提问未能指定老师，请重新打开课堂再试。"
+                                    }
                                     if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
                                         (detail.contains("Uncaught") || detail.contains("ChunkLoadError"))
                                     ) {
@@ -514,6 +568,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                                 override fun onPageFinished(view: WebView, pageUrl: String?) {
                                     view.evaluateJavascript(classroomViewportFix, null)
                                     view.evaluateJavascript(classroomMobileFix, null)
+                                    view.evaluateJavascript(classroomTeacherQuestionFix, null)
                                     if (ClassroomUrlPolicy.originOf(pageUrl) == origin) {
                                         scope.launch { repository?.recordClassroomEntry(url) }
                                     }
