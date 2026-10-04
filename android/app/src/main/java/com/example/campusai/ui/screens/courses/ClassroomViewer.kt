@@ -15,7 +15,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.VolumeUp
@@ -93,10 +95,7 @@ private val classroomMobileFix = """
           }
           [aria-live="polite"][class*="group/bubble"],
           div[class*="max-h-[110px]"][class*="group/bubble"] {
-            position: fixed !important; left: 16px !important; right: 16px !important;
-            bottom: 94px !important; width: auto !important; max-width: none !important;
-            max-height: min(32vh, 250px) !important; overflow-y: auto !important;
-            z-index: 80 !important;
+            display: none !important;
           }
         }
       `;
@@ -104,20 +103,19 @@ private val classroomMobileFix = """
     })();
 """.trimIndent()
 
-/** Read the current classroom speech bubble only while the upstream player is running. */
+/** Read the speech text even when the narrow WebView hides the upstream bubble. */
 private val classroomNarrationSnapshot = """
     (function () {
       var playing = !!document.querySelector('button[aria-label="Pause"]');
       var cards = Array.prototype.slice.call(document.querySelectorAll(
         '[aria-live="polite"][class*="group/bubble"], div[class*="max-h-[110px]"][class*="group/bubble"]'));
       var card = cards.find(function (node) {
-        var r = node.getBoundingClientRect();
-        return r.width > 30 && r.height > 30;
+        return node.querySelector('p') && node.querySelector('p').textContent.trim();
       });
       var spoken = card && card.querySelector('p');
       return JSON.stringify({ playing: playing,
         browserSpeaking: !!(window.speechSynthesis && window.speechSynthesis.speaking),
-        text: spoken ? spoken.innerText.trim().slice(0, 1800) : '' });
+        text: spoken ? spoken.textContent.trim().slice(0, 6000) : '' });
     })()
 """.trimIndent()
 
@@ -132,6 +130,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     var loadError by remember(url) { mutableStateOf<String?>(null) }
     var speaking by remember(url) { mutableStateOf(false) }
     var speechError by remember(url) { mutableStateOf<String?>(null) }
+    var transcript by remember(url) { mutableStateOf("") }
     var autoSpeaking by remember(url) { mutableStateOf(false) }
     var candidateSpeech by remember(url) { mutableStateOf("") }
     var candidateCount by remember(url) { mutableIntStateOf(0) }
@@ -182,6 +181,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                 val playing = snapshot?.optBoolean("playing") == true
                 val browserSpeaking = snapshot?.optBoolean("browserSpeaking") == true
                 val line = snapshot?.optString("text").orEmpty().trim()
+                transcript = line
                 if (!playing) {
                     if (autoSpeaking) { speaker.stop(); autoSpeaking = false }
                     candidateSpeech = ""; candidateCount = 0; lastNarratedSpeech = ""
@@ -245,7 +245,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                 if (loading) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
                 Spacer(Modifier.width(18.dp))
             }
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f)) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = {
@@ -306,6 +306,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                     autoSpeaking = false
                                     lastNarratedSpeech = ""
                                     speechError = null
+                                    transcript = ""
                                     loading = true
                                     pageFinished = false
                                     loadError = null
@@ -351,6 +352,18 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                             Text("重新加载")
                         }
                     }
+                }
+            }
+            if (transcript.isNotBlank()) {
+                Column(
+                    Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Text("课堂字幕", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        transcript,
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 88.dp).verticalScroll(rememberScrollState()),
+                        color = Color(0xFF153B34), fontSize = 14.sp, lineHeight = 20.sp,
+                    )
                 }
             }
         }
