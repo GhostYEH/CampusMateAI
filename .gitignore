@@ -92,6 +92,8 @@ backend/backend.txt
 # 汇报/答辩交付物(PPTX 等二进制,本地保留,不入库)
 deliverables/
 /*.pptx
+# 项目规划书目录(本地文档资料,不入库)
+项目规划书/
 # Office lock files are temporary, not document deliverables
 ~$*
 *.mp4
