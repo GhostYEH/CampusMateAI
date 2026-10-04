@@ -188,3 +188,40 @@ python -m expression_recognition.learning_state_experiment evaluate --checkpoint
 中断或失败时保留已有产物；重试请指定新的输出目录。
 扩展 checkpoint 包含七类输出和三个四级分支的独立契约，不能交给旧七类 LiteRT 导出入口。
 Android、HarmonyOS、小程序和后端目前仍消费原七类；新增分支未部署，实机采样、时序稳定性和置信度门禁尚需独立验证。
+
+## 一个模型输出十个标签的置信度
+
+`multitask_model.py` 的联合模型复用同一个 ResNet18，人脸特征同时服务原七类表情和
+`boredom/confusion/frustration` 三个独立标签。输出固定顺序为
+`angry, disgust, fear, happy, neutral, sad, surprise, boredom, confusion, frustration`。
+前七项使用 softmax，合计为 1；后三项各自使用 sigmoid，可以与任一种表情同时出现，十项不合计为 1。
+置信度表示模型概率，不能解释为测得的准确率。
+
+新增标签不再要求用户选择程度档位。本实验把 DAiSEE 的 `0/1` 合为低程度负类，`2/3` 合为高程度正类，
+因此“无聊置信度”具体指高/极高无聊的概率，而非任何程度无聊的概率。这是有记录的实验定义。
+表情数据没有学习状态标注，DAiSEE 没有七类表情标注；训练各自的损失只使用已知标注，
+不会把缺失标注当成负例。共享网络的 layer4、原七类分类器和新增分支参与训练，早期层及 BatchNorm 统计量冻结，
+以原模型教师蒸馏和原七类验证指标保护已有能力。是否提升准确率由验证结果决定。
+
+从模块目录执行，清单路径由环境变量提供：
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:OMP_NUM_THREADS = "1"
+$env:MKL_NUM_THREADS = "1"
+& .venv/Scripts/python.exe -m expression_recognition.multitask_experiment train --checkpoint exports_v2/best_checkpoint.pt --expression-manifest $env:CAMPUSMATE_EXPRESSION_MANIFEST --daisee-manifest $env:CAMPUSMATE_DAISEE_MANIFEST --output-dir artifacts/joint_expression_states --epochs 3 --workers 2
+& .venv/Scripts/python.exe -m expression_recognition.multitask_confidence calibrate --checkpoint artifacts/joint_expression_states/best.pt --validation-predictions artifacts/joint_expression_states/validation_predictions.npz --output-checkpoint artifacts/joint_expression_states/calibrated.pt
+& .venv/Scripts/python.exe -m expression_recognition.multitask_confidence predict --checkpoint artifacts/joint_expression_states/calibrated.pt --face-images $env:CAMPUSMATE_FACE_IMAGE
+```
+
+校准仅拟合与 checkpoint 哈希对应的 validation 预测，拒绝 test 预测。
+七类使用温度缩放，新标签分别使用单调 Platt 校准；validation 缺少正类或负类的标签明确标为未校准。
+校准后的参数与网络权重保存在同一个 `.pt` 文件，推理 JSON 提供十项概率及百分比。
+输入须是同一人物的人脸裁剪；可传一张或同一片段的多张裁剪，使用帧特征均值。
+学习状态训练使用每片段四帧，单帧输出属于尚未单独验证的实验模式。
+
+最终评估须使用已锁定的模型与校准参数，不根据 test 结果重新训练、选模型或修改阈值。
+用 `multitask_experiment evaluate` 指定校准后的 checkpoint、原七类清单和独立 DAiSEE test 清单，
+写入新的 `--output-dir`；报告中的状态指标使用校准后的概率，并保留原始概率的对照指标。
+已经查看过的测试集再次评估只能作为开发对照，不能宣称全新外部验证。
+本入口保持离线，不能直接替换旧七类手机模型；部署和客户端展示需要后续适配与实机验证。
