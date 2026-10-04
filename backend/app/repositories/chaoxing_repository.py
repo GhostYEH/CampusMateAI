@@ -5,6 +5,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from cryptography.fernet import InvalidToken
+
+from ..core.exceptions import AppException
 from ..core.security import decrypt, encrypt
 from ..database.sqlite_db import Database
 
@@ -17,6 +20,14 @@ def _same_score(left, right) -> bool:
         return abs(float(left) - float(right)) < 1e-6
     except (TypeError, ValueError):
         return False
+
+
+class ChaoxingCredentialsUnavailable(AppException):
+    """已有学习通凭据损坏或无法解密，区别于尚未连接账号。"""
+
+    code = "CHAOXING_CREDENTIALS_UNAVAILABLE"
+    http_status = 503
+    message = "学习通连接信息暂时无法读取，请稍后重试。"
 
 
 class ChaoxingRepository:
@@ -115,11 +126,44 @@ class ChaoxingRepository:
             ).fetchone()
         if not row:
             return None
+        encrypted_cookies = row["encrypted_cookies"]
+        if not isinstance(encrypted_cookies, str):
+            raise ChaoxingCredentialsUnavailable()
         try:
-            decrypted_cookies = decrypt(row["encrypted_cookies"])
-            return json.loads(decrypted_cookies)
-        except Exception:
-            return None
+            cookies = json.loads(decrypt(encrypted_cookies))
+        except (InvalidToken, UnicodeError, json.JSONDecodeError) as error:
+            raise ChaoxingCredentialsUnavailable() from error
+        if not isinstance(cookies, dict) or any(
+            not isinstance(name, str) or not isinstance(value, str)
+            for name, value in cookies.items()
+        ):
+            raise ChaoxingCredentialsUnavailable()
+        return cookies
+
+    def last_successful_sync_at(self, *, user_id: str) -> str | None:
+        """只统计学习通成功事实；读取失败交给调用方处理，不伪装为从未同步。"""
+        with self._db.query() as conn:
+            row = conn.execute("""
+                SELECT MAX(synced_at) AS synced_at FROM (
+                    SELECT last_synced_at AS synced_at FROM courses
+                     WHERE owner_user_id = ? AND provider = 'chaoxing' AND last_synced_at IS NOT NULL
+                    UNION ALL
+                    SELECT last_synced_at AS synced_at FROM personal_tasks
+                     WHERE user_id = ? AND source LIKE 'chaoxing%' AND last_synced_at IS NOT NULL
+                    UNION ALL
+                    SELECT last_synced_at AS synced_at FROM notices
+                     WHERE user_id = ? AND source = 'chaoxing' AND last_synced_at IS NOT NULL
+                    UNION ALL
+                    SELECT last_synced_at AS synced_at FROM chaoxing_exams
+                     WHERE user_id = ? AND last_synced_at IS NOT NULL
+                    UNION ALL
+                    SELECT s.last_success_at AS synced_at
+                      FROM course_sync_sections s
+                      JOIN courses c ON c.id = s.course_id
+                     WHERE s.user_id = ? AND c.provider = 'chaoxing' AND s.last_success_at IS NOT NULL
+                )
+            """, (user_id,) * 5).fetchone()
+        return row["synced_at"] or None
 
     def delete_credentials(self, user_id: str):
         with self._db.transaction() as conn:

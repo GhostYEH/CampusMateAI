@@ -43,6 +43,17 @@ export default function FinalReviewPage() {
 
   const run = useAgentRun({ runId: activeRunId });
 
+  const refreshCampaignDetail = useCallback(async (campaignId, shouldCommit = () => true) => {
+    try {
+      const [versions, agenda] = await Promise.allSettled([
+        api.getFinalReviewPlanVersions(campaignId),
+        api.getTodayAgenda(campaignId),
+      ]);
+      if (shouldCommit() && versions.status === "fulfilled") setPlanVersions(versions.value);
+      if (shouldCommit() && agenda.status === "fulfilled") setTodayAgenda(agenda.value);
+    } catch { /* 忽略次要加载错误 */ }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -51,14 +62,14 @@ export default function FinalReviewPage() {
         const list = itemsOf(data);
         if (!cancelled && list.length > 0) {
           setCampaign(list[0]);
-          await refreshCampaignDetail(list[0].campaign_id);
+          await refreshCampaignDetail(list[0].campaign_id, () => !cancelled);
         }
       } catch { /* 首次无活动属正常 */ } finally {
         if (!cancelled) setExamsLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshCampaignDetail]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,17 +80,6 @@ export default function FinalReviewPage() {
       } catch { /* 考试可选 */ }
     })();
     return () => { cancelled = true; };
-  }, []);
-
-  const refreshCampaignDetail = useCallback(async (campaignId) => {
-    try {
-      const [versions, agenda] = await Promise.allSettled([
-        api.getFinalReviewPlanVersions(campaignId),
-        api.getTodayAgenda(campaignId),
-      ]);
-      if (versions.status === "fulfilled") setPlanVersions(versions.value);
-      if (agenda.status === "fulfilled") setTodayAgenda(agenda.value);
-    } catch { /* 忽略次要加载错误 */ }
   }, []);
 
   /**

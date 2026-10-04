@@ -3,12 +3,12 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import * as api from "../data/api.js";
 import { BackLink, Button, PageFrame, Panel } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, userErrorMessage } from "../data/contracts.js";
 import { describeFusionState } from "../features/magicclass/homeModel.js";
 import { describeQuickAskFailure, pickReusableWorkspace, shouldBindWorkspace, workspaceHref } from "../features/magicclass/quickAskModel.js";
 import { normalizeSelectedRoleIds, selectedRoles } from "../features/magicclass/roleModel.js";
 
-const errorText = (error) => error?.message || "magic class 服务暂时不可用，请稍后重试。";
+const errorText = (error) => userErrorMessage(error, "magic class 服务暂时不可用，请稍后重试。");
 
 export default function MagicClassGenerationPreviewPage() {
   const { courseId } = useParams();

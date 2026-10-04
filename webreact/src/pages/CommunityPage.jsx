@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
 import { Icon } from "../components/Icon.jsx";
@@ -129,6 +129,8 @@ export default function CommunityPage() {
 
   useEffect(() => {
     mounted.current = true;
+    const mutationEpochs = postMutationEpoch.current;
+    const overrides = postOverrides.current;
     let categoriesCurrent = true;
     (async () => {
       try { const data = await api.getCommunityCategories(); if (categoriesCurrent) setCategories(data.items || []); } catch { /* keep fallback */ }
@@ -138,12 +140,12 @@ export default function CommunityPage() {
       mounted.current = false;
       filterEpoch.current += 1;
       listEpoch.current += 1;
-      postMutationEpoch.current.clear();
-      postOverrides.current.clear();
+      mutationEpochs.clear();
+      overrides.clear();
     };
   }, []);
 
-  async function load(reset = false, targetPage = pageRef.current, filterVersion = filterEpoch.current) {
+  const load = useCallback(async (reset = false, targetPage = pageRef.current, filterVersion = filterEpoch.current) => {
     const requestVersion = ++listEpoch.current;
     const effectivePage = reset ? 1 : targetPage;
     if (reset) { pageRef.current = 1; setItems([]); }
@@ -172,7 +174,7 @@ export default function CommunityPage() {
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }
+  }, [query, category, sort]);
 
   useEffect(() => {
     const filterVersion = ++filterEpoch.current;
@@ -185,7 +187,7 @@ export default function CommunityPage() {
     setLoading(true);
     const timer = window.setTimeout(() => load(true, 1, filterVersion), 220);
     return () => window.clearTimeout(timer);
-  }, [query, category, sort]);
+  }, [query, category, sort, load]);
 
   async function onLike(post) {
     const scope = filterEpoch.current;

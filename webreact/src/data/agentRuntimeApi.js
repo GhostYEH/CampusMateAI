@@ -9,7 +9,7 @@
  * SSE 流端点（/events/stream）不在此处，由 agentSseStream.js 处理（authenticated fetch）。
  */
 import { client } from "./api.js";
-import { itemsOf } from "./contracts.js";
+import { itemsOf, normalizeApiError } from "./contracts.js";
 import { normalizeAgentError, createIdempotencyKey } from "./agentContracts.js";
 
 function _wrap(promise) {
@@ -17,13 +17,9 @@ function _wrap(promise) {
     (resp) => (resp.status === 204 ? null : resp.data),
     (error) => {
       const mapped = normalizeAgentError(error);
-      const err = new Error(mapped.message);
-      err.code = mapped.code;
-      err.actionable = mapped.actionable;
-      err.action = mapped.action;
-      err.request_id = mapped.request_id;
-      err.details = mapped.details;
-      err.status = error?.response?.status;
+      const err = normalizeApiError(error);
+      if (!error?.response) mapped.message = err.userMessage;
+      Object.assign(err, mapped, { userMessage: mapped.message });
       throw err;
     },
   );

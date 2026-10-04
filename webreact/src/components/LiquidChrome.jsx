@@ -69,6 +69,7 @@ export default function LiquidChrome({
   ...props
 }) {
   const containerRef = useRef(null);
+  const [red, green, blue] = baseColor;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -84,7 +85,7 @@ export default function LiquidChrome({
       uniforms: {
         uTime: { value: 0 },
         uResolution: { value: new Float32Array([1, 1, 1]) },
-        uBaseColor: { value: new Float32Array(baseColor) },
+        uBaseColor: { value: new Float32Array([red, green, blue]) },
         uAmplitude: { value: amplitude },
         uFrequencyX: { value: frequencyX },
         uFrequencyY: { value: frequencyY },
@@ -155,7 +156,7 @@ export default function LiquidChrome({
       gl.canvas.parentElement?.removeChild(gl.canvas);
       gl.getExtension("WEBGL_lose_context")?.loseContext();
     };
-  }, [amplitude, baseColor[0], baseColor[1], baseColor[2], frequencyX, frequencyY, interactive, speed]);
+  }, [amplitude, red, green, blue, frequencyX, frequencyY, interactive, speed]);
 
   return <div ref={containerRef} className="liquidChrome-container" {...props} />;
 }

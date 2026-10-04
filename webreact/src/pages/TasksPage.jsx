@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, userErrorMessage } from "../data/contracts.js";
 import { isCompletedSubmissionStatus, isRenamedDuplicate, taskAssignmentProgress, taskAssignmentStatusLabel, taskGroupState, weeklyTrend } from "../data/alignment.js";
 import { useApp } from "../app/AppContext.jsx";
 import {
@@ -16,7 +16,7 @@ import { Icon } from "../components/Icon.jsx";
 import { formatDateTime, toDate } from "../utils/date.js";
 
 const list = itemsOf;
-const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "操作失败，请稍后重试") => userErrorMessage(error, fallback);
 const dateText = (value) => formatDateTime(value, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }, "未设置截止时间");
 const localDateTime = (value) => {
   if (!value) return "";
@@ -160,9 +160,11 @@ export default function TasksPage() {
     pendingMutationCount.current = Math.max(0, pendingMutationCount.current - 1);
     if (mounted.current) setSaving(pendingMutationCount.current > 0);
   }
+  const loadRef = useRef(load);
+  loadRef.current = load;
   useEffect(() => {
     mounted.current = true;
-    void load();
+    void loadRef.current();
     return () => { mounted.current = false; loadEpoch.current += 1; pendingMutationCount.current = 0; };
   }, []);
   const tasks = useMemo(() => {

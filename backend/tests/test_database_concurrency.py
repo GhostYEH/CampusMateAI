@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import threading
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import Mock
 
 import pytest
 
 from app.database.sqlite_db import Database
+
+
+@pytest.mark.parametrize("failure_phase", ["execute", "commit"])
+def test_dispose_closes_file_connection_when_checkpoint_fails(tmp_path, monkeypatch, failure_phase):
+    database = Database(tmp_path / "failed-checkpoint.db")
+    connection = Mock()
+    getattr(connection, failure_phase).side_effect = sqlite3.OperationalError("checkpoint unavailable")
+    monkeypatch.setattr(sqlite3, "connect", Mock(return_value=connection))
+    database.dispose()
+    connection.close.assert_called_once_with()
 
 
 def _create_probe_table(db: Database) -> None:

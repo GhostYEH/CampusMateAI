@@ -71,61 +71,64 @@ async def lifespan(app: FastAPI):
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
-    # 持久化队列由 Worker 接管；有效租约不抢占，过期租约交给 Handler recovery 决策。
-    await container.agent_worker.start()
-    logger.info("Agent Worker 已启动，mode={}, concurrency={}",
-                settings.agent_runtime_mode, settings.agent_worker_concurrency)
-    # 自适应闭环不依赖页面访问：先执行一个有界 tick，再持续调度；
-    # worker 自身具备决策持久化和两阶段恢复能力。
-    # 首次 tick 失败**不能阻止应用启动**：闭环是后台增强能力，
-    # 调度循环起来之后后续轮次会自动重试未完成的工作。
     try:
-        report = await asyncio.to_thread(container.adaptive_replanning_worker.tick, batch_size=25)
-        logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, decisions={}, applied={}, failed={}",
-                    report.scanned, report.evaluated, report.reused, report.decisions, report.applied, report.failed)
-    except Exception as e:
-        logger.warning("Adaptive replanning 首次 tick 失败(不影响启动): {}", str(e)[:200])
-    await container.adaptive_replanning_worker.start()
-    # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
-    if settings.agent_allow_mock_providers and settings.app_env != "production":
+        # 持久化队列由 Worker 接管；有效租约不抢占，过期租约交给 Handler recovery 决策。
+        await container.agent_worker.start()
+        logger.info("Agent Worker 已启动，mode={}, concurrency={}",
+                    settings.agent_runtime_mode, settings.agent_worker_concurrency)
+        # 自适应闭环不依赖页面访问：先执行一个有界 tick，再持续调度；
+        # worker 自身具备决策持久化和两阶段恢复能力。
+        # 首次 tick 失败**不能阻止应用启动**：闭环是后台增强能力，
+        # 调度循环起来之后后续轮次会自动重试未完成的工作。
         try:
-            container.agent_provider_registry.add_fake("fake")
-            logger.info("Agent mock providers 已注入(fake)")
+            report = await asyncio.to_thread(container.adaptive_replanning_worker.tick, batch_size=25)
+            logger.info("Adaptive replanning tick: scanned={}, evaluated={}, reused={}, decisions={}, applied={}, failed={}",
+                        report.scanned, report.evaluated, report.reused, report.decisions, report.applied, report.failed)
         except Exception as e:
-            logger.warning("注入 mock providers 失败: {}", str(e)[:200])
-    # 知识库只接受管理员上传或外部同步的正式资料，不再自动导入仓库内演示文件。
-    # 多角色验收账号 seeding(仅 dev/test 显式开启;production 已被 config 校验拦截)
-    # 验收账号为普通用户,走完整真实业务流程,无特殊权限或绕过认证逻辑
-    if settings.auto_seed_demo_users:
+            logger.warning("Adaptive replanning 首次 tick 失败(不影响启动): {}", str(e)[:200])
+        await container.adaptive_replanning_worker.start()
+        # 测试/演示环境下自动注入 fake provider(production 已被 config 禁止)
+        if settings.agent_allow_mock_providers and settings.app_env != "production":
+            try:
+                container.agent_provider_registry.add_fake("fake")
+                logger.info("Agent mock providers 已注入(fake)")
+            except Exception as e:
+                logger.warning("注入 mock providers 失败: {}", str(e)[:200])
+        # 知识库只接受管理员上传或外部同步的正式资料，不再自动导入仓库内演示文件。
+        # 多角色验收账号 seeding(仅 dev/test 显式开启;production 已被 config 校验拦截)
+        # 验收账号为普通用户,走完整真实业务流程,无特殊权限或绕过认证逻辑
+        if settings.auto_seed_demo_users:
+            try:
+                stats = seed_demo_data(container)
+                if not stats.get("skipped"):
+                    logger.info("多角色验收账号已就绪: {}", stats)
+            except Exception as e:
+                logger.warning("多角色验收账号 seeding 失败: {}", str(e)[:200])
+        # 启动时灌入学校名单(universities.json)，幂等 upsert，不覆盖已补充的教务网址
         try:
-            stats = seed_demo_data(container)
-            if not stats.get("skipped"):
-                logger.info("多角色验收账号已就绪: {}", stats)
+            seed_path = Path(__file__).resolve().parent.parent / "data" / "universities.json"
+            inserted, updated = container.university_repository.seed_from_json(seed_path)
+            if inserted or updated:
+                logger.info("学校名单 seed 完成: 新增 {} 所，更新 {} 所", inserted, updated)
         except Exception as e:
-            logger.warning("多角色验收账号 seeding 失败: {}", str(e)[:200])
-    # 启动时灌入学校名单(universities.json)，幂等 upsert，不覆盖已补充的教务网址
-    try:
-        seed_path = Path(__file__).resolve().parent.parent / "data" / "universities.json"
-        inserted, updated = container.university_repository.seed_from_json(seed_path)
-        if inserted or updated:
-            logger.info("学校名单 seed 完成: 新增 {} 所，更新 {} 所", inserted, updated)
-    except Exception as e:
-        logger.warning("学校名单 seed 失败: {}", str(e)[:200])
-    yield
-    # 关闭
-    await container.agent_worker.stop()
-    await container.adaptive_replanning_worker.stop()
-    if container.llm is not None and hasattr(container.llm, "aclose"):
-        try:
-            await container.llm.aclose()  # type: ignore[attr-defined]
-        except Exception:
-            pass
-    if container.tts is not None:
-        try:
-            await container.tts.aclose()
-        except Exception:
-            pass
-    logger.info("后端已关闭")
+            logger.warning("学校名单 seed 失败: {}", str(e)[:200])
+        yield
+    finally:
+        # Cleanup also runs when startup or a request raises, and one failing
+        # shutdown must not strand the remaining workers/providers.
+        for name, close in (
+            ("agent_worker", container.agent_worker.stop),
+            ("adaptive_replanning_worker", container.adaptive_replanning_worker.stop),
+            ("llm", getattr(container.llm, "aclose", None)),
+            ("tts", getattr(container.tts, "aclose", None)),
+        ):
+            if close is None:
+                continue
+            try:
+                await close()
+            except Exception as error:
+                logger.warning("服务关闭失败: service={}, error_type={}", name, type(error).__name__)
+        logger.info("后端已关闭")
 
 
 def create_app() -> FastAPI:

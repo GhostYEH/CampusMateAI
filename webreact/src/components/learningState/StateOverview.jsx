@@ -127,7 +127,7 @@ function StateTimeline({ changes }) {
 }
 
 function ForecastSection({ forecasts }) {
-  const items = forecasts?.items || [];
+  const items = useMemo(() => forecasts?.items || [], [forecasts?.items]);
 
   const grouped = useMemo(() => {
     const byType = {};

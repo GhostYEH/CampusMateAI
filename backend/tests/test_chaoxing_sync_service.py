@@ -11,6 +11,7 @@ from app.repositories.course_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
 from app.repositories.personal_task_repository import PersonalTaskRepository
 from app.services.chaoxing.sync_service import ChaoxingSyncDependencies, ChaoxingSyncService
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from chaoxing_helpers import wire_sync_service
 
 
@@ -116,6 +117,50 @@ async def test_notices_keep_course_link_when_assignment_phase_is_skipped(isolate
     assert container.notice_repository.list_notices("u")[0].course_id == course.id
 
 
+@pytest.mark.asyncio
+async def test_score_enrichment_failure_reports_partial_sync_and_retries(isolated_sync_container, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    container = isolated_sync_container
+    client = ChaoxingClient()
+    monkeypatch.setattr(client, "get_courses", AsyncMock(return_value=(True, [{
+        "external_id": "course", "course_id": "remote", "name": "课程", "link": "https://example.invalid/course",
+    }])))
+    assignments = [{"external_id": work, "course_id": "remote", "title": work,
+                    "status": "completed", "link": f"https://example.invalid/{work}"}
+                   for work in ("good", "retry")]
+    monkeypatch.setattr(client, "get_all_assignments", AsyncMock(side_effect=lambda: deepcopy(assignments)))
+    monkeypatch.setattr(client, "get_all_notices", AsyncMock(return_value=[]))
+    monkeypatch.setattr(client, "get_course_exam_candidates", AsyncMock(return_value={"status": "complete", "items": []}))
+    failed = True
+
+    async def get_report(link, **kwargs):
+        if failed and link.endswith("/retry"):
+            raise ChaoxingFetchError("network_error")
+        return (90, 100)
+
+    monkeypatch.setattr(client, "get_assignment_report", get_report)
+    user = UserRow(id="u", username="u", password_hash="hash", role="student")
+    try:
+        first = await container.chaoxing_sync_service.sync(user, {}, client)
+        assert first["complete"] is False
+        assert first["sections"]["assignments"]["status"] == "partial"
+        assert first["sections"]["assignments"]["error_code"] == "score_enrichment:network_error"
+        assert first["stats"]["assignments_created"] == 2
+        assert first["stats"]["scores_fetched"] == 1
+        assert container.chaoxing_repository.get_assignment_snapshot(user_id="u", external_id="good")["score"] == 90
+        assert container.chaoxing_repository.get_assignment_snapshot(user_id="u", external_id="retry")["score"] is None
+        failed = False
+        second = await container.chaoxing_sync_service.sync(user, {}, client)
+        assert second["complete"] is True
+        assert second["sections"]["assignments"]["error_code"] is None
+        assert second["stats"]["assignments_created"] == 0
+        assert second["stats"]["scores_fetched"] == 1
+        assert container.chaoxing_repository.get_assignment_snapshot(user_id="u", external_id="retry")["score"] == 90
+    finally:
+        await client.client.aclose()
+
+
 class BatchClient:
     async def get_courses(self):
         return True, [{
@@ -142,7 +187,7 @@ class RetryExtraction:
     def __init__(self):
         self.attempts = []
 
-    async def extract(self, content, **kwargs):
+    def extract_bounded(self, content, **kwargs):
         self.attempts.append(content)
         if content == "整理复习清单" and self.attempts.count(content) == 1:
             raise RuntimeError("temporary extraction failure")

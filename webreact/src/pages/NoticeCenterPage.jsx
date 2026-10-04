@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf, normalizeNotice } from "../data/contracts.js";
+import { itemsOf, normalizeNotice, userErrorMessage } from "../data/contracts.js";
 import { noticeTaskDraft, updateNoticeTaskDraft } from "../data/alignment.js";
 import { AsyncState, Button, LinkButton, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { formatDateTime } from "../utils/date.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "刚刚");
-const errorText = (error, fallback) => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback) => userErrorMessage(error, fallback);
 
 function Notice({ message, tone = "info" }) {
   return message ? <div className={`page-notice notice-${tone}`} role={tone === "error" ? "alert" : "status"}>{message}</div> : null;

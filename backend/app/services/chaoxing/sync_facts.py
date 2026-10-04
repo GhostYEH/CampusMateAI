@@ -24,43 +24,9 @@
 """
 from __future__ import annotations
 
-# 每个分支都必须是"该次同步确实成功过"的证据，且限定学习通来源。
-_LAST_SYNC_SQL = """
-SELECT MAX(synced_at) AS synced_at FROM (
-    SELECT last_synced_at AS synced_at FROM courses
-     WHERE owner_user_id = ? AND provider = 'chaoxing' AND last_synced_at IS NOT NULL
-    UNION ALL
-    SELECT last_synced_at AS synced_at FROM personal_tasks
-     WHERE user_id = ? AND source LIKE 'chaoxing%' AND last_synced_at IS NOT NULL
-    UNION ALL
-    SELECT last_synced_at AS synced_at FROM notices
-     WHERE user_id = ? AND source = 'chaoxing' AND last_synced_at IS NOT NULL
-    UNION ALL
-    SELECT last_synced_at AS synced_at FROM chaoxing_exams
-     WHERE user_id = ? AND last_synced_at IS NOT NULL
-    UNION ALL
-    SELECT s.last_success_at AS synced_at
-      FROM course_sync_sections s
-      JOIN courses c ON c.id = s.course_id
-     WHERE s.user_id = ? AND c.provider = 'chaoxing' AND s.last_success_at IS NOT NULL
-)
-"""
-
-
 def last_chaoxing_sync_at(container, user_id: str) -> str | None:
     """返回该用户最近一次**成功**学习通同步的时间(ISO)，从未成功同步过返回 None。"""
-    db = getattr(container, "db", None)
-    if db is None:
-        return None
-    try:
-        with db.query() as conn:
-            row = conn.execute(_LAST_SYNC_SQL, (user_id,) * 5).fetchone()
-    except Exception:
-        return None
-    if row is None:
-        return None
-    value = row["synced_at"]
-    return value if value else None
+    return container.chaoxing_repository.last_successful_sync_at(user_id=user_id)
 
 
 __all__ = ["last_chaoxing_sync_at"]

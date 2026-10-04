@@ -1,27 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf, normalizeNotice } from "../data/contracts.js";
+import { itemsOf, normalizeNotice, userErrorMessage } from "../data/contracts.js";
 import { formatDateTime } from "../utils/date.js";
 import { AsyncState, BackLink, Button, LinkButton, Modal, PageFrame, Panel, SectionHeading, StatCard } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
+import { useAsyncResource } from "../hooks/useAsyncResource.js";
 
-const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "操作失败，请稍后重试") => userErrorMessage(error, fallback);
 const dateText = (value, fallback = "时间待定") => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, fallback);
 const dayText = (value) => formatDateTime(value, { month: "numeric", day: "numeric", weekday: "short" }, "日期待定");
 
 function useResource(loader, deps = []) {
-  const [state, setState] = useState({ data: null, loading: true, error: "" });
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    setState((current) => ({ ...current, loading: true, error: "" }));
-    Promise.resolve().then(loader).then((data) => alive && setState({ data, loading: false, error: "" })).catch((error) => alive && setState({ data: null, loading: false, error: errorText(error, "加载失败，请稍后重试") }));
-    return () => { alive = false; };
-    // The explicit dependencies are the resource identity; reload is represented by version.
-
-  }, [...deps, version]);
-  return { ...state, reload: () => setVersion((current) => current + 1) };
+  const resource = useAsyncResource(loader, deps);
+  return { ...resource, error: resource.error ? errorText(resource.error, "加载失败，请稍后重试") : "" };
 }
 
 function PageNotice({ message, tone = "info" }) {

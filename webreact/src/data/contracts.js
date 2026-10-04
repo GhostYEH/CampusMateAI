@@ -3,7 +3,7 @@ export function itemsOf(value) {
   return Array.isArray(value?.items) ? value.items : [];
 }
 
-// 统一学习模块 API 错误解析：
+// 统一 API 错误解析：
 // - 后端错误结构为 { code, message, details }，message 已是中文文案，优先展示。
 // - 兼容旧的 { detail } 结构。
 // - 网络层错误（超时/后端未启动）不把 Axios 原始英文抛给用户，用中文兜底。
@@ -16,13 +16,41 @@ export function userErrorMessage(error, fallback = "操作失败，请稍后重�
   if (data && typeof data === "object" && typeof data.detail === "string" && data.detail.trim()) {
     return data.detail;
   }
+  if (typeof error?.userMessage === "string" && error.userMessage.trim()) return error.userMessage;
+  if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") return "已取消";
   if (error?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(error?.message))) {
     return "请求超时，请稍后重试";
   }
   if (!error?.response && error?.request) {
     return "无法连接到服务，请确认后端已启动后重试";
   }
+  if (typeof error?.message === "string" && /[\u3400-\u9fff]/.test(error.message)) return error.message;
   return fallback;
+}
+
+/** Preserve transport diagnostics while giving all adapters the same error fields. */
+export function normalizeApiError(error) {
+  if (error?.userMessage) return error;
+  const body = error?.response?.data;
+  const data = body && typeof body === "object" ? body : {};
+  const message = userErrorMessage(error);
+  const normalized = new Error(message, { cause: error });
+  Object.assign(normalized, {
+    name: error?.name || "Error",
+    userMessage: message,
+    code: data.code || error?.code || (error?.name === "AbortError" ? "ABORTED" : !error?.response && error?.request ? "NETWORK_ERROR" : "UNKNOWN"),
+    transportCode: error?.transportCode || error?.code || null,
+    status: error?.response?.status ?? error?.status ?? null,
+    request_id: data.request_id || error?.request_id || null,
+    details: data.details ?? error?.details ?? null,
+    actionable: error?.actionable ?? false,
+    action: error?.action ?? null,
+    response: error?.response,
+    request: error?.request,
+    config: error?.config,
+    isAxiosError: error?.isAxiosError,
+  });
+  return normalized;
 }
 
 export function logApiError(scope, error) {

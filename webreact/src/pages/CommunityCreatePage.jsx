@@ -1,3 +1,4 @@
+import { userErrorMessage } from "../data/contracts.js";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
@@ -5,7 +6,7 @@ import { BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../co
 
 const fallbackCategories = [{ key: "question", label: "提问" }, { key: "campus", label: "校园动态" }, { key: "study", label: "学习交流" }, { key: "life", label: "生活随笔" }, { key: "other", label: "其它" }];
 const draftKey = "campusmate-community-draft";
-const errorText = (error, fallback = "发布失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "发布失败，请稍后重试") => userErrorMessage(error, fallback);
 
 export default function CommunityCreatePage() {
   const navigate = useNavigate(); const [categories, setCategories] = useState(fallbackCategories); const [form, setForm] = useState({ title: "", content: "", category: "campus", images: [], is_anonymous: false, location: "", tags: "", allow_comments: true }); const [saving, setSaving] = useState(false); const [uploading, setUploading] = useState(0); const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [preview, setPreview] = useState(false);

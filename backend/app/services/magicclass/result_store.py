@@ -33,6 +33,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .._time import parse_iso_assume_utc as _parse_iso
+
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 # 预占文件名以 "." 开头，与历史会话文件区分；list_sessions 显式跳过隐藏文件。
@@ -44,18 +46,6 @@ TERMINAL_STATUSES = ("succeeded", "failed")
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _parse_iso(value: Any) -> Optional[datetime]:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
 
 
 def new_session_id() -> str:

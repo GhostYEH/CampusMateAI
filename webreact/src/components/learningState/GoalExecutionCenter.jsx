@@ -50,9 +50,10 @@ function GoalExecutionCenter({ goals, plans, jobs, summary, activeRun, onGenerat
   const activeGoals = goals?.items || [];
   const [goalId, setGoalId] = useState(activeGoals[0]?.goal_id || "");
   const [minutes, setMinutes] = useState(60);
+  const firstGoalId = activeGoals[0]?.goal_id;
   useEffect(() => {
-    if (!goalId && activeGoals[0]?.goal_id) setGoalId(activeGoals[0].goal_id);
-  }, [activeGoals, goalId]);
+    if (!goalId && firstGoalId) setGoalId(firstGoalId);
+  }, [firstGoalId, goalId]);
   const currentPlan = plans?.items?.find((p) => p.status !== "REJECTED" && p.status !== "SUPERSEDED") || null;
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createNoiseBuffer } from "./whiteNoise.js";
 
 // 场景音效：用 Web Audio 按场景塑形噪声（低通雨声 / 更柔和的雪声 / 暖云静默）。
@@ -18,13 +18,13 @@ export function useAmbientSound(scene) {
   const gainRef = useRef(null);
   const filterRef = useRef(null);
 
-  const stop = () => {
+  const stop = useCallback(() => {
     sourceRef.current?.stop();
     sourceRef.current?.disconnect();
     sourceRef.current = null;
-  };
+  }, []);
 
-  const build = (nextScene = scene) => {
+  const build = useCallback((nextScene) => {
     const tone = SCENE_TONE[nextScene];
     if (!tone) {
       stop();
@@ -40,7 +40,7 @@ export function useAmbientSound(scene) {
     source.connect(filterRef.current).connect(gain).connect(contextRef.current.destination);
     source.start();
     sourceRef.current = source;
-  };
+  }, [stop]);
 
   const start = async (nextScene = scene) => {
     if (!window.AudioContext && !window.webkitAudioContext) return false;
@@ -69,12 +69,12 @@ export function useAmbientSound(scene) {
     if (!enabled || !contextRef.current || !sourceRef.current) return;
     stop();
     build(scene);
-  }, [scene, enabled]);
+  }, [scene, enabled, stop, build]);
 
   useEffect(() => () => {
     stop();
     contextRef.current?.close();
-  }, []);
+  }, [stop]);
 
   return { enabled, toggle };
 }

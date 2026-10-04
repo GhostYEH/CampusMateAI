@@ -1,3 +1,4 @@
+import { userErrorMessage } from "../data/contracts.js";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
@@ -8,7 +9,7 @@ import SettingsSection from "../components/settings/SettingsSection.jsx";
 import SettingToggle from "../components/settings/SettingToggle.jsx";
 import { persistPreference, readPreferences } from "../features/settings/settingsPreferences.js";
 
-const errorText = (error) => error?.response?.data?.detail || error?.response?.data?.message || error?.message || "资料加载失败，请重试";
+const errorText = (error) => userErrorMessage(error, "资料加载失败，请重试");
 
 function profileValue(profile, session, key) {
   return profile?.[key] || session?.[key] || "—";

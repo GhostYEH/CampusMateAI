@@ -23,6 +23,7 @@ from starlette.concurrency import run_in_threadpool
 from ...core.exceptions import AgentRuntimeError
 from ...core.logging import logger
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
+from .._time import as_utc_assume_utc, iso_utc as _iso, parse_iso_assume_utc as _parse_iso
 from .event_store import AgentEventStore
 from .handlers.base import HandlerContext, RecoveryAction
 from .handlers.registry import JobHandlerRegistry
@@ -46,19 +47,6 @@ async def _offload(func, /, *args, **kwargs):
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _iso(moment: datetime) -> str:
-    return moment.isoformat()
-
-
-def _parse_iso(value: Optional[str]) -> Optional[datetime]:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except (TypeError, ValueError):
-        return None
 
 
 @dataclass(frozen=True)
@@ -162,7 +150,7 @@ class AgentWorker:
 
     async def run_once(self) -> WorkerRunReport:
         """恢复过期租约 → 领取一个可执行的 Run → 执行。"""
-        now = self._clock()
+        now = as_utc_assume_utc(self._clock())
         recovered = await self._recover_expired_leases(now)
         if recovered is not None:
             return recovered

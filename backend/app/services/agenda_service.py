@@ -20,11 +20,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 
+from ._time import SHANGHAI, iso_preserve_offset as _iso, parse_iso_assume_shanghai
 from .chaoxing.session_cache import cached_auth_state
 from .chaoxing.sync_facts import last_chaoxing_sync_at
 
 # 学习通所有时间字段均为北京时间(UTC+8)，与 ChaoxingClient 的口径保持一致。
-SHANGHAI = timezone(timedelta(hours=8))
 AGENDA_TIMEZONE = "Asia/Shanghai"
 # 学习通数据超过这个时长没有同步过，就认为"可能不是最新"。
 CHAOXING_STALE_AFTER = timedelta(hours=24)
@@ -60,7 +60,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=SHANGHAI)
+        return parse_iso_assume_shanghai(value)
     text = str(value).strip()
     if not text:
         return None
@@ -69,11 +69,7 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
         .replace("/", "-").replace("T", " ")
     )
     normalized = " ".join(normalized.split())
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=SHANGHAI)
+    return parse_iso_assume_shanghai(normalized)
 
 
 def _day_bounds(now: datetime) -> tuple[datetime, datetime]:
@@ -85,10 +81,6 @@ def _day_bounds(now: datetime) -> tuple[datetime, datetime]:
 
 def _in_day(moment: Optional[datetime], start: datetime, end: datetime) -> bool:
     return moment is not None and start <= moment < end
-
-
-def _iso(moment: Optional[datetime]) -> Optional[str]:
-    return moment.isoformat() if moment is not None else None
 
 
 def _text(value: Any) -> Optional[str]:

@@ -69,7 +69,7 @@ export default function GlassSurface({
   updateDisplacementMapRef.current = updateDisplacementMap;
 
   useEffect(() => {
-    updateDisplacementMap();
+    updateDisplacementMapRef.current();
     [
       { ref: redChannelRef, offset: redOffset },
       { ref: greenChannelRef, offset: greenOffset },

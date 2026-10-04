@@ -264,7 +264,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 实现：[backend/app/api/routes/classes.py](../../backend/app/api/routes/classes.py)，`list_classes`。
 
-Web 封装：`getClasses`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 

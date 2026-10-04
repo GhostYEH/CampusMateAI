@@ -23,8 +23,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
+
+from .._time import parse_iso_require_timezone as _parse_iso
 
 OUTCOME_DELTA_THRESHOLD = 0.05
 
@@ -41,18 +43,6 @@ WARNING_BASELINE_EXPIRED_AT_CAPTURE = "baseline_snapshot_expired_at_capture"
 WARNING_BASELINE_OBSERVED_AFTER_CAPTURE = "baseline_observed_after_capture"
 WARNING_AFTER_NOT_FRESH = "after_snapshot_not_fresh_at_evaluation"
 WARNING_TIME_ORDER_INVALID = "state_observation_order_invalid"
-
-
-def _parse_iso(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    if parsed.tzinfo is None:
-        return None
-    return parsed.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True)

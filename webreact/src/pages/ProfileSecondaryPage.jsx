@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BackLink, Button, LinkButton, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import { formatDateTime } from "../utils/date.js";
 import * as api from "../data/api.js";
+import { userErrorMessage } from "../data/contracts.js";
+import { useAsyncResource } from "../hooks/useAsyncResource.js";
 
 const itemsOf = (value) => Array.isArray(value) ? value : value?.items || [];
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待记录");
@@ -30,22 +32,14 @@ export function ProfileSectionPage() {
   const { section = "favorites" } = useParams();
   const navigate = useNavigate();
   const meta = sectionMeta[section] || sectionMeta.favorites;
-  const [profile, setProfile] = useState({});
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  async function load() {
-    setLoading(true); setError("");
-    try {
-      const user = await api.getProfile().catch(() => ({}));
-      let next = [];
-      if (section === "learning") next = itemsOf(await api.getStudySessions());
-      setProfile(user); setRecords(next);
-    } catch (cause) { setError(cause?.response?.data?.detail || cause?.message || "个人中心数据加载失败，请稍后重试。"); }
-    finally { setLoading(false); }
-  }
-  useEffect(() => { load(); }, [section]);
+  const { data, loading, error: loadError, reload: load } = useAsyncResource(async () => {
+    const user = await api.getProfile();
+    const records = section === "learning" ? itemsOf(await api.getStudySessions()) : [];
+    return { user, records };
+  }, [section]);
+  const profile = data?.user || {};
+  const records = data?.records || [];
+  const error = loadError ? userErrorMessage(loadError, "个人中心数据加载失败，请稍后重试。") : "";
   const title = meta[1];
 
   return <PageFrame eyebrow={meta[0]} title={title} description={meta[2]} actions={<><BackLink to="/profile">返回个人中心</BackLink><Button variant="secondary" icon="PhArrowClockwise" disabled={loading} onClick={load}>刷新</Button></>}>

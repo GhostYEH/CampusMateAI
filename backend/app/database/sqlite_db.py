@@ -13,7 +13,7 @@ from __future__ import annotations
 import sqlite3
 import re
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2772,10 +2772,9 @@ class Database:
                 return
             # 文件模式: 短连接做 checkpoint
             try:
-                conn = sqlite3.connect(self._db_path, timeout=30.0)
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
-                conn.commit()
-                conn.close()
+                with closing(sqlite3.connect(self._db_path, timeout=30.0)) as conn:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+                    conn.commit()
             except Exception:
                 # 测试清理不应因 checkpoint 失败而中断
                 pass

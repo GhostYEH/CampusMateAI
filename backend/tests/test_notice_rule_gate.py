@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import NoticeEmpty, NoticeTooLong
 from app.services.llm.base import LLMResponse
 from app.services.notice_extraction_service import NoticeExtractionService, NoticeSemanticType
 
@@ -32,6 +33,31 @@ def _settings() -> Settings:
         llm_api_key="test",
         llm_model="mock",
     )
+
+
+def test_bounded_extraction_keeps_connected_notices_rule_only():
+    llm = CountingLLM({"results": []})
+    service = NoticeExtractionService(llm, _settings())
+    result = service.extract_bounded(
+        "请于10月10日17:00前提交实验报告", source_name="实验课",
+        published_at=datetime(2026, 10, 4, tzinfo=timezone.utc),
+    )
+    assert result.actionable is True
+    assert result.deadline is not None
+    assert result.deadline.year == 2026
+    assert result.deadline.month == 10
+    assert result.deadline.day == 10
+    assert service.extract_bounded("上课地点保持不变").actionable is False
+    assert llm.calls == 0
+
+
+@pytest.mark.parametrize("content, error", [("  ", NoticeEmpty), ("通知" * 2501, NoticeTooLong)])
+def test_bounded_extraction_rejects_invalid_text_without_external_calls(content, error):
+    llm = CountingLLM({"results": []})
+    service = NoticeExtractionService(llm, _settings())
+    with pytest.raises(error):
+        service.extract_bounded(content)
+    assert llm.calls == 0
 
 
 def test_chat_and_clear_rule_notices_need_zero_llm_calls() -> None:

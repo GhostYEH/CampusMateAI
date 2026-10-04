@@ -1,26 +1,18 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useAsyncResource } from "../hooks/useAsyncResource.js";
 import * as api from "../data/api.js";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, userErrorMessage } from "../data/contracts.js";
 import { AsyncState, Button, PageFrame } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 
 
 function useLoad(loader, deps = []) {
-  const [state, setState] = useState({ data: null, loading: true, error: "" });
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setState((current) => ({ ...current, loading: true, error: "" }));
-    Promise.resolve().then(loader).then((data) => active && setState({ data, loading: false, error: "" })).catch((error) => active && setState({ data: null, loading: false, error: error?.response?.data?.message || error?.message || "加载失败，请稍后重试" }));
-    return () => { active = false; };
-  // Loader is intentionally recreated by the page; version and explicit deps control reloads.
-
-  }, [...deps, version]);
-  return { ...state, reload: () => setVersion((current) => current + 1) };
+  const resource = useAsyncResource(loader, deps);
+  return { ...resource, error: resource.error ? errorText(resource.error, "加载失败，请稍后重试") : "" };
 }
 
 const list = itemsOf;
-const errorText = (error, fallback = "操作失败") => error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback;
+const errorText = (error, fallback = "操作失败") => userErrorMessage(error, fallback);
 
 function PageNotice({ message, tone = "info" }) { return message ? <div className={`page-notice notice-${tone}`} role={tone === "error" ? "alert" : "status"}><Icon name={tone === "error" ? "PhWarningCircle" : "PhInfo"} size={17} />{message}</div> : null; }
 function FilterBar({ value, onChange, placeholder = "搜索…" }) { return <div className="filter-bar"><label className="search-field-wrap"><Icon name="PhMagnifyingGlass" size={17} /><input className="search-field" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label></div>; }

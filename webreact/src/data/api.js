@@ -97,12 +97,8 @@ export async function breakdownStudyTask(payload) {
   return dataOf(await client.post("/study/task-breakdown", payload, { timeout: 45000 }));
 }
 async function studyCheckinsSupported() {
-  try {
-    const response = await client.get("/health");
-    return response.data?.study_checkins_supported === true;
-  } catch {
-    return false;
-  }
+  const response = await client.get("/health");
+  return response.data?.study_checkins_supported === true;
 }
 export async function getStudyCheckins() {
   if (!(await studyCheckinsSupported())) return { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false, unsupported: true };

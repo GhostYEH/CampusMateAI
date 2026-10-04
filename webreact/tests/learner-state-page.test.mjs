@@ -215,7 +215,7 @@ describe("错误映射", () => {
     await assert.rejects(
       () => api.getLearnerStateRuns(),
       (err) => {
-        assert.equal(err.message, "网络连接失败，请稍后重试");
+        assert.equal(err.message, "无法连接到服务，请确认后端已启动后重试");
         assert.equal(err.code, "NETWORK_ERROR");
         return true;
       },

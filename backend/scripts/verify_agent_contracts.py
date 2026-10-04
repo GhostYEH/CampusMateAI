@@ -3,7 +3,7 @@
 检查项:
 1. 导出最新 OpenAPI schema,确认 agent 路由全部注册
 2. canonical fixtures 与 Pydantic schema 字段一致
-3. 冻结枚举值没有被删除或重排(只允许追加)
+3. 冻结枚举字符串没有被删除或改名(兼容新增,不依赖声明顺序)
 4. 新增 schema 字段向后兼容(optional 或有默认值)
 5. 关键路由路径存在且使用 Bearer 鉴权(无 token query)
 
@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import get_args, get_origin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.schemas.agent_contract_enums import (
     AGENT_CONTRACT_VERSION,
@@ -54,7 +54,7 @@ _ENUMS = {
     "AgentErrorCode": AgentErrorCode,
 }
 
-# 冻结的 v1 枚举值快照(顺序敏感,只允许追加)。
+# 冻结的 v1 线协议字符串快照。声明顺序不属于 JSON/SSE 契约。
 # 来源:docs/superpowers/specs/2026-09-12-campus-agent-runtime-v1-design.md §5-§9。
 _FROZEN_ENUMS = {
     "RunStatus": ["QUEUED", "RUNNING", "AWAITING_APPROVAL", "SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"],
@@ -96,7 +96,8 @@ _FROZEN_REQUIRED_FIELDS = {
     "AgentRunOut": {"run_id", "job_id", "user_id", "status", "phase", "created_at", "updated_at"},
     "AgentJobOut": {"job_id", "user_id", "job_kind", "status", "created_at", "updated_at"},
     "AgentApprovalOut": {"approval_id", "run_id", "status", "risk_level", "action_summary", "expires_at"},
-    "AgentArtifactOut": {"artifact_id", "run_id", "user_id", "artifact_type", "version", "created_at"},
+    "AgentArtifactOut": {"artifact_id", "run_id", "user_id", "artifact_type", "version", "mime_type",
+                         "size_bytes", "content_hash", "created_at"},
 }
 
 
@@ -139,21 +140,15 @@ def verify_enums(report: Report) -> None:
     for name, frozen_values in _FROZEN_ENUMS.items():
         enum_cls = _ENUMS[name]
         current_values = [m.value for m in enum_cls]
-        # 冻结值必须按原顺序保留在当前位置(只允许追加)
-        for i, fv in enumerate(frozen_values):
-            if i >= len(current_values):
-                report.fail(f"{name}:冻结值 {fv!r} 在位置 {i} 被删除")
-            elif current_values[i] != fv:
-                report.fail(
-                    f"{name}:位置 {i} 冻结为 {fv!r},当前为 {current_values[i]!r}(不得重排或重命名)"
-                )
-        # 新增值只能追加到末尾
-        extra = current_values[len(frozen_values):]
-        if extra:
-            report.warn(f"{name}:新增值 {extra}(向后兼容,允许)")
+        missing = set(frozen_values) - set(current_values)
+        if missing:
+            report.fail(f"{name}:冻结字符串值 {sorted(missing)} 被删除或改名")
+            continue
+        extra = [value for value in current_values if value not in frozen_values]
+        report.good(f"{name}:冻结字符串值完整" + (f",兼容新增 {extra}" if extra else ""))
 
 
-def verify_required_fields(report: Report) -> None:
+def verify_required_fields(report: Report, *, models: dict[str, type[BaseModel]] | None = None) -> None:
     from app.schemas.agent_runtime import (
         AgentApprovalOut,
         AgentArtifactOut,
@@ -163,7 +158,7 @@ def verify_required_fields(report: Report) -> None:
         AgentRunOut,
     )
 
-    models = {
+    models = models if models is not None else {
         "AgentErrorEnvelope": AgentErrorEnvelope,
         "AgentEventOut": AgentEventOut,
         "AgentRunOut": AgentRunOut,
@@ -183,6 +178,9 @@ def verify_required_fields(report: Report) -> None:
             )
         else:
             report.good(f"{name}:冻结必填字段完整")
+        added_required = current_required - frozen_required
+        if added_required:
+            report.fail(f"{name}:新增必填字段 {sorted(added_required)}(须为 optional 或有默认值)")
 
 
 def verify_fixtures(report: Report) -> None:
@@ -191,6 +189,9 @@ def verify_fixtures(report: Report) -> None:
         AgentEventOut,
         AgentJobOut,
         AgentRunOut,
+        AgentApprovalOut,
+        AgentArtifactOut,
+        AgentErrorEnvelope,
     )
 
     fixture_files = ["runtime.json", "final_review.json", "course_research.json", "notice_workflow.json"]
@@ -199,41 +200,44 @@ def verify_fixtures(report: Report) -> None:
         if not path.exists():
             report.fail(f"fixture 缺失:{path}")
             continue
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            report.fail(f"{fname}:fixture 不能读取为 JSON")
+            continue
+        if not isinstance(data, dict):
+            report.fail(f"{fname}:fixture 必须为对象")
+            continue
         if data.get("contract_version") != AGENT_CONTRACT_VERSION:
             report.fail(f"{fname}:contract_version 不匹配")
             continue
-        # 验证 job/run/event 结构可被 schema 解析(宽松:只验证字段存在)
-        if "job" in data:
-            job = data["job"]
-            for field in ("job_id", "user_id", "job_kind", "status", "created_at", "updated_at"):
-                if field not in job:
-                    report.fail(f"{fname}:job 缺字段 {field}")
-        if "run" in data:
-            run = data["run"]
-            for field in ("run_id", "job_id", "user_id", "status", "phase", "risk_level"):
-                if field not in run:
-                    report.fail(f"{fname}:run 缺字段 {field}")
-            # status / phase / risk_level 必须是合法枚举
-            if run["status"] not in [m.value for m in RunStatus]:
-                report.fail(f"{fname}:run.status={run['status']!r} 不是合法 RunStatus")
-            if run["phase"] not in [m.value for m in RunPhase]:
-                report.fail(f"{fname}:run.phase={run['phase']!r} 不是合法 RunPhase")
-            if run["risk_level"] not in [m.value for m in RiskLevel]:
-                report.fail(f"{fname}:run.risk_level={run['risk_level']!r} 不是合法 RiskLevel")
-        if "events" in data:
-            for i, evt in enumerate(data["events"]):
-                if evt.get("type") not in [m.value for m in AgentEventType]:
-                    report.fail(f"{fname}:events[{i}].type={evt.get('type')!r} 不是合法 AgentEventType")
-        report.good(f"{fname}:fixture 结构与枚举合法")
+        prior_errors = len(report.errors)
+        samples = [(key, model, data[key]) for key, model in {
+            "job": AgentJobOut, "run": AgentRunOut, "approval": AgentApprovalOut,
+            "artifact": AgentArtifactOut, "error_envelope": AgentErrorEnvelope,
+        }.items() if key in data]
+        events = data.get("events", [])
+        if not isinstance(events, list):
+            report.fail(f"{fname}:events 必须为数组")
+        else:
+            samples.extend((f"events[{index}]", AgentEventOut, event) for index, event in enumerate(events))
+        for key, model, sample in samples:
+            try:
+                model.model_validate(sample)
+            except ValidationError as exc:
+                # 只报告字段位置和错误类型,不打印可能敏感的 fixture 值。
+                issues = [(error["loc"], error["type"]) for error in exc.errors(include_input=False)]
+                report.fail(f"{fname}:{key} 不符合 schema:{issues}")
+        if len(report.errors) == prior_errors:
+            report.good(f"{fname}:fixture 结构与枚举合法")
 
 
-def verify_openapi_routes(report: Report) -> None:
+def verify_openapi_routes(report: Report, *, schema: dict | None = None) -> None:
     """导出 OpenAPI 并确认关键 agent 路由已注册。"""
     from app.main import create_app
 
-    app = create_app()
-    schema = app.openapi()
+    if schema is None:
+        schema = create_app().openapi()
     paths = schema.get("paths", {})
 
     expected_prefixes = [
@@ -248,15 +252,30 @@ def verify_openapi_routes(report: Report) -> None:
         "/api/v1/notification-sources",
     ]
     for prefix in expected_prefixes:
-        found = any(p.startswith(prefix) for p in paths)
+        found = any(p == prefix or p.startswith(prefix + "/") for p in paths)
         if not found:
             report.fail(f"OpenAPI 缺失路由前缀:{prefix}")
         else:
             report.good(f"OpenAPI 路由存在:{prefix}")
 
+    bearer_schemes = {name for name, value in schema.get("components", {}).get("securitySchemes", {}).items()
+                      if value.get("type") == "http" and value.get("scheme", "").lower() == "bearer"}
+    for path, operations in paths.items():
+        if not any(path == prefix or path.startswith(prefix + "/") for prefix in expected_prefixes):
+            continue
+        for method, operation in operations.items():
+            if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+            security = operation.get("security", schema.get("security", []))
+            # OpenAPI security 数组中的分支为 OR;任一匿名分支都会绕过 Bearer。
+            if not security or any(not (set(branch) & bearer_schemes) for branch in security):
+                report.fail(f"{method.upper()} {path}:必须声明 Bearer 鉴权")
+
     # 检查 SSE 端点不含 token query 参数
     sse_path = "/api/v1/agent-runs/{run_id}/events/stream"
-    if sse_path in paths:
+    if sse_path not in paths:
+        report.fail(f"OpenAPI 缺失 SSE 路由:{sse_path}")
+    else:
         get_op = paths[sse_path].get("get", {})
         params = get_op.get("parameters", [])
         for param in params:

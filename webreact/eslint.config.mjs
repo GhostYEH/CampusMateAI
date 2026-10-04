@@ -24,6 +24,7 @@ export default [
       "react/jsx-uses-vars": "error",
       "react/jsx-key": "error",
       "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
   {

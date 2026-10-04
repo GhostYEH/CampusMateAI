@@ -542,6 +542,7 @@ class ChaoxingClient:
         self._assignments_cache: list[dict] | None = None
         self._notices_cache: list[dict] | None = None
         self._course_chapters_cache: dict[tuple[str, str, str], dict] = {}
+        self.assignment_score_enrichment_error: str | None = None
 
     @staticmethod
     def _mobile_headers() -> dict[str, str]:
@@ -1201,29 +1202,40 @@ class ChaoxingClient:
         except httpx.HTTPStatusError as e:
             raise ChaoxingFetchError(f"http_error_{e.response.status_code}") from e
 
-    async def _get_text(self, url: str, attempts: int = 2) -> str:
+    async def _get_text(self, url: str, attempts: int = 2, *, raise_on_failure: bool = False) -> str:
         """带一次重试的文本抓取。学习通 TLS 偶发 SSLV3_ALERT_BAD_RECORD_MAC，
-        失败返回空串由调用方降级，绝不抛出中断同步。"""
+        默认失败返回空串；补分批次可要求明确错误，避免把网络失败当成未批阅。"""
         for attempt in range(attempts):
             try:
                 response = await self.client.get(url, follow_redirects=True)
+                if raise_on_failure:
+                    auth_error = _auth_error(response)
+                    if auth_error:
+                        raise ChaoxingFetchError(auth_error)
+                    response.raise_for_status()
                 return response.text or ""
-            except (httpx.RequestError, httpx.HTTPStatusError, OSError):
+            except (httpx.RequestError, httpx.HTTPStatusError, OSError) as error:
                 if attempt + 1 < attempts:
                     await asyncio.sleep(0.8)
+                elif raise_on_failure:
+                    code = (f"http_error_{error.response.status_code}"
+                            if isinstance(error, httpx.HTTPStatusError) else "network_error")
+                    raise ChaoxingFetchError(code) from error
         return ""
 
-    async def get_assignment_report(self, work_url: str) -> tuple[float | None, float | None]:
+    async def get_assignment_report(
+        self, work_url: str, *, raise_on_failure: bool = False,
+    ) -> tuple[float | None, float | None]:
         """抓单个作业的报告页取分，返回 (得分, 满分)。
 
         学习通作业列表页只给状态(未提交/待批阅/已完成)，**不含分数**；
         得分只出现在作业报告页: 先用作业详情页里的 workId/workAnswerId 等参数
         拼出 selectWorkQuestionYiPiYue 地址，再解析大号分数节点。
-        任何失败都返回 (None, None) —— 分数属于增量信息，绝不能中断同步。
+        默认失败返回 (None, None)；补分批次启用 raise_on_failure 后会记录抓取错误。
         """
         if not work_url:
             return (None, None)
-        detail_html = await self._get_text(str(work_url))
+        detail_html = await self._get_text(str(work_url), raise_on_failure=raise_on_failure)
         if not detail_html:
             return (None, None)
         params: dict[str, str] = {}
@@ -1244,7 +1256,7 @@ class ChaoxingClient:
             f"&workId={params['workId']}&knowledgeId=0&status=4&classId={params['classId']}"
             f"&oldWorkId=&mooc=1&ut=s&cpi={params['cpi']}"
         )
-        report_html = await self._get_text(report_url)
+        report_html = await self._get_text(report_url, raise_on_failure=raise_on_failure)
         return ChaoxingParser.parse_report_score(report_html)
 
     async def enrich_assignment_scores(self, assignments: list[dict], *,
@@ -1258,8 +1270,10 @@ class ChaoxingClient:
         - concurrency: 并发上限;
         - budget_seconds: 整批总时间预算。前端同步请求超时是 120 秒，补抓必须留出
           余量，超预算的作业本轮直接跳过，下次同步继续补(渐进收敛)。
-        失败静默跳过，绝不抛出。
+        单项失败不阻止其它补分；返回成功数量，并通过 assignment_score_enrichment_error
+        暴露稳定错误码供同步 section 报告。取消请求仍向上传播。
         """
+        self.assignment_score_enrichment_error = None
         targets = [
             item for item in assignments
             if item.get("status") == "completed"
@@ -1280,14 +1294,21 @@ class ChaoxingClient:
             async with semaphore:
                 if loop.time() >= deadline:
                     return
-                score, score_max = await self.get_assignment_report(str(item["link"]))
+                score, score_max = await self.get_assignment_report(str(item["link"]), raise_on_failure=True)
                 if score is not None:
                     item["score"] = score
                     if score_max is not None:
                         item["score_max"] = score_max
                     fetched += 1
 
-        await asyncio.gather(*(worker(item) for item in targets), return_exceptions=True)
+        results = await asyncio.gather(*(worker(item) for item in targets), return_exceptions=True)
+        for result in results:
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            if isinstance(result, Exception) and self.assignment_score_enrichment_error is None:
+                self.assignment_score_enrichment_error = (
+                    result.code if isinstance(result, ChaoxingFetchError) else "unexpected_error"
+                )
         return fetched
 
     async def get_all_notices(self) -> list[dict]:

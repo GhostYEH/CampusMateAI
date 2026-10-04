@@ -309,7 +309,7 @@ def _sync_container(db: Database, client: _FakeChaoxingClient):
     chaoxing_repo = ChaoxingRepository(db)
     chaoxing_repo.save_credentials("user1", {"cookie": "test-only"})
     extraction = SimpleNamespace(
-        _rule_extract=lambda *args, **kwargs: SimpleNamespace(actionable=False)
+        extract_bounded=lambda *args, **kwargs: SimpleNamespace(actionable=False)
     )
     container = SimpleNamespace(
         chaoxing_repository=chaoxing_repo,
@@ -534,7 +534,7 @@ async def test_notice_extraction_failure_log_does_not_include_notice_text(caplog
         def fail_extract(*args, **kwargs):
             raise RuntimeError("通知正文私密哨兵")
 
-        container.notice_extraction._rule_extract = fail_extract
+        container.notice_extraction.extract_bounded = fail_extract
         user = UserRow(
             id="user1", username="user1", password_hash="hash", role="student"
         )

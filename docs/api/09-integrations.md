@@ -1618,7 +1618,7 @@ Web 封装：`probeEduPortal`（[webreact/src/data/api.js](../../webreact/src/da
 
 实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`discovery_submit_url`。
 
-Web 封装：`submitEduUrl`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 用户手动提交教务系统 URL。
 

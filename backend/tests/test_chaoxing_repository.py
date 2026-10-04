@@ -1,14 +1,17 @@
 """Sync read models must filter by user, source, course and active task status."""
 from types import SimpleNamespace
+import sqlite3
 
 import pytest
 
 from app.database.sqlite_db import Database
-from app.repositories.chaoxing_repository import ChaoxingRepository
+from app.core.security import encrypt
+from app.repositories.chaoxing_repository import ChaoxingCredentialsUnavailable, ChaoxingRepository
 from app.repositories.course_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
 from app.repositories.personal_task_repository import PersonalTaskRepository
 from app.services.chaoxing.sync_service import is_assignment_duplicate
+from app.services.chaoxing.sync_facts import last_chaoxing_sync_at
 
 
 @pytest.fixture
@@ -22,11 +25,78 @@ def sync_repositories():
                     "VALUES (?, ?, 'hash', 'now', 'now')", (user, user),
                 )
         yield SimpleNamespace(
+            db=database,
             sync=ChaoxingRepository(database), courses=CourseRepository(database),
             tasks=PersonalTaskRepository(database), notices=NoticeRepository(database),
         )
     finally:
         database.dispose()
+
+
+@pytest.mark.parametrize("stored", [
+    "damaged-ciphertext",
+    encrypt("private-content-not-json"),
+    encrypt('["private-cookie"]'),
+    encrypt('{"cookie": 123}'),
+])
+def test_existing_unreadable_credentials_raise_instead_of_looking_disconnected(sync_repositories, stored):
+    repos = sync_repositories
+    assert repos.sync.get_credentials("u") is None
+    repos.sync.save_credentials("u", {"cookie": "synthetic"})
+    with repos.db.transaction() as conn:
+        conn.execute("UPDATE chaoxing_credentials SET encrypted_cookies=? WHERE user_id='u'", (stored,))
+    with pytest.raises(ChaoxingCredentialsUnavailable) as caught:
+        repos.sync.get_credentials("u")
+    assert caught.value.http_status == 503
+    assert caught.value.code == "CHAOXING_CREDENTIALS_UNAVAILABLE"
+    assert "private" not in str(caught.value)
+    assert stored not in str(caught.value)
+    repos.sync.save_credentials("u", {"cookie": "recovered"})
+    assert repos.sync.get_credentials("u") == {"cookie": "recovered"}
+
+
+@pytest.mark.parametrize("operation", ["status", "sync"])
+def test_corrupted_credentials_return_service_error_without_calling_provider(sync_repositories, monkeypatch, operation):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import chaoxing
+    from app.core.exceptions import register_exception_handlers
+
+    repos = sync_repositories
+    repos.sync.save_credentials("u", {"cookie": "synthetic"})
+    with repos.db.transaction() as conn:
+        conn.execute("UPDATE chaoxing_credentials SET encrypted_cookies='damaged' WHERE user_id='u'")
+    chaoxing._status_cache.clear()
+    container = SimpleNamespace(chaoxing_repository=repos.sync)
+
+    def unexpected_provider(*args, **kwargs):
+        pytest.fail("Corrupt credentials must be reported before making external requests")
+
+    monkeypatch.setattr(chaoxing, "ChaoxingClient", unexpected_provider)
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/operation")
+    async def run_operation():
+        if operation == "status":
+            return await chaoxing.get_chaoxing_status(user=SimpleNamespace(id="u"), container=container)
+        return await chaoxing._perform_sync_chaoxing(SimpleNamespace(id="u"), container)
+
+    with TestClient(app) as client:
+        response = client.get("/operation")
+    assert response.status_code == 503
+    assert response.json()["code"] == "CHAOXING_CREDENTIALS_UNAVAILABLE"
+    assert "damaged" not in response.text
+
+
+def test_last_successful_sync_propagates_database_errors(sync_repositories):
+    repos = sync_repositories
+    container = SimpleNamespace(chaoxing_repository=repos.sync)
+    assert last_chaoxing_sync_at(container, "u") is None
+    with repos.db.transaction() as conn:
+        conn.execute("DROP TABLE chaoxing_exams")
+    with pytest.raises(sqlite3.OperationalError, match="chaoxing_exams"):
+        last_chaoxing_sync_at(container, "u")
 
 
 def test_synced_counts_filter_user_source_and_pending_status(sync_repositories):

@@ -4,29 +4,12 @@
  * 错误通过 contracts.userErrorMessage 转换为中文文案。
  */
 import { client } from "./api.js";
-import { itemsOf, userErrorMessage } from "./contracts.js";
+import { itemsOf, normalizeApiError } from "./contracts.js";
 
 function _wrap(promise) {
   return promise.then(
     (resp) => (resp.status === 204 ? null : resp.data),
-    (error) => {
-      if (error.response) {
-        const body = error.response.data || {};
-        const msg = userErrorMessage(error);
-        const err = new Error(msg);
-        err.code = body.code || "UNKNOWN";
-        err.status = error.response.status;
-        throw err;
-      }
-      if (error?.request) {
-        const err = new Error("网络连接失败，请稍后重试");
-        err.code = "NETWORK_ERROR";
-        throw err;
-      }
-      const err = new Error(error?.message || "网络连接失败，请稍后重试");
-      err.code = error?.code || "NETWORK_ERROR";
-      throw err;
-    },
+    (error) => { throw normalizeApiError(error); },
   );
 }
 

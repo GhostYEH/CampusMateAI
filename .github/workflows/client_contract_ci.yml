@@ -99,6 +99,12 @@ jobs:
         working-directory: webreact
         run: npm test
 
+      - name: Lint and TypeScript validation
+        working-directory: webreact
+        run: |
+          npm run lint
+          npm run typecheck
+
       - name: Production build
         working-directory: webreact
         run: npm run build

@@ -623,7 +623,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
   const pollScope = pollScopeRef.current;
   // 课程/会话作用域的 epoch：异步结果写回前必须确认自己没被切换作废。
   const guard = useRef(createEpochGuard()).current;
-  const isCurrent = (myEpoch) => guard.isCurrent(myEpoch);
+  const isCurrent = useCallback((myEpoch) => guard.isCurrent(myEpoch), [guard]);
 
   const stopPoll = useCallback(() => {
     pollScope.stop();
@@ -668,7 +668,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
         setItems([]);
       }
     },
-    [courseId],
+    [courseId, isCurrent],
   );
 
   const loadPlan = useCallback(
@@ -683,7 +683,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
         if (isCurrent(myEpoch)) setPlanLoading(false);
       }
     },
-    [courseId],
+    [courseId, isCurrent],
   );
 
   // 切换课程：递增 epoch 让所有在途请求作废，并清空上一门课的全部状态。
@@ -714,7 +714,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
   useEffect(() => {
     if (status.loading || !status.enabled) return;
     loadPlan(mode, guard.current);
-  }, [courseId, mode, status.loading, status.enabled, loadPlan]);
+  }, [courseId, mode, status.loading, status.enabled, loadPlan, guard]);
 
   const loadComposition = useCallback(
     async (sess, myEpoch) => {
@@ -734,7 +734,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
         if (isCurrent(myEpoch)) setCompositionLoading(false);
       }
     },
-    [courseId],
+    [courseId, isCurrent],
   );
 
   const schedulePoll = useCallback(
@@ -767,7 +767,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
         }
       }, delay, myToken);
     },
-    [courseId, loadComposition, loadOverview, pollScope],
+    [courseId, loadComposition, loadOverview, pollScope, isCurrent],
   );
 
   /**
@@ -806,7 +806,7 @@ export default function InteractiveClassroomPanel({ courseId, trustedEmbedOrigin
         if (isCurrent(myEpoch)) setError(interactiveErrorText(err, "课堂读取失败"));
       }
     },
-    [courseId, loadComposition, pollScope, schedulePoll, stopPoll],
+    [courseId, loadComposition, schedulePoll, stopPoll, isCurrent],
   );
 
   const startGenerate = async (targetMode = mode, retire = null) => {

@@ -1,3 +1,4 @@
+import { userErrorMessage } from "../data/contracts.js";
 import "../styles/magicclass-workbench.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -15,7 +16,7 @@ import { formatDateTime } from "../utils/date.js";
 
 const MODES = [["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"], ["diagram", "图示"], ["code", "代码练习"], ["game", "游戏"], ["visualization3d", "3D 可视化"], ["procedural-skill", "程序技能"]];
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
-const errorText = (error, fallback = "工作台加载失败，请重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "工作台加载失败，请重试") => userErrorMessage(error, fallback);
 
 function saveBlob(blob, filename) {
   if (typeof document === "undefined" || typeof URL === "undefined") return;
@@ -103,7 +104,7 @@ export default function MagicClassWorkspacePage() {
     if (loading || busy || !workspace || !launchPrompt || stages.length > 0 || launchStarted.current) return;
     launchStarted.current = true;
     setPrompt(launchPrompt);
-    void generatePrompt(launchPrompt);
+    void generatePromptRef.current(launchPrompt);
   }, [loading, busy, workspace, stages.length, launchPrompt]);
 
   const pollJob = useCallback(async (jobId, routeMine = routeEpoch.current, pollMine = pollEpoch.current + 1) => {
@@ -154,6 +155,10 @@ export default function MagicClassWorkspacePage() {
       }
     } finally { if (routeMine === routeEpoch.current) setBusy(false); }
   }
+  // The launch effect runs for the durable launch identity, not every render
+  // of its imperative generate action (which also serves the editor button).
+  const generatePromptRef = useRef(generatePrompt);
+  generatePromptRef.current = generatePrompt;
   async function retryJob() {
     if (!job?.id) return;
     const routeMine = routeEpoch.current;

@@ -2,6 +2,7 @@ import React from "react";
 import { Button } from "../Primitives.jsx";
 import { evaluateQuiz, normalizeQuizQuestions } from "../../features/magicclass/sceneRuntimeModel.js";
 import * as api from "../../data/api.js";
+import { userErrorMessage } from "../../data/contracts.js";
 
 function storageKey(sceneId) {
   return sceneId ? `campusmate:magicclass:quiz:${sceneId}` : "";
@@ -26,47 +27,142 @@ function isAnswered(question, value) {
   return Array.isArray(value) ? value.length > 0 : String(value || "").trim().length > 0;
 }
 
-export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
+export default function QuizRuntimePanel(props) {
+  const identity = [props.courseId, props.workspaceId, props.stageId, props.sceneId].join(":");
+  return <QuizAttemptPanel key={identity} {...props} />;
+}
+
+function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
   const [answers, setAnswers] = React.useState(saved?.answers || {});
   const [review, setReview] = React.useState(saved?.review || null);
   const [remoteAttemptId, setRemoteAttemptId] = React.useState(saved?.attempt_id || "");
+  const [syncError, setSyncError] = React.useState(saved?.pending_sync ? "上次答题记录尚未同步，请重试同步。" : "");
+  const [syncing, setSyncing] = React.useState(false);
+  const [loadError, setLoadError] = React.useState("");
+  const [loadPending, setLoadPending] = React.useState(Boolean(courseId && workspaceId && stageId && sceneId));
+  const [loadRetry, setLoadRetry] = React.useState(0);
+  const mounted = React.useRef(false);
+  const edited = React.useRef(Boolean(saved?.pending_sync));
+  const writer = React.useRef({
+    queue: Promise.resolve(), attemptId: saved?.attempt_id || `${stageId}:${sceneId}`,
+    ready: null, readVersion: 0, sequence: 0, pending: 0, startNew: Boolean(saved?.start_new_attempt),
+    startNewBase: saved?.start_new_base_id || saved?.attempt_id || "",
+    startNewUncertain: Boolean(saved?.start_new_attempt),
+  });
+  React.useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
-  const persistRemote = React.useCallback(async (nextPhase, nextAnswers, nextReview = review, startNewAttempt = false) => {
-    if (!courseId || !workspaceId || !stageId || !sceneId) return null;
-    try {
-      return await api.saveMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId, {
-        attempt_id: remoteAttemptId || `${stageId}:${sceneId}`,
-        phase: nextPhase === "answering" ? "draft" : nextPhase === "submitted" ? "submitted" : nextPhase === "review" ? "reviewed" : "draft",
-        answers: nextAnswers,
-        results: nextReview?.results || [],
-        ...(startNewAttempt ? { start_new_attempt: true } : {}),
-      });
-    } catch {
-      return null;
+  const persistRemote = React.useCallback((nextPhase, nextAnswers, nextReview = null, startNewAttempt = false, resuming = false) => {
+    if (!courseId || !workspaceId || !stageId || !sceneId) return Promise.resolve(null);
+    const session = writer.current;
+    if (startNewAttempt) {
+      session.startNew = true;
+      session.startNewBase = session.attemptId;
+      session.startNewUncertain = false;
     }
-  }, [courseId, workspaceId, stageId, sceneId, remoteAttemptId, review]);
+    const sequence = ++session.sequence;
+    session.pending += 1;
+    setSyncing(true);
+    const snapshot = { phase: nextPhase, answers: nextAnswers, review: nextReview };
+    saveAttempt(sceneId, { ...snapshot, attempt_id: session.attemptId, pending_sync: true, start_new_attempt: session.startNew, start_new_base_id: session.startNewBase });
+    // Drafts and submission transitions must reach the server in order.
+    const request = session.queue.then(async () => {
+      const phases = nextPhase === "review" ? ["submitted", "reviewed"] : [nextPhase === "submitted" ? "submitted" : "draft"];
+      let current;
+      if (session.startNew && session.startNewUncertain) {
+        current = await api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId);
+        // Creation may have committed even when its response was lost. Adopt
+        // the server's successor instead of issuing another create command.
+        if (current?.attempt_id && current.attempt_id !== session.startNewBase) {
+          session.attemptId = current.attempt_id;
+          session.startNew = false;
+          session.startNewUncertain = false;
+        }
+      }
+      if (resuming && !session.startNew) {
+        current ||= await api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId);
+        if (current?.attempt_id) session.attemptId = current.attempt_id;
+        if (nextPhase === "review" && current?.state?.phase === "reviewed") phases.shift();
+        if (mounted.current) setLoadError("");
+      } else await session.ready;
+      for (const phase of phases) {
+        if (session.startNew) session.startNewUncertain = true;
+        const remote = await api.saveMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId, {
+          attempt_id: session.attemptId, phase, answers: nextAnswers,
+          results: phase === "reviewed" ? nextReview?.results || [] : [],
+          ...(session.startNew ? { start_new_attempt: true } : {}),
+        });
+        session.startNew = false;
+        session.startNewUncertain = false;
+        if (remote?.attempt_id) session.attemptId = remote.attempt_id;
+      }
+      if (mounted.current) setRemoteAttemptId(session.attemptId);
+      if (sequence === session.sequence) {
+        saveAttempt(sceneId, { ...snapshot, attempt_id: session.attemptId, pending_sync: false });
+        if (mounted.current) setSyncError("");
+      }
+      return session.attemptId;
+    }).catch((error) => {
+      if (mounted.current) setSyncError(userErrorMessage(error, "答题记录尚未同步，请重试同步。"));
+      return null;
+    }).finally(() => {
+      session.pending -= 1;
+      if (mounted.current && session.pending === 0) setSyncing(false);
+    });
+    session.queue = request;
+    return request;
+  }, [courseId, workspaceId, stageId, sceneId]);
 
   React.useEffect(() => {
     let cancelled = false;
     if (!courseId || !workspaceId || !stageId || !sceneId) return undefined;
-    void api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId).then((remote) => {
+    const session = writer.current;
+    setLoadPending(true);
+    const readVersion = ++session.readVersion;
+    const ready = api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId).then((remote) => {
+      if (readVersion !== session.readVersion) return;
+      session.attemptId = remote?.attempt_id || session.attemptId;
       if (cancelled) return;
+      setLoadError("");
       setRemoteAttemptId(remote?.attempt_id || "");
+      if (edited.current) return;
       if (!remote?.state) return;
       const state = remote.state;
-      const nextPhase = state.phase === "reviewed" ? "review" : state.phase === "draft" && Object.keys(state.answers || {}).length ? "answering" : "intro";
+      const submitted = state.phase === "submitted";
+      const nextPhase = state.phase === "reviewed" || submitted ? "review" : state.phase === "draft" && Object.keys(state.answers || {}).length ? "answering" : "intro";
+      const evaluation = evaluateQuiz(questions, state.answers || {});
+      const nextReview = nextPhase === "review" ? {
+        ...evaluation,
+        results: state.phase === "reviewed" && state.results?.length === questions.length ? state.results : evaluation.results,
+      } : null;
       setPhase(nextPhase);
       setAnswers(state.answers || {});
-      setReview(state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null);
-      try { window.localStorage.setItem(storageKey(sceneId), JSON.stringify({ phase: nextPhase, answers: state.answers || {}, review: state.phase === "reviewed" ? { ...evaluateQuiz(questions, state.answers || {}), results: state.results || [] } : null, attempt_id: remote.attempt_id })); } catch { /* The server retains progress when local storage is unavailable. */ }
-    }).catch(() => {});
+      setReview(nextReview);
+      if (submitted) {
+        edited.current = true;
+        setSyncError("答案已提交，结果尚未同步，请重试同步。");
+      }
+      saveAttempt(sceneId, { phase: nextPhase, answers: state.answers || {}, review: nextReview, attempt_id: remote.attempt_id, pending_sync: submitted });
+    }).catch((error) => {
+      if (!cancelled) setLoadError(userErrorMessage(error, "无法读取已保存的答题记录，请重试读取。"));
+      throw error;
+    }).finally(() => {
+      if (!cancelled) setLoadPending(false);
+    });
+    // A fast first click may update local answers, but cannot write against an
+    // unresolved placeholder while the server already has a retry attempt.
+    session.ready = ready;
+    void ready.catch(() => {}); // The load error is displayed above; writes still receive the rejection.
     return () => { cancelled = true; };
-  }, [courseId, workspaceId, stageId, sceneId, questions]);
+  }, [courseId, workspaceId, stageId, sceneId, questions, loadRetry]);
 
   function persist(nextPhase, nextAnswers, nextReview = review) {
+    edited.current = true;
     saveAttempt(sceneId, { phase: nextPhase, answers: nextAnswers, review: nextReview, attempt_id: remoteAttemptId });
   }
 
@@ -83,10 +179,7 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, cou
     setReview(result);
     setPhase("review");
     persist("review", answers, result);
-    void (async () => {
-      await persistRemote("submitted", answers, null);
-      await persistRemote("review", answers, result);
-    })();
+    void persistRemote("review", answers, result);
   }
 
   function retry() {
@@ -94,24 +187,32 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, cou
     setReview(null);
     setPhase("answering");
     persist("answering", {}, null);
-    void persistRemote("answering", {}, null, true).then((remote) => {
-      if (remote?.attempt_id) setRemoteAttemptId(remote.attempt_id);
-    });
+    void persistRemote("answering", {}, null, true);
   }
 
   const allAnswered = questions.length > 0 && questions.every((question) => isAnswered(question, answers[question.id]));
   if (!questions.length) return <p className="magicclass-hint">这份测验还没有题目。</p>;
+  const syncNotice = loadError ? <div className="magicclass-hint magicclass-hint--error" role="alert">
+    <p>答题记录读取失败：{loadError}</p>
+    <Button type="button" variant="secondary" onClick={() => setLoadRetry((count) => count + 1)}>重试读取</Button>
+  </div> : syncError ? <div className="magicclass-hint magicclass-hint--error" role="alert">
+    <p>答题记录同步失败：{syncError} 当前答案仍保留在页面中。</p>
+    <Button type="button" variant="secondary" disabled={syncing} onClick={() => { void persistRemote(phase, answers, review, false, true); }}>重试同步</Button>
+  </div> : syncing ? <p className="magicclass-hint" role="status">正在同步答题记录…</p>
+    : loadPending ? <p className="magicclass-hint" role="status">正在读取答题记录…</p> : null;
 
   if (phase === "intro") return <section className="magicclass-quiz-runtime" aria-label="测验开始">
+    {syncNotice}
     <div className="magicclass-runtime-cover">
       <span className="magicclass-runtime-kicker">互动测验</span>
       <strong>{questions.length} 道题 · 共 {questions.reduce((sum, question) => sum + question.points, 0)} 分</strong>
       <p>完成答题后提交，系统会立即给出得分和逐题解析。</p>
-      <Button type="button" onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
+      <Button type="button" disabled={loadPending || Boolean(loadError)} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
     </div>
   </section>;
 
   if (phase === "review" && review) return <section className="magicclass-quiz-runtime" aria-label="测验结果">
+    {syncNotice}
     <div className="magicclass-runtime-result">
       <span className="magicclass-runtime-kicker">测验完成</span>
       <strong data-testid="quiz-score">得分 {review.score} / {review.total}</strong>
@@ -126,10 +227,11 @@ export default function QuizRuntimePanel({ questions: rawQuestions, sceneId, cou
         </li>;
       })}
     </ol>
-    <Button type="button" variant="secondary" onClick={retry}>重新作答</Button>
+    <Button type="button" variant="secondary" disabled={syncing || loadPending || Boolean(loadError)} onClick={retry}>重新作答</Button>
   </section>;
 
   return <section className="magicclass-quiz-runtime" aria-label="测验答题">
+    {syncNotice}
     <div className="magicclass-runtime-progress"><strong>答题中</strong><span>{Object.values(answers).filter((value) => isAnswered({ type: "single" }, value)).length} / {questions.length} 已完成</span></div>
     <form onSubmit={submitAnswers}>
       <ol className="magicclass-quiz-runtime__questions">

@@ -209,6 +209,23 @@ async def test_expired_lease_uses_handler_recovery_before_requeue(runtime):
 
 
 @pytest.mark.asyncio
+async def test_worker_recovers_legacy_naive_lease_without_mixed_timezone_comparison(runtime):
+    run_id = _queued(runtime)
+    clock = _Clock()
+    handler = _Handler()
+    runtime.claim_next_run(
+        owner="legacy-worker", now=clock().isoformat(),
+        lease_expires_at=(clock() - timedelta(seconds=1)).replace(tzinfo=None).isoformat(),
+    )
+    worker = _worker(runtime, handler, clock)
+    assert (await worker.run_once()).action == "recovered"
+    assert runtime.get_run(run_id)["status"] == "QUEUED"
+    assert handler.recoveries == 1
+    assert (await worker.run_once()).action == "executed"
+    assert runtime.get_run(run_id)["status"] == "SUCCEEDED"
+
+
+@pytest.mark.asyncio
 async def test_awaiting_approval_releases_lease_and_is_not_reclaimed(runtime):
     run_id = _queued(runtime)
     worker = _worker(runtime, _Handler(approval=True), _Clock())

@@ -262,10 +262,7 @@ class ChaoxingSyncService:
         # Automatic synchronization must remain bounded even when the external
         # LLM is slow. The deterministic extractor covers action/deadline rules;
         # manual notice ingestion can still use the richer LLM path.
-        rule_extract = getattr(dependencies.notice_extraction, "_rule_extract", None)
-        if callable(rule_extract):
-            return rule_extract(content, source_name=course["name"], published_at=published_at)
-        return await dependencies.notice_extraction.extract(
+        return dependencies.notice_extraction.extract_bounded(
             content, source_name=course["name"], published_at=published_at
         )
 
@@ -421,7 +418,7 @@ class ChaoxingSyncService:
 
     async def _enrich_assignment_scores(
         self, state: _SyncState, assignment_batches: list[tuple[dict, list[dict]]],
-    ) -> None:
+    ) -> str | None:
         dependencies = self._dependencies
         user = state.user
         client = state.client
@@ -440,8 +437,16 @@ class ChaoxingSyncService:
                 ]
                 stats["scores_pending"] = len(candidates)
                 stats["scores_fetched"] = await client.enrich_assignment_scores(candidates)
-            except Exception:
+                error_code = getattr(client, "assignment_score_enrichment_error", None)
+                if error_code:
+                    state.warnings.append(f"assignment_scores:{error_code}")
+                    return f"score_enrichment:{error_code}"
+            except Exception as error:
                 self._log.warning("Chaoxing assignment score enrichment failed", exc_info=False)
+                error_code = error.code if isinstance(error, ChaoxingFetchError) else "unexpected_error"
+                state.warnings.append(f"assignment_scores:{error_code}")
+                return f"score_enrichment:{error_code}"
+        return None
 
     def _save_assignment(self, state: _SyncState, course: dict, assignment: dict) -> None:
         dependencies = self._dependencies
@@ -611,18 +616,19 @@ class ChaoxingSyncService:
         stats = state.stats
         sections = state.sections
         assignment_batches, assignment_error = await self._fetch_assignment_batches(state)
-        await self._enrich_assignment_scores(state, assignment_batches)
+        score_error = await self._enrich_assignment_scores(state, assignment_batches)
         for course, assignments in assignment_batches:
             for assignment in assignments:
                 self._save_assignment(state, course, assignment)
         sections["assignments"] = {
-            "status": "failed" if assignment_error else "complete",
+            "status": "failed" if assignment_error else "partial" if score_error else "complete",
             "item_count": stats["assignments_fetched"],
             "last_synced_at": now_iso,
-            "error_code": assignment_error,
+            "error_code": assignment_error or score_error,
             "error_message": (
-                None if assignment_error is None
-                else "作业列表抓取失败，已保留上一次同步到的作业"
+                "作业列表抓取失败，已保留上一次同步到的作业" if assignment_error
+                else "作业已同步，部分分数暂时获取失败，将在下次同步重试" if score_error
+                else None
             ),
         }
 
@@ -642,11 +648,7 @@ class ChaoxingSyncService:
         exam_failures = 0
         exam_succeeded = 0
         exam_attempted = 0
-        exam_capable = (
-            hasattr(client, "get_course_exam_candidates")
-            and exam_repo is not None
-            and hasattr(exam_repo, "upsert_exam")
-        )
+        exam_capable = hasattr(client, "get_course_exam_candidates")
         if exam_capable:
             for course_data in courses:
                 course_remote_id = str(course_data.get("course_id") or "")
@@ -812,31 +814,15 @@ class ChaoxingSyncService:
         )
         if existing_notice:
             stats["notices_updated"] += 1
-            existing_content = existing_notice.get("content")
-            # A task proves actionable extraction already succeeded. Without one,
-            # retry unchanged notices so a transient AI failure cannot lose work.
-            if existing_content == notice.get("content") and existing_notice_task:
-                saved_notice = dependencies.notice_repository.create_or_update_notice(
-                    user_id=user.id,
-                    source="chaoxing",
-                    external_id=external_id,
-                    title=notice["title"],
-                    content=notice.get("content"),
-                    course_id=course.get("local_course_id"),
-                    published_at=published_at_iso,
-                    source_url=notice.get("link"),
-                    last_synced_at=now_iso,
-                )
-                _project_learner_event(
-                    dependencies,
-                    action="notice_synced",
-                    subject_type="notice",
-                    subject_id=saved_notice.id,
-                    callback=lambda saved_notice=saved_notice: dependencies.learner_event_service.record_chaoxing_notice_synced(saved_notice),
-                )
-                return
         else:
             stats["notices_created"] += 1
+        # A task proves actionable extraction already succeeded. Without one,
+        # retry unchanged notices so a transient extraction failure cannot lose work.
+        skip_extraction = (
+            existing_notice is not None
+            and existing_notice.get("content") == notice.get("content")
+            and existing_notice_task is not None
+        )
         saved_notice = dependencies.notice_repository.create_or_update_notice(
             user_id=user.id,
             source="chaoxing",
@@ -855,6 +841,8 @@ class ChaoxingSyncService:
             subject_id=saved_notice.id,
             callback=lambda saved_notice=saved_notice: dependencies.learner_event_service.record_chaoxing_notice_synced(saved_notice),
         )
+        if skip_extraction:
+            return
         # 2. 调用 AI 提取判断是否 actionable，如果是则创建/更新 PersonalTask
         try:
             extracted = await self._extract_notice(notice, course)

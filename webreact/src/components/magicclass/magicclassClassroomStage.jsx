@@ -129,7 +129,7 @@ export default function MagicClassClassroomStage({
     setContentByScene({});
   }, [courseId, workspaceId, stageId]);
 
-  const scenes = plan?.scenes || [];
+  const scenes = React.useMemo(() => plan?.scenes || [], [plan?.scenes]);
   const current = scenes[index] || null;
   const currentId = current?.id || "";
   const scene = currentId ? contentByScene[currentId] || null : null;
@@ -240,12 +240,14 @@ export default function MagicClassClassroomStage({
   const [messages, setMessages] = React.useState([]);
   const [discussionError, setDiscussionError] = React.useState("");
   const discussionEpoch = React.useRef(0);
+  const sceneTitleRef = React.useRef(current?.title);
+  sceneTitleRef.current = current?.title;
 
   // 主题默认跟随当前场景。只在**换场景**时重置——跟随每次渲染会把用户正在输入的
   // 内容冲掉。
   React.useEffect(() => {
     discussionEpoch.current += 1; // 作废在飞的讨论
-    setTopic(discussionPromptFor(current?.title || ""));
+    setTopic(discussionPromptFor(sceneTitleRef.current || ""));
     setMessages([]);
     setDiscussionError("");
     setDiscussing(false);

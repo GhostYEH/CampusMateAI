@@ -8,16 +8,16 @@
  */
 import { client } from "./api.js";
 import { normalizeAgentError } from "./agentContracts.js";
+import { normalizeApiError } from "./contracts.js";
 
 function _wrap(promise) {
   return promise.then(
     (resp) => (resp.status === 204 ? null : resp.data),
     (error) => {
       const mapped = normalizeAgentError(error);
-      const err = new Error(mapped.message);
-      err.code = mapped.code;
-      err.status = error?.response?.status;
-      err.request_id = mapped.request_id;
+      const err = normalizeApiError(error);
+      if (!error?.response) mapped.message = err.userMessage;
+      Object.assign(err, mapped, { userMessage: mapped.message });
       throw err;
     },
   );

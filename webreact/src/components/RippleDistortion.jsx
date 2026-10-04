@@ -92,11 +92,13 @@ export default function RippleDistortion({
   const mountRef = useRef(null);
   const configRef = useRef({});
   const uniformsRef = useRef(null);
-  configRef.current = { brushSize, spread, fade, spacing, clickStrength, trigger, enabled };
+  configRef.current = { brushSize, spread, fade, spacing, clickStrength, trigger, enabled,
+    rings, tint, highlightColor, strength, swirl, dispersion, glint, tintAmount, grayscale };
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
+    const initial = configRef.current;
     const reduceMotion = Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
     const renderer = new Renderer({ alpha: false, antialias: false, dpr: Math.min(window.devicePixelRatio || 1, 2) });
     const gl = renderer.gl;
@@ -156,15 +158,15 @@ export default function RippleDistortion({
       uv: { size: 2, data: new Float32Array([0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]) },
       iOffset: { instanced: 1, size: 2, data: offsets }, iScale: { instanced: 1, size: 2, data: scales }, iOpacity: { instanced: 1, size: 1, data: opacities },
     });
-    const waveUniforms = { uRings: { value: rings } };
+    const waveUniforms = { uRings: { value: initial.rings } };
     const waveProgram = new Program(gl, { vertex: waveVertex, fragment: waveFragment, uniforms: waveUniforms, transparent: true, depthTest: false, depthWrite: false, cullFace: false });
     waveProgram.setBlendFunc(gl.ONE, gl.ONE);
     const waveMesh = new Mesh(gl, { geometry, program: waveProgram, frustumCulled: false });
     const displacementTarget = new RenderTarget(gl, { width: 2, height: 2, depth: false, minFilter: gl.LINEAR, magFilter: gl.LINEAR, wrapS: gl.CLAMP_TO_EDGE, wrapT: gl.CLAMP_TO_EDGE });
     const compositeUniforms = {
       uTexture: { value: imageTexture }, uDisplacement: { value: displacementTarget.texture }, uResolution: { value: [1, 1] }, uTextureSize: { value: [1, 1] }, uTexel: { value: [1, 1] },
-      uTint: { value: hexToRGB(tint) }, uHighlight: { value: hexToRGB(highlightColor) }, uStrength: { value: strength }, uSwirl: { value: swirl }, uDispersion: { value: dispersion },
-      uGlint: { value: glint }, uTintAmount: { value: tintAmount }, uGrayscale: { value: grayscale ? 1 : 0 },
+      uTint: { value: hexToRGB(initial.tint) }, uHighlight: { value: hexToRGB(initial.highlightColor) }, uStrength: { value: initial.strength }, uSwirl: { value: initial.swirl }, uDispersion: { value: initial.dispersion },
+      uGlint: { value: initial.glint }, uTintAmount: { value: initial.tintAmount }, uGrayscale: { value: initial.grayscale ? 1 : 0 },
     };
     const compositeMesh = new Mesh(gl, { geometry: new Triangle(gl), program: new Program(gl, { vertex: screenVertex, fragment: compositeFragment, uniforms: compositeUniforms, depthTest: false, depthWrite: false }) });
     uniformsRef.current = { wave: waveUniforms, composite: compositeUniforms };

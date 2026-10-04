@@ -3,14 +3,15 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import * as api from "../data/api.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, userErrorMessage } from "../data/contracts.js";
 import { assignmentStatusLabel, buildContentTree, isCompletedSubmissionStatus, isLocalGradeAssignment, normalizeRemoteNotice } from "../data/alignment.js";
 import { formatDateTime } from "../utils/date.js";
 import InteractiveClassroomPanel from "../components/interactive/InteractiveClassroomPanel.jsx";
+import { useAsyncResource } from "../hooks/useAsyncResource.js";
 
 const list = itemsOf;
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "无截止时间");
-const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "操作失败，请稍后重试") => userErrorMessage(error, fallback);
 const remoteKinds = { chapters: ["chapter"], materials: ["document", "video", "audio", "image", "link", "material", "poll", "live", "task", "quiz"], exams: ["exam", "exam_candidate"], discussions: ["discussion"], announcements: ["notice"], assignments: ["assignment"] };
 const formatSize = (value) => value == null ? "附件" : value < 1024 * 1024 ? `${Math.ceil(value / 1024)} KB` : `${(value / 1024 / 1024).toFixed(1)} MB`;
 
@@ -75,15 +76,15 @@ export default function CourseDetailPage() {
   const [searchParams] = useSearchParams();
   const deepLinkTab = searchParams.get("tab") || "";
   const deepLinkSession = searchParams.get("session") || "";
-  const [data, setData] = useState(null); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [tab, setTab] = useState(deepLinkTab || "overview"); const [expanded, setExpanded] = useState(new Set()); const [grade, setGrade] = useState(null); const [notice, setNotice] = useState(""); const [syncing, setSyncing] = useState(false); const [knowledge, setKnowledge] = useState(null); const [knowledgeLoading, setKnowledgeLoading] = useState(false); const [knowledgeError, setKnowledgeError] = useState("");
+  const { data, loading, error: loadError, reload: load } = useAsyncResource(() => api.getCourseDetail(courseId), [courseId]);
+  const error = loadError ? errorText(loadError, "课程详情加载失败") : "";
+  const { data: knowledge, loading: knowledgeLoading, error: graphError, reload: loadKnowledge } = useAsyncResource(() => api.getCourseKnowledgeGraph(courseId), [courseId]);
+  const knowledgeError = graphError ? errorText(graphError, "知识点数据加载失败") : "";
+  const [tab, setTab] = useState(deepLinkTab || "overview"); const [expanded, setExpanded] = useState(new Set()); const [grade, setGrade] = useState(null); const [notice, setNotice] = useState(""); const [syncing, setSyncing] = useState(false);
   // 同一页面内切换课程时，URL 里的深链要跟着课程变，否则会打开上一门课的课堂。
   useEffect(() => { if (deepLinkTab) setTab(deepLinkTab); }, [courseId, deepLinkTab]);
-  async function load() { setLoading(true); setError(""); try { setData(await api.getCourseDetail(courseId)); } catch (err) { setError(errorText(err, "课程详情加载失败")); } finally { setLoading(false); } }
-  async function loadKnowledge() { setKnowledgeLoading(true); setKnowledgeError(""); try { setKnowledge(await api.getCourseKnowledgeGraph(courseId)); } catch (err) { setKnowledgeError(errorText(err, "知识点数据加载失败")); } finally { setKnowledgeLoading(false); } }
-  useEffect(() => { load(); }, [courseId]);
-  useEffect(() => { loadKnowledge(); }, [courseId]);
-  const classes = data?.classes || [];
-  const remote = data?.remoteContent || [];
+  const classes = useMemo(() => data?.classes || [], [data?.classes]);
+  const remote = useMemo(() => data?.remoteContent || [], [data?.remoteContent]);
   const course = data?.course || {};
   const localAssignments = useMemo(() => classes.flatMap((item) => list(item.assignments).map((assignment) => ({ ...assignment, className: item.name || item.class_name }))), [classes]);
   const localAnnouncements = useMemo(() => classes.flatMap((classItem) => list(classItem.announcements).map((announcement) => ({ ...announcement, className: classItem.name || classItem.class_name }))), [classes]);

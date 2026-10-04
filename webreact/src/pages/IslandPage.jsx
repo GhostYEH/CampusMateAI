@@ -48,7 +48,7 @@ export default function IslandPage() {
   }
   useEffect(() => {
     if (document.documentElement) document.documentElement.dataset.scene = scene;
-  }, []);
+  }, [scene]);
 
   const data = useMemo(() => {
     const now = new Date();

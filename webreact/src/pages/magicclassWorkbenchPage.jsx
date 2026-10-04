@@ -1,3 +1,4 @@
+import { userErrorMessage } from "../data/contracts.js";
 import "../styles/magicclass-workbench.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -111,7 +112,7 @@ const RAIL_WIDTH_DEFAULT = 264;
 const RAIL_WIDTH_MIN = 200;
 const RAIL_WIDTH_MAX = 360;
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
-const errorText = (error, fallback = "工作台加载失败，请重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "工作台加载失败，请重试") => userErrorMessage(error, fallback);
 
 /**
  * 量出工作台顶边到视口顶边的距离，写进 `--ow-top-offset`。

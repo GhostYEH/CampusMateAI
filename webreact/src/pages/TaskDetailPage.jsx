@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { submissionPayload } from "../data/contracts.js";
+import { submissionPayload, userErrorMessage } from "../data/contracts.js";
 import { shouldFinalizeSubmission, submissionActionLabel, submissionStatusLabel } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
 import AssignmentExplainPanel from "../components/AssignmentExplainPanel.jsx";
 import { formatDateTime } from "../utils/date.js";
 
-const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+const errorText = (error, fallback = "操作失败，请稍后重试") => userErrorMessage(error, fallback);
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "未设置截止时间");
 const formatSize = (value) => { const size = Number(value || 0); return size >= 1024 * 1024 ? `${(size / 1024 / 1024).toFixed(1)} MB` : size >= 1024 ? `${Math.round(size / 1024)} KB` : `${size} B`; };
 
@@ -16,8 +16,33 @@ export default function TaskDetailPage() {
   const { kind, id } = useParams(); const navigate = useNavigate(); const assignment = kind === "assignment";
   const [data, setData] = useState(null); const [submission, setSubmission] = useState(null); const [form, setForm] = useState({}); const [answer, setAnswer] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const assignmentClosed = assignment && (data?.status === "closed" || data?.is_closed === true); const readOnly = !assignment && data?.source === "chaoxing"; const assignmentGraded = assignment && (submission?.status === "graded" || submission?.score != null); const submissionLocked = assignmentClosed || assignmentGraded; const submissionStatus = submissionStatusLabel(submission?.status);
-  async function load() { setLoading(true); setError(""); try { if (assignment) { const [item, mine] = await Promise.all([api.getAssignment(id), api.getSubmission(id)]); setData(item); setSubmission(mine); setAnswer(mine?.text_content || ""); } else { const item = await api.getTask(id); setData(item); setForm({ title: item.title || "", description: item.description || "", deadline: item.deadline || "", priority: item.priority || "medium" }); } } catch (err) { setError(errorText(err, "任务详情加载失败")); } finally { setLoading(false); } }
-  useEffect(() => { void load(); }, [kind, id]);
+  const identity = JSON.stringify([kind, id]);
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
+  const requestVersion = useRef(0);
+  const load = useCallback(async () => {
+    if (currentIdentity.current !== identity) return;
+    const version = ++requestVersion.current;
+    const isCurrent = () => currentIdentity.current === identity && version === requestVersion.current;
+    setLoading(true); setError("");
+    try {
+      if (assignment) {
+        const [item, mine] = await Promise.all([api.getAssignment(id), api.getSubmission(id)]);
+        if (!isCurrent()) return;
+        setData(item); setSubmission(mine); setAnswer(mine?.text_content || "");
+      } else {
+        const item = await api.getTask(id);
+        if (!isCurrent()) return;
+        setData(item); setSubmission(null);
+        setForm({ title: item.title || "", description: item.description || "", deadline: item.deadline || "", priority: item.priority || "medium" });
+      }
+    } catch (err) { if (isCurrent()) setError(errorText(err, "任务详情加载失败")); }
+    finally { if (isCurrent()) setLoading(false); }
+  }, [assignment, id, identity]);
+  useEffect(() => {
+    void load();
+    return () => { requestVersion.current += 1; };
+  }, [load]);
   async function save() { if (assignment && submissionLocked) { setNotice(assignmentGraded ? "作业已评分，不能继续编辑" : "作业已关闭，不能保存修改"); return; } setSaving(true); try { if (assignment) await api.saveSubmission(id, submissionPayload(answer)); else await api.updateTask(id, form); setNotice("已保存"); await load(); } catch (err) { setNotice(errorText(err)); } finally { setSaving(false); } }
   async function submit() { if (submissionLocked) { setNotice(assignmentGraded ? "作业已评分，不能再次提交" : "作业已关闭，不能提交"); return; } setSaving(true); try { const saved = await api.saveSubmission(id, submissionPayload(answer, true)); if (shouldFinalizeSubmission(saved)) await api.submitSubmission(saved.id); setNotice("作业已提交"); await load(); } catch (err) { setNotice(errorText(err, "提交失败")); } finally { setSaving(false); } }
   async function toggle() { try { await api.completeTask(id, data.status !== "completed"); setNotice(data.status === "completed" ? "已恢复待办" : "任务已完成"); await load(); } catch (err) { setNotice(errorText(err)); } }

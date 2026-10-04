@@ -5,13 +5,26 @@ import { readFileSync, readdirSync } from 'node:fs';
 const root = new URL('../../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const adapters = new Map(
-  ['agentRuntimeApi', 'learnerStateApi'].map((name) => {
-    const path = `webreact/src/data/${name}.js`;
+  readdirSync(new URL('webreact/src/data/', root)).filter((name) => name.endsWith('.js')).map((name) => {
+    const path = `webreact/src/data/${name}`;
     const source = read(path);
     const exports = new Map(
       [...source.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(\w+)/g)]
         .map((match) => [match[1], source.slice(0, match.index).split('\n').length]),
     );
+    for (const match of source.matchAll(/export\s*\{([^}]+)\}(?:\s+from\s+['"][^'"]+['"])?/g)) {
+      const line = source.slice(0, match.index).split('\n').length;
+      for (const entry of match[1].split(',')) {
+        const names = entry.trim().split(/\s+as\s+/);
+        if (names[0]) exports.set(names.at(-1), line);
+      }
+    }
+    // agentApi exposes callable object members as its documented adapter surface.
+    if (name === 'agentApi.js') {
+      for (const match of source.matchAll(/^\s{2}(\w+):.*=>/gm)) {
+        exports.set(match[1], source.slice(0, match.index).split('\n').length);
+      }
+    }
     return [path, exports];
   }),
 );

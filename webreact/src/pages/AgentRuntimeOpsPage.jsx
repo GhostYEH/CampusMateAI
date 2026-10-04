@@ -105,6 +105,7 @@ export default function AgentRuntimeOpsPage() {
           <input
             type="text"
             value={runId}
+            aria-label="运行 ID"
             placeholder="输入 run_id"
             onChange={(event) => setRunId(event.target.value)}
           />

@@ -29,7 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from ...models.adaptive_intervention import AdaptiveInterventionRow
@@ -43,6 +43,7 @@ from ...schemas.adaptive_intervention import (
     OutcomeEvidenceRef,
     StrategyDecision,
 )
+from .._time import as_utc_assume_utc, parse_iso_assume_utc as _parse_iso
 from .state_outcome_comparator import StateOutcomeComparator
 
 # 判定"存在截止时间压力"的理由码（来自 assessment 的 reason codes）。
@@ -93,19 +94,6 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _parse_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
-
-
 class InterventionOutcomeEvaluator:
     """把干预记录 + 计划观测换算成一份可解释的结果评估。"""
 
@@ -121,7 +109,7 @@ class InterventionOutcomeEvaluator:
         as_of: datetime,
         state_comparison: dict[str, Any] | None = None,
     ) -> OutcomeEvaluationResult:
-        as_of = as_of.astimezone(timezone.utc).replace(microsecond=0)
+        as_of = as_utc_assume_utc(as_of).replace(microsecond=0)
         warnings: list[str] = []
 
         strategy = StrategyDecision.model_validate(json.loads(intervention.strategy_json or "{}"))

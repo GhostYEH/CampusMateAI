@@ -119,7 +119,7 @@ export default function StageEditorPanel({ courseId, workspaceId, stageId, onSav
     };
   }, [scopeKey, load]);
 
-  const scenes = view?.document?.scenes || [];
+  const scenes = React.useMemo(() => view?.document?.scenes || [], [view?.document?.scenes]);
   React.useEffect(() => {
     setSelectedSceneId((current) => scenes.some((scene) => scene.id === current)
       ? current

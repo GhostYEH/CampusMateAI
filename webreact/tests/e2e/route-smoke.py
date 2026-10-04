@@ -23,13 +23,20 @@ ROUTES = [
 CUSTOM_PAGE_CONTENT = {
     "/learning-space": ".learning-space-page [role='alert'], .learning-space-page [role='status'], .learning-space-page iframe",
     "/courses/1/workspaces/1": ".ow-pane-title, .ow-nav[aria-label='工作台导航']",
+    "/admin/agent-runtime": ".floating-nav",
 }
 
 
 def run():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        # Navigation checks use the supported reduced-motion preference so
+        # software-rendered backgrounds do not monopolize the headless renderer.
+        page = browser.new_page(viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+        page.add_init_script("""{
+          window.requestAnimationFrame = callback => window.setTimeout(() => callback(performance.now()), 50);
+          window.cancelAnimationFrame = handle => window.clearTimeout(handle);
+        }""")
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.route("**/api/**", lambda route: route.fulfill(status=404, content_type="application/json", body='{"detail":"frontend smoke fixture"}'))
@@ -52,26 +59,33 @@ def run():
             for route in ROUTES + ["/", "/profile/files", "/profile/learning", "/profile/id-card"]:
                 page.goto(f"{BASE_URL}{route}", wait_until="domcontentloaded", timeout=10000)
                 page.wait_for_load_state("domcontentloaded")
+                if route == "/admin/agent-runtime":
+                    page.wait_for_url(f"{BASE_URL}/home", timeout=10000)
+                    assert page.locator(".agent-ops-page").count() == 0, "student must not see administrator data"
                 try:
                     page.wait_for_selector("main", state="attached", timeout=10_000)
+                    content_selector = CUSTOM_PAGE_CONTENT.get(route, "h1")
+                    page.wait_for_function(
+                        "selector => Boolean(document.querySelector(selector))",
+                        arg=content_selector, polling=100, timeout=10_000,
+                    )
                 except Exception as error:
                     raise AssertionError(f"{route}: {error}") from error
                 page.wait_for_timeout(100)
                 assert page.locator("main").count() > 0, route
-                content_selector = CUSTOM_PAGE_CONTENT.get(route, "h1")
-                page.wait_for_selector(content_selector, state="attached", timeout=10_000)
                 assert page.locator(content_selector).count() > 0, route
                 assert page.locator(".floating-nav").count() == 1, route
                 assert page.locator(".sidebar").count() == 0, route
             if viewport["width"] < 700:
                 page.goto(f"{BASE_URL}/home", wait_until="domcontentloaded", timeout=10000)
+                page.locator(".floating-nav").wait_for(state="visible", timeout=10000)
                 assert page.locator(".floating-nav").count() == 1
                 assert page.locator(".sidebar").count() == 0
             else:
                 page.goto(f"{BASE_URL}/home", wait_until="domcontentloaded", timeout=10000)
                 dock = page.locator(".floating-nav")
-                assert dock.get_by_role("button", name="首页").is_visible()
-                assert dock.get_by_role("button", name="待办与作业").is_visible()
+                dock.get_by_role("button", name="首页", exact=True).wait_for(state="visible", timeout=10000)
+                dock.get_by_role("button", name="待办与作业", exact=True).wait_for(state="visible", timeout=10000)
         assert not errors, errors
         browser.close()
 

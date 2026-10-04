@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as api from "../data/api.js";
-import { itemsOf } from "../data/contracts.js";
+import { itemsOf, userErrorMessage } from "../data/contracts.js";
 import { buildCommentTree } from "../data/alignment.js";
 import { AsyncState, BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 
 import { formatDateTime } from "../utils/date.js";
+import { useAsyncResource } from "../hooks/useAsyncResource.js";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
-const errorText = (error) => error?.response?.data?.detail || error?.response?.data?.message || error?.message || "操作失败，请稍后重试";
+const errorText = (error) => userErrorMessage(error, "操作失败，请稍后重试");
 
 function CommentNode({ item, onReply }) {
   return <article className="comment-row"><span className="avatar avatar-small"><img src={item.author_avatar || "/assets/generated/home-reference-student-avatar.png"} alt="" /></span><div><strong>{item.is_anonymous ? "匿名同学" : item.author_name || "校园用户"}</strong><p>{item.content}</p><small>{dateText(item.created_at)} <button type="button" className="text-link" onClick={() => onReply(item.id)}>回复</button></small>{item.children?.length ? <div className="comment-children">{item.children.map((child) => <CommentNode key={child.id} item={child} onReply={onReply} />)}</div> : null}</div></article>;
@@ -16,10 +17,12 @@ function CommentNode({ item, onReply }) {
 
 export default function CommunityDetailPage() {
   const { postId } = useParams(); const navigate = useNavigate();
-  const [post, setPost] = useState(null); const [comments, setComments] = useState([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
+  const { data, loading, error: loadError, reload: load } = useAsyncResource(() => Promise.all([api.getCommunityPost(postId), api.getComments(postId)]), [postId]);
+  const post = data?.[0] || null;
+  const comments = itemsOf(data?.[1]);
+  const error = loadError ? errorText(loadError) : "";
+  const [notice, setNotice] = useState("");
   const [comment, setComment] = useState(""); const [anonymous, setAnonymous] = useState(false); const [parent, setParent] = useState(null); const [reportOpen, setReportOpen] = useState(false); const [reason, setReason] = useState("其它"); const [reportDetails, setReportDetails] = useState("");
-  async function load() { setLoading(true); setError(""); try { const [nextPost, nextComments] = await Promise.all([api.getCommunityPost(postId), api.getComments(postId)]); setPost(nextPost); setComments(itemsOf(nextComments)); } catch (cause) { setError(errorText(cause)); } finally { setLoading(false); } }
-  useEffect(() => { load(); }, [postId]);
   const commentTree = buildCommentTree(comments);
   async function submitComment(event) { event.preventDefault(); if (!comment.trim()) return; try { await api.createComment(postId, { content: comment.trim(), parent_comment_id: parent, is_anonymous: anonymous }); setComment(""); setParent(null); await load(); } catch (cause) { setNotice(errorText(cause)); } }
   async function report() { try { await api.reportPost({ target_id: postId, reason, details: reportDetails.trim() || null }); setReportOpen(false); setReportDetails(""); setNotice("感谢反馈，我们会处理这条内容"); } catch (cause) { setNotice(errorText(cause)); } }

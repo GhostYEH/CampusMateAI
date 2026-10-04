@@ -1367,7 +1367,7 @@ Web 封装：`deleteTask`（[webreact/src/data/api.js](../../webreact/src/data/a
 
 实现：[backend/app/api/routes/personal_tasks.py](../../backend/app/api/routes/personal_tasks.py)，`rank_importance`。
 
-Web 封装：`rankTasks`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 批量评定任务重要程度(AI 优先 + 规则降级)。
 

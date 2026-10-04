@@ -12,6 +12,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import httpx
 
 from app.database.sqlite_db import Database, PERSONAL_TASK_SCHEMA_SQL
 from app.models.personal_task import PersonalTaskRow
@@ -484,7 +485,8 @@ async def test_get_assignment_report_builds_report_url_and_reads_score():
 
     async def fake_get(url, **kwargs):
         seen.append(str(url))
-        response = type("R", (), {"text": detail_html if len(seen) == 1 else report_html})()
+        response = httpx.Response(200, text=detail_html if len(seen) == 1 else report_html,
+                                  request=httpx.Request("GET", url))
         return response
 
     client.client.get = fake_get
@@ -502,7 +504,8 @@ async def test_get_assignment_report_returns_none_when_params_missing():
     client = ChaoxingClient(cookies={"k": "v"})
 
     async def fake_get(url, **kwargs):
-        return type("R", (), {"text": "<html>已过时效，不能操作!</html>"})()
+        return httpx.Response(200, text="<html>已过时效，不能操作!</html>",
+                              request=httpx.Request("GET", url))
 
     client.client.get = fake_get
     assert await client.get_assignment_report("https://mooc1.chaoxing.com/detail") == (None, None)
@@ -521,7 +524,7 @@ async def test_enrich_scores_only_targets_unscored_completed_assignments():
     ]
     called: list[str] = []
 
-    async def fake_report(link):
+    async def fake_report(link, **kwargs):
         called.append(link)
         return (90.0, None)
 
@@ -542,7 +545,7 @@ async def test_enrich_scores_survives_report_failure():
         {"title": "会成功", "status": "completed", "score": None, "link": "u2"},
     ]
 
-    async def fake_report(link):
+    async def fake_report(link, **kwargs):
         if link == "u1":
             raise RuntimeError("network_error")
         return (75.0, None)
@@ -552,6 +555,50 @@ async def test_enrich_scores_survives_report_failure():
     assert fetched == 1
     assert assignments[0]["score"] is None
     assert assignments[1]["score"] == 75.0
+    assert client.assignment_score_enrichment_error == "unexpected_error"
+
+
+@pytest.mark.parametrize("failure, expected_code", [
+    ("network", "network_error"), ("http", "http_error_503"), ("auth", "reauth_required"),
+])
+@pytest.mark.asyncio
+async def test_enrichment_reports_fetch_failures_preserves_scores_and_resets_errors(monkeypatch, failure, expected_code):
+    from unittest.mock import AsyncMock
+    from copy import deepcopy
+
+    client = ChaoxingClient()
+    assignments = [
+        {"external_id": "bad", "status": "completed", "score": None, "link": "https://example.invalid/bad"},
+        {"external_id": "good", "status": "completed", "score": None, "link": "https://example.invalid/good"},
+    ]
+    detail_html = "workId=1&workAnswerId=2&courseId=3&classId=4&cpi=5"
+
+    async def get_response(url, **kwargs):
+        request = httpx.Request("GET", url)
+        if str(url).endswith("/bad"):
+            if failure == "network":
+                raise httpx.ConnectError("private-cookie-must-not-escape", request=request)
+            return httpx.Response(503 if failure == "http" else 200,
+                                  text="用户登录" if failure == "auth" else "private-provider-error",
+                                  request=request)
+        return httpx.Response(200, request=request,
+                              text='<h2 class="numberH2"><span>95</span>分</h2>'
+                              if "selectWorkQuestionYiPiYue" in str(url) else detail_html)
+
+    monkeypatch.setattr(client.client, "get", get_response)
+    monkeypatch.setattr("app.services.chaoxing.ChaoxingClient.asyncio.sleep", AsyncMock())
+    try:
+        assert await client.enrich_assignment_scores(assignments) == 1
+        assert assignments[0]["score"] is None
+        assert assignments[1]["score"] == 95
+        assert client.assignment_score_enrichment_error == expected_code
+        assert "private" not in client.assignment_score_enrichment_error
+        retry = deepcopy(assignments[1])
+        retry["score"] = None
+        assert await client.enrich_assignment_scores([retry]) == 1
+        assert client.assignment_score_enrichment_error is None
+    finally:
+        await client.client.aclose()
 
 
 @pytest.mark.asyncio
@@ -569,7 +616,7 @@ async def test_enrich_scores_respects_time_budget():
     ]
     called: list[str] = []
 
-    async def slow_report(link):
+    async def slow_report(link, **kwargs):
         called.append(link)
         await asyncio.sleep(1.1)
         return (80.0, None)

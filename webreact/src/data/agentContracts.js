@@ -378,7 +378,7 @@ export function mapAgentError(error) {
  * 网络层错误（无 response）统一映射，避免把 axios 原始英文抛给用户。
  */
 export function mapNetworkError(error) {
-  if (error?.name === "AbortError") {
+  if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") {
     return { code: "ABORTED", message: "已取消", actionable: false, action: null, request_id: null, details: null };
   }
   if (error?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(error?.message))) {

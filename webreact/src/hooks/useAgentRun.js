@@ -7,7 +7,7 @@
  * - 暴露 loading/error/streamStatus/events/cancel/refresh。
  * - 稳定 Idempotency-Key 由调用方在流程状态中保存（见各页面）。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../data/agentRuntimeApi.js";
 import { useAgentSse } from "./useAgentSse.js";
 import { isTerminalRunStatus, runStatusLabel } from "../data/agentContracts.js";
@@ -17,14 +17,17 @@ export function useAgentRun({ runId, enabled = true }) {
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
   const [events, setEvents] = useState([]);
+  const currentRunId = useRef(runId);
+  currentRunId.current = runId;
+  const requestVersion = useRef(0);
 
   const handleEvent = useCallback((payload) => {
-    if (!payload) return;
+    if (!payload || (payload.run_id && payload.run_id !== currentRunId.current)) return;
     setEvents((prev) => {
       if (prev.some((e) => e.sequence === payload.sequence)) return prev;
       return [...prev, payload].sort((a, b) => a.sequence - b.sequence);
     });
-    if (payload.status || payload.phase || payload.progress) {
+    if (payload.status || payload.phase || payload.progress || payload.artifact_id) {
       setRun((prev) => {
         if (!prev) return prev;
         return {
@@ -41,34 +44,46 @@ export function useAgentRun({ runId, enabled = true }) {
   const sse = useAgentSse({ runId, onEvent: handleEvent, enabled: enabled && Boolean(runId) && !isTerminalRunStatus(run?.status) });
 
   const refresh = useCallback(async () => {
-    if (!runId) return;
+    if (!runId || currentRunId.current !== runId) return;
+    const version = ++requestVersion.current;
+    const isCurrent = () => currentRunId.current === runId && version === requestVersion.current;
     setLoading(true);
     setError(null);
     try {
       const data = await api.getAgentRun(runId);
-      setRun(data);
+      if (isCurrent()) setRun(data);
     } catch (err) {
-      setError(err);
+      if (isCurrent()) setError(err);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [runId]);
 
   useEffect(() => {
+    setRun(null);
+    setEvents([]);
     if (!runId) {
-      setRun(null);
+      requestVersion.current += 1;
+      setError(null);
       setLoading(false);
       return;
     }
-    refresh();
+    void refresh();
+    return () => { requestVersion.current += 1; };
   }, [runId, refresh]);
 
   // run 到达终态后,若 artifact_ids 缺失,重新 GET 获取完整产物列表
+  const status = run?.status;
+  const hasArtifacts = Boolean(run?.artifact_ids?.length);
   useEffect(() => {
-    if (run && isTerminalRunStatus(run.status) && runId && (!run.artifact_ids || run.artifact_ids.length === 0)) {
-      api.getAgentRun(runId).then((data) => { setRun(data); }).catch(() => {});
+    let cancelled = false;
+    if (isTerminalRunStatus(status) && runId && !hasArtifacts) {
+      api.getAgentRun(runId).then((data) => {
+        if (!cancelled && currentRunId.current === runId) setRun(data);
+      }).catch(() => {});
     }
-  }, [run?.status, run?.artifact_ids, runId]);
+    return () => { cancelled = true; };
+  }, [status, hasArtifacts, runId]);
 
   const cancel = useCallback(async (idempotencyKey) => {
     if (!runId) return;

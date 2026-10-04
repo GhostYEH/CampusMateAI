@@ -6,6 +6,14 @@ export function useAsyncResource(load, dependencies) {
   const loadRef = useRef(load);
   const mounted = useRef(false);
   const requestVersion = useRef(0);
+  // These values identify the resource, rather than the recreated loader. Use
+  // React's Object.is comparison so equivalent key lists do not refetch.
+  const identityRef = useRef(dependencies);
+  if (dependencies.length !== identityRef.current.length ||
+      dependencies.some((value, index) => !Object.is(value, identityRef.current[index]))) {
+    identityRef.current = dependencies;
+  }
+  const identity = identityRef.current;
   loadRef.current = load;
 
   const reload = useCallback(() => {
@@ -36,7 +44,7 @@ export function useAsyncResource(load, dependencies) {
       mounted.current = false;
       requestVersion.current += 1;
     };
-  }, dependencies);
+  }, [identity, reload]);
 
   return { ...state, reload };
 }

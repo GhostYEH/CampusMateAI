@@ -165,9 +165,13 @@ export default function StudyPage() {
   function isCurrentSessionMutation(mine) {
     return mounted.current && mine === sessionMutationEpoch.current;
   }
+  // Mount owns initialization and the timer; both read the latest actions so
+  // changing the chosen duration or context callbacks cannot restart either.
+  const lifecycleActions = useRef(null);
+  lifecycleActions.current = { load, completePomodoroRound, commitPomodoro };
   useEffect(() => {
     mounted.current = true;
-    void load();
+    void lifecycleActions.current.load();
     return () => {
       mounted.current = false;
       sessionLoadEpoch.current += 1;
@@ -181,8 +185,8 @@ export default function StudyPage() {
     const tick = () => {
       const current = pomodoroRef.current;
       const next = advancePomodoro(current, Date.now());
-      if (current.mode === "focus" && next.mode === "break" && next.completed > current.completed) void completePomodoroRound();
-      if (next !== current) commitPomodoro(next);
+      if (current.mode === "focus" && next.mode === "break" && next.completed > current.completed) void lifecycleActions.current.completePomodoroRound();
+      if (next !== current) lifecycleActions.current.commitPomodoro(next);
       else setSeconds(remainingAt(current, Date.now()));
     };
     tick();

@@ -1041,6 +1041,23 @@ class NoticeExtractionService:
             logger.warning("Notification LLM batch rejected; using confirmation fallback: {}", str(exc)[:120])
             return fallback
 
+    def extract_bounded(
+        self,
+        content: str,
+        *,
+        source_name: Optional[str] = None,
+        published_at: Optional[datetime] = None,
+    ) -> NoticeExtractResponse:
+        """同步使用的规则入口：限制文本长度，不触发外部 LLM 请求。
+
+        已连接来源允许普通通知；是否 actionable 由规则判断，不要求手动输入的通知门禁。
+        """
+        if not content or not content.strip():
+            raise NoticeEmpty("通知文本为空")
+        if len(content) > MAX_NOTICE_LEN:
+            raise NoticeTooLong(f"通知文本超过 {MAX_NOTICE_LEN} 字")
+        return self._rule_extract(content, source_name=source_name, published_at=published_at)
+
     async def extract(
         self,
         content: str,

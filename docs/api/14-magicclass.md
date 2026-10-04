@@ -983,7 +983,7 @@ Web 封装：`replaceMagicClassStage`（[webreact/src/data/api.js](../../webreac
 
 实现：[backend/app/api/routes/magicclass_workspaces.py](../../backend/app/api/routes/magicclass_workspaces.py)，`delete_stage`。
 
-Web 封装：`deleteMagicClassStage`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -1120,7 +1120,7 @@ Web 封装：`createMagicClassFolder`（[webreact/src/data/api.js](../../webreac
 
 实现：[backend/app/api/routes/magicclass_discovery.py](../../backend/app/api/routes/magicclass_discovery.py)，`get_folder`。
 
-Web 封装：`getMagicClassFolder`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 

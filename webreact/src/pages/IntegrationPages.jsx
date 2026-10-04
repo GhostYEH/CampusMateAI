@@ -1,3 +1,4 @@
+import { userErrorMessage } from "../data/contracts.js";
 import { useEffect, useMemo, useState } from "react";
 import { BackLink, Button, Modal, PageFrame, Panel, SectionHeading } from "../components/Primitives.jsx";
 import { Icon } from "../components/Icon.jsx";
@@ -7,7 +8,7 @@ import { formatDateTime } from "../utils/date.js";
 import { captchaDataUrl, eduSyncMessage, verificationActionMessage } from "../data/eduIntegration.js";
 
 const asItems = (value) => Array.isArray(value) ? value : value?.items || [];
-const errorText = (error, fallback = "操作失败，请稍后重试") => error?.response?.data?.message || error?.response?.data?.detail || error?.message || fallback;
+const errorText = (error, fallback = "操作失败，请稍后重试") => userErrorMessage(error, fallback);
 const formatDate = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "暂无记录");
 
 function Notice({ message, tone = "info" }) {

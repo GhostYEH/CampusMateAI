@@ -14,7 +14,7 @@ class MockNoticeExtractionService:
         self.mock_responses = {}
         self.should_fail = False
 
-    async def extract(self, content: str, source_name: str = None, published_at: datetime = None) -> NoticeExtractResponse:
+    def extract_bounded(self, content: str, source_name: str = None, published_at: datetime = None) -> NoticeExtractResponse:
         self.extract_calls.append({
             "content": content,
             "source_name": source_name,

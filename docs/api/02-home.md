@@ -32,7 +32,7 @@
 
 实现：[backend/app/api/routes/health.py](../../backend/app/api/routes/health.py)，`health`。
 
-Web 封装：`studyCheckinsSupported`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）；`probeBackend`（[webreact/src/data/http/authEndpoints.js](../../webreact/src/data/http/authEndpoints.js)）
+Web 封装：`probeBackend`（[webreact/src/data/http/authEndpoints.js](../../webreact/src/data/http/authEndpoints.js)）
 
 返回服务健康状态。
 

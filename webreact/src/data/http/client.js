@@ -1,5 +1,6 @@
 import axios from "axios";
 import { clearStoredSession } from "../../app/auth.js";
+import { normalizeApiError } from "../contracts.js";
 
 const viteEnv = import.meta.env || {};
 export const BASE_URL = viteEnv.VITE_API_BASE_URL || "/api/v1";
@@ -164,6 +165,8 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
       return Promise.reject(refreshError);
     }
   });
+  // Normalize after the authentication interceptor so refresh still sees the original error.
+  client.interceptors.response.use((response) => response, (error) => Promise.reject(normalizeApiError(error)));
   return client;
 }
 
