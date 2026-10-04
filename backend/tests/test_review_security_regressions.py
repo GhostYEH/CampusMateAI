@@ -134,7 +134,18 @@ def test_cors_patterns_escape_literals_and_only_accept_numeric_ports():
     assert not re.fullmatch(_build_origin_regex([]), "https://example.com")
 
 
-def test_unhandled_errors_have_cors_and_matching_request_id():
+def test_unhandled_errors_have_cors_and_matching_request_id(monkeypatch):
+    # 客户端依赖的是白名单回显分支，固定它才能不受部署环境 CORS_ORIGINS 影响
+    monkeypatch.setattr(
+        "app.main.get_settings",
+        lambda: Settings(
+            _env_file=None,
+            app_env="test",
+            cors_origins="http://localhost:*,http://127.0.0.1:*",
+            auto_seed_demo_users=False,
+            auto_import_demo=False,
+        ),
+    )
     app = create_app()
 
     @app.get("/review-error")
