@@ -148,3 +148,43 @@ train/validation/test，防止同一人不同会话泄漏。
 
 校准会对 SAD/ANGRY/FEAR/DISGUST 使用 90% Precision 目标，其他类别使用 85%。某个类别无法在 validation
 达到目标或有效样本不足时，该类别阈值写为 `1.01` 并标记为 disabled；不得为了提高覆盖率降低生产精度门禁。
+
+## DAiSEE 三维学习状态扩展（离线实验）
+
+`learning_state_model.py` 在原 ResNet18 上增加三个独立输出：`boredom`（无聊）、
+`confusion`（困惑）、`frustration`（挫败）。每个输出保留 DAiSEE 的四档标注：
+`0=very_low, 1=low, 2=high, 3=very_high`。它们可以同时出现，不是七类表情 softmax 的新增互斥类别；
+本扩展不训练 `Engagement`。
+
+原视觉主干、BatchNorm 统计量和七类分类器全部冻结，新增分支在固定人脸特征上训练。
+视频使用均匀采样帧的特征均值，这是片段级研究基线，不是实时心理状态判断。
+输入继续使用现有 96×96 灰度复制三通道和 ImageNet 归一化。原七类标签顺序保持不变。
+
+数据源由 `CAMPUSMATE_DAISEE_ROOT` 指定，目录包含 `DataSet/` 和 `Labels/`。
+准备工具只读取原始数据，输出到新目录；按官方人物划分保留 train/validation/test，
+忽略 `GenderClips` 副本及无标注视频，拒绝跨划分人物/片段、非法标签及路径逃逸。
+使用 OpenCV Haar 检测提取带 padding 的最大人脸，未检测到人脸的帧跳过；没有可用帧的片段隔离。
+少于采样数的片段重复最后有效帧补齐，并在准备报告中记录，不能把这些帧当成独立样本划分。
+
+从本模块目录执行：
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe -r requirements-daisee.txt
+$env:PYTHONPATH = "src"
+python -m expression_recognition.daisee_data --dataset-root $env:CAMPUSMATE_DAISEE_ROOT --output-dir artifacts/daisee_faces_trainval --splits train validation --workers 4
+python -m expression_recognition.learning_state_experiment train --checkpoint exports_v2/best_checkpoint.pt --manifest artifacts/daisee_faces_trainval/manifest.csv --output-dir artifacts/daisee_heads --epochs 40
+```
+
+训练仅使用训练集计算类别权重和多数类基线，以三个维度四档 Macro-F1 的均值在 validation 选择 checkpoint。
+报告同时包含 accuracy、Macro-F1、balanced accuracy、每档指标及混淆矩阵，避免多数类准确率掩盖稀有档失败。
+选择完成后，用独立命令准备 test 并评估锁定 checkpoint，不重新训练、不在 test 上选 epoch 或阈值：
+
+```powershell
+python -m expression_recognition.daisee_data --dataset-root $env:CAMPUSMATE_DAISEE_ROOT --output-dir artifacts/daisee_faces_test --splits test --workers 4
+python -m expression_recognition.learning_state_experiment evaluate --checkpoint artifacts/daisee_heads/best.pt --manifest artifacts/daisee_faces_test/manifest.csv --output-dir artifacts/daisee_test
+```
+
+这些新目录必须不存在，工具不会覆盖旧实验。模型、缓存和报告保留在 Git 忽略的 `artifacts/`。
+中断或失败时保留已有产物；重试请指定新的输出目录。
+扩展 checkpoint 包含七类输出和三个四级分支的独立契约，不能交给旧七类 LiteRT 导出入口。
+Android、HarmonyOS、小程序和后端目前仍消费原七类；新增分支未部署，实机采样、时序稳定性和置信度门禁尚需独立验证。
