@@ -176,6 +176,7 @@ class EduConnectorService:
             import httpx
             from ...core.config import get_settings
             from .adapters.ssrf_guard import assert_safe_url
+            from .adapters.ssrf_transport import SSRFSafeTransport
             _settings = get_settings()
             await run_in_threadpool(assert_safe_url, portal_url)
             allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
@@ -183,6 +184,8 @@ class EduConnectorService:
                 timeout=15,
                 follow_redirects=False,
                 verify=True,
+                transport=SSRFSafeTransport(),
+                trust_env=False,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
             ) as client:
                 try:
@@ -197,6 +200,8 @@ class EduConnectorService:
                         timeout=15,
                         follow_redirects=False,
                         verify=False,
+                        transport=SSRFSafeTransport(verify=False),
+                        trust_env=False,
                         headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduProbe/1.0)"},
                     ) as client2:
                         try:

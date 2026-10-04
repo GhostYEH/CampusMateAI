@@ -29,7 +29,6 @@ const PredictionPage = lazy(() => import("./pages/PredictionPage.jsx"));
 const FinalReviewPage = lazy(() => import("./pages/FinalReviewPage.jsx"));
 const CourseResearchPage = lazy(() => import("./pages/CourseResearchPage.jsx"));
 const NoticeWorkflowPage = lazy(() => import("./pages/NoticeWorkflowPage.jsx"));
-const AgentRuntimeOpsPage = lazy(() => import("./pages/AgentRuntimeOpsPage.jsx"));
 const MagicClassWorkspacePage = lazy(() => import("./pages/magicclassWorkspacePage.jsx"));
 const MagicClassGenerationPreviewPage = lazy(() => import("./pages/magicclassGenerationPreviewPage.jsx"));
 const MagicClassClassroomEntryPage = lazy(() => import("./pages/magicclassClassroomEntryPage.jsx"));
@@ -45,7 +44,7 @@ const pages = {
   ExamEditPage: lazyToolPage("ExamEditPage"),
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
-  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, AgentRuntimeOpsPage, MagicClassWorkspacePage, MagicClassGenerationPreviewPage,
+  FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, MagicClassWorkspacePage, MagicClassGenerationPreviewPage,
   MagicClassClassroomEntryPage, MagicClassWorkbenchPage, LearningSpacePage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
@@ -103,7 +102,6 @@ export default function App() {
       <Route path="/agent/final-review" element={<Page name="FinalReviewPage" />} />
       <Route path="/agent/course-research" element={<Page name="CourseResearchPage" />} />
       <Route path="/agent/notice-workflow" element={<Page name="NoticeWorkflowPage" />} />
-      <Route path="/admin/agent-runtime" element={<Page name="AgentRuntimeOpsPage" />} />
       <Route path="/final-review" element={<Page name="FinalReviewPage" />} />
       <Route path="/course-research" element={<Page name="CourseResearchPage" />} />
       <Route path="/island" element={<Page name="IslandPage" />} />

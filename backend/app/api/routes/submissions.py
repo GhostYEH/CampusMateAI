@@ -1,13 +1,4 @@
-"""提交路由 — 列表/创建/详情/更新/提交/附件/评分/下载。
-
-权限:
-- 列表: 教师或管理员(看到该任务下所有学生的提交)。
-- 创建/更新/提交: 学生只能创建/修改自己的提交。
-- 详情: 学生只能看自己的;教师可看自己课程下任一学生的;管理员任意。
-- 附件上传: 学生只能上传到自己的提交;教师/管理员不可上传(避免混淆)。
-- 附件下载: 学生只能下载自己提交的附件;教师/管理员可下载自己课程下的任一附件。
-- 评分: 教师或管理员。
-"""
+"""学生提交与附件接口，仅允许访问本人提交。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -39,7 +30,7 @@ from ...schemas.multi_role import (
 )
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
-from .classes import _assert_can_manage_class, _assert_can_view_class
+from .classes import _assert_can_view_class
 
 router = APIRouter(tags=["submissions"])
 
@@ -207,7 +198,7 @@ def get_submission(
             raise Forbidden("不能查看其他学生的提交")
         _assert_can_view_class(cls, user, container)
     else:
-        _assert_can_manage_class(cls, user, container)
+        raise Forbidden("仅可访问本人的提交")
     out = _enrich_with_student_info(container, sub)
     out.attachments = _load_attachments(container, sub.id)
     return out
@@ -302,11 +293,7 @@ async def upload_attachment(
         if sub.status != "draft" and not a.allow_resubmit:
             raise ResubmitNotAllowed()
     else:
-        # 教师也可为学生上传补充材料?当前不允许(避免混淆)
-        _assert_can_manage_class(
-            container.class_group_repository.get_class(a.class_group_id),  # type: ignore[arg-type]
-            user, container,
-        )
+        raise Forbidden("仅可为本人的提交上传附件")
     # 文件名安全校验
     try:
         safe_name = sanitize_filename(file.filename or "")
@@ -389,7 +376,6 @@ def download_attachment(
 
     权限:
     - 学生: 只能下载自己提交的附件
-    - 教师/管理员: 只能下载自己课程下任一学生的附件
 
     安全:
     - 严格校验 storage_path 位于允许的根目录之下(防路径穿越)
@@ -406,13 +392,13 @@ def download_attachment(
     if cls is None:
         raise AssignmentNotFound()
 
-    # 学生只能下载自己的附件;教师/管理员需有权限
+    # 只能下载自己的附件
     if user.role == "student":
         if sub.student_id != user.id:
             raise Forbidden("不能下载其他学生的附件")
         _assert_can_view_class(cls, user, container)
     else:
-        _assert_can_manage_class(cls, user, container)
+        raise Forbidden("仅可访问本人的提交")
 
     att = container.submission_repository.get_attachment(attachment_id)
     if att is None or att.submission_id != submission_id:

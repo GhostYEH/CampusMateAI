@@ -152,7 +152,7 @@ fun EduSystemScreen(
                 }
                 is EduUiState.ProbeReady -> {
                     ProbeResultCard(s.probe)
-                    Text("该教务系统登录方式暂不支持自动分流，请尝试重新输入或联系管理员。", style = MaterialTheme.typography.bodySmall)
+                    Text("该教务系统登录方式暂不支持自动分流，请尝试重新输入教务地址。", style = MaterialTheme.typography.bodySmall)
                 }
                 is EduUiState.NeedCredentials -> {
                     ProbeResultCard(

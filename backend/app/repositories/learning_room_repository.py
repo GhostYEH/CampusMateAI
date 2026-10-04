@@ -58,7 +58,8 @@ class LearningRoomRepository:
             raise _error("不能邀请自己", 422)
         with self.db.transaction() as conn:
             self._member(conn, room_id, host_id, host_only=True)
-            target = conn.execute("SELECT id FROM users WHERE id=? AND is_active=1 AND role='student'", (uid,)).fetchone()
+            # Historical accounts have the same effective student identity.
+            target = conn.execute("SELECT id FROM users WHERE id=? AND is_active=1 AND role IN ('student','teacher','admin')", (uid,)).fetchone()
             if not target:
                 raise _error("未找到该 UID 对应的同学", 404)
             existing = conn.execute("SELECT status FROM learning_room_members WHERE room_id=? AND user_id=?", (room_id, uid)).fetchone()

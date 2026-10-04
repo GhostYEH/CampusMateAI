@@ -1,11 +1,4 @@
-"""课程路由 — 列表/创建/详情/更新。
-
-权限:
-- GET /courses: 学生看到自己已加入班级所属的课程;管理员看到全部。
-- POST /courses: 仅管理员(CampusMate AI 不存在教师角色,课程由管理员维护)。
-- GET /courses/{id}: 学生只看自己班级所属课程;管理员任意。
-- PATCH /courses/{id}: 仅管理员。
-"""
+"""课程只读接口，按已加入班级或本人导入的课程限定访问范围。"""
 from __future__ import annotations
 
 from typing import Optional
@@ -14,10 +7,10 @@ from fastapi import APIRouter, Depends, Query
 
 from ...core.exceptions import CourseNotFound, Forbidden
 from ...models.multi_role import CourseRow, UserRow
-from ...schemas.multi_role import CourseCreate, CourseOut, CourseUpdate, Page
+from ...schemas.multi_role import CourseOut, Page
 from ...services.container import ServiceContainer, get_container
 from ...services.course_access import can_view_course
-from ..deps import current_user, require_role
+from ..deps import current_user
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
@@ -85,23 +78,6 @@ def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Opt
     return u.display_name or u.username
 
 
-@router.post("", response_model=CourseOut, status_code=201)
-def create_course(
-    req: CourseCreate,
-    user: UserRow = Depends(require_role("admin")),
-    container: ServiceContainer = Depends(_container),
-) -> CourseOut:
-    course = container.course_repository.create_course(
-        name=req.name,
-        teacher_id=user.id,
-        code=req.code,
-        semester=req.semester,
-        description=req.description,
-        status=req.status,
-    )
-    return _course_to_out(course, user.display_name or user.username)
-
-
 @router.get("/{course_id}", response_model=CourseOut)
 def get_course(
     course_id: str,
@@ -115,27 +91,10 @@ def get_course(
     return _course_to_out(course, course.remote_teacher_name or _teacher_name(container, course.teacher_id))
 
 
-@router.patch("/{course_id}", response_model=CourseOut)
-def update_course(
-    course_id: str,
-    req: CourseUpdate,
-    user: UserRow = Depends(require_role("admin")),
-    container: ServiceContainer = Depends(_container),
-) -> CourseOut:
-    course = container.course_repository.get_course(course_id)
-    if course is None:
-        raise CourseNotFound()
-    fields = req.model_dump(exclude_unset=True)
-    updated = container.course_repository.update_course(course_id, fields=fields)
-    if updated is None:
-        raise CourseNotFound()
-    return _course_to_out(updated, updated.remote_teacher_name or _teacher_name(container, updated.teacher_id))
-
-
 def _assert_can_view_course(
     course: CourseRow, user: UserRow, container: ServiceContainer
 ) -> None:
-    # 统一策略见 services/course_access.py：管理员 / 已加入班级 / 学生自有的学习通导入课程。
+    # 统一策略见 services/course_access.py：已加入班级 / 学生自有的学习通导入课程。
     if not can_view_course(container, user, course):
         raise Forbidden("你未加入此课程下的任何班级")
 

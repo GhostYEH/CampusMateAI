@@ -122,7 +122,7 @@ def test_notice_pagination_counts_all_visible_sources_without_receipt_queries(co
     assert {item.title for item in other.items} == {"Hidden", "Private"}
     admin = UserRow(id="admin", username="admin", password_hash="hash", role="admin")
     all_announcements = list_notices(unread_only=False, page=1, page_size=200, user=admin, container=container)
-    assert all_announcements.total == 102 and all(not item.unread for item in all_announcements.items)
+    assert all_announcements.total == 0  # Historical roles cannot read unjoined classes.
 
 
 def test_assignment_page_batches_authors_and_attachments(container):

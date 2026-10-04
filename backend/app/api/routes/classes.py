@@ -1,12 +1,4 @@
-"""班级路由 — 列表/创建/详情/更新/加入/重置邀请码/成员管理。
-
-权限:
-- GET /classes: 学生只看自己已加入的;管理员全部。
-- GET /classes/{id}: 学生必须已加入;管理员任意。
-- POST /classes/{id}/join: 学生凭邀请码加入。
-- GET /classes/{id}/members: 管理员可看全部,学生看同班同学。
-- 班级创建/管理由管理员负责(CampusMate AI 不存在教师角色)。
-"""
+"""班级列表、详情、加入和成员读取；仅限已加入的班级。"""
 from __future__ import annotations
 
 import sqlite3
@@ -60,21 +52,10 @@ def list_classes(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
-    if user.role == "student":
-        # 学生只看自己已加入的班级
-        rows, total = container.enrollment_repository.list_user_class_page(
-            user.id, course_id=course_id, page=page, page_size=page_size
-        )
-        return Page.from_rows([_class_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
-    # admin: 全部班级
-    rows, total = container.class_group_repository.list_classes(
-        course_id=course_id,
-        teacher_id=None,
-        page=page,
-        page_size=page_size,
+    rows, total = container.enrollment_repository.list_user_class_page(
+        user.id, course_id=course_id, page=page, page_size=page_size
     )
-    items = [_class_to_out(r) for r in rows]
-    return Page.from_rows(items, total=total, page=page, page_size=page_size)
+    return Page.from_rows([_class_to_out(row) for row in rows], total=total, page=page, page_size=page_size)
 
 
 @router.get("/classes/{class_id}", response_model=ClassOut)
@@ -94,7 +75,7 @@ def get_class(
 def join_class(
     class_id: str,
     req: ClassJoinRequest,
-    user: UserRow = Depends(require_role("student", "admin")),
+    user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> ClassOut:
     cls = container.class_group_repository.get_class(class_id)
@@ -164,20 +145,11 @@ def list_members(
 def _assert_can_view_class(
     cls: ClassGroupRow, user: UserRow, container: ServiceContainer
 ) -> None:
-    if user.role == "admin":
-        return
     # 学生: 必须已加入
     enr = container.enrollment_repository.get_enrollment(cls.id, user.id)
     if enr is None or enr.status != "active":
         raise Forbidden("你未加入此班级")
 
-
-def _assert_can_manage_class(
-    cls: ClassGroupRow, user: UserRow, container: ServiceContainer
-) -> None:
-    if user.role == "admin":
-        return
-    raise Forbidden("仅管理员可管理班级")
 
 
 __all__ = ["router"]

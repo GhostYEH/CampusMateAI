@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -66,7 +66,7 @@ class UserPublic(BaseModel):
     id: str
     uid: str = ""
     username: str
-    role: str
+    role: Literal["student"]
     # Legacy Android builds decode this field as required. Keep it alongside
     # display_name so old clients and current clients share one auth response.
     name: str = ""
@@ -94,7 +94,7 @@ class TokenPair(BaseModel):
 
 
 class _UserCreationFields(BaseModel):
-    """两个建号入口共用的字段约束。"""
+    """学生自注册的字段约束。"""
     username: str = Field(..., min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=8, max_length=128)
     role: str
@@ -106,41 +106,28 @@ class _UserCreationFields(BaseModel):
     grade: Optional[str] = Field(None, max_length=32)
 
 
-class UserCreate(_UserCreationFields):
-    """管理员创建用户请求(仅 admin 角色可调用)。
-
-    约束:
-    - username: 3-64 字符,仅字母/数字/下划线
-    - password: 8-128 字符(由后端 PBKDF2 哈希后存储,不入日志)
-    - role: student / admin(CampusMate AI 只存在这两类系统角色)
-    - student_number: 仅 student 角色携带
-    """
-
-    role: str = Field(..., pattern="^(student|admin)$")
-
-
-class UserAdminUpdate(BaseModel):
-    display_name: Optional[str] = Field(None, min_length=1, max_length=128)
-    role: Optional[str] = Field(None, pattern="^(student|admin)$")
-    college: Optional[str] = Field(None, max_length=64)
-    major: Optional[str] = Field(None, max_length=64)
-    grade: Optional[str] = Field(None, max_length=32)
-    is_active: Optional[bool] = None
-
-
 class RegisterRequest(_UserCreationFields):
     """公开注册请求(无需鉴权,仅限 student 自注册)。
 
     约束:
     - username: 3-64 字符,仅字母/数字/下划线
     - password: 8-128 字符
-    - role: 仅允许 student(admin 必须由管理员创建)
+    - role: 仅允许 student
     - display_name: 选填,≤128 字符
     - student_number: 选填,学生学号
     - college / major / grade: 选填,学生常用
     """
 
     role: str = Field("student", pattern="^(student)$")
+
+
+class UserProfileUpdate(BaseModel):
+    """Editable fields for the authenticated user's own profile."""
+    model_config = {"extra": "forbid"}
+    display_name: Optional[str] = Field(None, max_length=128)
+    college: Optional[str] = Field(None, max_length=64)
+    major: Optional[str] = Field(None, max_length=64)
+    grade: Optional[str] = Field(None, max_length=32)
 
 
 class AuthMeResponse(BaseModel):
@@ -265,7 +252,7 @@ class AnnouncementOut(BaseModel):
     published_at: Optional[str] = None
     created_at: str
     updated_at: str
-    has_read: Optional[bool] = Field(None, description="当前学生视角是否已读(教师/管理员为 null)")
+    has_read: Optional[bool] = Field(None, description="当前用户是否已读")
 
 
 class ReadReceiptOut(BaseModel):
@@ -323,7 +310,7 @@ class AssignmentOut(BaseModel):
     published_at: Optional[str] = None
     created_at: str
     updated_at: str
-    submission_status: Optional[str] = Field(None, description="当前学生的提交状态；教师和管理员为 null")
+    submission_status: Optional[str] = Field(None, description="当前用户的提交状态")
     attachments: List["AssignmentAttachmentOut"] = Field(default_factory=list)
 
 
@@ -445,8 +432,7 @@ __all__ = [
     "LogoutRequest",
     "TokenPair",
     "UserPublic",
-    "UserCreate",
-    "UserAdminUpdate",
+    "UserProfileUpdate",
     "RegisterRequest",
     "AuthMeResponse",
     "CourseCreate",

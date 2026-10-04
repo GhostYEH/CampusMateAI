@@ -1,6 +1,8 @@
 """Phase 6A 基础设施验证：确认后端能启动且新 API 可路由。"""
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -158,15 +160,15 @@ def test_cross_user_404():
     assert resp.json()["items"] == []
 
 
-def test_admin_cannot_access_student_controls():
-    """admin 不能操作学生控制 API。"""
+def test_legacy_admin_has_ordinary_student_controls():
+    """历史角色按本人身份读取控制项。"""
     settings = Settings(app_env="test", database_url="sqlite:///:memory:")
     container = reset_container_for_tests(settings)
-    container.user_repository.create_user(
+    create_legacy_user(container.user_repository,
         username="admin_test", password_hash=hash_password("Demo123456"), role="admin", display_name="Admin"
     )
     client = TestClient(create_app())
     resp = client.post("/api/v1/auth/login", json={"username": "admin_test", "password": "Demo123456"})
     auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
     resp = client.get("/api/v1/learner-state/data-controls", headers=auth)
-    assert resp.status_code == 403
+    assert resp.status_code == 200

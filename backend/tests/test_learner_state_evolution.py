@@ -69,7 +69,7 @@ def test_changes_api_reports_added_updated_removed_and_filters_without_internal_
     assert any(item["change_type"] == "REMOVED" for item in removed.json()["changes"])
 
 
-def test_changes_api_same_run_is_empty_and_rejects_admin_or_cross_user_runs():
+def test_changes_api_same_run_is_empty_and_rejects_cross_user_runs():
     _, client = _client()
     student_headers = _login(client, "student_demo")
     run_id = client.get("/api/v1/learner-state/runs", headers=student_headers).json()["items"][0]["run_id"]
@@ -80,8 +80,8 @@ def test_changes_api_same_run_is_empty_and_rejects_admin_or_cross_user_runs():
     assert same.status_code == 200
     assert same.json()["changes"] == []
     assert client.get(
-        "/api/v1/learner-state/runs", headers=_login(client, "admin_demo")
-    ).status_code == 403
+        "/api/v1/learner-state/runs", headers=_login(client, "content_demo_owner")
+    ).status_code == 200
 
     other_headers = _login(client, "student_demo_01")
     cross_user = client.get(

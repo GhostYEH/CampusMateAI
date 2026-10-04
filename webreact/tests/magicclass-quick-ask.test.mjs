@@ -126,13 +126,13 @@ test("a missing secret or a rejected assertion is explained, not blamed on the u
     response: { status: 503, data: { code: "MAGICCLASS_FUSION_UNAVAILABLE", details: { reason: "service_unconfigured" } } },
   });
   assert.equal(unconfigured.retryable, false);
-  assert.match(unconfigured.message, /管理员/);
+  assert.match(unconfigured.message, /反馈此问题/);
 
   const rejected = describeQuickAskFailure({
     response: { status: 503, data: { code: "MAGICCLASS_FUSION_UNAVAILABLE", details: { reason: "assertion_rejected" } } },
   });
   assert.equal(rejected.retryable, false);
-  assert.match(rejected.message, /管理员/);
+  assert.match(rejected.message, /反馈此问题/);
 });
 
 test("a 503 without a reason keeps the older, retryable reading", () => {

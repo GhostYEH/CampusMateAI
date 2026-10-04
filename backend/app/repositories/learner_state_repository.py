@@ -58,6 +58,85 @@ class LearnerStateRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    def collect_world_records(self, *, user_id: str) -> dict[str, Any]:
+        """Read bounded, user-scoped projection records inside the SQL boundary."""
+        inputs: dict[str, Any] = {}
+        with self._db.query() as conn:
+            task_rows = conn.execute(
+                """SELECT id,status,deadline,created_at,completed_at,deleted_at,
+                          remote_submitted_at
+                   FROM personal_tasks WHERE user_id=?
+                   ORDER BY created_at DESC LIMIT 200""",
+                (user_id,),
+            ).fetchall()
+            inputs["tasks"] = [dict(row) for row in task_rows]
+            inputs["chaoxing_grade_items"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, title, score, score_max, graded_at
+                       FROM personal_tasks
+                       WHERE user_id = ? AND source = 'chaoxing'
+                         AND score IS NOT NULL AND deleted_at IS NULL
+                       ORDER BY graded_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+            ]
+            inputs["chaoxing_exam_items"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, title, exam_at, score, score_max, status
+                       FROM chaoxing_exams WHERE user_id = ?
+                       ORDER BY exam_at IS NULL, exam_at LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+            ]
+            session_rows = conn.execute(
+                """SELECT id,started_at,ended_at,duration_seconds,status
+                   FROM study_sessions WHERE user_id=?
+                   ORDER BY started_at DESC LIMIT 200""",
+                (user_id,),
+            ).fetchall()
+            inputs["sessions"] = [dict(row) for row in session_rows]
+        return inputs
+
+    def collect_academic_records(self, *, user_id: str) -> dict[str, Any]:
+        """Read bounded, user-scoped projection records inside the SQL boundary."""
+        inputs: dict[str, Any] = {}
+        with self._db.query() as conn:
+            inputs["chaoxing_grade_items"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, title, score, score_max, graded_at
+                       FROM personal_tasks
+                       WHERE user_id = ? AND source = 'chaoxing'
+                         AND score IS NOT NULL AND deleted_at IS NULL
+                       ORDER BY graded_at DESC LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+            ]
+            inputs["chaoxing_exam_items"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, title, exam_at, score, score_max, status
+                       FROM chaoxing_exams WHERE user_id = ?
+                       ORDER BY exam_at IS NULL, exam_at LIMIT 200""",
+                    (user_id,),
+                ).fetchall()
+            ]
+            inputs["knowledge_graphs"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, knowledge_point_count, own_mastery_rate,
+                              class_mastery_rate, own_completion_rate, class_completion_rate
+                       FROM chaoxing_knowledge_graphs WHERE user_id = ? LIMIT 100""",
+                    (user_id,),
+                ).fetchall()
+            ]
+            inputs["knowledge_points"] = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, course_id, external_id, name
+                       FROM chaoxing_knowledge_points WHERE user_id = ?
+                       ORDER BY position LIMIT 500""",
+                    (user_id,),
+                ).fetchall()
+            ]
+        return inputs
+
     def collect_inputs(self, *, user_id: str, limit: int = 5000,
                        exclude_evaluation_id: str | None = None) -> dict[str, Any]:
         if limit < 1 or limit > 10000:

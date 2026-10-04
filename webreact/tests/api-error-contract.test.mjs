@@ -3,10 +3,9 @@ import assert from "node:assert/strict";
 import { client, getProfile } from "../src/data/api.js";
 import { getAgentCapabilities } from "../src/data/agentRuntimeApi.js";
 import { getLearnerStateRuns } from "../src/data/learnerStateApi.js";
-import { getAgentRuntimeOverview } from "../src/data/agentObservabilityApi.js";
 import { normalizeApiError, userErrorMessage } from "../src/data/contracts.js";
 
-const adapters = [getProfile, getAgentCapabilities, getLearnerStateRuns, getAgentRuntimeOverview];
+const adapters = [getProfile, getAgentCapabilities, getLearnerStateRuns];
 async function collectErrors(makeError) {
   const previous = client.defaults.adapter;
   client.defaults.adapter = (config) => Promise.reject(makeError(config));

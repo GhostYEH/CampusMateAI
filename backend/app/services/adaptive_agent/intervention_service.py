@@ -502,7 +502,7 @@ class AdaptiveInterventionService:
         # 也没有指向它的血缘），旧干预与旧计划仍然是正式版本。
         # 重试会复用同一个幂等后继，并在这里把血缘补齐。
         new_plan_id = getattr(successor.plan, "plan_id", None)
-        with self._repository._db.transaction() as conn:
+        with self._repository.transaction() as conn:
             if new_plan_id:
                 self._planner.repository.link_superseded(
                     old_plan_id=old.plan_id, new_plan_id=str(new_plan_id), user_id=user_id,

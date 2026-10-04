@@ -36,6 +36,7 @@ from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
 from ..repositories.university_repository import UniversityRepository
 from ..repositories.community_repository import CommunityRepository
+from ..repositories.learning_room_repository import LearningRoomRepository
 from ..repositories.home_banner_repository import HomeBannerRepository
 from ..repositories.academic_repository import AcademicRepository
 from ..repositories.notice_automation_repository import NoticeAutomationRepository
@@ -167,6 +168,7 @@ class ServiceContainer:
     notice_repository: NoticeRepository
     university_repository: UniversityRepository
     community_repository: CommunityRepository
+    learning_room_repository: LearningRoomRepository
     home_banner_repository: HomeBannerRepository
     academic_repository: AcademicRepository
     notice_automation_repository: NoticeAutomationRepository
@@ -558,6 +560,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         notice_repository=notice_repository,
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),
+        learning_room_repository=LearningRoomRepository(db),
         home_banner_repository=home_banner_repository,
         academic_repository=AcademicRepository(db),
         notice_automation_repository=NoticeAutomationRepository(db),

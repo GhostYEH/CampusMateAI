@@ -46,7 +46,6 @@ app/src/main/java/com/example/campusai/
 | 考试 | `ui/screens/exams/` |
 | 个人中心 | `ui/screens/profile/` |
 | 设置 | `ui/screens/profile/SettingsScreen.kt` |
-| 管理员 | `ui/screens/admin/` |
 
 ## 通知整理与学习通
 

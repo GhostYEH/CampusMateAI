@@ -93,7 +93,7 @@ def discovery_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(ssrf_guard, "assert_safe_url", lambda url: None)
     client_class = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client_class(
-        **kwargs, transport=httpx.MockTransport(lambda request: httpx.Response(
+        **{key: value for key, value in kwargs.items() if key not in ("transport", "trust_env")}, transport=httpx.MockTransport(lambda request: httpx.Response(
             200, text='<title>正方教务管理系统</title><meta name="generator" content="正方软件股份有限公司">',
         )), trust_env=False,
     ))

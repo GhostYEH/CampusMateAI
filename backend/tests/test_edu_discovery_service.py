@@ -32,7 +32,7 @@ def discovery_env(tmp_path, monkeypatch):
 
     def transport(handler):
         monkeypatch.setattr(discovery.httpx, "AsyncClient", lambda **kwargs: client_class(
-            **kwargs, transport=httpx.MockTransport(handler), trust_env=False,
+            **{key: value for key, value in kwargs.items() if key not in ("transport", "trust_env")}, transport=httpx.MockTransport(handler), trust_env=False,
         ))
 
     return path, checked, transport

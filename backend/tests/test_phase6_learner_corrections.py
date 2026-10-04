@@ -10,6 +10,8 @@
 """
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -181,18 +183,18 @@ def test_correction_target_not_found():
     assert resp.status_code == 404
 
 
-def test_admin_forbidden():
-    """admin 不能操作学生纠正。"""
+def test_legacy_admin_has_ordinary_user_access():
+    """历史角色可读取自己的纠正记录。"""
     settings = Settings(app_env="test", database_url="sqlite:///:memory:")
     container = reset_container_for_tests(settings)
-    container.user_repository.create_user(
+    create_legacy_user(container.user_repository,
         username="corr_admin", password_hash=hash_password("Demo123456"), role="admin", display_name="A"
     )
     client = TestClient(create_app())
     resp = client.post("/api/v1/auth/login", json={"username": "corr_admin", "password": "Demo123456"})
     auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
     r = client.get("/api/v1/learner-state/corrections", headers=auth)
-    assert r.status_code == 403
+    assert r.status_code == 200
 
 
 def test_correction_output_no_sensitive():

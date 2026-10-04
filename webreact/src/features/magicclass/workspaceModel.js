@@ -61,12 +61,12 @@ export function nextCursorOf(payload) {
  */
 const FUSION_UNAVAILABLE_COPY = {
   fusion_disabled: "本部署未启用受管 magic class 服务，相关入口暂不可用。",
-  service_unconfigured: "受管 magic class 服务尚未配置内部地址或密钥，请联系管理员。",
+  service_unconfigured: "受管 magic class 服务尚未配置内部地址或密钥，请稍后重试或反馈此问题。",
   service_unreachable: "暂时连不上受管 magic class 服务，请稍后重试。",
-  assertion_rejected: "受管 magic class 服务拒绝了本次请求，请联系管理员。",
+  assertion_rejected: "受管 magic class 服务拒绝了本次请求，请稍后重试或反馈此问题。",
   dependency_unavailable: "受管服务在线，但它依赖的组件尚未就绪，请稍后再试。",
   provider_unavailable: "该功能需要的模型或语音服务未配置，暂时无法生成。",
-  unexpected_response: "受管服务的响应不符合预期，请联系管理员。",
+  unexpected_response: "受管服务的响应不符合预期，请稍后重试或反馈此问题。",
 };
 
 /**

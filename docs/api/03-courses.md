@@ -1,6 +1,6 @@
 # 课程、班级、公告、作业与提交
 
-> 对照日期：2026-09-30。本模块共 29 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-04。本模块共 27 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -9,9 +9,7 @@
 | 方法 | 完整路径 | 用途 |
 | --- | --- | --- |
 | GET | `/api/v1/courses` | 列出课程 |
-| POST | `/api/v1/courses` | 创建课程 |
 | GET | `/api/v1/courses/{course_id}` | 读取课程 |
-| PATCH | `/api/v1/courses/{course_id}` | 更新课程 |
 | GET | `/api/v1/classes` | 列出classes |
 | GET | `/api/v1/classes/{class_id}` | 读取班级 |
 | POST | `/api/v1/classes/{class_id}/join` | 加入班级 |
@@ -80,65 +78,6 @@ Web 封装：`getCourses`（[webreact/src/data/api.js](../../webreact/src/data/a
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
-### `POST /api/v1/courses`
-
-用途：创建课程。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/courses.py](../../backend/app/api/routes/courses.py)，`create_course`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
-
-请求体：`application/json`，必填；[CourseCreate](schemas.md#schema-coursecreate)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `name` | string | 是 | minLength=1; maxLength=128 | 名称 |
-| `code` | string / null | 否 | string约束: maxLength=64 | — |
-| `semester` | string / null | 否 | string约束: maxLength=32 | — |
-| `description` | string / null | 否 | string约束: maxLength=2000 | 说明 |
-| `status` | string | 否 | default="draft"; pattern="^(draft\|active\|archived)$" | 业务状态，合法取值和操作前置条件见枚举及流程 |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "name": "<name>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 201 | application/json | [CourseOut](schemas.md#schema-courseout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-201 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `name` | string | 是 | — | 名称 |
-| `code` | string / null | 否 | — | — |
-| `semester` | string / null | 否 | — | — |
-| `description` | string / null | 否 | — | 说明 |
-| `teacher_id` | string / null | 否 | — | — |
-| `teacher_name` | string / null | 否 | — | — |
-| `provider` | string / null | 否 | — | — |
-| `external_id` | string / null | 否 | — | — |
-| `source_url` | string / null | 否 | — | 来源链接 |
-| `last_synced_at` | string / null | 否 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `created_at` | string | 是 | — | 创建时间 |
-| `updated_at` | string | 是 | — | 最近更新时间 |
-| `owner_user_id` | string / null | 否 | — | — |
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
 ### `GET /api/v1/courses/{course_id}`
 
 用途：读取课程。
@@ -190,71 +129,6 @@ Web 封装：`getCourse`（[webreact/src/data/api.js](../../webreact/src/data/ap
 | --- | --- | --- |
 | 404 | COURSE_NOT_FOUND | 课程不存在。 |
 | 403 | FORBIDDEN | '你未加入此课程下的任何班级' |
-
-### `PATCH /api/v1/courses/{course_id}`
-
-用途：更新课程。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/courses.py](../../backend/app/api/routes/courses.py)，`update_course`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `course_id` | string | 是 | — | — |
-
-请求体：`application/json`，必填；[CourseUpdate](schemas.md#schema-courseupdate)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `name` | string / null | 否 | string约束: minLength=1; maxLength=128 | 名称 |
-| `code` | string / null | 否 | string约束: maxLength=64 | — |
-| `semester` | string / null | 否 | string约束: maxLength=32 | — |
-| `description` | string / null | 否 | string约束: maxLength=2000 | 说明 |
-| `status` | string / null | 否 | string约束: pattern="^(draft\|active\|archived)$" | 业务状态，合法取值和操作前置条件见枚举及流程 |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [CourseOut](schemas.md#schema-courseout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `name` | string | 是 | — | 名称 |
-| `code` | string / null | 否 | — | — |
-| `semester` | string / null | 否 | — | — |
-| `description` | string / null | 否 | — | 说明 |
-| `teacher_id` | string / null | 否 | — | — |
-| `teacher_name` | string / null | 否 | — | — |
-| `provider` | string / null | 否 | — | — |
-| `external_id` | string / null | 否 | — | — |
-| `source_url` | string / null | 否 | — | 来源链接 |
-| `last_synced_at` | string / null | 否 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `created_at` | string | 是 | — | 创建时间 |
-| `updated_at` | string | 是 | — | 最近更新时间 |
-| `owner_user_id` | string / null | 否 | — | — |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 404 | COURSE_NOT_FOUND | 课程不存在。 |
 
 ### `GET /api/v1/classes`
 
@@ -345,7 +219,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 用途：加入班级。
 
-鉴权：Bearer access token；角色 admin / student。
+鉴权：Bearer access token；角色 student。
 
 实现：[backend/app/api/routes/classes.py](../../backend/app/api/routes/classes.py)，`join_class`。
 
@@ -531,7 +405,7 @@ Web 封装：`getAnnouncement`（[webreact/src/data/api.js](../../webreact/src/d
 | `published_at` | string / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-| `has_read` | boolean / null | 否 | — | 当前学生视角是否已读(教师/管理员为 null) |
+| `has_read` | boolean / null | 否 | — | 当前用户是否已读 |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -716,7 +590,7 @@ Web 封装：`getAssignment`（[webreact/src/data/api.js](../../webreact/src/dat
 | `published_at` | string / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-| `submission_status` | string / null | 否 | — | 当前学生的提交状态；教师和管理员为 null |
+| `submission_status` | string / null | 否 | — | 当前用户的提交状态 |
 | `attachments` | array<[AssignmentAttachmentOut](schemas.md#schema-assignmentattachmentout)> | 否 | — | — |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
@@ -740,7 +614,6 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 权限:
 - 学生: 只能看到自己所在班级已发布任务的附件
-- 教师/管理员: 可查看任意有权限的任务的附件
 
 参数：
 
@@ -778,7 +651,6 @@ Web 封装：`downloadAssignmentAttachment`（[webreact/src/data/api.js](../../w
 
 权限:
 - 学生: 只能下载自己所在班级已发布任务的附件
-- 教师/管理员: 可下载任意有权限的任务的附件
 
 参数：
 
@@ -1170,7 +1042,6 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 权限:
 - 学生: 只能下载自己提交的附件
-- 教师/管理员: 只能下载自己课程下任一学生的附件
 
 安全:
 - 严格校验 storage_path 位于允许的根目录之下(防路径穿越)

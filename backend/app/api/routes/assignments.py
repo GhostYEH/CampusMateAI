@@ -1,11 +1,4 @@
-"""任务路由 — 列表/创建/详情/更新/发布/关闭/统计/学生状态/附件。
-
-权限:
-- 列表: 学生只看已发布任务;教师/管理员可看草稿。
-- 创建/更新/发布/关闭: 教师(须为本班级负责教师)或管理员。
-- 统计/student-status: 教师或管理员。
-- 附件: 上传(教师/管理员),下载(有权限的教师/学生/管理员),列表(有权限的教师/学生/管理员)。
-"""
+"""学生作业读取与附件下载，按班级和发布状态检查权限。"""
 from __future__ import annotations
 
 import json
@@ -219,7 +212,6 @@ def list_assignment_attachments(
 
     权限:
     - 学生: 只能看到自己所在班级已发布任务的附件
-    - 教师/管理员: 可查看任意有权限的任务的附件
     """
     a = container.assignment_repository.get_assignment(assignment_id)
     if a is None:
@@ -256,7 +248,6 @@ def download_assignment_attachment(
 
     权限:
     - 学生: 只能下载自己所在班级已发布任务的附件
-    - 教师/管理员: 可下载任意有权限的任务的附件
     """
     a = container.assignment_repository.get_assignment(assignment_id)
     if a is None:

@@ -118,7 +118,7 @@ export const CLASSROOM_STATE_TEXT = {
   },
   incompatible: {
     title: "辅导服务版本不兼容",
-    body: "互动课堂服务与当前后端约定的接口不一致，已暂停生成，请联系管理员核对部署版本。",
+    body: "互动课堂服务与当前后端约定的接口不一致，已暂停生成，请反馈此问题以核对服务版本。",
   },
   embed_blocked: {
     title: "课堂浏览授权尚未配置",

@@ -1,6 +1,6 @@
 # 认证、账号与扫码登录
 
-> 对照日期：2026-09-30。本模块共 17 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-04。本模块共 15 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -14,6 +14,10 @@
 
 客户端应按 `Retry-After` 等待后再允许重试，不将 429 当作密码错误或注销凭据。Web、Android、HarmonyOS、微信小程序的登录调用已核对，通用错误流程可处理失败；专门的倒计时提示尚未适配，各移动端本次未编译或真机验证。无需修改成功响应字段。
 
+## 角色与兼容性
+
+系统仅提供 `student` 角色。`/auth/admin/users*` 已移除；公开注册不能创建其他角色。历史 `admin` / `teacher` 账号和旧 Token 按普通用户权限解释，不删除已有账号或学习数据；登录、刷新、`me` 和班级成员均不再返回管理员角色。历史 teacher 的专用学习计划限制仍保留。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |
@@ -23,9 +27,7 @@
 | POST | `/api/v1/auth/refresh` | 用 refresh token 换发新的 access token + refresh token |
 | POST | `/api/v1/auth/logout` | 撤销当前 refresh token(若有)，并撤销当前浏览器的可信设备凭据 |
 | GET | `/api/v1/auth/me` | 当前用户资料 |
-| POST | `/api/v1/auth/admin/users` | 管理员创建用户接口(仅 admin 角色) |
-| GET | `/api/v1/auth/admin/users` | 管理员列出用户 |
-| PATCH | `/api/v1/auth/admin/users/{user_id}` | 管理员更新用户 |
+| PATCH | `/api/v1/auth/me` | 用户更新本人的个人资料 |
 | POST | `/api/v1/auth/qr/create` | Web 创建 QR Login Session(无需鉴权) |
 | POST | `/api/v1/auth/qr/scan` | 手机扫码(需登录)。绑定当前手机用户到 session |
 | POST | `/api/v1/auth/qr/confirm` | 手机确认登录 Web(需登录) |
@@ -103,9 +105,9 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 公开注册接口(无需鉴权)。
 
 限制:
-- 仅允许注册 student 角色;admin 必须由管理员通过 /auth/admin/users 创建。
+- 仅允许注册 student 角色;不支持其他角色。
 - 注册成功后用户仍需走 /auth/login 登录获取 token(注册不自动登录)。
-- 用户名/学号唯一性校验同 admin_create_user。
+- 用户名/学号唯一性校验由公开注册流程统一执行。
 
 安全:
 - 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希。
@@ -302,203 +304,6 @@ Web 封装：`getProfile`（[webreact/src/data/api.js](../../webreact/src/data/a
 | `expires_in` | integer / null | 否 | — | — |
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
-### `POST /api/v1/auth/admin/users`
-
-用途：管理员创建用户接口(仅 admin 角色)。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/auth.py](../../backend/app/api/routes/auth.py)，`admin_create_user`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理员创建用户接口(仅 admin 角色)。
-
-用于在真实数据库中创建学生/管理员验收账号,执行完整真实业务流程,
-无任何"演示专用通道"或绕过认证的特殊账号。
-
-权限校验:
-- 仅 admin 角色可调用(require_role("admin"))
-- 用户名/学号唯一性校验
-- role 与 student_number 一致性校验
-
-安全:
-- 密码以 PBKDF2-HMAC-SHA256 哈希存储,不返回密码或哈希
-- 返回 UserPublic(不含 password_hash)
-
-参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
-
-请求体：`application/json`，必填；[UserCreate](schemas.md#schema-usercreate)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `username` | string | 是 | minLength=3; maxLength=64; pattern="^[a-zA-Z0-9_]+$" | 登录用户名 |
-| `password` | string | 是 | minLength=8; maxLength=128 | 登录密码，仅请求使用 |
-| `role` | string | 是 | pattern="^(student\|admin)$" | — |
-| `display_name` | string / null | 否 | string约束: maxLength=128 | — |
-| `student_number` | string / null | 否 | string约束: maxLength=32 | — |
-| `teacher_number` | string / null | 否 | string约束: maxLength=32 | 已废弃,仅为兼容旧数据保留 |
-| `college` | string / null | 否 | string约束: maxLength=64 | — |
-| `major` | string / null | 否 | string约束: maxLength=64 | — |
-| `grade` | string / null | 否 | string约束: maxLength=32 | — |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "username": "<username>",
-  "password": "<password>",
-  "role": "<role>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 201 | application/json | [UserPublic](schemas.md#schema-userpublic) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-201 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `username` | string | 是 | — | 登录用户名 |
-| `role` | string | 是 | — | — |
-| `name` | string | 否 | default="" | 名称 |
-| `display_name` | string / null | 否 | — | — |
-| `student_number` | string / null | 否 | — | — |
-| `teacher_number` | string / null | 否 | — | — |
-| `college` | string / null | 否 | — | — |
-| `major` | string / null | 否 | — | — |
-| `grade` | string / null | 否 | — | — |
-| `avatar_url` | string / null | 否 | — | — |
-| `university_id` | string / null | 否 | — | — |
-| `university_name` | string / null | 否 | — | — |
-| `is_active` | boolean | 否 | default=true | — |
-| `created_at` | string | 否 | default="" | 创建时间 |
-| `updated_at` | string | 否 | default="" | 最近更新时间 |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 422 | VALIDATION_FAILED | '管理员角色不应携带学号或工号' |
-| 422 | VALIDATION_FAILED | '学生角色不应携带 teacher_number' |
-| 409 | USERNAME_EXISTS | 用户名已被占用。 |
-| 409 | STUDENT_NUMBER_EXISTS | 学号已被占用。 |
-
-### `GET /api/v1/auth/admin/users`
-
-用途：管理员列出用户。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/auth.py](../../backend/app/api/routes/auth.py)，`admin_list_users`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| query | `role` | string / null | 否 | string约束: pattern="^(student\|admin)$" | — |
-| query | `is_active` | boolean / null | 否 | — | — |
-| query | `query` | string / null | 否 | string约束: maxLength=128 | — |
-| query | `page` | integer | 否 | default=1; minimum=1 | — |
-| query | `page_size` | integer | 否 | default=20; minimum=1; maximum=100 | — |
-
-请求体：无。
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [Page](schemas.md#schema-page)；items 元素为 [UserPublic](schemas.md#schema-userpublic) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `items` | array<any> | 否 | — | 列表条目 |
-| `total` | integer | 否 | default=0 | 总数 |
-| `page` | integer | 否 | default=1 | 当前页，从 1 开始 |
-| `page_size` | integer | 否 | default=20 | 每页数量 |
-| `has_more` | boolean | 否 | default=false | 是否还有下一页 |
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
-### `PATCH /api/v1/auth/admin/users/{user_id}`
-
-用途：管理员更新用户。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/auth.py](../../backend/app/api/routes/auth.py)，`admin_update_user`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `user_id` | string | 是 | — | — |
-
-请求体：`application/json`，必填；[UserAdminUpdate](schemas.md#schema-useradminupdate)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `display_name` | string / null | 否 | string约束: minLength=1; maxLength=128 | — |
-| `role` | string / null | 否 | string约束: pattern="^(student\|admin)$" | — |
-| `college` | string / null | 否 | string约束: maxLength=64 | — |
-| `major` | string / null | 否 | string约束: maxLength=64 | — |
-| `grade` | string / null | 否 | string约束: maxLength=32 | — |
-| `is_active` | boolean / null | 否 | — | — |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [UserPublic](schemas.md#schema-userpublic) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `username` | string | 是 | — | 登录用户名 |
-| `role` | string | 是 | — | — |
-| `name` | string | 否 | default="" | 名称 |
-| `display_name` | string / null | 否 | — | — |
-| `student_number` | string / null | 否 | — | — |
-| `teacher_number` | string / null | 否 | — | — |
-| `college` | string / null | 否 | — | — |
-| `major` | string / null | 否 | — | — |
-| `grade` | string / null | 否 | — | — |
-| `avatar_url` | string / null | 否 | — | — |
-| `university_id` | string / null | 否 | — | — |
-| `university_name` | string / null | 否 | — | — |
-| `is_active` | boolean | 否 | default=true | — |
-| `created_at` | string | 否 | default="" | 创建时间 |
-| `updated_at` | string | 否 | default="" | 最近更新时间 |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 404 | USER_NOT_FOUND | 用户不存在。 |
-| 422 | VALIDATION_FAILED | '不能停用当前登录的管理员账号' |
-| 422 | VALIDATION_FAILED | '不能修改当前登录账号的管理员角色' |
 
 ### `POST /api/v1/auth/qr/create`
 
@@ -979,3 +784,19 @@ Web 封装：`revokeTrustedDevice`（[webreact/src/data/http/authEndpoints.js](.
 ```
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
+
+### `PATCH /api/v1/auth/me`
+
+用途：用户修改本人的个人资料，供 Web 个人中心使用；Bearer access token 必需。请求没有用户 ID，不允许编辑角色、账号停用状态或其他账号。
+
+请求体为 [UserProfileUpdate](schemas.md#schema-userprofileupdate)，仅接受 `display_name`（字符串/null，最多 128 字符）、`college`、`major`（各最多 64 字符）和 `grade`（最多 32 字符）。所有字段可省略；省略表示保留现值，显式 null 清空。未声明字段返回 422 `VALIDATION_FAILED`。
+
+```json
+{"display_name":"示例同学","college":"示例学院","major":"软件工程","grade":"2026"}
+```
+
+成功为 200 [UserPublic](schemas.md#schema-userpublic)，含 `id`、`uid`、`username`、`role:"student"`、`name`、资料字段、学校归属及创建更新时间；从响应刷新客户端缓存。未登录/Token 失效返回 401，长度超限或额外字段返回 422，使用公共错误信封。
+
+Web 封装：`updateProfile`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+
+Web 已改为此接口。Android、HarmonyOS、微信小程序无需调整现有认证字段，但尚未接入这个新增写入入口。

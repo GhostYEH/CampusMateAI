@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlsplit
 import httpx
 
 from .ssrf_guard import SSRFBlockedError, assert_safe_url, safe_join_url
+from .ssrf_transport import SSRFSafeTransport
 
 
 class EduAdapterError(Exception):
@@ -117,6 +118,8 @@ class ZhengfangHttpClient:
                 timeout=self._timeout,
                 follow_redirects=False,
                 verify=self._verify,
+                transport=SSRFSafeTransport(allow_private=self._allow_private, verify=self._verify),
+                trust_env=False,
             )
         return self._http_client
 

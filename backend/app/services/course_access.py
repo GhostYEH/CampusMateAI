@@ -10,7 +10,7 @@
 1. 已加入该课程下的任一班级（enrollment）；
 2. 或者该课程是学生自己导入的外部课程（provider == "chaoxing" 且 owner_user_id == 本人）。
 
-管理员放行。其它角色（历史 teacher 账号已降级为 student）按学生规则处理。
+历史角色在认证时降级为 student，同样按本人课程范围处理。
 """
 from __future__ import annotations
 
@@ -37,8 +37,6 @@ def can_view_course(
     container: "ServiceContainer", user: UserRow, course: CourseRow
 ) -> bool:
     """统一课程可见性判定。不抛异常，只回答"能不能看"。"""
-    if user.role == "admin":
-        return True
     if is_owner_imported_course(course, user):
         return True
     return is_enrolled_in_course(container, user, course.id)

@@ -16,6 +16,32 @@ from app.services.container import reset_container_for_tests
 BASE = "/api/v1/magicclass/learning-space"
 
 
+def test_requests_use_shared_repository(setup):
+    from app.api.routes.learning_rooms import _repository
+    container, client, accounts = setup
+    shared = container.learning_room_repository
+    assert _repository() is shared
+    for _ in range(2):
+        assert client.get(f"{BASE}/rooms", headers=accounts[0][1]).status_code == 200
+        assert _repository() is shared
+
+
+@pytest.mark.parametrize("legacy_role", ["admin", "teacher"])
+def test_historical_accounts_can_be_looked_up_invited_and_join(setup, legacy_role):
+    container, client, accounts = setup
+    host_uid, host_headers = accounts[0]
+    guest_uid, guest_headers = accounts[1]
+    with container.db.transaction() as conn:
+        conn.execute("UPDATE users SET role=? WHERE id=?", (legacy_role, guest_uid))
+    assert client.get(f"{BASE}/students/{guest_uid}", headers=host_headers).status_code == 200
+    room_id = create(client, host_headers)
+    invited = client.post(f"{BASE}/rooms/{room_id}/invitations", headers=host_headers, json={"uid": guest_uid})
+    assert invited.status_code == 200, invited.text
+    accepted = client.post(f"{BASE}/invitations/{room_id}/accept", headers=guest_headers)
+    assert accepted.status_code == 200, accepted.text
+    assert client.get(f"{BASE}/rooms/{room_id}/archive", headers=guest_headers).status_code == 200
+
+
 def classroom_zip():
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:

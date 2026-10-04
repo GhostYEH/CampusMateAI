@@ -12,6 +12,8 @@
 """
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -29,7 +31,7 @@ def _setup():
     client = TestClient(create_app())
     users = {}
     for username, role in (("kg_owner", "student"), ("kg_other", "student"), ("kg_admin", "admin")):
-        users[username] = container.user_repository.create_user(
+        users[username] = create_legacy_user(container.user_repository,
             username=username, password_hash=hash_password(PASSWORD),
             role=role, display_name=username,
         )
@@ -206,10 +208,12 @@ def test_sync_accepts_knowledge_graph_section_whitelist():
 
 def test_sync_section_whitelist_rejects_non_chaoxing_course():
     container, client, users, headers = _setup()
-    # 用 admin 绕过"学生必须已加入班级"的可见性校验，才能走到 provider 判断。
+    # 先加入班级，按普通用户可见性规则走到 provider 判断。
     course = container.course_repository.create_course(
         name="本地课程", owner_user_id=users["kg_admin"].id, status="active"
     )
+    group = container.class_group_repository.create_class(course_id=course.id, name="知识图谱测试班级")
+    container.enrollment_repository.enroll(class_group_id=group.id, user_id=users["kg_admin"].id)
     response = client.post(f"/api/v1/courses/{course.id}/sync",
                            params={"sections": "knowledge_graph"},
                            headers=headers["kg_admin"])

@@ -13,7 +13,7 @@ def _install_transport(monkeypatch, handler) -> None:
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
-        lambda **kwargs: real_async_client(transport=transport, **kwargs),
+        lambda **kwargs: real_async_client(transport=transport, **{key: value for key, value in kwargs.items() if key != "transport"}),
     )
 
 

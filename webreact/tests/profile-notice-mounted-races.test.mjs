@@ -152,6 +152,29 @@ test("a late profile save cannot close a newer editing session", async () => {
   }
 });
 
+test("profile editing saves supported fields and keeps email read-only", async () => {
+  let submitted;
+  globalThis.__profileNoticeApi = {
+    getProfile: async () => ({ display_name: "原姓名", college: "学院", major: "专业", grade: "一年级" }),
+    getDashboard: async () => ({}), getStudySessions: async () => [],
+    updateProfile: async (payload) => { submitted = payload; return payload; },
+  };
+  const { default: ProfilePage } = await vite.ssrLoadModule("/src/pages/ProfilePage.jsx");
+  const view = await mount(ProfilePage);
+  try {
+    await act(async () => view.host.querySelector(".text-action").click());
+    const email = view.host.querySelector('input[type="email"]');
+    assert.equal(email.readOnly, true);
+    assert.match(view.host.querySelector("#profile-email-help").textContent, /暂不支持修改邮箱/);
+    const name = view.host.querySelector(".profile-edit-form input");
+    await act(async () => Simulate.change(name, { target: { value: "新姓名" } }));
+    await act(async () => view.host.querySelector(".profile-edit-form button.primary").click());
+    assert.deepEqual(submitted, { display_name: "新姓名", college: "学院", major: "专业", grade: "一年级" });
+    assert.match(view.host.textContent, /新姓名/);
+    assert.match(view.host.textContent, /资料已保存/);
+  } finally { await view.unmount(); delete globalThis.__profileNoticeApi; }
+});
+
 test("notice save response cannot mark an edited draft saved and saving state settles", async () => {
   const save = deferred();
   let extractCalls = 0;

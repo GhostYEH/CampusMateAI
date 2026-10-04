@@ -2,11 +2,13 @@
 
 覆盖：
 - 跨用户资源不可枚举
-- teacher/admin 被拒绝
+- 历史 admin 按普通用户权限读取本人数据，不能跨用户
 - 输出不包含敏感字段
 - 错误码不泄露内部信息
 """
 from __future__ import annotations
+
+from legacy_user_helpers import create_legacy_user
 
 from fastapi.testclient import TestClient
 
@@ -22,7 +24,7 @@ def _setup_multi():
     container = reset_container_for_tests(settings)
     container.user_repository.create_user(username="sec_a", password_hash=hash_password("Demo123456"), role="student", display_name="A")
     container.user_repository.create_user(username="sec_b", password_hash=hash_password("Demo123456"), role="student", display_name="B")
-    container.user_repository.create_user(username="sec_admin", password_hash=hash_password("Demo123456"), role="admin", display_name="Admin")
+    create_legacy_user(container.user_repository, username="sec_admin", password_hash=hash_password("Demo123456"), role="admin", display_name="Admin")
     client = TestClient(create_app())
     ra = client.post("/api/v1/auth/login", json={"username": "sec_a", "password": "Demo123456"})
     rb = client.post("/api/v1/auth/login", json={"username": "sec_b", "password": "Demo123456"})
@@ -59,7 +61,7 @@ def test_cross_user_delete_isolated():
     assert resp_b.status_code == 200
 
 
-def test_admin_blocked_on_all_endpoints():
+def test_legacy_admin_reads_only_own_data():
     client, auths = _setup_multi()
     endpoints = [
         ("GET", "/api/v1/learner-state/corrections", None),
@@ -70,7 +72,7 @@ def test_admin_blocked_on_all_endpoints():
     ]
     for method, path, body in endpoints:
         r = client.request(method, path, json=body, headers=auths["admin"])
-        assert r.status_code == 403, f"{method} {path} should be 403, got {r.status_code}"
+        assert r.status_code == 200, f"{method} {path} should receive ordinary user access, got {r.status_code}"
 
 
 def test_error_codes_stable():

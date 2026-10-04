@@ -2,17 +2,15 @@
 
 验证:
 1. 知识库无相关资料时，AI 不凭模型常识回答，而是提示无依据
-2. admin 删除文档后，检索立即失效（不需重启）
+2. 内部工具删除文档后，检索立即失效（不需重启）
 """
 from __future__ import annotations
-
-import io
 
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
@@ -67,18 +65,19 @@ def test_rag_no_answer_for_unknown_topic() -> None:
 
 def test_rag_delete_immediate_effect() -> None:
     client = _client_with_demo()
-    admin_h = _login(client, "admin_demo")
     student_h = _login(client, "student_demo")
 
     unique_content = "CampusMateTestUniqueAnswer2026 校园羽毛球比赛报名须知"
-    resp = client.post(
-        "/api/v1/knowledge/documents",
-        headers=admin_h,
-        files={"file": ("unique_test.md", io.BytesIO(unique_content.encode("utf-8")), "text/markdown")},
-        data={"title": "羽毛球比赛报名"},
+    container = get_container()
+    document, created = container.knowledge_ingestion.import_text(
+        content=unique_content, title="羽毛球比赛报名",
     )
-    assert resp.status_code in (200, 201), f"upload failed: {resp.text}"
-    doc_id = resp.json()["document_id"]
+    assert created
+    doc_id = document.document_id
+    # BM25 needs contrasting documents to produce a positive relevance score.
+    container.knowledge_ingestion.import_text(content="图书借阅期限和归还说明", title="图书借阅")
+    container.knowledge_ingestion.import_text(content="食堂营业时段和支付说明", title="食堂服务")
+    assert any(hit.document.document_id == doc_id for hit in container.retrieval.search(unique_content, min_absolute_score=0))
 
     resp = client.post(
         "/api/v1/counselor/chat",
@@ -86,13 +85,8 @@ def test_rag_delete_immediate_effect() -> None:
         json={"message": "CampusMateTestUniqueAnswer2026", "stream": False},
     )
     assert resp.status_code == 200
-    found_in_sources = any(
-        "unique" in s.get("title", "").lower() or "羽毛球" in s.get("title", "")
-        for s in resp.json().get("sources", [])
-    )
-
-    resp = client.delete(f"/api/v1/knowledge/documents/{doc_id}", headers=admin_h)
-    assert resp.status_code == 200
+    assert container.knowledge_ingestion.delete_document(doc_id)
+    assert not any(hit.document.document_id == doc_id for hit in container.retrieval.search(unique_content, min_absolute_score=0))
 
     resp = client.post(
         "/api/v1/counselor/chat",

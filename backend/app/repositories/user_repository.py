@@ -26,6 +26,8 @@ class UserRepository:
         avatar_url: Optional[str] = None,
         is_active: bool = True,
     ) -> UserRow:
+        if role != "student":
+            raise ValueError("Only student accounts can be created")
         uid = _new_id("usr")
         now = _now_iso()
         with self._db.transaction() as conn:
@@ -106,7 +108,7 @@ class UserRepository:
                 continue
             if k == "is_active":
                 v = int(bool(v))
-            if k == "role" and v not in ("student", "teacher", "admin"):
+            if k == "role" and v != "student":
                 continue
             sets.append(f"{k} = ?")
             values.append(v)

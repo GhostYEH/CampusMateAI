@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
+
 import json
 import sqlite3
 import uuid
@@ -44,6 +46,10 @@ DEFAULT_DECISION_LEASE_SECONDS = 300.0
 class AdaptiveInterventionRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
+
+    def transaction(self) -> AbstractContextManager[sqlite3.Connection]:
+        """Compose plan and intervention lineage writes in one transaction."""
+        return self._db.transaction()
 
     # ---------------------------------------------------------------- 写入
 

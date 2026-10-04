@@ -197,7 +197,7 @@ test("版本不兼容时真实渲染不兼容提示且不给生成入口", () =>
     }),
   });
   assert.match(markup, /辅导服务版本不兼容/);
-  assert.match(markup, /请联系管理员核对部署版本/);
+  assert.match(markup, /请反馈此问题以核对服务版本/);
   assert.doesNotMatch(markup, /<iframe/);
   assert.doesNotMatch(markup, /确认生成/);
 });

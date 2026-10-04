@@ -31,7 +31,7 @@ export const interactiveErrorText = (error, fallback = "操作失败，请稍后
     error?.response?.data?.message ||
     (error?.response?.data?.code === "MAGICCLASS_NOT_ENABLED" ? "互动课堂服务尚未配置，无法生成。" : null) ||
     (error?.response?.data?.code === "MAGICCLASS_INCOMPATIBLE"
-      ? "互动课堂服务版本不兼容，已暂停生成，请联系管理员核对部署版本。"
+      ? "互动课堂服务版本不兼容，已暂停生成，请反馈此问题以核对服务版本。"
       : null) ||
     error?.message ||
     fallback

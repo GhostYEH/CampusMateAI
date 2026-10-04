@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.core.qr_payload import build_qr_payload, parse_qr_payload
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
@@ -245,7 +245,7 @@ def test_double_scan_same_user_idempotent() -> None:
 def test_scan_by_different_user_after_scanned_rejected() -> None:
     client = _client()
     h1 = _login(client, "student_demo")
-    h2 = _login(client, "admin_demo")
+    h2 = _login(client, "content_demo_owner")
     qr = _qr_create(client)
     parsed = _parse_payload(qr["qr_payload"])
     # A 扫码
@@ -260,7 +260,7 @@ def test_scan_by_different_user_after_scanned_rejected() -> None:
 def test_confirm_by_different_user_rejected() -> None:
     client = _client()
     h1 = _login(client, "student_demo")
-    h2 = _login(client, "admin_demo")
+    h2 = _login(client, "content_demo_owner")
     qr = _qr_create(client)
     parsed = _parse_payload(qr["qr_payload"])
     # A 扫码
@@ -509,9 +509,8 @@ def test_logout_revokes_trusted_device() -> None:
     assert auto_resp.status_code == 401
 
 
-def test_user_deactivation_revokes_trusted_device() -> None:
+def test_inactive_user_cannot_auto_login_with_trusted_device() -> None:
     client = _client()
-    admin_h = _login(client, "admin_demo")
     mobile_h = _login(client, "student_demo")
     qr = _qr_create(client)
     parsed = _parse_payload(qr["qr_payload"])
@@ -526,13 +525,8 @@ def test_user_deactivation_revokes_trusted_device() -> None:
         json={"session_id": parsed["session_id"], "browser_token": qr["browser_token"]},
     )
     web_user = exchange_resp.json()["user"]
-    # admin 停用该用户
-    deactivate_resp = client.patch(
-        f"/api/v1/auth/admin/users/{web_user['id']}",
-        json={"is_active": False},
-        headers={"Authorization": admin_h["Authorization"]},
-    )
-    assert deactivate_resp.status_code == 200
+    # Internal fixture preparation; account management has no public API.
+    get_container().user_repository.update_user(web_user["id"], fields={"is_active": False})
     # 停用后 trusted device 自动登录应失败
     auto_resp = client.post(
         "/api/v1/auth/trusted-device/auto-login",

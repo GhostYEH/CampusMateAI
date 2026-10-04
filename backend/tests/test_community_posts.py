@@ -90,11 +90,10 @@ def test_demo_student_receives_seeded_hot_campus_posts() -> None:
     assert all(item["comment_count"] > 0 for item in items)
 
 
-def test_post_ownership_and_admin_moderation_are_enforced() -> None:
+def test_post_ownership_is_enforced() -> None:
     client, _ = _setup()
     a = _headers(client, "student_a")
     peer = _headers(client, "student_a_peer")
-    admin = _headers(client, "admin_demo")
     post_id = client.post(
         "/api/v1/community/posts",
         headers=a,
@@ -104,13 +103,10 @@ def test_post_ownership_and_admin_moderation_are_enforced() -> None:
     denied = client.delete(f"/api/v1/community/posts/{post_id}", headers=peer)
     assert denied.status_code == 403
 
-    hidden = client.post(f"/api/v1/admin/community/posts/{post_id}/hide", headers=admin)
-    assert hidden.status_code == 200, hidden.text
-    assert hidden.json()["status"] == "hidden"
-    assert "Owned by A" not in [
-        item["title"]
-        for item in client.get("/api/v1/community/posts", headers=a).json()["items"]
-    ]
+    deleted = client.delete(f"/api/v1/community/posts/{post_id}", headers=a)
+    assert deleted.status_code == 200
+    assert deleted.json()["status"] == "deleted"
+    assert client.get(f"/api/v1/community/posts/{post_id}", headers=peer).status_code == 404
 
 
 def test_anonymous_post_hides_identity_but_preserves_backend_ownership() -> None:

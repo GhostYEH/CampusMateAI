@@ -492,12 +492,12 @@ def test_simulation_api_rejects_unknown_intervention_type():
     assert response.status_code == 422
 
 
-def test_simulation_api_rejects_admin_role():
+def test_simulation_api_allows_ordinary_content_owner():
     container, client = _client()
-    admin_headers = _login(client, "admin_demo")
+    owner_headers = _login(client, "content_demo_owner")
     response = client.post(
         "/api/v1/learner-state/simulations",
-        headers=admin_headers,
+        headers=owner_headers,
         json={
             "intervention": {
                 "intervention_type": "ALLOCATE_FOCUS_MINUTES",
@@ -506,7 +506,7 @@ def test_simulation_api_rejects_admin_role():
             "horizon_days": 7,
         },
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 def test_simulation_api_cross_user_baseline_returns_404():

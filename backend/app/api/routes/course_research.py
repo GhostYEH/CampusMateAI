@@ -257,7 +257,7 @@ def get_run(
     session = repo.get_session_by_run(run_id)
     if not session:
         raise AgentRunNotFound("Run 不存在")
-    if session.user_id != user.id and user.role != "admin":
+    if session.user_id != user.id:
         raise AgentRunNotFound("Run 不存在")
     artifacts = container.agent_artifact_manager.list_by_run(run_id, user.id)
     return _session_to_out(
@@ -310,7 +310,7 @@ def list_artifacts(
     session = repo.get_session_by_run(run_id)
     if not session:
         raise AgentRunNotFound("Run 不存在")
-    if session.user_id != user.id and user.role != "admin":
+    if session.user_id != user.id:
         raise AgentRunNotFound("Run 不存在")
     artifacts_data = container.agent_artifact_manager.list_by_run(run_id, user.id)
     artifacts: list[CourseResearchArtifactOut] = []

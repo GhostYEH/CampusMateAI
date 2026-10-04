@@ -20,14 +20,13 @@ logger = logging.getLogger(__name__)
 DEMO_PASSWORD = "Demo123456"
 
 # (username, role, display_name, student_number, teacher_number, college, major, grade)
-# CampusMate AI 只存在 student / admin 两类系统角色。
-# 历史演示中的 teacher 账号已改为 admin(管理员负责系统内容维护)。
+# 所有演示账号均为普通 student，课程负责人仅用于演示数据归属。
 DEMO_USERS = [
-    ("admin_demo2", "admin", "李管理员(演示)", None, None, "信息工程学院", "计算机系", None),
-    ("admin_demo3", "admin", "王管理员(演示)", None, None, "外国语学院", "英语系", None),
+    ("course_demo_owner1", "student", "李同学(演示)", None, None, "信息工程学院", "计算机系", None),
+    ("course_demo_owner2", "student", "王同学(演示)", None, None, "外国语学院", "英语系", None),
     ("student_demo", "student", "陈同学(演示)", "S202401001", None, "信息工程学院", "计算机科学与技术", "2024"),
     ("agent_demo", "student", "智能体演示用户", "SAGENTDEMO", None, "信息工程学院", "计算机科学与技术", "2024"),
-    ("admin_demo", "admin", "管理员(演示)", None, None, None, None, None),
+    ("content_demo_owner", "student", "内容演示用户", None, None, None, None, None),
 ]
 
 # 30 名学生演示账号
@@ -145,9 +144,8 @@ def seed_demo_data(container: ServiceContainer, *, force: bool = False) -> dict:
             user = existing
         created_users[username] = user
 
-    teacher1 = created_users["admin_demo2"]
-    teacher2 = created_users["admin_demo3"]
-    admin = created_users["admin_demo"]
+    teacher1 = created_users["course_demo_owner1"]
+    teacher2 = created_users["course_demo_owner2"]
     student_demo = created_users["student_demo"]
     agent_demo = created_users["agent_demo"]
     demo_university = container.university_repository.ensure_demo_university()

@@ -1021,61 +1021,6 @@ Run 详情(§5.6)。
 }
 ```
 
-<a id="schema-agentruntraceout"></a>
-## AgentRunTraceOut
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-单 Run 时间线。只包含安全摘要、状态、耗时与业务标识。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `run` | [RunTraceHeader](schemas.md#schema-runtraceheader) | 是 | — | — |
-| `events` | array<[RunTraceEvent](schemas.md#schema-runtraceevent)> | 否 | — | — |
-| `tool_calls` | array<[RunTraceToolCall](schemas.md#schema-runtracetoolcall)> | 否 | — | — |
-| `model_calls` | array<[RunTraceModelCall](schemas.md#schema-runtracemodelcall)> | 否 | — | — |
-| `approvals` | array<[RunTraceApproval](schemas.md#schema-runtraceapproval)> | 否 | — | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
-<a id="schema-agentruntimeoverviewout"></a>
-## AgentRuntimeOverviewOut
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-队列、成功率、耗时、Token、工具、重试与审批等待的聚合视图。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `window_hours` | integer | 是 | minimum=1.0 | — |
-| `since` | string | 是 | — | — |
-| `queue_depth` | integer | 否 | default=0; minimum=0.0 | — |
-| `stale_lease_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `run_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `status_distribution` | map<string, integer> | 否 | additionalProperties={"type": "integer"} | — |
-| `success_rate` | number / null | 否 | number约束: minimum=0.0; maximum=1.0 | — |
-| `duration_ms` | [DurationStats](schemas.md#schema-durationstats) | 是 | — | — |
-| `model_latency_ms` | [ModelLatencyStats](schemas.md#schema-modellatencystats) | 是 | — | — |
-| `token_usage` | [TokenUsage](schemas.md#schema-tokenusage) | 是 | — | — |
-| `tool_failure_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `tool_call_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `retry_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `approval` | [ApprovalStats](schemas.md#schema-approvalstats) | 是 | — | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
 <a id="schema-agentskillout"></a>
 ## AgentSkillOut
 
@@ -1156,28 +1101,7 @@ Run 详情(§5.6)。
 | `published_at` | string / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-| `has_read` | boolean / null | 否 | — | 当前学生视角是否已读(教师/管理员为 null) |
-
-<a id="schema-approvalstats"></a>
-## ApprovalStats
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `pending` | integer | 否 | default=0; minimum=0.0 | — |
-| `resolved` | integer | 否 | default=0; minimum=0.0 | — |
-| `expired` | integer | 否 | default=0; minimum=0.0 | — |
-| `wait_p50_ms` | number / null | 否 | number约束: minimum=0.0 | — |
-| `wait_p95_ms` | number / null | 否 | number约束: minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
+| `has_read` | boolean / null | 否 | — | 当前用户是否已读 |
 
 <a id="schema-approvalstatus"></a>
 ## ApprovalStatus
@@ -1293,7 +1217,7 @@ Run 详情(§5.6)。
 | `published_at` | string / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-| `submission_status` | string / null | 否 | — | 当前学生的提交状态；教师和管理员为 null |
+| `submission_status` | string / null | 否 | — | 当前用户的提交状态 |
 | `attachments` | array<[AssignmentAttachmentOut](schemas.md#schema-assignmentattachmentout)> | 否 | — | — |
 
 <a id="schema-assistancemode"></a>
@@ -1380,23 +1304,6 @@ Run 详情(§5.6)。
 | --- | --- | --- | --- | --- |
 | `file` | string (binary) | 是 | format="binary" | — |
 
-<a id="schema-body_upload_document_api_v1_knowledge_documents_post"></a>
-## Body_upload_document_api_v1_knowledge_documents_post
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `file` | string (binary) | 是 | format="binary" | — |
-| `title` | string / null | 否 | — | 标题 |
-| `source_department` | string / null | 否 | — | — |
-| `source_type` | string / null | 否 | — | — |
-| `published_at` | string / null | 否 | — | — |
-| `updated_at` | string / null | 否 | — | 最近更新时间 |
-| `effective_from` | string / null | 否 | — | — |
-| `effective_to` | string / null | 否 | — | — |
-| `version` | string / null | 否 | — | — |
-| `applicable_students` | string / null | 否 | — | — |
-| `is_official` | boolean | 否 | default=false | — |
-
 <a id="schema-body_upload_expression_sample_api_v1_contributions_expression_samples_post"></a>
 ## Body_upload_expression_sample_api_v1_contributions_expression_samples_post
 
@@ -1406,13 +1313,6 @@ Run 详情(§5.6)。
 | `label` | string | 是 | — | — |
 | `consent` | boolean | 是 | — | — |
 | `model_version` | string | 否 | default="unknown" | — |
-
-<a id="schema-body_upload_home_banner_image_api_v1_admin_home_banners_images_post"></a>
-## Body_upload_home_banner_image_api_v1_admin_home_banners_images_post
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `image` | string (binary) | 是 | format="binary" | — |
 
 <a id="schema-body_upload_image_api_v1_community_upload_image_post"></a>
 ## Body_upload_image_api_v1_community_upload_image_post
@@ -1917,19 +1817,6 @@ AI 导员上下文中的"最近待办"条目 — 仅表示 PersonalTask。
 | `synced` | boolean | 否 | default=false | — |
 | `updated_at` | string | 否 | default="" | 最近更新时间 |
 
-<a id="schema-coursecreate"></a>
-## CourseCreate
-
-模型定义：[backend/app/schemas/multi_role.py](../../backend/app/schemas/multi_role.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `name` | string | 是 | minLength=1; maxLength=128 | 名称 |
-| `code` | string / null | 否 | string约束: maxLength=64 | — |
-| `semester` | string / null | 否 | string约束: maxLength=32 | — |
-| `description` | string / null | 否 | string约束: maxLength=2000 | 说明 |
-| `status` | string | 否 | default="draft"; pattern="^(draft\|active\|archived)$" | 业务状态，合法取值和操作前置条件见枚举及流程 |
-
 <a id="schema-courseknowledgepointout"></a>
 ## CourseKnowledgePointOut
 
@@ -2125,19 +2012,6 @@ POST /api/v1/course-research/runs 请求体。
 | `error_code` | string / null | 否 | — | 失败码，可空 |
 | `error_message` | string / null | 否 | — | — |
 
-<a id="schema-courseupdate"></a>
-## CourseUpdate
-
-模型定义：[backend/app/schemas/multi_role.py](../../backend/app/schemas/multi_role.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `name` | string / null | 否 | string约束: minLength=1; maxLength=128 | 名称 |
-| `code` | string / null | 否 | string约束: maxLength=64 | — |
-| `semester` | string / null | 否 | string约束: maxLength=32 | — |
-| `description` | string / null | 否 | string约束: maxLength=2000 | 说明 |
-| `status` | string / null | 否 | string约束: pattern="^(draft\|active\|archived)$" | 业务状态，合法取值和操作前置条件见枚举及流程 |
-
 <a id="schema-creditprogressvalue"></a>
 ## CreditProgressValue
 
@@ -2245,20 +2119,6 @@ POST /api/v1/course-research/runs 请求体。
   "additionalProperties": false
 }
 ```
-
-<a id="schema-datamanagementresponse"></a>
-## DataManagementResponse
-
-模型定义：[backend/app/schemas/knowledge.py](../../backend/app/schemas/knowledge.py)。
-
-数据清理操作响应。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `success` | boolean | 是 | — | — |
-| `action` | string | 是 | — | 执行的清理动作 |
-| `affected_count` | integer | 否 | default=0 | — |
-| `message` | string | 是 | — | — |
 
 <a id="schema-datasourcecontrollist"></a>
 ## DataSourceControlList
@@ -2430,16 +2290,6 @@ def require_observation_for_stale(self) -> 'DataSourceHealthValue':
 | `created_at` | string (date-time) | 是 | format="date-time" | 创建时间 |
 | `completed_at` | string (date-time) / null | 否 | string约束: format="date-time" | — |
 
-<a id="schema-deleteresponse"></a>
-## DeleteResponse
-
-模型定义：[backend/app/schemas/knowledge.py](../../backend/app/schemas/knowledge.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `success` | boolean | 是 | — | — |
-| `document_id` | string | 是 | — | — |
-
 <a id="schema-deletestatusout"></a>
 ## DeleteStatusOut
 
@@ -2551,25 +2401,6 @@ def require_observation_for_stale(self) -> 'DataSourceHealthValue':
 | `deadline` | string (date-time) / null | 否 | string约束: format="date-time" | 截止时间 |
 | `similarity` | number | 是 | minimum=0.0; maximum=1.0 | 相似度 0~1 |
 | `reasons` | array<string> | 否 | — | 判定为重复的原因(content_hash/source_name/task/deadline) |
-
-<a id="schema-durationstats"></a>
-## DurationStats
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `p50` | number / null | 否 | number约束: minimum=0.0 | — |
-| `p95` | number / null | 否 | number约束: minimum=0.0 | — |
-| `samples` | integer | 否 | default=0; minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
 
 <a id="schema-edubindrequest"></a>
 ## EduBindRequest
@@ -2816,68 +2647,6 @@ confidence 为 0.0~1.0 的浮点数，evidence 标注探测依据。
 | `evidence` | array<object> | 否 | — | — |
 | `detection_source` | string | 否 | default="UNKNOWN" | — |
 | `reason` | string / null | 否 | — | 原因 |
-
-<a id="schema-edudiscoverycandidateout"></a>
-## EduDiscoveryCandidateOut
-
-模型定义：[backend/app/schemas/edu.py](../../backend/app/schemas/edu.py)。
-
-候选数据库条目出参（管理后台用）。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `school_code` | string | 是 | — | 学校代码 |
-| `school_name` | string | 是 | — | — |
-| `candidate_url` | string | 是 | — | — |
-| `provider` | string | 是 | — | — |
-| `source_type` | string | 是 | — | — |
-| `source_url` | string / null | 否 | — | 来源链接 |
-| `confidence` | number | 否 | default=0.0 | — |
-| `verification_status` | string | 是 | — | — |
-| `http_status` | integer / null | 否 | — | — |
-| `final_url` | string / null | 否 | — | — |
-| `title` | string / null | 否 | — | 标题 |
-| `evidence` | array<object> | 否 | — | — |
-| `last_checked_at` | string / null | 否 | — | — |
-| `province` | string / null | 否 | — | — |
-| `level` | string / null | 否 | — | — |
-| `official_domain` | string / null | 否 | — | — |
-| `wakeup_supported` | boolean | 否 | default=false | — |
-| `wakeup_source_date` | string / null | 否 | — | — |
-| `discovered_at` | string / null | 否 | — | — |
-| `reason` | string / null | 否 | — | 原因 |
-| `review_action` | string / null | 否 | — | — |
-
-<a id="schema-edudiscoveryreviewrequest"></a>
-## EduDiscoveryReviewRequest
-
-模型定义：[backend/app/schemas/edu.py](../../backend/app/schemas/edu.py)。
-
-管理后台审核操作。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `action` | string | 是 | — | confirm\|reject\|mark_historical\|mark_intranet\|reverify |
-
-<a id="schema-edudiscoverystatsout"></a>
-## EduDiscoveryStatsOut
-
-模型定义：[backend/app/schemas/edu.py](../../backend/app/schemas/edu.py)。
-
-发现统计。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `universities_total` | integer | 否 | default=0 | — |
-| `candidates_total` | integer | 否 | default=0 | — |
-| `by_status` | object | 否 | — | — |
-| `by_provider` | object | 否 | — | — |
-| `wakeup_supported` | integer | 否 | default=0 | — |
-| `verified_official` | integer | 否 | default=0 | — |
-| `verified_live` | integer | 否 | default=0 | — |
-| `candidate` | integer | 否 | default=0 | — |
-| `not_discovered` | integer | 否 | default=0 | — |
-| `dead` | integer | 否 | default=0 | — |
 
 <a id="schema-edudiscoverysubmiturlrequest"></a>
 ## EduDiscoverySubmitUrlRequest
@@ -3198,41 +2967,6 @@ edu_system_configs 出参。
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
 
-<a id="schema-edusystemconfigupsert"></a>
-## EduSystemConfigUpsert
-
-模型定义：[backend/app/schemas/edu.py](../../backend/app/schemas/edu.py)。
-
-管理员 upsert edu_system_configs 入参。
-
-university_id 必填，其余字段可选；未提供的字段保持原值。
-严禁编造 URL：若不确定，应留空并将对应 url_status 设为 not_discovered。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `university_id` | string | 是 | minLength=1; maxLength=128 | — |
-| `provider` | string / null | 否 | — | — |
-| `system_type` | string / null | 否 | — | — |
-| `academic_system_url` | string / null | 否 | — | — |
-| `academic_system_url_status` | string / null | 否 | — | — |
-| `undergrad_system_url` | string / null | 否 | — | — |
-| `undergrad_system_url_status` | string / null | 否 | — | — |
-| `postgrad_system_url` | string / null | 否 | — | — |
-| `postgrad_system_url_status` | string / null | 否 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `sso_url_status` | string / null | 否 | — | — |
-| `cas_url` | string / null | 否 | — | — |
-| `cas_url_status` | string / null | 否 | — | — |
-| `webvpn_url` | string / null | 否 | — | — |
-| `webvpn_url_status` | string / null | 否 | — | — |
-| `login_method` | string / null | 否 | — | — |
-| `captcha_type` | string / null | 否 | — | — |
-| `requires_campus_network` | boolean / null | 否 | — | — |
-| `supported_features` | array<string> / null | 否 | — | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `notes` | string / null | 否 | — | — |
-| `data_source` | string / null | 否 | — | — |
-
 <a id="schema-edusystemout"></a>
 ## EduSystemOut
 
@@ -3268,38 +3002,6 @@ edu_systems 出参（1:N）。
 | `is_mock` | boolean | 否 | default=false | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-
-<a id="schema-edusystemupsert"></a>
-## EduSystemUpsert
-
-模型定义：[backend/app/schemas/edu.py](../../backend/app/schemas/edu.py)。
-
-管理员 upsert edu_systems 入参。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `system_key` | string | 是 | minLength=1; maxLength=128 | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `name` | string / null | 否 | — | 名称 |
-| `system_type` | string / null | 否 | — | — |
-| `provider` | string / null | 否 | — | — |
-| `provider_version` | string / null | 否 | — | — |
-| `base_url` | string / null | 否 | — | — |
-| `login_url` | string / null | 否 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `vpn_url` | string / null | 否 | — | — |
-| `auth_type` | string / null | 否 | — | — |
-| `login_execution_mode` | string / null | 否 | — | — |
-| `captcha_type` | string / null | 否 | — | — |
-| `requires_campus_network` | boolean / null | 否 | — | — |
-| `requires_vpn` | boolean / null | 否 | — | — |
-| `status` | string / null | 否 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `verification_status` | string / null | 否 | — | — |
-| `supported_features` | array<string> / null | 否 | — | — |
-| `adapter_config` | object / null | 否 | — | — |
-| `source` | string / null | 否 | — | 来源 |
-| `notes` | string / null | 否 | — | — |
-| `is_mock` | boolean / null | 否 | — | — |
 
 <a id="schema-errandextra"></a>
 ## ErrandExtra
@@ -3963,17 +3665,6 @@ def validate_value_for_type(self) -> 'ForecastOut':
 | `items` | array<[HomeBannerOut](schemas.md#schema-homebannerout)> | 是 | — | 列表条目 |
 | `updated_at` | string / null | 否 | — | 最近更新时间 |
 
-<a id="schema-homebannerimageout"></a>
-## HomeBannerImageOut
-
-模型定义：[backend/app/schemas/home_banner.py](../../backend/app/schemas/home_banner.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `image_url` | string | 是 | — | — |
-| `filename` | string | 是 | — | 文件名 |
-| `size` | integer | 是 | — | — |
-
 <a id="schema-homebannerout"></a>
 ## HomeBannerOut
 
@@ -3995,34 +3686,6 @@ def validate_value_for_type(self) -> 'ForecastOut':
 | `ends_at` | string / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
-
-<a id="schema-homebannerwrite"></a>
-## HomeBannerWrite
-
-模型定义：[backend/app/schemas/home_banner.py](../../backend/app/schemas/home_banner.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `eyebrow` | string | 是 | minLength=1; maxLength=60 | — |
-| `title` | string | 是 | minLength=1; maxLength=80 | 标题 |
-| `subtitle` | string | 是 | minLength=1; maxLength=160 | — |
-| `cta_label` | string | 是 | minLength=1; maxLength=30 | — |
-| `image_url` | string | 是 | minLength=1; maxLength=500 | — |
-| `action_key` | enum ["CPM_ASSISTANT", "CHAOXING", "EDU_SYSTEM", "TASKS", "COMMUNITY"] | 是 | — | — |
-| `theme_key` | enum ["INDIGO", "CYAN", "VIOLET", "ORANGE", "GREEN"] | 是 | — | — |
-| `sort_order` | integer | 否 | default=0; minimum=-10000.0; maximum=10000.0 | — |
-| `starts_at` | string (date-time) / null | 否 | string约束: format="date-time" | — |
-| `ends_at` | string (date-time) / null | 否 | string约束: format="date-time" | — |
-
-补充业务校验（OpenAPI 字段约束之外，直接列出模型校验规则）：
-
-```python
-@model_validator(mode='after')
-def validate_window(self) -> 'HomeBannerWrite':
-    if self.starts_at is not None and self.ends_at is not None and (self.ends_at <= self.starts_at):
-        raise ValueError('ends_at must be later than starts_at')
-    return self
-```
 
 <a id="schema-homegenerationin"></a>
 ## HomeGenerationIn
@@ -5079,25 +4742,6 @@ POST /notices/manual — 粘贴文本持久化为服务端 notice_id。
 | `uses_real_model_inference` | boolean | 是 | — | — |
 | `uses_fixed_prediction_file` | boolean | 是 | — | — |
 
-<a id="schema-modellatencystats"></a>
-## ModelLatencyStats
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `p50` | number / null | 否 | number约束: minimum=0.0 | — |
-| `p95` | number / null | 否 | number约束: minimum=0.0 | — |
-| `samples` | integer | 否 | default=0; minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
 <a id="schema-modelroutepolicy"></a>
 ## ModelRoutePolicy
 
@@ -5897,18 +5541,6 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 | `attempt_id` | string | 是 | — | — |
 | `state` | object / null | 否 | — | — |
 
-<a id="schema-rebuildresponse"></a>
-## RebuildResponse
-
-模型定义：[backend/app/schemas/knowledge.py](../../backend/app/schemas/knowledge.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `success` | boolean | 是 | — | — |
-| `document_count` | integer | 是 | — | — |
-| `chunk_count` | integer | 是 | — | — |
-| `message` | string | 是 | — | — |
-
 <a id="schema-recentnoticeitem"></a>
 ## RecentNoticeItem
 
@@ -5975,7 +5607,7 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 约束:
 - username: 3-64 字符,仅字母/数字/下划线
 - password: 8-128 字符
-- role: 仅允许 student(admin 必须由管理员创建)
+- role: 仅允许 student
 - display_name: 选填,≤128 字符
 - student_number: 选填,学生学号
 - college / major / grade: 选填,学生常用
@@ -6203,128 +5835,6 @@ Run 生命周期状态(§5.6)。
     "FAILED",
     "CANCELLED"
   ]
-}
-```
-
-<a id="schema-runtraceapproval"></a>
-## RunTraceApproval
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `approval_id` | string | 是 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `risk_level` | string | 是 | — | — |
-| `action_summary` | string | 是 | — | — |
-| `wait_ms` | number / null | 否 | number约束: minimum=0.0 | — |
-| `expires_at` | string | 是 | — | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
-<a id="schema-runtraceevent"></a>
-## RunTraceEvent
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `sequence` | integer | 是 | minimum=0.0 | — |
-| `type` | string | 是 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `phase` | string | 是 | — | — |
-| `role` | string / null | 否 | — | — |
-| `summary` | string / null | 否 | — | — |
-| `created_at` | string | 是 | — | 创建时间 |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
-<a id="schema-runtraceheader"></a>
-## RunTraceHeader
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `run_id` | string | 是 | — | 运行标识 |
-| `job_id` | string | 是 | — | 任务标识 |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `phase` | string | 是 | — | — |
-| `risk_level` | string / null | 否 | — | — |
-| `handler_code` | string / null | 否 | — | — |
-| `handler_version` | string / null | 否 | — | — |
-| `attempt_no` | integer | 否 | default=0; minimum=0.0 | — |
-| `error_code` | string / null | 否 | — | 失败码，可空 |
-| `started_at` | string / null | 否 | — | — |
-| `finished_at` | string / null | 否 | — | — |
-| `created_at` | string | 是 | — | 创建时间 |
-| `updated_at` | string | 是 | — | 最近更新时间 |
-| `duration_ms` | number / null | 否 | number约束: minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
-<a id="schema-runtracemodelcall"></a>
-## RunTraceModelCall
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `call_id` | string | 是 | — | — |
-| `provider` | string | 是 | — | — |
-| `model` | string | 是 | — | — |
-| `route_policy` | string | 是 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `latency_ms` | integer / null | 否 | — | — |
-| `total_tokens` | integer / null | 否 | — | — |
-| `started_at` | string | 是 | — | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
-<a id="schema-runtracetoolcall"></a>
-## RunTraceToolCall
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `call_id` | string | 是 | — | — |
-| `tool_name` | string | 是 | — | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `error_code` | string / null | 否 | — | 失败码，可空 |
-| `started_at` | string | 是 | — | — |
-| `finished_at` | string / null | 否 | — | — |
-| `duration_ms` | number / null | 否 | number约束: minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
 }
 ```
 
@@ -7336,24 +6846,6 @@ self_report/self_report_tags/expression_signal 任意状态可改。
 | `expires_at` | string | 是 | — | access token 到期时间(ISO 8601) |
 | `user` | [UserPublic](schemas.md#schema-userpublic) | 是 | — | — |
 
-<a id="schema-tokenusage"></a>
-## TokenUsage
-
-模型定义：[backend/app/schemas/agent_observability.py](../../backend/app/schemas/agent_observability.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `total_tokens` | integer | 否 | default=0; minimum=0.0 | — |
-| `model_calls` | integer | 否 | default=0; minimum=0.0 | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
-
 <a id="schema-trusteddeviceautologinrequest"></a>
 ## TrustedDeviceAutoLoginRequest
 
@@ -7511,45 +7003,6 @@ self_report/self_report_tags/expression_signal 任意状态可改。
 | `filename` | string | 是 | — | 文件名 |
 | `size` | integer | 是 | — | — |
 
-<a id="schema-useradminupdate"></a>
-## UserAdminUpdate
-
-模型定义：[backend/app/schemas/multi_role.py](../../backend/app/schemas/multi_role.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `display_name` | string / null | 否 | string约束: minLength=1; maxLength=128 | — |
-| `role` | string / null | 否 | string约束: pattern="^(student\|admin)$" | — |
-| `college` | string / null | 否 | string约束: maxLength=64 | — |
-| `major` | string / null | 否 | string约束: maxLength=64 | — |
-| `grade` | string / null | 否 | string约束: maxLength=32 | — |
-| `is_active` | boolean / null | 否 | — | — |
-
-<a id="schema-usercreate"></a>
-## UserCreate
-
-模型定义：[backend/app/schemas/multi_role.py](../../backend/app/schemas/multi_role.py)。
-
-管理员创建用户请求(仅 admin 角色可调用)。
-
-约束:
-- username: 3-64 字符,仅字母/数字/下划线
-- password: 8-128 字符(由后端 PBKDF2 哈希后存储,不入日志)
-- role: student / admin(CampusMate AI 只存在这两类系统角色)
-- student_number: 仅 student 角色携带
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `username` | string | 是 | minLength=3; maxLength=64; pattern="^[a-zA-Z0-9_]+$" | 登录用户名 |
-| `password` | string | 是 | minLength=8; maxLength=128 | 登录密码，仅请求使用 |
-| `role` | string | 是 | pattern="^(student\|admin)$" | — |
-| `display_name` | string / null | 否 | string约束: maxLength=128 | — |
-| `student_number` | string / null | 否 | string约束: maxLength=32 | — |
-| `teacher_number` | string / null | 否 | string约束: maxLength=32 | 已废弃,仅为兼容旧数据保留 |
-| `college` | string / null | 否 | string约束: maxLength=64 | — |
-| `major` | string / null | 否 | string约束: maxLength=64 | — |
-| `grade` | string / null | 否 | string约束: maxLength=32 | — |
-
 <a id="schema-userpublic"></a>
 ## UserPublic
 
@@ -7560,7 +7013,7 @@ self_report/self_report_tags/expression_signal 任意状态可改。
 | `id` | string | 是 | — | 当前资源标识 |
 | `uid` | string | 否 | default="" | 与账号 `id` 相同的唯一标识，用于共同课堂邀请 |
 | `username` | string | 是 | — | 登录用户名 |
-| `role` | string | 是 | — | — |
+| `role` | string | 是 | const="student" | 唯一公开角色 |
 | `name` | string | 否 | default="" | 名称 |
 | `display_name` | string / null | 否 | — | — |
 | `student_number` | string / null | 否 | — | — |
@@ -7817,3 +7270,15 @@ POST /notices/{notice_id}/workflow 请求体。
 | --- | --- | --- | --- | --- |
 | `content` | string | 是 | minLength=1; maxLength=2000 | 文字消息 |
 | `client_id` | string | 是 | minLength=1; maxLength=128 | 同一成员、同一课堂内去重标识 |
+
+<a id="schema-userprofileupdate"></a>
+## UserProfileUpdate
+
+用户本人资料更新；对象不允许额外字段。所有字段可省略、可为 null；省略保留，null 清空。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `display_name` | string / null | 否 | null；maxLength=128 | 显示姓名 |
+| `college` | string / null | 否 | null；maxLength=64 | 学院 |
+| `major` | string / null | 否 | null；maxLength=64 | 专业 |
+| `grade` | string / null | 否 | null；maxLength=32 | 年级 |

@@ -81,7 +81,10 @@ export async function submitSubmission(id) { return dataOf(await client.post(`/s
 export async function getAnnouncement(id) { return dataOf(await client.get(`/announcements/${id}`)); }
 export async function markAnnouncementRead(id) { return dataOf(await client.post(`/announcements/${id}/read`)); }
 export async function getProfile() { const data = dataOf(await client.get("/auth/me")); return data.user || data; }
-export async function updateProfile(payload) { return dataOf(await client.patch("/admin/profile", payload)); }
+export async function updateProfile(payload) {
+  const { display_name, college, major, grade } = payload;
+  return dataOf(await client.patch("/auth/me", { display_name, college, major, grade }));
+}
 
 export async function getStudySessions(params = {}) { return itemsOf(dataOf(await client.get("/study/sessions", { params: { page_size: 100, ...params } }))); }
 export async function getActiveStudySession() { return dataOf(await client.get("/study/sessions/active")); }

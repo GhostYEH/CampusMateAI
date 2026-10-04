@@ -1,6 +1,8 @@
 """状态驱动干预的只读接口 —— 隔离、分页与不泄露内部结构。"""
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -20,7 +22,7 @@ def _setup():
     other = container.user_repository.create_user(
         username="adaptive_api_other", password_hash=hash_password("Demo123456"), role="student"
     )
-    container.user_repository.create_user(
+    create_legacy_user(container.user_repository,
         username="adaptive_api_teacher", password_hash=hash_password("Demo123456"), role="teacher"
     )
     client = TestClient(create_app())

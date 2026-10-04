@@ -33,8 +33,8 @@ def _decode_access_token(
 ) -> UserRow:
     """解析 access token 并返回 UserRow。失败抛 Unauthorized。
 
-    兼容旧 teacher 账号: 若数据库中用户 role 为 teacher,运行时降级为 student,
-    不修改数据库。CampusMate AI 只存在 student / admin 两类系统角色。
+    历史 teacher/admin 账号运行时降级为 student，保留数据库记录。
+    JWT 中的旧角色不赋予额外权限。
     """
     try:
         payload = decode_jwt(token, settings.jwt_secret)
@@ -46,12 +46,8 @@ def _decode_access_token(
     user = container.user_repository.get_user_by_id(payload.sub)
     if user is None or not user.is_active:
         raise Unauthorized("用户不存在或已停用")
-    # 运行时降级旧 teacher 账号
-    if user.role == "teacher":
-        # Preserve the persisted role for feature gates that explicitly exclude
-        # legacy teacher accounts, while retaining old client compatibility.
-        user.original_role = user.role  # type: ignore[attr-defined]
-        user.role = "student"
+    if user.role != "student":
+        raise Unauthorized("无效的用户角色")
     return user
 
 
@@ -98,7 +94,7 @@ def current_user_optional(
 def require_role(*roles: str):
     """依赖工厂: 限定当前用户必须为指定角色之一,否则抛 Forbidden。
 
-    用法: `user: UserRow = Depends(require_role("admin"))`
+    用法: `user: UserRow = Depends(require_role("student"))`
     """
     expected = set(roles)
 

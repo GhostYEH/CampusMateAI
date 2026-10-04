@@ -42,7 +42,6 @@ from .routes import (
     adaptive_interventions,
     learner_control,
     agent_runtime,
-    agent_observability,
     final_review,
     course_research,
     magicclass_classroom,
@@ -66,7 +65,6 @@ from .routes import (
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(home_banners.router)
-api_router.include_router(home_banners.admin_router)
 api_router.include_router(notices.router, tags=["notices"])
 api_router.include_router(knowledge.router, tags=["knowledge"])
 # AI 校园助手:保留 /counselor 兼容旧客户端,并由 counselor 路由显式提供 /assistant/chat 别名
@@ -101,7 +99,6 @@ api_router.include_router(chaoxing.router, tags=["chaoxing"])
 api_router.include_router(course_content.router)
 api_router.include_router(universities.router)
 api_router.include_router(community.router)
-api_router.include_router(community.admin_router)
 api_router.include_router(academic.router)
 api_router.include_router(bing_daily_wallpaper.router)
 api_router.include_router(learner_state.router)
@@ -119,8 +116,6 @@ api_router.include_router(agent_runtime.runs_router)
 api_router.include_router(agent_runtime.approvals_router)
 api_router.include_router(agent_runtime.artifacts_router)
 api_router.include_router(agent_runtime.memories_router)
-# 管理员只读观测面(§Task 9):仅 admin,聚合优先、脱敏
-api_router.include_router(agent_observability.router)
 # notices/manual 端点由 notices.py 提供(canonical:返回 notice_id 供 workflow 创建)。
 # CampusAgentRuntime 领域路由(§9.3 期末复习 / §9.5 课程研究)
 api_router.include_router(final_review.router)

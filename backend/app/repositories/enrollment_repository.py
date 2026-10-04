@@ -114,7 +114,7 @@ class EnrollmentRepository:
                 "major": r["major"],
                 "grade": r["grade"],
                 "avatar_url": r["avatar_url"],
-                "role": r["role"],
+                "role": "student",
                 "enrollment_id": r["enrollment_id"],
                 "member_role": r["member_role"],
                 "status": r["status"],

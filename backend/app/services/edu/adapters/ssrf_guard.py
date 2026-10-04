@@ -25,6 +25,7 @@ class UrlSafetyReport:
     reason: Optional[str] = None
     final_host: Optional[str] = None
     is_private: bool = False
+    resolved_addresses: tuple[str, ...] = ()
 
 
 def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyReport:
@@ -38,7 +39,11 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
     """
     if not url or not isinstance(url, str):
         return UrlSafetyReport(allowed=False, reason="empty url")
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return UrlSafetyReport(allowed=False, reason="invalid url")
     scheme = (parsed.scheme or "").lower()
     if scheme not in ("http", "https"):
         return UrlSafetyReport(allowed=False, reason=f"scheme {scheme!r} not allowed")
@@ -52,6 +57,8 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
     except ValueError:
         ip = None
     if ip is not None:
+        if ip.is_unspecified:
+            return UrlSafetyReport(allowed=False, reason="unspecified ip blocked")
         if ip.is_loopback:
             return UrlSafetyReport(allowed=False, reason="loopback ip blocked")
         if ip.is_link_local:
@@ -65,31 +72,36 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
                 allowed=False, reason="private ip blocked (requires_campus_network should use client_webview)",
                 is_private=True,
             )
-        if ip.is_private and allow_private:
-            return UrlSafetyReport(allowed=True, final_host=host, is_private=True)
+        return UrlSafetyReport(
+            allowed=True, final_host=host, is_private=ip.is_private,
+            resolved_addresses=(str(ip),),
+        )
     # DNS 解析必须在真正请求前完成；解析失败时保留域名校验结果，
     # 让 HTTP 层返回可观测的网络错误，而不是把 NXDOMAIN 误报为 SSRF。
     try:
         addresses = socket.getaddrinfo(
             host,
-            parsed.port or (443 if scheme == "https" else 80),
+            port or (443 if scheme == "https" else 80),
             type=socket.SOCK_STREAM,
         )
     except socket.gaierror:
         addresses = []
+    resolved_addresses: list[str] = []
+    is_private = False
     for address in addresses:
         resolved_host = address[4][0]
         try:
             resolved_ip = ipaddress.ip_address(resolved_host)
         except ValueError:
             continue
-        if resolved_ip.is_loopback:
+        if resolved_ip.is_loopback or resolved_ip.is_unspecified:
             return UrlSafetyReport(allowed=False, reason="DNS resolved to loopback", final_host=host)
         if resolved_ip.is_link_local:
             return UrlSafetyReport(allowed=False, reason="DNS resolved to link-local", final_host=host)
         if resolved_ip.is_multicast or resolved_ip.is_reserved:
             return UrlSafetyReport(allowed=False, reason="DNS resolved to reserved address", final_host=host)
         if resolved_ip.is_private:
+            is_private = True
             if not allow_private:
                 return UrlSafetyReport(
                     allowed=False,
@@ -97,7 +109,11 @@ def check_url_safety(url: str, *, allow_private: bool = False) -> UrlSafetyRepor
                     final_host=host,
                     is_private=True,
                 )
-    return UrlSafetyReport(allowed=True, final_host=host)
+        resolved_addresses.append(str(resolved_ip))
+    return UrlSafetyReport(
+        allowed=True, final_host=host, is_private=is_private,
+        resolved_addresses=tuple(dict.fromkeys(resolved_addresses)),
+    )
 
 
 def assert_safe_url(url: str, *, allow_private: bool = False) -> None:

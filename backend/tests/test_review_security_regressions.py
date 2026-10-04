@@ -70,6 +70,31 @@ def test_login_is_throttled_with_traceable_retry_after():
     assert 1 <= int(blocked.headers["retry-after"]) <= 60
 
 
+def test_uvicorn_trusted_proxy_separates_client_buckets_and_ignores_forged_chain():
+    import uvicorn
+    config = uvicorn.Config(_client().app, forwarded_allow_ips="testclient", log_config=None)
+    config.load()
+    client = TestClient(config.loaded_app)
+    payload = {"username": "missing", "password": "test-password"}
+    for _ in range(20):
+        assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 401
+    assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": "203.0.113.1"}).status_code == 429
+    assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": "203.0.113.2"}).status_code == 401
+    # The proxy appends the real peer; a forged left-hand address cannot change the bucket.
+    assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": "203.0.113.99, 203.0.113.1"}).status_code == 429
+
+
+def test_uvicorn_untrusted_peer_cannot_change_bucket_using_forwarded_headers():
+    import uvicorn
+    config = uvicorn.Config(_client().app, forwarded_allow_ips="127.0.0.1", log_config=None)
+    config.load()
+    client = TestClient(config.loaded_app)
+    payload = {"username": "missing", "password": "test-password"}
+    for index in range(20):
+        assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": f"203.0.113.{index + 1}"}).status_code == 401
+    assert client.post("/api/v1/auth/login", json=payload, headers={"X-Forwarded-For": "203.0.113.100"}).status_code == 429
+
+
 def test_chat_aliases_share_the_anonymous_limit():
     client = _client()
     for index in range(10):

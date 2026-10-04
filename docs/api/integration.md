@@ -34,7 +34,7 @@ const user = payload.user;
 
 `POST /auth/trusted-device/auto-login` 使用 device_id 和 HttpOnly cookie；`GET /auth/trusted-devices`、revoke 管理已信任设备。扫码状态、错误和各字段见 [认证模块](01-auth.md)。
 
-系统仅 student/admin。是否可操作资源还取决于所属用户、课程可见性、班级 active enrollment、发布状态等；有合法 token 不代表能访问任意 ID。旧 teacher 账号一般降级为 student，但 student_only 排除该兼容身份。
+系统仅提供 student 用户角色。历史 admin 账号和 Token 按普通用户权限解释，不具有跨用户、课程或学校特权。是否可操作资源还取决于所属用户、课程可见性、班级 active enrollment、发布状态等；有合法 token 不代表能访问任意 ID。旧 teacher 账号一般降级为 student，但 student_only 排除该兼容身份。
 
 <a id="errors"></a>
 ## 统一错误与状态判断
@@ -188,7 +188,7 @@ data: {"id":"evt_example","type":"RUN_STARTED","sequence":1,"run_id":"run_exampl
 
 示例包含必需字段，可空的可选字段省略；event 为实际 AgentEventType，且与 data.type 一致。重连发送 **Last-Event-ID（event id，不是 sequence）**；按 sequence 去重并保持顺序。心跳注释不改变业务状态；流断开不会取消运行。无效或不属于本 run 的游标返回 AGENT_CURSOR_INVALID，改用 REST `/events?after_sequence=0&limit=...` 归并，再续传。终态事件发送后流会关闭，不能把正常关闭当作任务失败。
 
-pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运行结果时按新 run_id 追踪。审批决策为 APPROVED/REJECTED；相同决策重放幂等，相反决策冲突，过期不等于批准。产物先读 `/agent-artifacts/{id}`，再 `/content` 获取文本（按 mime_type 读取 Markdown/JSON）；记忆的建立与 withdraw 独立管理。管理员 observability 页面需要 admin，学生不要请求它。
+pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运行结果时按新 run_id 追踪。审批决策为 APPROVED/REJECTED；相同决策重放幂等，相反决策冲突，过期不等于批准。产物先读 `/agent-artifacts/{id}`，再 `/content` 获取文本（按 mime_type 读取 Markdown/JSON）；记忆的建立与 withdraw 独立管理。全局运行观测页面及管理接口已移除，客户端只追踪当前用户的任务与运行。
 
 当前普通依赖支持 access_token query 回退，但 Web Agent SSE 明确使用 Authorization fetch，避免把 token 放进 URL；不要照搬原生 EventSource。
 
@@ -232,11 +232,11 @@ pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运�
 
 教务两条入口：已知学校 detect/bind/binding/sync；未知网址 discovery/probe → connections/from-url → challenge（验证码）→ authenticate → connection sync → 读取 schedule/grade/exam items。需要额外验证时展示接口 action/status，不自动假定绑定完成。解绑与删除连接不同，按实际模型处理；来源未同步、失败或 stale 状态应可辨识。
 
-`/academic/*` 是兼容路径；academic/bind 当前直接拒绝，用 `/edu/bind` 或 connections 流程。大学选择用 `/profile/university`，不是未注册的 `/admin/profile`。
+`/academic/*` 是兼容路径；academic/bind 当前直接拒绝，用 `/edu/bind` 或 connections 流程。大学选择用 `/profile/university`，个人资料编辑使用 `/auth/me`。
 
 ## 上传、下载与静态资源
 
-上传字段名各接口不同：社区 `image`，其他 file/material/attachment 以参数表为准。大小、MIME、扩展名和文件名还有服务端校验，不能只由浏览器 accept 限制。知识库只支持管理员导入正式文档；个人文件、课程资料、作业附件是不同资源。
+上传字段名各接口不同：社区 `image`，其他 file/material/attachment 以参数表为准。大小、MIME、扩展名和文件名还有服务端校验，不能只由浏览器 accept 限制。知识库保留只读能力，不提供在线导入入口；个人文件、课程资料、作业附件是不同资源。
 
 下载先检查 HTTP 和 Content-Type，再读取 Blob；非 2xx 的 JSON 错误不能当作下载文件。当前 Web 部分下载封装只处理 /static/community_images 与通用 blob 文件名，跨 Origin 的 /static/banner-images、课程附件也须按服务 Origin 解析；不要将 /static 路径加到 /api/v1 后。
 
@@ -248,3 +248,15 @@ pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运�
 主题、动效、导航布局、背景图、白噪声播放、静音、数字人重播、课堂面板尺寸、播放偏好、倒计时显示，以及部分助手会话/草稿偏好由当前 Web 的 localStorage、组件状态、静态文件或浏览器播放器管理。对应源码在 pages、features、maic 与 app；它们没有统一的服务端设置 CRUD API。
 
 `/profile/:section`、`/study/plans`、`/study/docs`、`/study/statistics` 等页面会复用现有接口和前端聚合，不意味着后台有同名路由。社区分类中的 activity 是帖子分类，已移除的 `/activities/*` 业务接口没有注册。页面和全部封装的实际路径见 [Web 对照](web-map.md)，不要按页面名称臆造新接口。
+
+## 可信反代与限流身份
+
+限流按 ASGI `request.client.host` 区分客户端，不直接读取客户端提交的 `X-Forwarded-For`。Uvicorn 默认启用代理头处理，但只接受可信代理地址（缺省 `127.0.0.1`）。跨主机或容器反代必须在启动 Uvicorn 前设置进程环境 `FORWARDED_ALLOW_IPS`，或传入 `--forwarded-allow-ips`，内容仅为实际代理 IP/CIDR；不要设为 `*`。仅修改应用读取的 `backend/.env` 不保证 Uvicorn CLI 生效。代理必须覆盖/追加真实连接地址，不能把外部提交的头原样作为可信来源。
+
+已验证可信代理后的两个客户端独立限流、未受信代理的伪造头被忽略，以及伪造转发链不能绕过已耗尽的客户端额度。
+
+## 管理能力移除与平台适配
+
+管理员角色及所有管理专用 API 已删除，包括账号管理、社区审核、横幅编辑、课程写入、教务配置/候选审核、知识库写入和全局 Agent 观测。删除的路径返回 404；同一路径仍保留其他方法时，删除的方法返回 405。不要把这些能力改为普通用户可调用的全局写入入口。
+
+Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料；Web/HarmonyOS 举报提示不再承诺管理员审核。Android、HarmonyOS、微信小程序现有学生接口保持兼容，源码核对未发现管理接口调用；移动端构建和真机流程尚未验证。共享课程、公告、横幅与知识库的已有数据和只读能力保留，由仓库的内部数据准备/同步工具提供内容，产品没有在线管理界面。

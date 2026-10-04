@@ -30,27 +30,6 @@ def _headers(client: TestClient, username: str = "stu_forum") -> dict[str, str]:
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
-def test_school_admin_cannot_hide_or_resolve_another_schools_content():
-    client, container = _setup()
-    admin = container.user_repository.get_user_by_username("admin_demo")
-    student = container.user_repository.get_user_by_username("stu_forum")
-    container.user_repository.update_university(admin.id, "uni_demo_university")
-    headers = _headers(client, "admin_demo")
-    foreign = container.community_repository.create_post(
-        university_id="uni_b", author_id=student.id, title="foreign", content="content", category="campus", images=[], is_anonymous=False,
-    )
-    report = container.community_repository.create_report(
-        university_id="uni_b", reporter_id=student.id, target_type="post", target_id=foreign["id"], reason="test", details=None,
-    )
-    assert client.post(f"/api/v1/admin/community/posts/{foreign['id']}/hide", headers=headers).status_code == 404
-    assert client.post(f"/api/v1/admin/community/reports/{report['id']}/resolve?action=resolve", headers=headers).status_code == 404
-    assert container.community_repository.get_post(foreign["id"])["status"] == "published"
-    assert container.community_repository.get_report(report["id"])["status"] == "pending"
-    container.user_repository.update_university(admin.id, None)
-    assert client.post(f"/api/v1/admin/community/posts/{foreign['id']}/hide", headers=headers).status_code == 200
-    assert client.post(f"/api/v1/admin/community/reports/{report['id']}/resolve?action=resolve", headers=headers).status_code == 200
-
-
 def test_categories_endpoint_returns_all_meta() -> None:
     client, _ = _setup()
     h = _headers(client)
@@ -156,58 +135,8 @@ def test_like_and_unlike_are_idempotent() -> None:
     assert unliked["like_count"] == 0
 
 
-def test_admin_can_list_and_resolve_reports() -> None:
-    client, _ = _setup()
-    h = _headers(client)
-    admin = _headers(client, "admin_demo")
-    post_id = client.post("/api/v1/community/posts", headers=h, json={"title": "被举报帖", "content": "test", "category": "campus"}).json()["id"]
-    client.post("/api/v1/community/reports", headers=h, json={"target_type": "post", "target_id": post_id, "reason": "垃圾广告", "details": "测试举报"})
-    reports = client.get("/api/v1/admin/community/reports?status=pending", headers=admin).json()
-    assert reports["total"] >= 1
-    rid = reports["items"][0]["id"]
-    assert reports["items"][0]["reporter_name"] == "stu_forum"
-    resolved = client.post(f"/api/v1/admin/community/reports/{rid}/resolve?action=resolve", headers=admin).json()
-    assert resolved["status"] == "resolved"
-    pending = client.get("/api/v1/admin/community/reports?status=pending", headers=admin).json()
-    assert pending["total"] == 0
-
-
-def test_admin_can_reject_report() -> None:
-    client, _ = _setup()
-    h = _headers(client)
-    admin = _headers(client, "admin_demo")
-    post_id = client.post("/api/v1/community/posts", headers=h, json={"title": "X", "content": "y", "category": "campus"}).json()["id"]
-    client.post("/api/v1/community/reports", headers=h, json={"target_type": "post", "target_id": post_id, "reason": "其它"})
-    rid = client.get("/api/v1/admin/community/reports", headers=admin).json()["items"][0]["id"]
-    rejected = client.post(f"/api/v1/admin/community/reports/{rid}/resolve?action=reject", headers=admin).json()
-    assert rejected["status"] == "rejected"
-
-
-def test_admin_can_list_all_posts_including_hidden() -> None:
-    client, _ = _setup()
-    h = _headers(client)
-    admin = _headers(client, "admin_demo")
-    post_id = client.post("/api/v1/community/posts", headers=h, json={"title": "待隐藏", "content": "x", "category": "campus"}).json()["id"]
-    client.post(f"/api/v1/admin/community/posts/{post_id}/hide", headers=admin)
-    all_posts = client.get("/api/v1/admin/community/posts", headers=admin).json()
-    assert any(p["id"] == post_id and p["status"] == "hidden" for p in all_posts["items"])
-    visible = client.get("/api/v1/community/posts", headers=h).json()
-    assert not any(p["id"] == post_id for p in visible["items"])
-
-
-def test_admin_post_filter_by_status() -> None:
-    client, _ = _setup()
-    h = _headers(client)
-    admin = _headers(client, "admin_demo")
-    pid = client.post("/api/v1/community/posts", headers=h, json={"title": "P", "content": "c", "category": "campus"}).json()["id"]
-    client.post(f"/api/v1/admin/community/posts/{pid}/hide", headers=admin)
-    hidden = client.get("/api/v1/admin/community/posts?status=hidden", headers=admin).json()
-    assert all(p["status"] == "hidden" for p in hidden["items"])
-    assert any(p["id"] == pid for p in hidden["items"])
-
-
 def test_report_management_rejects_student_access() -> None:
     client, _ = _setup()
     h = _headers(client)
-    assert client.get("/api/v1/admin/community/reports", headers=h).status_code == 403
-    assert client.get("/api/v1/admin/community/posts", headers=h).status_code == 403
+    assert client.get("/api/v1/admin/community/reports", headers=h).status_code == 404
+    assert client.get("/api/v1/admin/community/posts", headers=h).status_code == 404

@@ -327,7 +327,7 @@ async def list_job_runs(
 ) -> list[AgentRunOut]:
     repo = _repo(container)
     job, runs = await _offload(lambda: (repo.get_job(job_id), repo.list_runs_by_job(job_id)))
-    if not job or (job["user_id"] != user.id and user.role != "admin"):
+    if not job or job["user_id"] != user.id:
         raise AgentRunNotFound("Job 不存在")
     outputs = await _offload(_run_page, repo, _artifact_repo(container), runs)
     return outputs
@@ -343,7 +343,7 @@ async def get_job(
     job, latest_run_id, pending_approval_id = await _offload(_job_detail, repo, job_id)
     if not job:
         raise AgentRunNotFound("Job 不存在")
-    if job["user_id"] != user.id and user.role != "admin":
+    if job["user_id"] != user.id:
         raise AgentRunNotFound("Job 不存在")
     return _job_to_out(
         job,
@@ -459,7 +459,7 @@ async def get_run(
     run, artifacts = await _offload(_load_run, repo, _artifact_repo(container), run_id)
     if not run:
         raise AgentRunNotFound("Run 不存在")
-    if run["user_id"] != user.id and user.role != "admin":
+    if run["user_id"] != user.id:
         raise AgentRunNotFound("Run 不存在")
     return _run_to_out(run, artifacts or [])
 
@@ -608,7 +608,7 @@ async def list_events(
     run = await _offload(repo.get_run, run_id)
     if not run:
         raise AgentRunNotFound("Run 不存在")
-    if run["user_id"] != user.id and user.role != "admin":
+    if run["user_id"] != user.id:
         raise AgentRunNotFound("Run 不存在")
     events = await _offload(repo.list_events, run_id, after_sequence=after_sequence, limit=limit)
     return [_event_to_out(e) for e in events]
@@ -629,7 +629,7 @@ async def stream_events(
     run = await _offload(repo.get_run, run_id)
     if not run:
         raise AgentRunNotFound("Run 不存在")
-    if run["user_id"] != user.id and user.role != "admin":
+    if run["user_id"] != user.id:
         raise AgentRunNotFound("Run 不存在")
     # 直接按 (run_id, event_id) 索引定位 sequence,不再扫描历史事件列表。
     after_sequence = 0

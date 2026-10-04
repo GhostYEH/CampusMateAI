@@ -1178,7 +1178,7 @@ struct Index {
     try {
       const body: CommunityReportCreatePayload = { target_type: 'post', target_id: this.communityDetailPost.id, reason: reason };
       await this.createApiClient().requestVoid(http.RequestMethod.POST, 'community/reports', body);
-      toastError('已举报，管理员将审核');
+      toastError('已提交举报');
     } catch (_) { toastError('举报失败'); }
   }
 

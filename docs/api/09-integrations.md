@@ -1,6 +1,6 @@
 # 学习通、教务连接与兼容接口
 
-> 对照日期：2026-09-30。本模块共 37 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-04。本模块共 32 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -22,7 +22,6 @@
 | DELETE | `/api/v1/academic/binding` | [deprecated] 委托 EduConnector.unbind |
 | GET | `/api/v1/edu/detect` | 探测学校教务厂商与系统类型（不编造 URL） |
 | GET | `/api/v1/edu/config/{university_id}` | 获取学校教务系统配置 |
-| PUT | `/api/v1/edu/config/{university_id}` | 管理员更新教务系统配置 |
 | GET | `/api/v1/edu/binding` | 获取当前用户教务绑定（不含凭证） |
 | POST | `/api/v1/edu/bind` | [deprecated] 兼容旧版一次性绑定接口 |
 | DELETE | `/api/v1/edu/binding` | 解绑教务账号 |
@@ -38,7 +37,6 @@
 | GET | `/api/v1/edu/exam/semesters` | 列出已同步考试安排的所有学期 |
 | GET | `/api/v1/edu/exam/items` | 读取已持久化的考试安排，补考通过 exam_type 区分 |
 | GET | `/api/v1/edu/systems/{university_id}` | 列出学校的所有教务系统（1:N） |
-| POST | `/api/v1/edu/systems/{university_id}` | 管理员 upsert 教务系统 |
 | POST | `/api/v1/edu/connections` | 创建教务连接（返回 connection_id + 初始状态） |
 | GET | `/api/v1/edu/connections/{connection_id}` | 读取教务连接 |
 | POST | `/api/v1/edu/connections/{connection_id}/pre-login` | 预登录：获取验证码图片等预登录数据 |
@@ -46,9 +44,6 @@
 | POST | `/api/v1/edu/connections/from-url` | 从教务系统 URL 创建连接（便捷流程） |
 | POST | `/api/v1/edu/discovery/probe` | 探测教务系统 URL（不需要 university_id） |
 | POST | `/api/v1/edu/discovery/submit-url` | 用户手动提交教务系统 URL |
-| GET | `/api/v1/edu/discovery/candidates` | 管理后台：列出候选（支持筛选与分页） |
-| POST | `/api/v1/edu/discovery/candidates/{school_code}/review` | 管理后台：审核候选（confirm/reject/mark_historical/mark_intranet/reverify） |
-| GET | `/api/v1/edu/discovery/stats` | 管理后台：发现统计 |
 
 ## 接口契约
 
@@ -477,104 +472,6 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 | `updated_at` | string | 是 | — | 最近更新时间 |
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
-### `PUT /api/v1/edu/config/{university_id}`
-
-用途：管理员更新教务系统配置。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`upsert_config`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理员更新教务系统配置。
-
-严禁编造 URL：若不确定，应留空并将对应 url_status 设为 not_discovered。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `university_id` | string | 是 | — | — |
-
-请求体：`application/json`，必填；[EduSystemConfigUpsert](schemas.md#schema-edusystemconfigupsert)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `university_id` | string | 是 | minLength=1; maxLength=128 | — |
-| `provider` | string / null | 否 | — | — |
-| `system_type` | string / null | 否 | — | — |
-| `academic_system_url` | string / null | 否 | — | — |
-| `academic_system_url_status` | string / null | 否 | — | — |
-| `undergrad_system_url` | string / null | 否 | — | — |
-| `undergrad_system_url_status` | string / null | 否 | — | — |
-| `postgrad_system_url` | string / null | 否 | — | — |
-| `postgrad_system_url_status` | string / null | 否 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `sso_url_status` | string / null | 否 | — | — |
-| `cas_url` | string / null | 否 | — | — |
-| `cas_url_status` | string / null | 否 | — | — |
-| `webvpn_url` | string / null | 否 | — | — |
-| `webvpn_url_status` | string / null | 否 | — | — |
-| `login_method` | string / null | 否 | — | — |
-| `captcha_type` | string / null | 否 | — | — |
-| `requires_campus_network` | boolean / null | 否 | — | — |
-| `supported_features` | array<string> / null | 否 | — | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `notes` | string / null | 否 | — | — |
-| `data_source` | string / null | 否 | — | — |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "university_id": "<university_id>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [EduSystemConfigOut](schemas.md#schema-edusystemconfigout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `university_id` | string | 是 | — | — |
-| `provider` | string | 是 | — | — |
-| `system_type` | string | 是 | — | — |
-| `academic_system_url` | string / null | 否 | — | — |
-| `academic_system_url_status` | string | 是 | — | — |
-| `undergrad_system_url` | string / null | 否 | — | — |
-| `undergrad_system_url_status` | string | 是 | — | — |
-| `postgrad_system_url` | string / null | 否 | — | — |
-| `postgrad_system_url_status` | string | 是 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `sso_url_status` | string | 是 | — | — |
-| `cas_url` | string / null | 否 | — | — |
-| `cas_url_status` | string | 是 | — | — |
-| `webvpn_url` | string / null | 否 | — | — |
-| `webvpn_url_status` | string | 是 | — | — |
-| `login_method` | string | 是 | — | — |
-| `captcha_type` | string | 是 | — | — |
-| `requires_campus_network` | boolean / null | 否 | — | — |
-| `supported_features` | array<string> | 否 | — | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `notes` | string / null | 否 | — | — |
-| `data_source` | string | 是 | — | — |
-| `created_at` | string | 是 | — | 创建时间 |
-| `updated_at` | string | 是 | — | 最近更新时间 |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 422 | 'VALIDATION_FAILED' | 服务器内部错误 |
 
 ### `GET /api/v1/edu/binding`
 
@@ -1144,99 +1041,6 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
-### `POST /api/v1/edu/systems/{university_id}`
-
-用途：管理员 upsert 教务系统。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`upsert_system`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理员 upsert 教务系统。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `university_id` | string | 是 | — | — |
-
-请求体：`application/json`，必填；[EduSystemUpsert](schemas.md#schema-edusystemupsert)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `system_key` | string | 是 | minLength=1; maxLength=128 | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `name` | string / null | 否 | — | 名称 |
-| `system_type` | string / null | 否 | — | — |
-| `provider` | string / null | 否 | — | — |
-| `provider_version` | string / null | 否 | — | — |
-| `base_url` | string / null | 否 | — | — |
-| `login_url` | string / null | 否 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `vpn_url` | string / null | 否 | — | — |
-| `auth_type` | string / null | 否 | — | — |
-| `login_execution_mode` | string / null | 否 | — | — |
-| `captcha_type` | string / null | 否 | — | — |
-| `requires_campus_network` | boolean / null | 否 | — | — |
-| `requires_vpn` | boolean / null | 否 | — | — |
-| `status` | string / null | 否 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `verification_status` | string / null | 否 | — | — |
-| `supported_features` | array<string> / null | 否 | — | — |
-| `adapter_config` | object / null | 否 | — | — |
-| `source` | string / null | 否 | — | 来源 |
-| `notes` | string / null | 否 | — | — |
-| `is_mock` | boolean / null | 否 | — | — |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "system_key": "<system_key>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [EduSystemOut](schemas.md#schema-edusystemout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | string | 是 | — | 当前资源标识 |
-| `university_id` | string | 是 | — | — |
-| `system_key` | string | 是 | — | — |
-| `school_code` | string / null | 否 | — | 学校代码 |
-| `name` | string / null | 否 | — | 名称 |
-| `system_type` | string | 是 | — | — |
-| `provider` | string | 是 | — | — |
-| `provider_version` | string / null | 否 | — | — |
-| `base_url` | string / null | 否 | — | — |
-| `login_url` | string / null | 否 | — | — |
-| `sso_url` | string / null | 否 | — | — |
-| `vpn_url` | string / null | 否 | — | — |
-| `auth_type` | string | 是 | — | — |
-| `login_execution_mode` | string | 是 | — | — |
-| `captcha_type` | string | 是 | — | — |
-| `requires_campus_network` | boolean | 否 | default=false | — |
-| `requires_vpn` | boolean | 否 | default=false | — |
-| `status` | string | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `verification_status` | string | 是 | — | — |
-| `supported_features` | array<string> | 否 | — | — |
-| `last_verified_at` | string / null | 否 | — | — |
-| `source` | string | 是 | — | 来源 |
-| `notes` | string / null | 否 | — | — |
-| `is_mock` | boolean | 否 | default=false | — |
-| `created_at` | string | 是 | — | 创建时间 |
-| `updated_at` | string | 是 | — | 最近更新时间 |
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
 ### `POST /api/v1/edu/connections`
 
 用途：创建教务连接（返回 connection_id + 初始状态）。
@@ -1675,122 +1479,9 @@ Web 封装：当前无封装；按本节后端契约调用。
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
-### `GET /api/v1/edu/discovery/candidates`
 
-用途：管理后台：列出候选（支持筛选与分页）。
+## 学校 HTTP 请求安全边界
 
-鉴权：Bearer access token；角色 admin。
+学校 URL 在首次请求及每个重定向处校验。建立 TCP 连接时再次解析并校验全部 DNS 地址，实际连接固定为此次校验通过的 IP；保留原域名的 HTTP Host、TLS SNI 和证书检查，不能通过二次 DNS 解析切换到私网。任一 DNS 地址为 loopback、链路本地、保留地址或默认禁止的私网地址时拒绝连接；解析无有效地址以网络错误处理。已建立的连接池按原 Origin 复用，备用合法 IP 使用同一有界连接超时预算。学校客户端不使用进程的 HTTP(S) 代理变量。
 
-实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`discovery_list_candidates`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理后台：列出候选（支持筛选与分页）。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| query | `school_code` | string / null | 否 | — | — |
-| query | `status` | string / null | 否 | — | — |
-| query | `provider` | string / null | 否 | — | — |
-| query | `has_url` | boolean / null | 否 | — | — |
-| query | `page` | integer | 否 | default=1; minimum=1 | — |
-| query | `page_size` | integer | 否 | default=50; minimum=1; maximum=200 | — |
-
-请求体：无。
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | array<[EduDiscoveryCandidateOut](schemas.md#schema-edudiscoverycandidateout)> |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
-### `POST /api/v1/edu/discovery/candidates/{school_code}/review`
-
-用途：管理后台：审核候选（confirm/reject/mark_historical/mark_intranet/reverify）。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`discovery_review_candidate`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理后台：审核候选（confirm/reject/mark_historical/mark_intranet/reverify）。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `school_code` | string | 是 | — | — |
-
-请求体：`application/json`，必填；[EduDiscoveryReviewRequest](schemas.md#schema-edudiscoveryreviewrequest)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `action` | string | 是 | — | confirm\|reject\|mark_historical\|mark_intranet\|reverify |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "action": "<action>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | 动态响应；见下方补充与 response-contracts.md |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
-
-```python
-_discovery_review_candidate(school_code, request.action)
-```
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
-
-### `GET /api/v1/edu/discovery/stats`
-
-用途：管理后台：发现统计。
-
-鉴权：Bearer access token；角色 admin。
-
-实现：[backend/app/api/routes/edu.py](../../backend/app/api/routes/edu.py)，`discovery_stats`。
-
-Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口。
-
-管理后台：发现统计。
-
-参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
-
-请求体：无。
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [EduDiscoveryStatsOut](schemas.md#schema-edudiscoverystatsout) |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `universities_total` | integer | 否 | default=0 | — |
-| `candidates_total` | integer | 否 | default=0 | — |
-| `by_status` | object | 否 | — | — |
-| `by_provider` | object | 否 | — | — |
-| `wakeup_supported` | integer | 否 | default=0 | — |
-| `verified_official` | integer | 否 | default=0 | — |
-| `verified_live` | integer | 否 | default=0 | — |
-| `candidate` | integer | 否 | default=0 | — |
-| `not_discovered` | integer | 否 | default=0 | — |
-| `dead` | integer | 否 | default=0 | — |
-
-异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
+现有仅非生产环境的 `EDU_ALLOW_INSECURE_SSL` 开关仍按原契约控制 TLS 兼容回退，不放松 IP 检查。Web、Android、HarmonyOS、微信小程序请求格式不变，无需端侧适配此连接层修复。

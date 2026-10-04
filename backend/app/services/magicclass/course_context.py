@@ -95,14 +95,12 @@ def assert_course_access(
     """校验当前用户对课程的访问权。失败抛 CourseNotFound / Forbidden。
 
     复用统一课程可见性策略(course_access.can_view_course)，与课程详情/内容/
-    知识图谱/CPM 上下文保持同一口径：管理员、已加入班级的课程，或学生自己
+    知识图谱/CPM 上下文保持同一口径：已加入班级的课程，或学生自己
     导入的学习通课程都可访问。
     """
     course = container.course_repository.get_course(course_id)
     if course is None:
         raise CourseNotFound()
-    if user.role == "admin":
-        return course
     if user.role != "student":
         raise Forbidden("仅学生可生成互动课堂")
     if not can_view_course(container, user, course):

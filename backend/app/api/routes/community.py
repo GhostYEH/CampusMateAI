@@ -75,9 +75,9 @@ def _ensure_visible(post_id: str, user: UserRow, c: ServiceContainer) -> dict:
     post = c.community_repository.get_post(post_id)
     if not post:
         raise NotFoundError("帖子不存在")
-    if user.role != "admin" and post["university_id"] != _scope(user):
+    if post["university_id"] != _scope(user):
         raise NotFoundError("帖子不存在")
-    if user.role != "admin" and post["status"] != "published" and post["author_id"] != user.id:
+    if post["status"] != "published" and post["author_id"] != user.id:
         raise NotFoundError("帖子不存在")
     return post
 
@@ -249,61 +249,3 @@ def report(req: ReportCreate, user: UserRow = Depends(require_role("student")), 
     if req.target_type == "post":
         _ensure_visible(req.target_id, user, c)
     return c.community_repository.create_report(university_id=university_id, reporter_id=user.id, **req.model_dump())
-
-
-admin_router = APIRouter(prefix="/admin/community", tags=["community-admin"])
-
-
-@admin_router.post("/posts/{post_id}/hide")
-def hide(post_id: str, user: UserRow = Depends(require_role("admin")), c: ServiceContainer = Depends(_container)) -> dict:
-    target = c.community_repository.get_post(post_id)
-    if not target or (user.university_id and target["university_id"] != user.university_id):
-        raise NotFoundError("帖子不存在")
-    post = c.community_repository.set_post_status(post_id, "hidden")
-    if not post:
-        raise NotFoundError("帖子不存在")
-    return _post_out(post, c)
-
-
-@admin_router.get("/posts")
-def admin_list_posts(q: str | None = Query(None, max_length=200),
-                     status: str | None = Query(None, max_length=32),
-                     page: int = Query(1, ge=1),
-                     page_size: int = Query(20, ge=1, le=100),
-                     user: UserRow = Depends(require_role("admin")),
-                     c: ServiceContainer = Depends(_container)) -> dict:
-    rows, total = c.community_repository.list_posts_admin(
-        university_id=user.university_id or None, status=status, q=q, page=page, page_size=page_size,
-    )
-    metadata = c.community_repository.post_output_metadata([row["id"] for row in rows], user.id)
-    return {"items": [_post_out(row, c, user.id, metadata.get(row["id"])) for row in rows], "page": page, "page_size": page_size, "total": total}
-
-
-def _report_out(row: dict, c: ServiceContainer, reporter_name: str | None = None) -> dict:
-    row = dict(row)
-    reporter = c.user_repository.get_user_by_id(row["reporter_id"]) if reporter_name is None else None
-    return {**row, "reporter_name": reporter_name if reporter_name is not None else ((reporter.display_name or reporter.username) if reporter else "已注销用户")}
-
-
-@admin_router.get("/reports")
-def admin_list_reports(status: str | None = Query(None, pattern="^(pending|resolved|rejected)$"),
-                       page: int = Query(1, ge=1),
-                       page_size: int = Query(20, ge=1, le=100),
-                       user: UserRow = Depends(require_role("admin")),
-                       c: ServiceContainer = Depends(_container)) -> dict:
-    rows, total = c.community_repository.list_reports(
-        user.university_id or None, status=status, page=page, page_size=page_size,
-    )
-    names = c.community_repository.report_author_names([row["id"] for row in rows])
-    return {"items": [_report_out(row, c, names.get(row["id"])) for row in rows], "page": page, "page_size": page_size, "total": total}
-
-
-@admin_router.post("/reports/{report_id}/resolve")
-def admin_resolve_report(report_id: str, action: str = Query(..., pattern="^(resolve|reject)$"),
-                         user: UserRow = Depends(require_role("admin")),
-                         c: ServiceContainer = Depends(_container)) -> dict:
-    report = c.community_repository.get_report(report_id)
-    if not report or (user.university_id and report["university_id"] != user.university_id):
-        raise NotFoundError("举报不存在")
-    new_status = "resolved" if action == "resolve" else "rejected"
-    return c.community_repository.update_report_status(report_id, new_status)

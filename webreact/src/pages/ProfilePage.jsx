@@ -53,7 +53,7 @@ export default function ProfilePage() {
   const [tab, setTab] = useState("overview");
   const [editing, setEditing] = useState(false);
   const [noticeReminder, setNoticeReminder] = useState(() => localStorage.getItem("campus_notice_reminder") !== "false");
-  const [form, setForm] = useState({ display_name: "", college: "", major: "", grade: "", email: "" });
+  const [form, setForm] = useState({ display_name: "", college: "", major: "", grade: "" });
   const loadEpoch = useRef(0);
   const saveEpoch = useRef(0);
   const formEpoch = useRef(0);
@@ -111,7 +111,6 @@ export default function ProfilePage() {
           college: profileData?.college || "",
           major: profileData?.major || "",
           grade: profileData?.grade || "",
-          email: profileData?.email || "",
         });
       }
     } catch (err) {
@@ -302,7 +301,7 @@ export default function ProfilePage() {
                       <label>学院<input value={form.college} autoComplete="organization" onChange={(e) => updateForm("college", e.target.value)} /></label>
                       <label>专业<input value={form.major} onChange={(e) => updateForm("major", e.target.value)} /></label>
                       <label>年级<input value={form.grade} onChange={(e) => updateForm("grade", e.target.value)} /></label>
-                      <label>邮箱<input value={form.email} type="email" autoComplete="email" onChange={(e) => updateForm("email", e.target.value)} /></label>
+                      <label>邮箱<input value={profile.email || ""} type="email" autoComplete="email" readOnly aria-describedby="profile-email-help" /><small id="profile-email-help">暂不支持修改邮箱</small></label>
                       <div className="profile-edit-actions"><button type="button" className="redesign-button secondary" onClick={cancelEditing}>取消</button><button className="redesign-button primary" disabled={saving}>{saving ? "保存中…" : "保存资料"}</button></div>
                     </form>
                   )}

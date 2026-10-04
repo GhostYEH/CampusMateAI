@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from datetime import datetime, timedelta, timezone
 
 
@@ -130,7 +132,7 @@ def test_plan_lifecycle_is_confirmed_idempotent_and_tamper_resistant() -> None:
     assert retried.status_code == 200
 
 
-def test_cross_user_and_non_student_are_denied_without_existence_leak() -> None:
+def test_cross_user_and_legacy_admin_are_denied_without_existence_leak() -> None:
     client, container, headers, other_headers = _setup()
     container.personal_task_repository.create_task(
         user_id=container.user_repository.get_user_by_username("phase4_student").id,
@@ -139,7 +141,7 @@ def test_cross_user_and_non_student_are_denied_without_existence_leak() -> None:
     generated = client.post("/api/v1/learning-plans/generate", json=_request(), headers=headers).json()
     plan_id = generated["plan_id"]
     assert client.get(f"/api/v1/learning-plans/{plan_id}", headers=other_headers).status_code == 404
-    container.user_repository.create_user(
+    create_legacy_user(container.user_repository,
         username="phase4_admin", password_hash=hash_password("Demo123456"), role="admin"
     )
     admin_login = client.post(
@@ -147,12 +149,13 @@ def test_cross_user_and_non_student_are_denied_without_existence_leak() -> None:
     )
     assert admin_login.status_code == 200
     admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
-    assert client.get(f"/api/v1/learning-plans/{plan_id}", headers=admin_headers).status_code == 403
+    assert admin_login.json()["user"]["role"] == "student"
+    assert client.get(f"/api/v1/learning-plans/{plan_id}", headers=admin_headers).status_code == 404
 
 
 def test_legacy_teacher_role_cannot_read_student_plans() -> None:
     client, container, _, _ = _setup()
-    container.user_repository.create_user(
+    create_legacy_user(container.user_repository,
         username="phase4_teacher", password_hash=hash_password("Demo123456"), role="teacher"
     )
     login = client.post(

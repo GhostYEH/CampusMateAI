@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ...core.config import get_settings
 from .adapters.ssrf_guard import SSRFBlockedError, assert_safe_url
+from .adapters.ssrf_transport import SSRFSafeTransport
 
 from .discovery_constants import (
     PROVIDER_UNKNOWN,
@@ -158,6 +159,8 @@ async def submit_url(
                 timeout=15,
                 follow_redirects=False,
                 verify=verify,
+                transport=SSRFSafeTransport(verify=verify),
+                trust_env=False,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; CampusMateEduDiscovery/2.0)"},
             ) as client:
                 url = candidate_url

@@ -53,10 +53,10 @@ def test_learner_state_api_requires_student_auth_and_never_returns_raw_payload()
     assert all("source_id" not in item and "row_id" not in item for item in evidence.json()["items"])
 
 
-def test_learner_state_api_rejects_admin_and_cross_user_snapshot_is_404():
+def test_learner_state_api_preserves_cross_user_snapshot_isolation():
     container, client = _client()
-    admin_headers = _login(client, "admin_demo")
-    assert client.get("/api/v1/learner-state/snapshots", headers=admin_headers).status_code == 403
+    admin_headers = _login(client, "content_demo_owner")
+    assert client.get("/api/v1/learner-state/snapshots", headers=admin_headers).status_code == 200
     student_headers = _login(client, "student_demo")
     response = client.get("/api/v1/learner-state/snapshots", headers=student_headers)
     snapshot_id = response.json()["items"][0]["snapshot_id"]

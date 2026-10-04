@@ -14,7 +14,7 @@ class UserRow:
     id: str
     username: str
     password_hash: str
-    role: str = "student"  # student / admin (历史 teacher 在运行时降级为 student)
+    role: str = "student"  # Historical roles are downgraded during authentication.
     display_name: Optional[str] = None
     student_number: Optional[str] = None
     teacher_number: Optional[str] = None  # 已废弃,仅为兼容旧数据保留
@@ -26,6 +26,12 @@ class UserRow:
     is_active: bool = True
     created_at: str = ""
     updated_at: str = ""
+    original_role: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.role in ("teacher", "admin"):
+            self.original_role = self.role
+            self.role = "student"
 
     @classmethod
     def from_row(cls, row) -> "UserRow":

@@ -10,7 +10,7 @@ UI 文案统一为"AI 校园助手",不再使用"AI 导员"。
 - 对不存在、越权或已删除的上下文对象**忽略并生成 warning**,不抛异常。
 
 角色模型:
-- CampusMate AI 只存在 student / admin 两类系统角色。
+- CampusMate AI 仅提供 student 用户角色。
 - 历史 teacher 账号在 deps.py 中已降级为 student,本文件不再保留 teacher 分支。
 
 recent_tasks 校验:
@@ -139,7 +139,6 @@ def _collect_teaching_context(
     - user 为 None 时,只允许使用通用知识库,忽略所有教学上下文 + warning。
     - user 为学生: 必须已加入对应班级;只能看已发布的任务/通知;草稿一律忽略。
 
-    - user 为管理员: 任意。
     - 不存在/越权/已删除的对象: 忽略 + warning,不抛异常。
     """
     parts: List[str] = []

@@ -101,7 +101,7 @@ async def lifespan(app: FastAPI):
                 logger.info("Agent mock providers 已注入(fake)")
             except Exception as e:
                 logger.warning("注入 mock providers 失败: {}", str(e)[:200])
-        # 知识库只接受管理员上传或外部同步的正式资料，不再自动导入仓库内演示文件。
+        # 知识库由内部工具或外部同步提供资料，不自动导入仓库内演示文件。
         # 多角色验收账号 seeding(仅 dev/test 显式开启;production 已被 config 校验拦截)
         # 验收账号为普通用户,走完整真实业务流程,无特殊权限或绕过认证逻辑
         if settings.auto_seed_demo_users:

@@ -19,7 +19,7 @@ MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 
 
 def _repository() -> LearningRoomRepository:
-    return LearningRoomRepository(get_container().db)
+    return get_container().learning_room_repository
 
 
 class InvitationIn(BaseModel):

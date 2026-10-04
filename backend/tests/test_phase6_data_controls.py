@@ -1,6 +1,8 @@
 """Phase 6A: 数据源控制测试。"""
 from __future__ import annotations
 
+from legacy_user_helpers import create_legacy_user
+
 from fastapi.testclient import TestClient
 
 from app.core.security import hash_password
@@ -85,12 +87,12 @@ def test_cross_user_isolated():
             assert item["status"] == "ENABLED"
 
 
-def test_admin_forbidden():
+def test_legacy_admin_has_ordinary_user_access():
     settings = Settings(app_env="test", database_url="sqlite:///:memory:")
     container = reset_container_for_tests(settings)
-    container.user_repository.create_user(username="dc_admin", password_hash=hash_password("Demo123456"), role="admin", display_name="A")
+    create_legacy_user(container.user_repository, username="dc_admin", password_hash=hash_password("Demo123456"), role="admin", display_name="A")
     client = TestClient(create_app())
     resp = client.post("/api/v1/auth/login", json={"username": "dc_admin", "password": "Demo123456"})
     auth = {"Authorization": f"Bearer {resp.json()['access_token']}"}
     r = client.get("/api/v1/learner-state/data-controls", headers=auth)
-    assert r.status_code == 403
+    assert r.status_code == 200

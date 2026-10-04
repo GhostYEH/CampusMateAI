@@ -4,7 +4,6 @@
 
 - GET  /edu/detect?university_id=...           探测学校教务厂商
 - GET  /edu/config/{university_id}             获取学校教务系统配置
-- PUT  /edu/config/{university_id}             管理员更新教务系统配置
 - GET  /edu/binding                            获取当前用户教务绑定
 - POST /edu/bind                               绑定教务账号
 - DELETE /edu/binding                          解绑
@@ -38,9 +37,6 @@ from ...schemas.edu import (
     EduConnectionFromUrlRequest,
     EduConnectionOut,
     EduDetectResult,
-    EduDiscoveryCandidateOut,
-    EduDiscoveryReviewRequest,
-    EduDiscoveryStatsOut,
     EduDiscoverySubmitUrlRequest,
     EduDiscoverySubmitUrlResult,
     EduPreLoginResult,
@@ -49,14 +45,12 @@ from ...schemas.edu import (
     EduSyncRecordOut,
     EduSyncResult,
     EduSystemConfigOut,
-    EduSystemConfigUpsert,
     EduSystemOut,
-    EduSystemUpsert,
 )
 
 logger = logging.getLogger(__name__)
 from ...services.container import ServiceContainer, get_container
-from ..deps import current_user, require_role
+from ..deps import current_user
 
 
 router = APIRouter(prefix="/edu", tags=["edu"])
@@ -211,28 +205,6 @@ def get_config(
     若不存在，自动创建默认配置（所有 URL=null, url_status=not_discovered）。
     """
     row = container.edu_connector.ensure_config(university_id)
-    return _config_to_out(row)
-
-
-@router.put("/config/{university_id}", response_model=EduSystemConfigOut)
-def upsert_config(
-    university_id: str,
-    request: EduSystemConfigUpsert,
-    user: UserRow = Depends(require_role("admin")),
-    container: ServiceContainer = Depends(_container),
-) -> EduSystemConfigOut:
-    """管理员更新教务系统配置。
-
-    严禁编造 URL：若不确定，应留空并将对应 url_status 设为 not_discovered。
-    """
-    if request.university_id != university_id:
-        raise AppException(
-            code="VALIDATION_FAILED",
-            http_status=422,
-            message="university_id 不一致",
-        )
-    kwargs = request.model_dump(exclude={"university_id"}, exclude_none=True)
-    row = container.edu_connector.upsert_config(university_id, **kwargs)
     return _config_to_out(row)
 
 
@@ -638,22 +610,6 @@ def list_systems(
     return [_system_to_out(s) for s in systems]
 
 
-@router.post("/systems/{university_id}", response_model=EduSystemOut)
-def upsert_system(
-    university_id: str,
-    request: EduSystemUpsert,
-    user: UserRow = Depends(require_role("admin")),
-    container: ServiceContainer = Depends(_container),
-) -> EduSystemOut:
-    """管理员 upsert 教务系统。"""
-    row = container.edu_connector.upsert_system(
-        university_id=university_id,
-        system_key=request.system_key,
-        **request.model_dump(exclude={"system_key"}, exclude_none=True),
-    )
-    return _system_to_out(row)
-
-
 # ===== edu_connections (状态机) =====
 
 
@@ -830,12 +786,7 @@ async def discovery_probe(
 
 # ===== 教务系统发现（Discovery）=====
 
-from ...services.edu.discovery_service import (
-    submit_url as _discovery_submit_url,
-    list_candidates as _discovery_list_candidates,
-    review_candidate as _discovery_review_candidate,
-    compute_stats as _discovery_compute_stats,
-)
+from ...services.edu.discovery_service import submit_url as _discovery_submit_url
 
 
 @router.post("/discovery/submit-url", response_model=EduDiscoverySubmitUrlResult)
@@ -853,46 +804,6 @@ async def discovery_submit_url(
         candidate_url=request.candidate_url,
     )
     return EduDiscoverySubmitUrlResult(**result)
-
-
-@router.get("/discovery/candidates", response_model=list[EduDiscoveryCandidateOut])
-def discovery_list_candidates(
-    school_code: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    provider: Optional[str] = Query(None),
-    has_url: Optional[bool] = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
-    user: UserRow = Depends(require_role("admin")),
-) -> list[EduDiscoveryCandidateOut]:
-    """管理后台：列出候选（支持筛选与分页）。"""
-    result = _discovery_list_candidates(
-        school_code=school_code,
-        status=status,
-        provider=provider,
-        has_url=has_url,
-        page=page,
-        page_size=page_size,
-    )
-    return [EduDiscoveryCandidateOut(**item) for item in result["items"]]
-
-
-@router.post("/discovery/candidates/{school_code}/review")
-def discovery_review_candidate(
-    school_code: str,
-    request: EduDiscoveryReviewRequest,
-    user: UserRow = Depends(require_role("admin")),
-) -> dict:
-    """管理后台：审核候选（confirm/reject/mark_historical/mark_intranet/reverify）。"""
-    return _discovery_review_candidate(school_code, request.action)
-
-
-@router.get("/discovery/stats", response_model=EduDiscoveryStatsOut)
-def discovery_stats(
-    user: UserRow = Depends(require_role("admin")),
-) -> EduDiscoveryStatsOut:
-    """管理后台：发现统计。"""
-    return EduDiscoveryStatsOut(**_discovery_compute_stats())
 
 
 __all__ = ["router"]

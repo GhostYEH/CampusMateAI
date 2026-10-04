@@ -1,6 +1,6 @@
-# Agent 运行时、审批、记忆、产物与管理观测
+# Agent 运行时、审批、记忆、产物
 
-> 对照日期：2026-09-30。本模块共 22 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-04。本模块共 20 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -32,8 +32,6 @@
 | GET | `/api/v1/agent-memories` | 列出memories |
 | POST | `/api/v1/agent-memories` | 创建记忆 |
 | POST | `/api/v1/agent-memories/{memory_id}/withdraw` | 撤回记忆 |
-| GET | `/api/v1/admin/agent-runtime/overview` | 队列深度、状态分布、成功率、耗时、Token、工具、重试与审批等待 |
-| GET | `/api/v1/admin/agent-runtime/runs/{run_id}/trace` | 单 Run 时间线:状态、阶段、角色、模型名、Token、耗时、错误码与审批时长 |
 
 ## 接口契约
 
@@ -943,99 +941,3 @@ Web 封装：当前无封装；按本节后端契约调用。
 | HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
 | --- | --- | --- |
 | 404 | AGENT_RUN_NOT_FOUND | 'Memory 不存在' |
-
-### `GET /api/v1/admin/agent-runtime/overview`
-
-用途：队列深度、状态分布、成功率、耗时、Token、工具、重试与审批等待。
-
-鉴权：Bearer access token；已登录用户（另有资源归属校验）。
-
-实现：[backend/app/api/routes/agent_observability.py](../../backend/app/api/routes/agent_observability.py)，`agent_runtime_overview`。
-
-Web 封装：`getAgentRuntimeOverview`（[webreact/src/data/agentObservabilityApi.js](../../webreact/src/data/agentObservabilityApi.js)）
-
-队列深度、状态分布、成功率、耗时、Token、工具、重试与审批等待。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| query | `since_hours` | integer | 否 | default=24; minimum=1; maximum=720 | — |
-
-请求体：无。
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [AgentRuntimeOverviewOut](schemas.md#schema-agentruntimeoverviewout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `window_hours` | integer | 是 | minimum=1.0 | — |
-| `since` | string | 是 | — | — |
-| `queue_depth` | integer | 否 | default=0; minimum=0.0 | — |
-| `stale_lease_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `run_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `status_distribution` | map<string, integer> | 否 | additionalProperties={"type": "integer"} | — |
-| `success_rate` | number / null | 否 | number约束: minimum=0.0; maximum=1.0 | — |
-| `duration_ms` | [DurationStats](schemas.md#schema-durationstats) | 是 | — | — |
-| `model_latency_ms` | [ModelLatencyStats](schemas.md#schema-modellatencystats) | 是 | — | — |
-| `token_usage` | [TokenUsage](schemas.md#schema-tokenusage) | 是 | — | — |
-| `tool_failure_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `tool_call_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `retry_count` | integer | 否 | default=0; minimum=0.0 | — |
-| `approval` | [ApprovalStats](schemas.md#schema-approvalstats) | 是 | — | — |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 403 | AGENT_PERMISSION_DENIED | '仅管理员可访问 Agent Runtime 观测接口' |
-
-### `GET /api/v1/admin/agent-runtime/runs/{run_id}/trace`
-
-用途：单 Run 时间线:状态、阶段、角色、模型名、Token、耗时、错误码与审批时长。
-
-鉴权：Bearer access token；已登录用户（另有资源归属校验）。
-
-实现：[backend/app/api/routes/agent_observability.py](../../backend/app/api/routes/agent_observability.py)，`agent_run_trace`。
-
-Web 封装：`getAgentRunTrace`（[webreact/src/data/agentObservabilityApi.js](../../webreact/src/data/agentObservabilityApi.js)）
-
-单 Run 时间线:状态、阶段、角色、模型名、Token、耗时、错误码与审批时长。
-
-参数：
-
-| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| path | `run_id` | string | 是 | — | — |
-
-请求体：无。
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 200 | application/json | [AgentRunTraceOut](schemas.md#schema-agentruntraceout) |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-200 响应顶层字段：
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `run` | [RunTraceHeader](schemas.md#schema-runtraceheader) | 是 | — | — |
-| `events` | array<[RunTraceEvent](schemas.md#schema-runtraceevent)> | 否 | — | — |
-| `tool_calls` | array<[RunTraceToolCall](schemas.md#schema-runtracetoolcall)> | 否 | — | — |
-| `model_calls` | array<[RunTraceModelCall](schemas.md#schema-runtracemodelcall)> | 否 | — | — |
-| `approvals` | array<[RunTraceApproval](schemas.md#schema-runtraceapproval)> | 否 | — | — |
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 404 | AGENT_RUN_NOT_FOUND | 'Run 不存在' |
-| 403 | AGENT_PERMISSION_DENIED | '仅管理员可访问 Agent Runtime 观测接口' |

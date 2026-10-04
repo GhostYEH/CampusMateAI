@@ -330,7 +330,7 @@ export default function CommunityPage() {
         <div className="forum-modal-mask" onClick={(e) => { if (e.target === e.currentTarget) setShowReport(false); }}>
           <div className="forum-modal">
             <h3><Icon name="PhFlag" />举报帖子</h3>
-            <p className="forum-modal-desc">选择举报原因，管理员将审核处理。</p>
+            <p className="forum-modal-desc">选择举报原因并提交反馈。</p>
             <div className="forum-report-reasons">
               {["垃圾广告", "辱骂攻击", "色情低俗", "违法违规", "隐私泄露", "诈骗", "其它"].map((reason) => (
                 <button key={reason} className={reportReason === reason ? "active" : ""} onClick={() => setReportReason(reason)}>{reason}</button>

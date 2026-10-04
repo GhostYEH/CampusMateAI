@@ -6,7 +6,7 @@
 
 ## 错误信封与响应头
 
-认证和匿名聊天限流返回 `429 {code:"RATE_LIMITED",message,details:{retry_after_seconds},request_id}`，并带 `Retry-After` 头；必须在 SSE 建立前按普通 HTTP 错误处理。测验保存冲突返回 `409 {code:"QUIZ_ATTEMPT_CONFLICT",message,details:null,request_id}`，不再返回裸 detail。社区管理对他校资源返回 404 `NOT_FOUND`。意外 500 的 body.request_id 与响应头一致，允许的 Origin 可收到 CORS 响应头；内部异常文本不会回传。
+认证和匿名聊天限流返回 `429 {code:"RATE_LIMITED",message,details:{retry_after_seconds},request_id}`，并带 `Retry-After` 头；必须在 SSE 建立前按普通 HTTP 错误处理。测验保存冲突返回 `409 {code:"QUIZ_ATTEMPT_CONFLICT",message,details:null,request_id}`，不再返回裸 detail。社区普通用户访问他校资源返回 404 `NOT_FOUND`；管理接口已移除。意外 500 的 body.request_id 与响应头一致，允许的 Origin 可收到 CORS 响应头；内部异常文本不会回传。
 
 ## 普通对象与空响应
 
@@ -16,11 +16,10 @@
 | POST /auth/logout | `{ok:true,message:"已退出登录"}` |
 | POST /auth/qr/cancel | `{ok:true,status:"CANCELLED"}` |
 | POST /auth/trusted-device/revoke | `{ok:true,message}`；未持有 cookie 也可能成功返回“无当前设备凭据” |
-| POST /announcements/{id}/read | 学生 `{ok:true,first_time:boolean}`，管理员可能返回 `{ok:true,message:"管理员无需已读"}` |
+| POST /announcements/{id}/read | `{ok:true,first_time:boolean}` |
 | DELETE /personal-hub/files/{id} | `{ok:true}` |
 | DELETE /personal-hub/favorites/{id} | `{ok:true}` |
 | DELETE /edu/binding | `{ok:true}` |
-| DELETE /admin/home-banners/{id} | **204，无 body** |
 
 路径均省略 `/api/v1`。health 的 document_count/chunk_count 及 provider 状态用于诊断；知识库初始化不等于已经存在可回答资料，仍以 knowledge/status 的细分字段判断。
 
@@ -31,7 +30,6 @@
 
 | 接口 | items 元素 |
 | --- | --- |
-| GET /auth/admin/users | [UserPublic](schemas.md#schema-userpublic) |
 | GET /courses | [CourseOut](schemas.md#schema-courseout) |
 | GET /classes | [ClassOut](schemas.md#schema-classout) |
 | GET /classes/{class_id}/members | [ClassMemberOut](schemas.md#schema-classmemberout) |
@@ -84,7 +82,7 @@
 
 来源：[community.py](../../backend/app/api/routes/community.py)、[community schema](../../backend/app/schemas/community.py)、[论坛表定义](../../backend/app/database/sqlite_db.py)。
 
-帖子列表返回 `{items:PostRecord[],page,page_size,total}`；读取、创建、编辑、删除、点赞/取消点赞、收藏/取消收藏、管理员 hide 都返回 PostRecord。删除是将 status 改为 deleted，hide 改为 hidden，均不是空响应。详情会增加服务端 view_count；不把页面加载当成完全无副作用操作。
+帖子列表返回 `{items:PostRecord[],page,page_size,total}`；读取、创建、编辑、删除、点赞/取消点赞、收藏/取消收藏 都返回 PostRecord。删除是将 status 改为 deleted，返回更新后的帖子对象。详情会增加服务端 view_count；不把页面加载当成完全无副作用操作。
 
 | PostRecord 字段 | 类型 | 含义 |
 | --- | --- | --- |
@@ -98,7 +96,7 @@
 | status | string | published / deleted / hidden |
 | like_count / comment_count / favorite_count / view_count | integer | 当前计数 |
 | liked / favorited | boolean | 当前查看者的点赞、收藏状态 |
-| is_owner | boolean | 当前查看者是否作者；部分管理员返回未传 viewer_id，为 false |
+| is_owner | boolean | 当前查看者是否作者 |
 | created_at / updated_at | string | 时间 |
 
 categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分类为 question/recruit/errand/campus/study/life/secondhand/activity/experience/other。
@@ -116,7 +114,7 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 | is_anonymous | boolean |
 | created_at / updated_at | string |
 
-创建举报和管理员 resolve 返回 ReportRecord；管理员举报列表返回 `{items:ReportRecord[],page,page_size,total}`，每个条目额外带 reporter_name。resolve 接受 **query action=resolve/reject**，映射成 status=resolved/rejected。
+创建举报返回 ReportRecord，初始 status 为 pending。举报列表、审核和处理接口已移除，当前没有在线审核流程；历史记录可能保留 resolved/rejected 状态。
 
 | ReportRecord 字段 | 类型 |
 | --- | --- |
@@ -126,7 +124,6 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 | details | string / null |
 | status | pending / resolved / rejected |
 | created_at / updated_at | string |
-| reporter_name | string，仅管理员列表补充 |
 
 学校为空返回 UNIVERSITY_REQUIRED（409）；普通列表按当前学校隔离，作者才可编辑/删除。学生隐藏的他校资源可能表现为 404，不能据此判断原始资源存在性。
 
@@ -166,7 +163,7 @@ stats 的整数计数：courses_fetched/courses_created/courses_updated/teachers
 
 这些来自已持久化数据，读取前先按需要 sync；空列表不说明已同步成功，结合绑定与同步记录判断。条目字段类型来源：[edu 数据模型](../../backend/app/models/edu.py)。
 
-管理员 `POST /edu/discovery/candidates/{school_code}/review` 正常返回 `{updated:integer,action:string}`；没有候选时可能返回 `{updated:0,error:"未找到候选"}`（仍 HTTP 200）。不要把它当作统一抛错。
+教务候选审核 API 已移除，普通用户提交 URL 不会获得全局教务配置的写入权限。
 
 兼容 academic/providers 返回 `{items:[{university_id,provider,status,supports}],_deprecated}`；academic/status 返回 `{status,provider,last_synced_at,external_student_id,_deprecated}`；academic/binding 删除返回 `{ok:true,_deprecated}`。academic/bind 始终 ACADEMIC_UNSUPPORTED 409，不存在成功绑定响应。
 
