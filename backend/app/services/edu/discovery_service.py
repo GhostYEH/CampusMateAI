@@ -6,11 +6,15 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 import httpx
+from starlette.concurrency import run_in_threadpool
 
 from ...core.config import get_settings
 from .adapters.ssrf_guard import SSRFBlockedError, assert_safe_url
@@ -38,6 +42,7 @@ from .provider_detector import ProviderDetector
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
 _CANDIDATES_FILE = _DATA_DIR / "edu_system_candidates.json"
 _UNIVERSITIES_FILE = _DATA_DIR / "universities.json"
+_CANDIDATES_LOCK = RLock()
 
 
 def _now_iso() -> str:
@@ -64,16 +69,26 @@ def _build_university_indexes() -> tuple[dict[str, dict], dict[str, dict]]:
 
 
 def load_candidates() -> dict:
-    if not _CANDIDATES_FILE.exists():
-        return {"candidates": [], "_meta": {}}
-    raw = _CANDIDATES_FILE.read_text(encoding="utf-8")
-    if not raw.strip():
-        return {"candidates": [], "_meta": {}}
-    return json.loads(raw)
+    with _CANDIDATES_LOCK:
+        if not _CANDIDATES_FILE.exists():
+            return {"candidates": [], "_meta": {}}
+        raw = _CANDIDATES_FILE.read_text(encoding="utf-8")
+        if not raw.strip():
+            return {"candidates": [], "_meta": {}}
+        return json.loads(raw)
 
 
 def save_candidates(data: dict) -> None:
-    _CANDIDATES_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    with _CANDIDATES_LOCK:
+        _CANDIDATES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(dir=_CANDIDATES_FILE.parent, suffix=".tmp")
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2)
+            os.replace(temporary, _CANDIDATES_FILE)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
 
 def _is_intranet_url(url: str) -> bool:
@@ -99,7 +114,7 @@ async def submit_url(
     可达且匹配的页面标 VERIFIED_LIVE，正式入库仍由审核流程决定。
     """
     detector = ProviderDetector()
-    uni_index, name_index = _build_university_indexes()
+    uni_index, name_index = await run_in_threadpool(_build_university_indexes)
 
     uni = uni_index.get(university_id)
     if not uni:
@@ -132,7 +147,7 @@ async def submit_url(
     if _is_intranet_url(candidate_url):
         result["verification_status"] = STATUS_INTRANET_ONLY
         result["saved"] = True
-        _save_candidate(result, SOURCE_USER_SUBMITTED)
+        await run_in_threadpool(_save_candidate, result, SOURCE_USER_SUBMITTED)
         return result
 
     try:
@@ -148,7 +163,7 @@ async def submit_url(
                 url = candidate_url
                 for _ in range(6):
                     # 每个跳转都先校验，不能让上游把探测引向内网。
-                    assert_safe_url(url)
+                    await run_in_threadpool(assert_safe_url, url)
                     response = await client.get(url)
                     if response.status_code not in (301, 302, 303, 307, 308):
                         return response
@@ -202,47 +217,48 @@ async def submit_url(
         result["verification_status"] = STATUS_DEAD
 
     result["saved"] = True
-    _save_candidate(result, SOURCE_USER_SUBMITTED)
+    await run_in_threadpool(_save_candidate, result, SOURCE_USER_SUBMITTED)
     return result
 
 
 def _save_candidate(detection: dict, source_type: str) -> None:
-    data = load_candidates()
-    candidates = data.get("candidates", [])
-    sc = detection["school_code"]
-    url = detection["candidate_url"]
+    with _CANDIDATES_LOCK:
+        data = load_candidates()
+        candidates = data.get("candidates", [])
+        sc = detection["school_code"]
+        url = detection["candidate_url"]
 
-    existing = None
-    for c in candidates:
-        if c.get("school_code") == sc and c.get("candidate_url") == url:
-            existing = c
-            break
+        existing = None
+        for c in candidates:
+            if c.get("school_code") == sc and c.get("candidate_url") == url:
+                existing = c
+                break
 
-    entry = {
-        "school_code": sc,
-        "school_name": detection["school_name"],
-        "candidate_url": url,
-        "provider": detection["provider"],
-        "source_type": source_type,
-        "source_url": "",
-        "confidence": detection["provider_confidence"],
-        "verification_status": detection["verification_status"],
-        "http_status": detection["http_status"],
-        "final_url": detection["final_url"],
-        "title": detection["title"],
-        "evidence": detection["evidence"],
-        "last_checked_at": _now_iso(),
-        "discovered_at": existing.get("discovered_at", _now_iso()) if existing else _now_iso(),
-        "reason": f"用户提交 URL；provider={detection['provider']}, conf={detection['provider_confidence']:.2f}",
-    }
+        entry = {
+            "school_code": sc,
+            "school_name": detection["school_name"],
+            "candidate_url": url,
+            "provider": detection["provider"],
+            "source_type": source_type,
+            "source_url": "",
+            "confidence": detection["provider_confidence"],
+            "verification_status": detection["verification_status"],
+            "http_status": detection["http_status"],
+            "final_url": detection["final_url"],
+            "title": detection["title"],
+            "evidence": detection["evidence"],
+            "last_checked_at": _now_iso(),
+            "discovered_at": existing.get("discovered_at", _now_iso()) if existing else _now_iso(),
+            "reason": f"用户提交 URL；provider={detection['provider']}, conf={detection['provider_confidence']:.2f}",
+        }
 
-    if existing:
-        existing.update(entry)
-    else:
-        candidates.append(entry)
+        if existing:
+            existing.update(entry)
+        else:
+            candidates.append(entry)
 
-    data["candidates"] = candidates
-    save_candidates(data)
+        data["candidates"] = candidates
+        save_candidates(data)
 
 
 def list_candidates(
@@ -282,33 +298,34 @@ def list_candidates(
 
 def review_candidate(school_code: str, action: str) -> dict:
     """审核操作：confirm/reject/mark_historical/mark_intranet/reverify。"""
-    data = load_candidates()
-    candidates = data.get("candidates", [])
+    with _CANDIDATES_LOCK:
+        data = load_candidates()
+        candidates = data.get("candidates", [])
 
-    action_status_map = {
-        "confirm": STATUS_VERIFIED_OFFICIAL,
-        "reject": STATUS_CANDIDATE,
-        "mark_historical": STATUS_HISTORICAL,
-        "mark_intranet": STATUS_INTRANET_ONLY,
-    }
+        action_status_map = {
+            "confirm": STATUS_VERIFIED_OFFICIAL,
+            "reject": STATUS_CANDIDATE,
+            "mark_historical": STATUS_HISTORICAL,
+            "mark_intranet": STATUS_INTRANET_ONLY,
+        }
 
-    updated = 0
-    for c in candidates:
-        if c.get("school_code") == school_code and c.get("candidate_url"):
-            if action == "reverify":
-                c["review_action"] = "reverify_pending"
-                c["reason"] = (c.get("reason") or "") + " | 待重新验证"
-            elif action in action_status_map:
-                c["verification_status"] = action_status_map[action]
-                c["review_action"] = action
-                c["last_checked_at"] = _now_iso()
-            updated += 1
+        updated = 0
+        for c in candidates:
+            if c.get("school_code") == school_code and c.get("candidate_url"):
+                if action == "reverify":
+                    c["review_action"] = "reverify_pending"
+                    c["reason"] = (c.get("reason") or "") + " | 待重新验证"
+                elif action in action_status_map:
+                    c["verification_status"] = action_status_map[action]
+                    c["review_action"] = action
+                    c["last_checked_at"] = _now_iso()
+                updated += 1
 
-    if updated == 0:
-        return {"updated": 0, "error": "未找到候选"}
+        if updated == 0:
+            return {"updated": 0, "error": "未找到候选"}
 
-    save_candidates(data)
-    return {"updated": updated, "action": action}
+        save_candidates(data)
+        return {"updated": updated, "action": action}
 
 
 def compute_stats() -> dict:

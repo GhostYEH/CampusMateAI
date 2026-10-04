@@ -201,7 +201,7 @@ def list_comments(post_id: str, user: UserRow = Depends(current_user), c: Servic
 
 def _comment_out(row: dict, c: ServiceContainer, author_name: str | None = None) -> dict:
     anonymous = bool(row["is_anonymous"])
-    author = c.user_repository.get_user_by_id(row["author_id"]) if author_name is None else None
+    author = c.user_repository.get_user_by_id(row["author_id"]) if not anonymous and author_name is None else None
     return {**row, "is_anonymous": anonymous, "author_id": None if anonymous else row["author_id"],
             "author_name": "校园同学" if anonymous else (author_name if author_name is not None else ((author.display_name or author.username) if author else "已注销用户"))}
 
@@ -256,6 +256,9 @@ admin_router = APIRouter(prefix="/admin/community", tags=["community-admin"])
 
 @admin_router.post("/posts/{post_id}/hide")
 def hide(post_id: str, user: UserRow = Depends(require_role("admin")), c: ServiceContainer = Depends(_container)) -> dict:
+    target = c.community_repository.get_post(post_id)
+    if not target or (user.university_id and target["university_id"] != user.university_id):
+        raise NotFoundError("帖子不存在")
     post = c.community_repository.set_post_status(post_id, "hidden")
     if not post:
         raise NotFoundError("帖子不存在")
@@ -300,7 +303,7 @@ def admin_resolve_report(report_id: str, action: str = Query(..., pattern="^(res
                          user: UserRow = Depends(require_role("admin")),
                          c: ServiceContainer = Depends(_container)) -> dict:
     report = c.community_repository.get_report(report_id)
-    if not report:
+    if not report or (user.university_id and report["university_id"] != user.university_id):
         raise NotFoundError("举报不存在")
     new_status = "resolved" if action == "resolve" else "rejected"
     return c.community_repository.update_report_status(report_id, new_status)

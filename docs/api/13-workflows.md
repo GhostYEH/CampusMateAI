@@ -4,6 +4,18 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 工作流创建的幂等与持久化
+
+期末复习的计划生成、调整分析、课程研究 `POST /api/v1/course-research/runs` 和通知 `POST /api/v1/notices/{notice_id}/workflow` 原子保存 Job、首个 Run 和入队事件，写入失败不会只留下 Job。请求追踪 ID 同时进入 Run。相同幂等键重放已完成的领域资源；并发请求仍在建立资源时返回 409 `AGENT_INVALID_STATE`，客户端稍后读取或使用原键重试。幂等键用于不同请求时返回 409 `AGENT_IDEMPOTENCY_CONFLICT`；课程研究比较问题、课程、辅助模式、学术策略、来源策略和上传引用，通知比较目标 notice_id。
+
+期末复习计划在单个写事务内分配版本号、签发绑定具体 campaign/version/user 的审批并保存版本。不同幂等键并发生成同一 campaign 时获得不同版本；事务失败不会留下该版本的孤立审批。调整提案应用时也在写事务内分配版本。后续制品、事件和 Run 状态仍按原有流程持久化。
+
+```json
+{"code":"AGENT_INVALID_STATE","message":"幂等请求仍在处理中","details":null,"request_id":"req_example"}
+```
+
+路径、请求和成功响应字段不变。Web、Android、HarmonyOS、微信小程序已有 Agent/工作流调用按既有 409 分支接入；本次只验证后端及 Web 调用对照，移动端原生构建、外部模型和真实学校数据未验证。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |
@@ -21,7 +33,7 @@
 | POST | `/api/v1/final-review/campaigns/{campaign_id}/adjustments/analyze` | Analyzer 分析证据,产生 adjustment proposal。不直接改 active plan |
 | GET | `/api/v1/final-review/campaigns/{campaign_id}/adjustment-proposals` | 列出调整建议 |
 | POST | `/api/v1/final-review/adjustment-proposals/{proposal_id}/decision` | 审批 adjustment proposal |
-| POST | `/api/v1/course-research/runs` | 创建课程研究 Run 并同步执行 |
+| POST | `/api/v1/course-research/runs` | 创建课程研究 Run，响应后执行研究流水线 |
 | GET | `/api/v1/course-research/runs` | 列出当前用户的课程研究 Run |
 | GET | `/api/v1/course-research/runs/{run_id}` | 获取单个课程研究 Run |
 | POST | `/api/v1/course-research/runs/{run_id}/cancel` | 取消课程研究 Run |
@@ -667,7 +679,7 @@ Web 封装：`resolveAdjustmentProposal`（[webreact/src/data/agentRuntimeApi.js
 
 ### `POST /api/v1/course-research/runs`
 
-用途：创建课程研究 Run 并同步执行。
+用途：创建课程研究 Run，响应后执行研究流水线。
 
 鉴权：Bearer access token；角色 student（不包含历史 teacher 账号）。
 
@@ -675,7 +687,7 @@ Web 封装：`resolveAdjustmentProposal`（[webreact/src/data/agentRuntimeApi.js
 
 Web 封装：`createCourseResearchRun`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
 
-创建课程研究 Run 并同步执行。
+首次创建返回 `QUEUED` 状态及空 `artifact_ids`，研究流水线在响应后执行。客户端用返回的 `run_id` 订阅 Agent SSE，或轮询 GET run / GET artifacts；需要取消时调用 cancel。相同幂等键重放返回已持久化的当前状态，不会再次启动流水线。
 
 参数：
 

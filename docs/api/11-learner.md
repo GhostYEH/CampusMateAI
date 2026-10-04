@@ -8,6 +8,12 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 学习计划生成的并发重放
+
+`POST /api/v1/learning-plans/generate` 在同一用户、同一 `idempotency_key` 并发生成时，写事务内再次检查输入摘要。相同输入返回同一份完整计划，包含已有条目、证据和 `execution_task_id`，不会重复建立替代关系；不同输入仍返回 409 `LEARNING_PLAN_IDEMPOTENCY_CONFLICT`。请求路径和成功响应字段不变。
+
+Web、Android、HarmonyOS、微信小程序继续按既有幂等键及错误码接入；本次验证后端并发回归和 Web 调用对照，移动端原生构建未验证。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |

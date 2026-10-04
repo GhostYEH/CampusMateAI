@@ -8,6 +8,10 @@ import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Request
+from starlette.concurrency import run_in_threadpool
+
+from ...core.exceptions import AgentIdempotencyConflict, AgentRuntimeError
+from ...repositories.agent_runtime_repository import build_request_hash
 
 from ...models.multi_role import UserRow
 from ...repositories.notice_workflow_repository import NoticeWorkflowRepository
@@ -35,13 +39,7 @@ router = APIRouter()
 
 
 def _build_service(container: ServiceContainer) -> NoticeWorkflowService:
-    repo = NoticeWorkflowRepository(container.db)
-    return NoticeWorkflowService(
-        repository=repo,
-        interpreter=NoticeInterpreter(model_router=container.agent_model_router),
-        notice_repository=container.notice_repository,
-        personal_task_repository=container.personal_task_repository,
-    )
+    return container.notice_workflow_service
 
 
 def _container() -> ServiceContainer:
@@ -192,40 +190,43 @@ async def create_workflow(
     effective_key = body.idempotency_key or idempotency_key
     runtime_repo = container.agent_runtime_repository
     if effective_key:
-        existing = NoticeWorkflowRepository(container.db).find_workflow_by_idempotency(
+        existing = await run_in_threadpool(container.notice_workflow_repository.find_workflow_by_idempotency,
             user.id, effective_key
         )
         if existing:
-            actions = service.list_actions(existing.workflow_id, user_id=user.id)
+            if existing.notice_id != notice_id:
+                raise AgentIdempotencyConflict()
+            actions = await run_in_threadpool(service.list_actions, existing.workflow_id, user_id=user.id)
             return _workflow_out(existing, actions)
-    job_id = runtime_repo.create_job(
+    if await run_in_threadpool(container.notice_repository.get_notice, user.id, notice_id) is None:
+        raise WorkflowNotFound("通知不存在或无权访问")
+    created = await run_in_threadpool(runtime_repo.create_job_with_run_and_event,
         user_id=user.id,
         job_kind="notice_workflow",
         input_ref={"notice_id": notice_id},
         idempotency_key=effective_key,
-    )
-    run_id = runtime_repo.create_run(
-        job_id=job_id,
-        user_id=user.id,
         request_id=getattr(request.state, "request_id", None),
-        idempotency_key=effective_key,
+        request_hash=build_request_hash("notice_workflow", {"notice_id": notice_id}),
     )
-    container.agent_run_manager.transition(
+    if created["replayed"]:
+        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+    job_id, run_id = created["job_id"], created["run_id"]
+    await run_in_threadpool(container.agent_run_manager.transition,
         run_id, "RUNNING", phase="WAITING_FOR_MODEL"
     )
     # 取消检查点:进入通知解析前确认 run 仍可推进。
-    container.agent_run_manager.assert_active(run_id)
+    await run_in_threadpool(container.agent_run_manager.assert_active, run_id)
     wf = await service.create_workflow_for_notice_async(
         user_id=user.id,
         notice_id=notice_id,
         idempotency_key=effective_key,
         run_id=run_id,
     )
-    runtime_repo.update_job_input_ref(
+    await run_in_threadpool(runtime_repo.update_job_input_ref,
         job_id, {"notice_id": notice_id, "workflow_id": wf.workflow_id}
     )
-    container.agent_run_manager.transition(run_id, "SUCCEEDED", phase="IDLE")
-    actions = service.list_actions(wf.workflow_id, user_id=user.id)
+    await run_in_threadpool(container.agent_run_manager.transition, run_id, "SUCCEEDED", phase="IDLE")
+    actions = await run_in_threadpool(service.list_actions, wf.workflow_id, user_id=user.id)
     return _workflow_out(wf, actions)
 
 

@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+import traceback
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from .logging import logger
 
 
 class AppException(Exception):
@@ -609,6 +612,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.http_status,
             content=_build_error_body(exc.code, exc.message, exc.details, request_id),
+            headers={"Retry-After": str(exc.retry_after)} if hasattr(exc, "retry_after") else None,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -657,6 +661,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _unhandled_exception_handler(request: Request, exc: Exception):
         # 不向客户端暴露内部堆栈，仅返回通用错误
         request_id = getattr(request.state, "request_id", None)
+        # Record frame locations without exception text or local values, which
+        # can contain upstream credentials or private request content.
+        frames = [(frame.filename, frame.lineno, frame.name) for frame in traceback.extract_tb(exc.__traceback__)]
+        logger.error("unhandled_exception request_id={} error_type={} frames={}", request_id, type(exc).__name__, frames)
         return JSONResponse(
             status_code=500,
             content=_build_error_body(

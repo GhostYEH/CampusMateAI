@@ -4,6 +4,10 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 学习通状态错误与缓存
+
+`GET /api/v1/chaoxing/status` 的正常 HTTP/网络不可达仍返回 `status="unavailable"`，结果去重缓存 30 秒。意外服务端程序错误进入统一 500 `INTERNAL_ERROR` 信封，不把错误缓存为不可达，也不覆盖最近已知的登录态；可通过 `X-Request-ID` 定位。成功响应及过期登录态协议不变，客户端应区分 HTTP 错误和成功响应中的 status。Web、Android、HarmonyOS、微信小程序的状态接入源码已核对，本次运行验证仅覆盖后端与 Web 调用对照，移动端未进行原生构建或真机验收。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |

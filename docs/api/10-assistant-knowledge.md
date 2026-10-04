@@ -4,6 +4,18 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 聊天输入与匿名额度
+
+`POST /api/v1/counselor/chat` 与 `POST /api/v1/assistant/chat` 共用 `ChatRequest` 和匿名额度。`message` 必填，长度 1–20000 字符；可空的 `conversation_id`、`course_id`、`class_id`、`assignment_id`、`announcement_id` 最多 128 字符；`recent_tasks` 最多 100 项，每项 `id` 长度 1–128。最多五个通过归属检查的待办进入聊天上下文。超限在模型调用前返回 422 `VALIDATION_FAILED`；不截断用户问题。
+
+没有有效登录身份的请求按来源地址在当前进程内限流：每 60 秒最多 10 次，两条别名路径共享计数，成功和失败尝试均计数。超限在 SSE 建立前返回普通 HTTP 429 `RATE_LIMITED`，附 `Retry-After` 秒数，结构见 [认证限流](01-auth.md)。有有效身份的请求不占匿名额度，仍须满足输入约束。反向代理应正确配置受信地址识别，多进程额度各自独立。
+
+```json
+{"message":"帮我安排今天的复习","conversation_id":"conversation_example","recent_tasks":[{"id":"task_example"}],"stream":false}
+```
+
+Web、Android、HarmonyOS、微信小程序的聊天调用已核对：普通短问题和现有 ID 不需迁移；超长问题或上下文需缩减后重发，429 应等待后重试。Web 现有 fetch/Axios 能识别非成功响应；专门的字数限制与重试倒计时尚未做端侧适配，各移动端本次未编译或真机验证。SSE 已开始后的 error 事件及既有 LLM 降级响应保持原协议。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |

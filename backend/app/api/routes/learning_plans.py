@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
+from starlette.concurrency import run_in_threadpool
 
 from ...core.exceptions import ValidationFailed
 from ...core.logging import logger
@@ -62,7 +63,7 @@ async def generate_learning_plan(
     container: ServiceContainer = Depends(_container),
 ) -> LearningPlanOut:
     try:
-        plan = container.learning_planner_service.generate(
+        plan = await run_in_threadpool(container.learning_planner_service.generate,
             user_id=user.id, available_minutes=req.available_minutes, course_id=req.course_id, goal_id=req.goal_id,
             window_start=req.window_start, window_end=req.window_end,
             idempotency_key=idempotency_header or req.idempotency_key,
@@ -224,8 +225,8 @@ async def summarize_learning_plan(
       注解降级为 `available=false` + 稳定 reason，并改走纯影子观测
       （`BackgroundTasks`，结果只落影子表），本响应继续返回确定性结果。
     """
-    data = container.learning_planner_service.summarize(user_id=user.id, plan_id=plan_id)
-    plan = container.learning_plan_repository.get_plan(plan_id, user_id=user.id)
+    data = await run_in_threadpool(container.learning_planner_service.summarize, user_id=user.id, plan_id=plan_id)
+    plan = await run_in_threadpool(container.learning_plan_repository.get_plan, plan_id, user_id=user.id)
     annotation: CandidateAnnotationOut | None = None
     if plan is not None:
         raw = await container.model_assist_service.candidate_annotation(

@@ -222,3 +222,69 @@ def test_direct_memory_connection_borrows_isolate_commit_and_rollback():
     finally:
         release_first.set()
         db.dispose()
+
+
+@pytest.mark.parametrize("memory", [True, False])
+@pytest.mark.parametrize("borrow_kind", ["query", "direct"])
+def test_uncommitted_borrow_cannot_leak_into_next_transaction(tmp_path, memory, borrow_kind):
+    db = Database(None if memory else tmp_path / "unfinished.db")
+    try:
+        _create_probe_table(db)
+        if borrow_kind == "query":
+            with db.query() as conn:
+                conn.execute("UPDATE concurrency_probe SET value=99")
+        else:
+            conn = db._connect()
+            try:
+                conn.execute("UPDATE concurrency_probe SET value=99")
+            finally:
+                db._release(conn)
+        with db.transaction() as conn:
+            assert conn.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 1
+        with db.query() as conn:
+            assert conn.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 1
+    finally:
+        db.dispose()
+
+
+@pytest.mark.parametrize("memory", [True, False])
+@pytest.mark.parametrize("write_before_inner", [True, False])
+def test_nested_success_is_rolled_back_by_outer_failure(tmp_path, memory, write_before_inner):
+    db = Database(None if memory else tmp_path / "nested.db")
+    try:
+        _create_probe_table(db)
+        with pytest.raises(RuntimeError, match="outer aborted"):
+            with db.transaction() as outer:
+                if write_before_inner:
+                    outer.execute("UPDATE concurrency_probe SET value=2")
+                with db.transaction() as inner:
+                    assert inner is outer
+                    inner.execute("UPDATE concurrency_probe SET value=3")
+                with db.query() as reader:
+                    assert reader is outer
+                    assert reader.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 3
+                raise RuntimeError("outer aborted")
+        with db.query() as conn:
+            assert conn.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 1
+    finally:
+        db.dispose()
+
+
+@pytest.mark.parametrize("memory", [True, False])
+def test_nested_failure_rolls_back_only_inner_savepoint(tmp_path, memory):
+    db = Database(None if memory else tmp_path / "savepoint.db")
+    try:
+        _create_probe_table(db)
+        with db.transaction() as outer:
+            outer.execute("UPDATE concurrency_probe SET value=2")
+            with pytest.raises(RuntimeError, match="inner aborted"):
+                with db.transaction() as inner:
+                    inner.execute("UPDATE concurrency_probe SET value=3")
+                    raise RuntimeError("inner aborted")
+            with db.query() as reader:
+                assert reader.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 2
+            outer.execute("UPDATE concurrency_probe SET value=4")
+        with db.query() as conn:
+            assert conn.execute("SELECT value FROM concurrency_probe").fetchone()[0] == 4
+    finally:
+        db.dispose()

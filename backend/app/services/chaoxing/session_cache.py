@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import time
+from threading import RLock
 
 STATUS_CACHE_TTL = 30.0
 STATUS_CACHE_MAX_SIZE = 512
@@ -28,6 +29,7 @@ AUTH_STATE_TTL = 12 * 3600.0
 status_cache: dict[str, tuple[float, object]] = {}
 # user_id -> (monotonic 写入时间, state 字符串)
 auth_state_cache: dict[str, tuple[float, str]] = {}
+_cache_lock = RLock()
 
 
 def _evict_if_needed() -> None:
@@ -40,22 +42,25 @@ def _evict_if_needed() -> None:
 
 def set_cached(user_id: str, result: object) -> None:
     """记录一次探测结果：既更新 30s 去重缓存，也更新最近已知登录态。"""
-    _evict_if_needed()
-    now = time.monotonic()
-    status_cache[user_id] = (now, result)
-    state = getattr(result, "status", None)
-    if state:
-        auth_state_cache[user_id] = (now, str(state))
+    with _cache_lock:
+        _evict_if_needed()
+        now = time.monotonic()
+        status_cache[user_id] = (now, result)
+        state = getattr(result, "status", None)
+        if state:
+            auth_state_cache[user_id] = (now, str(state))
 
 
 def get_cached(user_id: str) -> object | None:
     """30s 内的探测结果（用于避免重复打学习通）。"""
-    cached = status_cache.get(user_id)
-    if not cached:
-        return None
-    if time.monotonic() - cached[0] >= STATUS_CACHE_TTL:
-        return None
-    return cached[1]
+    with _cache_lock:
+        cached = status_cache.get(user_id)
+        if not cached:
+            return None
+        if time.monotonic() - cached[0] >= STATUS_CACHE_TTL:
+            status_cache.pop(user_id, None)
+            return None
+        return cached[1]
 
 
 def invalidate(user_id: str) -> None:
@@ -63,23 +68,27 @@ def invalidate(user_id: str) -> None:
 
     保留最近已知登录态 —— 同步刚结束就把它清掉会让今日待办退回 unknown。
     """
-    status_cache.pop(user_id, None)
+    with _cache_lock:
+        status_cache.pop(user_id, None)
 
 
 def forget(user_id: str) -> None:
     """凭据发生变化（登录/解绑）时清空全部观测，避免把上一个账号的状态带给新账号。"""
-    status_cache.pop(user_id, None)
-    auth_state_cache.pop(user_id, None)
+    with _cache_lock:
+        status_cache.pop(user_id, None)
+        auth_state_cache.pop(user_id, None)
 
 
 def cached_auth_state(user_id: str) -> str:
     """返回最近已知的登录态，没有可信观测时是 "unknown"（绝不猜测成 online）。"""
-    cached = auth_state_cache.get(user_id)
-    if not cached:
-        return "unknown"
-    if time.monotonic() - cached[0] >= AUTH_STATE_TTL:
-        return "unknown"
-    return cached[1]
+    with _cache_lock:
+        cached = auth_state_cache.get(user_id)
+        if not cached:
+            return "unknown"
+        if time.monotonic() - cached[0] >= AUTH_STATE_TTL:
+            auth_state_cache.pop(user_id, None)
+            return "unknown"
+        return cached[1]
 
 
 __all__ = [

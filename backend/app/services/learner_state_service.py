@@ -1179,10 +1179,9 @@ class LearnerStateProjectionService:
         )
 
         # 5. schedule_load
-        future_7d_count = 0
-        for item in schedule_items:
-            future_7d_count += 1
-        density = float(future_7d_count) / 7.0 if future_7d_count > 0 else 0.0
+        # 教务课表是 weekday/weeks 表示的每周重复课次，不是带日期的预约。
+        # 没有学期起点，不能推算实际教学周；这里只表示观测课表的每周平均密度。
+        density = len(schedule_items) / 7.0
         high_density = ["high"] if density > 4.0 else []
         add_academic(
             state_type="schedule_load",

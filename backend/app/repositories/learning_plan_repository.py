@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from ..core.exceptions import LearningPlanIdempotencyConflict
 from ..database.sqlite_db import Database
 from ..models.learning_plan import (
     LearningPlanActionRow,
@@ -63,7 +64,20 @@ class LearningPlanRepository:
     def create_plan(self, *, user_id: str, run: dict[str, Any], items: list[dict[str, Any]]) -> LearningPlanRow:
         now = _now()
         plan_id = _id("plan")
-        with self._db.transaction() as conn:
+        # Reserve the SQLite write lock before checking the key, including when
+        # separate Database instances serve concurrent generation requests.
+        with self._db.transaction(immediate=True) as conn:
+            if run.get("idempotency_key"):
+                existing = conn.execute(
+                    """SELECT p.*, r.* FROM learning_plans p
+                       JOIN learning_plan_runs r ON r.run_id=p.run_id
+                       WHERE p.user_id=? AND r.idempotency_key=?""",
+                    (user_id, run["idempotency_key"]),
+                ).fetchone()
+                if existing is not None:
+                    if existing["input_digest"] != run["input_digest"]:
+                        raise LearningPlanIdempotencyConflict()
+                    return self._load_plans(conn, [existing], user_id=user_id)[0]
             conn.execute(
                 """INSERT INTO learning_plan_runs
                    (run_id,user_id,planner_version,input_digest,as_of,valid_until,available_minutes,
@@ -124,33 +138,52 @@ class LearningPlanRepository:
             ).fetchone()
             if row is None:
                 return None
-            run = _run(row)
-            item_rows = conn.execute(
-                """SELECT i.*, a.target_task_id AS execution_task_id
-                   FROM learning_plan_items i
-                   LEFT JOIN learning_plan_execution_actions a
-                     ON a.plan_id=i.plan_id AND a.item_id=i.item_id
-                    AND a.action_type='CREATE_PERSONAL_TASK' AND a.user_id=?
-                   WHERE i.plan_id=? ORDER BY i.priority_score DESC,i.item_id ASC""",
-                (user_id, plan_id),
-            ).fetchall()
-            items = []
-            for item_row in item_rows:
-                evidence_rows = conn.execute(
-                    "SELECT evidence_type,reference_id,relevance_score,metadata_json FROM learning_plan_evidence WHERE item_id=? ORDER BY evidence_id",
-                    (item_row["item_id"],),
-                ).fetchall()
-                evidence = [{
-                    "evidence_type": e["evidence_type"], "reference_id": e["reference_id"],
-                    "relevance_score": e["relevance_score"], "metadata": json.loads(e["metadata_json"] or "{}"),
-                } for e in evidence_rows]
-                items.append(_item(item_row, evidence))
-        status = "STALE" if row["stale_reason"] else ("SUPERSEDED" if row["superseded_by_plan_id"] else row["status"])
-        return LearningPlanRow(
-            plan_id=plan_id, run=run, user_id=row["user_id"], status=status,
-            llm_summary=row["llm_summary"], created_at=row["created_at"], items=items,
-            supersedes_plan_id=row["supersedes_plan_id"], superseded_by_plan_id=row["superseded_by_plan_id"],
-        )
+            return self._load_plans(conn, [row], user_id=user_id)[0]
+
+    @staticmethod
+    def _load_plans(conn, rows, *, user_id: str) -> list[LearningPlanRow]:
+        """批量加载当前页的条目与证据，保持条目/证据原有排序。"""
+        if not rows:
+            return []
+        plan_ids = [row["plan_id"] for row in rows]
+        placeholders = ",".join("?" for _ in plan_ids)
+        item_rows = conn.execute(
+            f"""SELECT i.*, a.target_task_id AS execution_task_id
+                FROM learning_plan_items i
+                LEFT JOIN learning_plan_execution_actions a
+                  ON a.plan_id=i.plan_id AND a.item_id=i.item_id
+                 AND a.action_type='CREATE_PERSONAL_TASK' AND a.user_id=?
+                WHERE i.plan_id IN ({placeholders})
+                ORDER BY i.priority_score DESC,i.item_id ASC""",
+            [user_id, *plan_ids],
+        ).fetchall()
+        evidence_rows = conn.execute(
+            f"""SELECT item_id,evidence_type,reference_id,relevance_score,metadata_json
+                FROM learning_plan_evidence WHERE plan_id IN ({placeholders})
+                ORDER BY evidence_id""", plan_ids,
+        ).fetchall()
+        evidence_by_item: dict[str, list[dict[str, Any]]] = {}
+        for evidence in evidence_rows:
+            evidence_by_item.setdefault(evidence["item_id"], []).append({
+                "evidence_type": evidence["evidence_type"], "reference_id": evidence["reference_id"],
+                "relevance_score": evidence["relevance_score"],
+                "metadata": json.loads(evidence["metadata_json"] or "{}"),
+            })
+        items_by_plan: dict[str, list[LearningPlanItemRow]] = {}
+        for item_row in item_rows:
+            items_by_plan.setdefault(item_row["plan_id"], []).append(
+                _item(item_row, evidence_by_item.get(item_row["item_id"]))
+            )
+        result = []
+        for row in rows:
+            status = "STALE" if row["stale_reason"] else ("SUPERSEDED" if row["superseded_by_plan_id"] else row["status"])
+            result.append(LearningPlanRow(
+                plan_id=row["plan_id"], run=_run(row), user_id=row["user_id"], status=status,
+                llm_summary=row["llm_summary"], created_at=row["created_at"],
+                items=items_by_plan.get(row["plan_id"], []),
+                supersedes_plan_id=row["supersedes_plan_id"], superseded_by_plan_id=row["superseded_by_plan_id"],
+            ))
+        return result
 
     def find_by_idempotency_key(self, *, user_id: str, idempotency_key: str) -> LearningPlanRow | None:
         with self._db.query() as conn:
@@ -408,15 +441,12 @@ class LearningPlanRepository:
         with self._db.query() as conn:
             total = int(conn.execute("SELECT COUNT(*) n FROM learning_plans WHERE user_id=?", (user_id,)).fetchone()["n"])
             rows = conn.execute(
-                "SELECT plan_id FROM learning_plans WHERE user_id=? ORDER BY created_at DESC,plan_id DESC LIMIT ? OFFSET ?",
+                """SELECT p.*, r.* FROM learning_plans p
+                   JOIN learning_plan_runs r ON r.run_id=p.run_id
+                   WHERE p.user_id=? ORDER BY p.created_at DESC,p.plan_id DESC LIMIT ? OFFSET ?""",
                 (user_id, page_size, offset),
             ).fetchall()
-        result = []
-        for row in rows:
-            plan = self.get_plan(row["plan_id"], user_id=user_id)
-            if plan is not None:
-                result.append(plan)
-        return result, total
+            return self._load_plans(conn, rows, user_id=user_id), total
 
 
 __all__ = ["LearningPlanRepository"]

@@ -1950,6 +1950,7 @@ class Database:
         self._is_memory = db_path is None
         self._db_path = str(db_path) if db_path else ":memory:"
         self._lock = threading.RLock()
+        self._local = threading.local()
         # 内存模式：共享单连接；文件模式：None
         self._shared_conn: sqlite3.Connection | None = None
         self._init_schema()
@@ -1968,6 +1969,7 @@ class Database:
                     )
                     self._shared_conn.row_factory = sqlite3.Row
                     self._shared_conn.execute("PRAGMA foreign_keys=ON;")
+                self._local.memory_borrows = getattr(self._local, "memory_borrows", 0) + 1
                 return self._shared_conn
             except BaseException:
                 self._lock.release()
@@ -1981,7 +1983,14 @@ class Database:
     def _release(self, conn: sqlite3.Connection) -> None:
         """在借用线程释放连接；内存模式保留共享连接并解除借用锁。"""
         if self._is_memory:
-            self._lock.release()
+            try:
+                self._local.memory_borrows -= 1
+                if self._local.memory_borrows == 0 and conn.in_transaction:
+                    # Match closing a file connection: never leak an unfinished
+                    # write into the next borrower's commit or rollback.
+                    conn.rollback()
+            finally:
+                self._lock.release()
             return
         conn.close()
 
@@ -1996,6 +2005,42 @@ class Database:
                 statement = ""
         if statement.strip():
             conn.execute(statement)
+
+    @staticmethod
+    def _create_declared_table(conn: sqlite3.Connection, script: str, table: str) -> None:
+        """复用本层声明的表结构，避免迁移维护第二份 DDL。"""
+        declaration = re.search(
+            rf"CREATE TABLE IF NOT EXISTS {re.escape(table)} \([\s\S]*?\n\);", script
+        )
+        if declaration is None:
+            raise ValueError(f"missing schema declaration: {table}")
+        conn.execute(declaration.group(0))
+
+    def _restore_declared_constraints(
+        self, conn: sqlite3.Connection, script: str, table: str
+    ) -> None:
+        """在启动事务中无损重建表；任何非法历史数据均让整个升级回滚。"""
+        stash = f"{table}__constraint_restore"
+        objects = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE tbl_name = ? "
+            "AND type IN ('index', 'trigger') AND sql IS NOT NULL",
+            (table,),
+        ).fetchall()
+        old_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        conn.execute(f"CREATE TEMP TABLE {stash} AS SELECT * FROM {table}")
+        old_count = conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0]
+        conn.execute(f"DROP TABLE {table}")
+        self._create_declared_table(conn, script, table)
+        new_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not old_columns <= new_columns:
+            raise sqlite3.IntegrityError(f"constraint restoration would discard columns: {table}")
+        columns = ", ".join('"' + name.replace('"', '""') + '"' for name in sorted(old_columns))
+        conn.execute(f"INSERT INTO {table} ({columns}) SELECT {columns} FROM {stash}")
+        if conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] != old_count:
+            raise sqlite3.IntegrityError(f"constraint restoration row count mismatch: {table}")
+        for item in objects:
+            conn.execute(item["sql"])
+        conn.execute(f"DROP TABLE {stash}")
 
     @staticmethod
     def _prepare_legacy_learning_plan_runs(conn: sqlite3.Connection) -> None:
@@ -2302,27 +2347,11 @@ class Database:
 
     def _migrate_learning_plan_feedback(self, conn: sqlite3.Connection) -> None:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
-        self._execute_schema_script(conn, """
-        CREATE TABLE IF NOT EXISTS learning_plan_feedback (
-            feedback_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, user_id TEXT NOT NULL,
-            feedback TEXT NOT NULL, created_at TEXT NOT NULL,
-            FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(plan_id, user_id, feedback)
-        );
-        CREATE TABLE IF NOT EXISTS learning_plan_evaluation_runs (
-            evaluation_id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, user_id TEXT NOT NULL,
-            evaluator_version TEXT NOT NULL, input_digest TEXT NOT NULL,
-            baseline_as_of TEXT NOT NULL, evaluated_as_of TEXT NOT NULL,
-            metrics_json TEXT NOT NULL, warning_codes_json TEXT NOT NULL DEFAULT '[]',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY(plan_id) REFERENCES learning_plans(plan_id) ON DELETE CASCADE,
-            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-            UNIQUE(plan_id, evaluator_version, input_digest)
-        );
-        CREATE INDEX IF NOT EXISTS idx_learning_plan_feedback_plan ON learning_plan_feedback(plan_id, created_at);
-        CREATE INDEX IF NOT EXISTS idx_learning_plan_evaluations_plan ON learning_plan_evaluation_runs(plan_id, created_at DESC);
-        """)
+        feedback_schema = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='learning_plan_feedback'"
+        ).fetchone()["sql"]
+        if not re.search(r"CHECK\s*\(\s*feedback\s+IN\s*\(", feedback_schema, re.IGNORECASE):
+            self._restore_declared_constraints(conn, LEARNING_PLAN_SCHEMA_SQL, "learning_plan_feedback")
         conn.execute("DROP INDEX IF EXISTS idx_learner_state_runs_current")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current "
@@ -2574,32 +2603,7 @@ class Database:
             for index in ("idx_edu_bindings_user_system", "idx_edu_bindings_university", "idx_edu_bindings_status"):
                 if index in legacy_indexes:
                     conn.execute(f"DROP INDEX {index}")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS edu_bindings (
-                    id TEXT PRIMARY KEY,
-                    user_id TEXT NOT NULL,
-                    edu_system_id TEXT,
-                    university_id TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    system_type TEXT NOT NULL DEFAULT 'undergrad',
-                    external_student_id TEXT,
-                    external_student_name TEXT,
-                    connection_status TEXT NOT NULL DEFAULT 'unbound',
-                    session_type TEXT,
-                    credential_ref TEXT,
-                    last_authenticated_at TEXT,
-                    session_expires_at TEXT,
-                    last_synced_at TEXT,
-                    last_sync_status TEXT,
-                    last_error TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY(university_id) REFERENCES universities(id) ON DELETE RESTRICT
-                )
-                """
-            )
+            self._create_declared_table(conn, EDU_CONNECTOR_SCHEMA_SQL, "edu_bindings")
             conn.execute(
                 """
                 INSERT INTO edu_bindings (
@@ -2662,7 +2666,12 @@ class Database:
         if system_cols and "adapter_config" not in system_cols:
             conn.execute("ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'")
 
-        self._migrate_edu_bindings(conn)
+        binding_foreign_keys = conn.execute("PRAGMA foreign_key_list(edu_bindings)").fetchall()
+        if not any(
+            row["from"] == "edu_system_id" and row["table"] == "edu_systems"
+            for row in binding_foreign_keys
+        ):
+            self._restore_declared_constraints(conn, EDU_CONNECTOR_SCHEMA_SQL, "edu_bindings")
 
         # 2. edu_sync_records 旧 schema → 新 schema (加 adapter/error_code)
         cur = conn.execute("PRAGMA table_info(edu_sync_records)")
@@ -2754,22 +2763,54 @@ class Database:
             )
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
-        """事务上下文：成功提交，异常回滚。"""
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
+        """事务上下文；嵌套调用使用保存点，只有最外层可以提交。"""
         with self._lock:
+            active = getattr(self._local, "transaction_conn", None)
+            if active is not None:
+                # A SAVEPOINT outside a BEGIN commits on RELEASE. Start the
+                # outer transaction first even when it has not written yet.
+                if not active.in_transaction:
+                    active.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+                depth = self._local.transaction_depth + 1
+                savepoint = f"database_transaction_{depth}"
+                active.execute(f"SAVEPOINT {savepoint}")
+                self._local.transaction_depth = depth
+                try:
+                    yield active
+                    active.execute(f"RELEASE SAVEPOINT {savepoint}")
+                except BaseException:
+                    active.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    active.execute(f"RELEASE SAVEPOINT {savepoint}")
+                    raise
+                finally:
+                    self._local.transaction_depth -= 1
+                return
             conn = self._connect()
+            if conn.in_transaction:
+                self._release(conn)
+                raise RuntimeError("cannot start a transaction inside an unfinished connection borrow")
             try:
+                if immediate:
+                    conn.execute("BEGIN IMMEDIATE")
+                self._local.transaction_conn = conn
+                self._local.transaction_depth = 0
                 yield conn
                 conn.commit()
             except BaseException:
                 conn.rollback()
                 raise
             finally:
+                self._local.transaction_conn = None
                 self._release(conn)
 
     @contextmanager
     def query(self) -> Iterator[sqlite3.Connection]:
         """只读查询上下文(自动关闭连接)。"""
+        active = getattr(self._local, "transaction_conn", None)
+        if active is not None:
+            yield active
+            return
         if self._is_memory:
             # Memory databases share one Connection, including its transaction state.
             # Keep the full context serialized to prevent concurrent use/close.
@@ -2815,28 +2856,26 @@ class Database:
 
 
 _db_instance: Database | None = None
+_db_instance_lock = threading.RLock()
 
 
 def init_db(settings: Settings) -> Database:
     """初始化全局 Database 单例。"""
     global _db_instance
-    if _db_instance is None:
-        _db_instance = Database(settings.database_path)
-    return _db_instance
+    with _db_instance_lock:
+        if _db_instance is None:
+            _db_instance = Database(settings.database_path)
+        return _db_instance
 
 
 def reset_db_for_tests() -> Database:
     """测试专用：创建一个全新的内存库并替换单例。"""
     global _db_instance
-    if _db_instance is not None and _db_instance._is_memory:
-        # 关闭旧的共享连接
-        try:
-            if _db_instance._shared_conn is not None:
-                _db_instance._shared_conn.close()
-        except Exception:
-            pass
-    _db_instance = Database(None)
-    return _db_instance
+    with _db_instance_lock:
+        if _db_instance is not None and _db_instance._is_memory:
+            _db_instance.dispose()
+        _db_instance = Database(None)
+        return _db_instance
 
 
 __all__ = ["Database", "init_db", "reset_db_for_tests"]

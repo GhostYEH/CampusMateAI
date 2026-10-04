@@ -16,6 +16,8 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
+from starlette.concurrency import run_in_threadpool
+
 from ...core.config import Settings
 from ...core.exceptions import AppException, Forbidden
 from ...models.edu import (
@@ -175,7 +177,7 @@ class EduConnectorService:
             from ...core.config import get_settings
             from .adapters.ssrf_guard import assert_safe_url
             _settings = get_settings()
-            assert_safe_url(portal_url)
+            await run_in_threadpool(assert_safe_url, portal_url)
             allow_insecure = _settings.app_env != "production" and _settings.edu_allow_insecure_ssl
             async with httpx.AsyncClient(
                 timeout=15,
@@ -207,7 +209,7 @@ class EduConnectorService:
             from urllib.parse import urljoin
             location = resp.headers.get("location")
             if location:
-                assert_safe_url(urljoin(portal_url, location))
+                await run_in_threadpool(assert_safe_url, urljoin(portal_url, location))
             result["http_status"] = resp.status_code
             result["final_url"] = str(resp.url)
             content = resp.text[:50000] if resp.text else ""
@@ -267,7 +269,7 @@ class EduConnectorService:
         edu_system = next(
             (
                 row
-                for row in self._registry.list_systems(university_id)
+                for row in await run_in_threadpool(self._registry.list_systems, university_id)
                 if (row.verification_status or "").upper() in {
                     "VERIFIED", "VERIFIED_OFFICIAL", "VERIFIED_LIVE"
                 }
@@ -279,27 +281,27 @@ class EduConnectorService:
             None,
         )
         if edu_system is None:
-            edu_system = self._registry.ensure_default_system(university_id)
+            edu_system = await run_in_threadpool(self._registry.ensure_default_system, university_id)
 
         # 防重复：如果已有活跃连接，复用而非新建。
         # 旧版本可能遗留“connected 但没有 binding”的坏记录；这种记录没有
         # 会话可供同步，必须作废后重新认证，不能继续复用。
-        existing = self._edu_repo.get_active_connection_by_user(user_id, edu_system.id)
+        existing = await run_in_threadpool(self._edu_repo.get_active_connection_by_user, user_id, edu_system.id)
         if existing is not None:
-            binding = self._edu_repo.get_binding_by_user(user_id, edu_system.id)
+            binding = await run_in_threadpool(self._edu_repo.get_binding_by_user, user_id, edu_system.id)
             provider_recovered = (
                 existing.provider in (EDU_PROVIDER_UNKNOWN, EDU_PROVIDER_UNSUPPORTED)
                 and provider in KNOWN_PROVIDERS
             )
             if provider_recovered:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     existing.id,
                     state=CONN_AUTH_FAILED,
                     error_code="PROVIDER_REDETECTED",
                     error_message="已重新识别教务系统厂商，请重新完成教务登录",
                 )
             elif existing.state == CONN_CONNECTED and binding is None:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     existing.id,
                     state=CONN_AUTH_FAILED,
                     error_code="BINDING_MISSING",
@@ -308,7 +310,7 @@ class EduConnectorService:
             else:
                 return existing, edu_system, probe
 
-        conn = self.create_connection(
+        conn = await run_in_threadpool(self.create_connection,
             user_id=user_id,
             edu_system_id=edu_system.id,
             university_id=university_id,
@@ -326,7 +328,7 @@ class EduConnectorService:
         2. adapter.prepare_login(config) → GET 登录页 + 验证码图片
         3. 存入 PreLoginSessionStore，返回 pre_login_token + 图片 base64
         """
-        conn = self._edu_repo.get_connection(connection_id)
+        conn = await run_in_threadpool(self._edu_repo.get_connection, connection_id)
         if conn is None:
             raise AppException(code="EDU_CONNECTION_NOT_FOUND", http_status=404, message="连接不存在")
         if conn.user_id != user_id:
@@ -336,13 +338,13 @@ class EduConnectorService:
             raise AppException(code="UNSUPPORTED", http_status=400, message=f"Provider[{conn.provider}] adapter not implemented")
 
         adapter, _ = self._select_adapter(conn.provider)
-        system = self._registry.get_system_by_id(conn.edu_system_id)
+        system = await run_in_threadpool(self._registry.get_system_by_id, conn.edu_system_id)
         config = self._build_config_dict(system, portal_url=conn.portal_url)
 
         try:
             pre_login_data = await adapter.prepare_login(config=config)
         except NeedUserAction as action_needed:
-            self._edu_repo.update_connection_state(
+            await run_in_threadpool(self._edu_repo.update_connection_state,
                 connection_id,
                 state=CONN_WAITING_USER_LOGIN,
                 error_code=action_needed.action,
@@ -414,7 +416,7 @@ class EduConnectorService:
 
         登录成功后创建 binding + session，使后续 sync 可用。
         """
-        conn = self._edu_repo.get_connection(connection_id)
+        conn = await run_in_threadpool(self._edu_repo.get_connection, connection_id)
         if conn is None:
             raise AppException(code="EDU_CONNECTION_NOT_FOUND", http_status=404, message="连接不存在")
 
@@ -424,16 +426,16 @@ class EduConnectorService:
 
         # CANCEL: 取消连接
         if action == "CANCEL":
-            self._edu_repo.update_connection_state(connection_id, state=CONN_ERROR, error_code="CANCELLED", error_message="用户取消")
+            await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_ERROR, error_code="CANCELLED", error_message="用户取消")
             return CONN_ERROR
 
         # 兼容旧数据库中的 idle 连接；新连接在创建时已经进入等待状态。
         if conn.state == CONN_IDLE:
             if conn.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
-                self._edu_repo.update_connection_state(connection_id, state=CONN_WAITING_USER_LOGIN)
+                await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_WAITING_USER_LOGIN)
             else:
-                self._edu_repo.update_connection_state(connection_id, state=CONN_AUTH_REQUIRED)
-            conn = self._edu_repo.get_connection(connection_id)
+                await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_AUTH_REQUIRED)
+            conn = await run_in_threadpool(self._edu_repo.get_connection, connection_id)
 
         # CONN_AUTH_REQUIRED + username + password: 服务端代理登录。
         # 图片验证码提交先校验全部输入和连接状态，随后原子消费令牌；消费失败不改变连接状态。
@@ -478,16 +480,16 @@ class EduConnectorService:
 
         if (conn.state in (CONN_AUTH_REQUIRED, CONN_CONNECTING) and username and password) or submit_with_captcha:
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id,
                     state=CONN_UNSUPPORTED,
                     error_code="UNSUPPORTED",
                     error_message=f"Provider[{conn.provider}] adapter not implemented",
                 )
                 return CONN_UNSUPPORTED
-            self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
+            await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
-            system = self._registry.get_system_by_id(conn.edu_system_id)
+            system = await run_in_threadpool(self._registry.get_system_by_id, conn.edu_system_id)
             config = self._build_config_dict(system, portal_url=conn.portal_url)
             try:
                 internal = await adapter.login(
@@ -495,7 +497,7 @@ class EduConnectorService:
                     captcha=captcha, pre_login_session=pre_login_data,
                 )
             except NeedUserAction as action_needed:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id,
                     state=CONN_WAITING_USER_LOGIN,
                     error_code=action_needed.action,
@@ -503,13 +505,13 @@ class EduConnectorService:
                 )
                 return CONN_WAITING_USER_LOGIN
             except AdapterNotImplemented:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
                     error_message=f"Provider[{conn.provider}] adapter not implemented",
                 )
                 return CONN_UNSUPPORTED
             except PermissionError:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
                     error_message="登录失败：用户名或密码错误",
                 )
@@ -523,7 +525,7 @@ class EduConnectorService:
                     "RATE_LIMITED": "学校教务系统请求过于频繁，请稍后重试",
                     "LOGIN_PROTOCOL_ERROR": "学校教务登录协议响应异常，请稍后重试",
                 }.get(exc.code, "学校教务系统连接异常，请稍后重试")
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id,
                     state=CONN_AUTH_REQUIRED,
                     error_code=exc.code,
@@ -536,16 +538,16 @@ class EduConnectorService:
         # CONN_WAITING_USER_LOGIN + cookies (action=CLIENT_WEBVIEW_COMPLETE): 客户端 WebView 登录完成
         if conn.state == CONN_WAITING_USER_LOGIN and (cookies or cookie_jar) and action == "CLIENT_WEBVIEW_COMPLETE":
             if conn.provider not in (*KNOWN_PROVIDERS, EDU_PROVIDER_MOCK):
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id,
                     state=CONN_UNSUPPORTED,
                     error_code="UNSUPPORTED",
                     error_message=f"Provider[{conn.provider}] adapter not implemented",
                 )
                 return CONN_UNSUPPORTED
-            self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTING)
+            await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_CONNECTING)
             adapter, _ = self._select_adapter(conn.provider)
-            system = self._registry.get_system_by_id(conn.edu_system_id)
+            system = await run_in_threadpool(self._registry.get_system_by_id, conn.edu_system_id)
             config = self._build_config_dict(system, portal_url=conn.portal_url)
             if current_url:
                 config = {**config, "current_url": current_url}
@@ -554,7 +556,7 @@ class EduConnectorService:
                     cookies=cookies or {}, cookie_jar=cookie_jar, current_url=current_url, user_agent=user_agent, config=config,
                 )
             except NeedUserAction as action_needed:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id,
                     state=CONN_WAITING_USER_LOGIN,
                     error_code=action_needed.action,
@@ -562,13 +564,13 @@ class EduConnectorService:
                 )
                 return CONN_WAITING_USER_LOGIN
             except AdapterNotImplemented:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id, state=CONN_UNSUPPORTED, error_code="UNSUPPORTED",
                     error_message=f"Provider[{conn.provider}] login_with_cookies not implemented",
                 )
                 return CONN_UNSUPPORTED
             except PermissionError as e:
-                self._edu_repo.update_connection_state(
+                await run_in_threadpool(self._edu_repo.update_connection_state,
                     connection_id, state=CONN_AUTH_FAILED, error_code="AUTH_FAILED",
                     error_message=str(e) or "回传的 cookies 无效",
                 )
@@ -578,7 +580,7 @@ class EduConnectorService:
 
         # CONN_WAITING_USER_LOGIN + action=CLIENT_WEBVIEW_COMPLETE 但无 cookies: 提示未检测到
         if conn.state == CONN_WAITING_USER_LOGIN and action == "CLIENT_WEBVIEW_COMPLETE" and not (cookies or cookie_jar):
-            self._edu_repo.update_connection_state(
+            await run_in_threadpool(self._edu_repo.update_connection_state,
                 connection_id, state=CONN_WAITING_USER_LOGIN,
                 error_code="NO_COOKIE", error_message="未检测到有效登录状态，请确认已进入教务系统首页",
             )
@@ -602,7 +604,7 @@ class EduConnectorService:
         """
         external_student_id = internal.get("external_student_id") if isinstance(internal, dict) else None
         # 更新 connection 为 authenticated
-        self._edu_repo.update_connection_state(
+        await run_in_threadpool(self._edu_repo.update_connection_state,
             connection_id,
             state=CONN_AUTHENTICATED,
             external_student_id=external_student_id,
@@ -610,7 +612,7 @@ class EduConnectorService:
         try:
             # 创建 binding
             credential_ref = EduSessionStore.make_credential_ref(conn.user_id, conn.university_id)
-            self._edu_repo.upsert_binding(
+            await run_in_threadpool(self._edu_repo.upsert_binding,
                 user_id=conn.user_id,
                 university_id=conn.university_id,
                 edu_system_id=conn.edu_system_id,
@@ -623,8 +625,8 @@ class EduConnectorService:
                 last_authenticated_at=datetime.now(timezone.utc).isoformat(),
             )
             # 创建 session
-            self._sessions.destroy_user_sessions(conn.user_id)
-            self._sessions.create_session(
+            await run_in_threadpool(self._sessions.destroy_user_sessions, conn.user_id)
+            await run_in_threadpool(self._sessions.create_session,
                 user_id=conn.user_id,
                 university_id=conn.university_id,
                 provider=adapter.provider,
@@ -635,7 +637,7 @@ class EduConnectorService:
             )
         except Exception as e:
             # binding/session 创建失败，回滚 connection 状态
-            self._edu_repo.update_connection_state(
+            await run_in_threadpool(self._edu_repo.update_connection_state,
                 connection_id,
                 state=CONN_AUTH_FAILED,
                 error_code="FINALIZE_FAILED",
@@ -643,7 +645,7 @@ class EduConnectorService:
             )
             return
         # 更新 connection 为 connected
-        self._edu_repo.update_connection_state(connection_id, state=CONN_CONNECTED)
+        await run_in_threadpool(self._edu_repo.update_connection_state, connection_id, state=CONN_CONNECTED)
 
     def _build_config_dict(self, system, *, portal_url: Optional[str] = None) -> dict:
         """从 EduSystemRow 构造 adapter config dict。"""
@@ -734,18 +736,18 @@ class EduConnectorService:
         4. 创建 SessionManager 会话
         5. upsert edu_bindings
         """
-        detect_result = self.detect(university_id)
+        detect_result = await run_in_threadpool(self.detect, university_id)
         provider = detect_result.provider
 
         # 选择 adapter
         adapter, adapter_source = self._select_adapter(provider)
 
         # 确保默认 edu_system 存在
-        edu_system = self._registry.ensure_default_system(university_id)
+        edu_system = await run_in_threadpool(self._registry.ensure_default_system, university_id)
         edu_system_id = edu_system.id
 
         # 登录
-        config_row = self._registry.ensure_config(university_id)
+        config_row = await run_in_threadpool(self._registry.ensure_config, university_id)
         config_dict = {
             "academic_system_url": config_row.academic_system_url,
             "sso_url": config_row.sso_url,
@@ -764,7 +766,7 @@ class EduConnectorService:
             raise EduUnsupportedError(provider)
         except PermissionError:
             # 登录失败
-            self._edu_repo.upsert_binding(
+            await run_in_threadpool(self._edu_repo.upsert_binding,
                 user_id=user_id,
                 university_id=university_id,
                 provider=adapter.provider,
@@ -777,8 +779,8 @@ class EduConnectorService:
         external_student_id = internal.get("external_student_id") if isinstance(internal, dict) else None
 
         # 创建会话
-        self._sessions.destroy_user_sessions(user_id)
-        session = self._sessions.create_session(
+        await run_in_threadpool(self._sessions.destroy_user_sessions, user_id)
+        session = await run_in_threadpool(self._sessions.create_session,
             user_id=user_id,
             university_id=university_id,
             provider=adapter.provider,
@@ -789,7 +791,7 @@ class EduConnectorService:
 
         # upsert binding
         credential_ref = SessionManager.make_credential_ref(user_id, university_id)
-        binding = self._edu_repo.upsert_binding(
+        binding = await run_in_threadpool(self._edu_repo.upsert_binding,
             user_id=user_id,
             university_id=university_id,
             edu_system_id=edu_system_id,
@@ -854,7 +856,7 @@ class EduConnectorService:
         *,
         semester: Optional[str] = None,
     ) -> EduSyncResult:
-        binding = self._edu_repo.get_binding_by_user(user_id)
+        binding = await run_in_threadpool(self._edu_repo.get_binding_by_user, user_id)
         if binding is None or binding.connection_status != BINDING_ACTIVE:
             return EduSyncResult(
                 sync_type=sync_type,
@@ -862,7 +864,7 @@ class EduConnectorService:
                 error_message="未绑定教务账号或绑定已失效",
             )
 
-        session = self._sessions.get_session_by_user(user_id)
+        session = await run_in_threadpool(self._sessions.get_session_by_user, user_id)
         if session is None:
             return EduSyncResult(
                 sync_type=sync_type,
@@ -871,7 +873,7 @@ class EduConnectorService:
             )
 
         adapter, _ = self._select_adapter(binding.provider)
-        sync_record = self._edu_repo.create_sync_record(
+        sync_record = await run_in_threadpool(self._edu_repo.create_sync_record,
             binding_id=binding.id,
             user_id=user_id,
             sync_type=sync_type,
@@ -881,10 +883,10 @@ class EduConnectorService:
             internal_session = session._internal
             if sync_type == "profile":
                 data = await adapter.fetch_profile(internal_session)
-                self._edu_repo.finish_sync_record(
+                await run_in_threadpool(self._edu_repo.finish_sync_record,
                     sync_record.id, status=SYNC_SUCCESS, items_count=1
                 )
-                self._edu_repo.update_binding_status(
+                await run_in_threadpool(self._edu_repo.update_binding_status,
                     user_id,
                     last_synced_at=datetime.now(timezone.utc).isoformat(),
                     last_sync_status=SYNC_SUCCESS,
@@ -895,7 +897,7 @@ class EduConnectorService:
                 )
             elif sync_type == "schedule":
                 data = await adapter.fetch_schedule(internal_session, semester=semester)
-                protocol_source = self._cache_verified_schedule_protocol(binding, internal_session)
+                protocol_source = await run_in_threadpool(self._cache_verified_schedule_protocol, binding, internal_session)
                 count = len(data.items)
                 schedule_meta = internal_session.get("schedule_sync_meta")
                 validated_empty = (
@@ -909,16 +911,16 @@ class EduConnectorService:
                     count > 0 or (validated_empty and bool(data.semester))
                 ):
                     sync_batch_id = sync_record.id
-                    stats = self._edu_data_repo.sync_schedule_items(
+                    stats = await run_in_threadpool(self._edu_data_repo.sync_schedule_items,
                         binding=binding,
                         schedule=data,
                         sync_batch_id=sync_batch_id,
                         validated_empty=validated_empty,
                     )
-                self._edu_repo.finish_sync_record(
+                await run_in_threadpool(self._edu_repo.finish_sync_record,
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
-                self._edu_repo.update_binding_status(
+                await run_in_threadpool(self._edu_repo.update_binding_status,
                     user_id,
                     last_synced_at=datetime.now(timezone.utc).isoformat(),
                     last_sync_status=SYNC_SUCCESS,
@@ -950,15 +952,15 @@ class EduConnectorService:
                 sync_batch_id = None
                 if self._edu_data_repo is not None and count > 0:
                     sync_batch_id = sync_record.id
-                    stats = self._edu_data_repo.sync_grade_items(
+                    stats = await run_in_threadpool(self._edu_data_repo.sync_grade_items,
                         binding=binding,
                         grade=data,
                         sync_batch_id=sync_batch_id,
                     )
-                self._edu_repo.finish_sync_record(
+                await run_in_threadpool(self._edu_repo.finish_sync_record,
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
-                self._edu_repo.update_binding_status(
+                await run_in_threadpool(self._edu_repo.update_binding_status,
                     user_id,
                     last_synced_at=datetime.now(timezone.utc).isoformat(),
                     last_sync_status=SYNC_SUCCESS,
@@ -985,15 +987,15 @@ class EduConnectorService:
                 sync_batch_id = None
                 if self._edu_data_repo is not None and count > 0:
                     sync_batch_id = sync_record.id
-                    stats = self._edu_data_repo.sync_exam_items(
+                    stats = await run_in_threadpool(self._edu_data_repo.sync_exam_items,
                         binding=binding,
                         exam=data,
                         sync_batch_id=sync_batch_id,
                     )
-                self._edu_repo.finish_sync_record(
+                await run_in_threadpool(self._edu_repo.finish_sync_record,
                     sync_record.id, status=SYNC_SUCCESS, items_count=count
                 )
-                self._edu_repo.update_binding_status(
+                await run_in_threadpool(self._edu_repo.update_binding_status,
                     user_id,
                     last_synced_at=datetime.now(timezone.utc).isoformat(),
                     last_sync_status=SYNC_SUCCESS,
@@ -1016,12 +1018,12 @@ class EduConnectorService:
             else:
                 raise ValueError(f"unknown sync_type: {sync_type}")
         except AdapterNotImplemented as e:
-            self._edu_repo.finish_sync_record(
+            await run_in_threadpool(self._edu_repo.finish_sync_record,
                 sync_record.id,
                 status=SYNC_FAILED,
                 error_message=str(e),
             )
-            self._edu_repo.update_binding_status(
+            await run_in_threadpool(self._edu_repo.update_binding_status,
                 user_id,
                 last_sync_status=SYNC_FAILED,
                 last_error=str(e),
@@ -1034,12 +1036,12 @@ class EduConnectorService:
                 previous_schedule_preserved=True if sync_type == "schedule" else None,
             )
         except Exception as e:
-            self._edu_repo.finish_sync_record(
+            await run_in_threadpool(self._edu_repo.finish_sync_record,
                 sync_record.id,
                 status=SYNC_FAILED,
                 error_message=str(e)[:500],
             )
-            self._edu_repo.update_binding_status(
+            await run_in_threadpool(self._edu_repo.update_binding_status,
                 user_id,
                 last_sync_status=SYNC_FAILED,
                 last_error=str(e)[:500],

@@ -1,7 +1,7 @@
 import sqlite3
 import pytest
 
-from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL, _SchemaStep
+from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL, LEARNING_PLAN_SCHEMA_SQL, _SchemaStep
 
 
 def test_failed_schema_step_preserves_exception_and_names_phase(monkeypatch):
@@ -106,6 +106,10 @@ def test_legacy_edu_binding_upgrade_preserves_child_foreign_keys_and_cascades(tm
     for _ in range(2):
         database = Database(path)
         with database.query() as conn:
+            assert any(
+                row["from"] == "edu_system_id" and row["table"] == "edu_systems"
+                for row in conn.execute("PRAGMA foreign_key_list(edu_bindings)")
+            )
             targets = {r['table'] for r in conn.execute("PRAGMA foreign_key_list(edu_sync_records)")}
             assert "edu_bindings" in targets
             assert "edu_bindings_legacy_v1" not in targets
@@ -369,3 +373,74 @@ def test_legacy_learning_plan_runs_gain_goal_id_before_goal_index(tmp_path):
 
     assert "goal_id" in columns
     assert "idx_learning_plan_runs_goal" in indexes
+
+
+def test_existing_edu_bindings_missing_system_fk_are_restored_without_losing_children(tmp_path):
+    path = tmp_path / "missing-binding-fk.db"
+    database = Database(path)
+    with database.transaction() as conn:
+        conn.execute("INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES ('u', 'u', 'hash', 'now', 'now')")
+        conn.execute("INSERT INTO universities (id, name, created_at, updated_at) VALUES ('school', 'School', 'now', 'now')")
+        conn.execute("INSERT INTO edu_systems (id, university_id, system_key, created_at, updated_at) VALUES ('system', 'school', 'main', 'now', 'now')")
+        conn.execute("INSERT INTO edu_bindings (id, user_id, edu_system_id, university_id, provider, created_at, updated_at) VALUES ('binding', 'u', 'system', 'school', 'provider', 'now', 'now')")
+        conn.execute("INSERT INTO edu_sync_records (id, binding_id, user_id, sync_type, started_at) VALUES ('sync', 'binding', 'u', 'schedule', 'now')")
+    database.dispose()
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TEMP TABLE saved_bindings AS SELECT * FROM edu_bindings")
+        conn.execute("DROP TABLE edu_bindings")
+        legacy_sql = EDU_CONNECTOR_SCHEMA_SQL.replace(
+            "    FOREIGN KEY(edu_system_id) REFERENCES edu_systems(id) ON DELETE CASCADE,\n", ""
+        )
+        Database._create_declared_table(conn, legacy_sql, "edu_bindings")
+        conn.execute("INSERT INTO edu_bindings SELECT * FROM saved_bindings")
+    for _ in range(2):
+        database = Database(path)
+        with database.query() as conn:
+            assert any(
+                row["from"] == "edu_system_id" and row["table"] == "edu_systems"
+                for row in conn.execute("PRAGMA foreign_key_list(edu_bindings)")
+            )
+            assert conn.execute("SELECT id FROM edu_sync_records").fetchone()[0] == "sync"
+            assert not conn.execute("PRAGMA foreign_key_check").fetchall()
+        database.dispose()
+    database = Database(path)
+    with database.transaction() as conn:
+        conn.execute("DELETE FROM edu_systems WHERE id='system'")
+        assert conn.execute("SELECT COUNT(*) FROM edu_bindings").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0] == 0
+    database.dispose()
+
+
+@pytest.mark.parametrize("invalid_feedback", [False, True])
+def test_legacy_feedback_check_restores_valid_data_or_rolls_back_invalid_data(tmp_path, invalid_feedback):
+    path = tmp_path / "missing-feedback-check.db"
+    database = Database(path)
+    with database.transaction() as conn:
+        conn.execute("INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES ('u', 'u', 'hash', 'now', 'now')")
+        conn.execute("INSERT INTO learning_plan_runs (run_id, user_id, planner_version, input_digest, as_of, valid_until, available_minutes, created_at) VALUES ('run', 'u', 'v1', 'digest', 'now', 'later', 30, 'now')")
+        conn.execute("INSERT INTO learning_plans (plan_id, run_id, user_id, status, created_at) VALUES ('plan', 'run', 'u', 'PROPOSED', 'now')")
+    database.dispose()
+    with sqlite3.connect(path) as conn:
+        conn.execute("DROP TABLE learning_plan_feedback")
+        legacy_sql = LEARNING_PLAN_SCHEMA_SQL.replace(
+            "feedback TEXT NOT NULL CHECK(feedback IN ('HELPFUL','NOT_HELPFUL','TOO_LONG','TOO_SHORT','WRONG_PRIORITY','ALREADY_DONE','MISSING_CONTEXT'))",
+            "feedback TEXT NOT NULL",
+        )
+        Database._create_declared_table(conn, legacy_sql, "learning_plan_feedback")
+        value = "unexpected" if invalid_feedback else "HELPFUL"
+        conn.execute("INSERT INTO learning_plan_feedback VALUES ('feedback', 'plan', 'u', ?, 'now')", (value,))
+    if invalid_feedback:
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+            Database(path)
+        with sqlite3.connect(path) as conn:
+            assert conn.execute("SELECT feedback FROM learning_plan_feedback").fetchall() == [("unexpected",)]
+            assert "CHECK" not in conn.execute("SELECT sql FROM sqlite_master WHERE name='learning_plan_feedback'").fetchone()[0]
+        return
+    for _ in range(2):
+        database = Database(path)
+        with database.query() as conn:
+            assert conn.execute("SELECT feedback FROM learning_plan_feedback").fetchone()[0] == "HELPFUL"
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+            with database.transaction() as conn:
+                conn.execute("INSERT INTO learning_plan_feedback VALUES ('invalid', 'plan', 'u', 'unexpected', 'now')")
+        database.dispose()

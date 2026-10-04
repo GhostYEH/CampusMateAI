@@ -12,8 +12,10 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 from typing import Any
 
 from ..core.logging import logger
@@ -133,6 +135,7 @@ class ForecastService:
         edu_data_repository=None,
         learner_event_repository=None,
         input_limit: int = 5000,
+        cache_max_entries: int = 256,
     ) -> None:
         self._learner_state_service = learner_state_service
         self._personal_task_repository = personal_task_repository
@@ -141,7 +144,11 @@ class ForecastService:
         self._edu_data_repository = edu_data_repository
         self._learner_event_repository = learner_event_repository
         self.input_limit = input_limit
-        self._cache: dict[str, ForecastOut] = {}
+        if cache_max_entries < 1:
+            raise ValueError("cache_max_entries must be positive")
+        self._cache_max_entries = cache_max_entries
+        self._cache: OrderedDict[str, ForecastOut] = OrderedDict()
+        self._cache_lock = Lock()
 
     def list_forecasts(
         self,
@@ -160,6 +167,7 @@ class ForecastService:
         horizon_start = as_of
         horizon_end = as_of + timedelta(days=horizon_days)
         inputs = self._collect_inputs(user_id=user_id, as_of=as_of)
+        input_digest = self._inputs_digest(inputs)
         all_types = (
             "DEADLINE_COMPLETION_RISK",
             "UPCOMING_WORKLOAD",
@@ -178,7 +186,10 @@ class ForecastService:
                 horizon_start=horizon_start, horizon_end=horizon_end,
                 goal_id=goal_id, course_id=course_id,
             )
-            forecast = self._compute_forecast(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            forecast = self._compute_forecast(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of,
+                input_digest=input_digest,
+            )
             results.append(forecast)
         total = len(results)
         start = (page - 1) * page_size
@@ -392,11 +403,18 @@ class ForecastService:
 
     def _compute_forecast(
         self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        input_digest: str | None = None,
     ) -> ForecastOut:
-        cache_key = self._cache_key(user_id=user_id, request=request, inputs=inputs)
-        cached = self._cache.get(cache_key)
-        if cached is not None and _parse(cached.valid_until) is not None and as_of < _parse(cached.valid_until):
-            return cached
+        cache_key = self._cache_key(user_id=user_id, request=request, inputs=inputs, input_digest=input_digest)
+        with self._cache_lock:
+            expired_keys = [key for key, value in self._cache.items()
+                            if (valid_until := _parse(value.valid_until)) is None or as_of >= valid_until]
+            for key in expired_keys:
+                del self._cache[key]
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                self._cache.move_to_end(cache_key)
+                return cached
         try:
             forecast = self._dispatch(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
         except Exception as exc:
@@ -405,10 +423,15 @@ class ForecastService:
                 user_id, request.forecast_type, type(exc).__name__,
             )
             forecast = self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of)
-        self._cache[cache_key] = forecast
+        with self._cache_lock:
+            self._cache[cache_key] = forecast
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > self._cache_max_entries:
+                self._cache.popitem(last=False)
         return forecast
 
-    def _cache_key(self, *, user_id: str, request: ForecastRequest, inputs: ForecastInputs) -> str:
+    @staticmethod
+    def _inputs_digest(inputs: ForecastInputs) -> str:
         digest_input = {
             "tasks": inputs.tasks, "sessions": inputs.sessions, "goals": inputs.goals,
             "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
@@ -419,7 +442,11 @@ class ForecastService:
             "simulated_load_reduction": inputs.simulated_load_reduction,
             "simulated_deferred_task_count": inputs.simulated_deferred_task_count,
         }
-        return f"{user_id}|{_bucket_key(forecast_type=request.forecast_type, scope_type=request.scope_type, scope_id=request.scope_id, horizon_start=request.horizon_start, horizon_end=request.horizon_end)}|{_digest(digest_input)}"
+        return _digest(digest_input)
+
+    def _cache_key(self, *, user_id: str, request: ForecastRequest, inputs: ForecastInputs,
+                   input_digest: str | None = None) -> str:
+        return f"{user_id}|{_bucket_key(forecast_type=request.forecast_type, scope_type=request.scope_type, scope_id=request.scope_id, horizon_start=request.horizon_start, horizon_end=request.horizon_end)}|{input_digest or self._inputs_digest(inputs)}"
 
     def _dispatch(
         self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,

@@ -4,6 +4,16 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 登录与注册限流
+
+`POST /api/v1/auth/login` 每个来源地址每 60 秒最多 20 次，`POST /api/v1/auth/register` 每 60 秒最多 5 次，成功和失败尝试均计数。限流发生在密码校验和写库前；超限返回 HTTP 429、`RATE_LIMITED`、`Retry-After` 秒数及统一错误信封。来源取服务器识别的连接地址，不自行信任客户端提交的转发头。计数在当前后端进程中维护，重启清空；多进程的额度各自独立。
+
+```json
+{"code":"RATE_LIMITED","message":"请求过于频繁，请稍后重试。","details":{"retry_after_seconds":45},"request_id":"req_example"}
+```
+
+客户端应按 `Retry-After` 等待后再允许重试，不将 429 当作密码错误或注销凭据。Web、Android、HarmonyOS、微信小程序的登录调用已核对，通用错误流程可处理失败；专门的倒计时提示尚未适配，各移动端本次未编译或真机验证。无需修改成功响应字段。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |

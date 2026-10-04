@@ -272,6 +272,58 @@ def test_forecast_service_can_be_constructed_standalone():
     assert forecast.probability is None
 
 
+def test_forecast_cache_is_bounded_and_keeps_recently_used_entries():
+    service = ForecastService(cache_max_entries=3)
+
+    def forecast(user_id):
+        return service.get_forecast(user_id=user_id, as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD")
+
+    first = {user_id: forecast(user_id) for user_id in ("user-a", "user-b", "user-c")}
+    assert forecast("user-a").forecast_id == first["user-a"].forecast_id
+    forecast("user-d")
+    assert len(service._cache) == 3
+    assert first["user-a"].forecast_id in {value.forecast_id for value in service._cache.values()}
+    assert first["user-b"].forecast_id not in {value.forecast_id for value in service._cache.values()}
+
+
+def test_forecast_cache_prunes_expired_entries_for_other_users():
+    service = ForecastService(cache_max_entries=10)
+    for user_id in ("user-a", "user-b", "user-c"):
+        service.get_forecast(user_id=user_id, as_of=AS_OF, forecast_type="UPCOMING_WORKLOAD")
+    service.get_forecast(user_id="user-later", as_of=AS_OF + timedelta(hours=2),
+                         forecast_type="UPCOMING_WORKLOAD")
+    assert len(service._cache) == 1
+
+
+def test_forecast_cache_stays_bounded_under_concurrent_requests():
+    from concurrent.futures import ThreadPoolExecutor
+
+    service = ForecastService(cache_max_entries=5)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(
+            lambda index: service.get_forecast(user_id=f"user-{index}", as_of=AS_OF,
+                                              forecast_type="UPCOMING_WORKLOAD"),
+            range(40),
+        ))
+    assert len(results) == 40
+    assert len(service._cache) == 5
+
+
+def test_forecast_list_hashes_shared_inputs_once(monkeypatch):
+    service = ForecastService()
+    original = service._inputs_digest
+    digests = []
+
+    def record_digest(inputs):
+        digests.append(inputs)
+        return original(inputs)
+
+    monkeypatch.setattr(service, "_inputs_digest", record_digest)
+    forecasts, total = service.list_forecasts(user_id="user-a", as_of=AS_OF)
+    assert total == len(forecasts) == 5
+    assert len(digests) == 1
+
+
 def test_forecast_horizon_validation():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id

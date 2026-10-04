@@ -684,7 +684,7 @@ class LearnerEventService:
         event = LearnerEventCreate(
             source="chaoxing",
             event_type="assignment_graded",
-            occurred_at=observed_at,
+            occurred_at=occurred_at,
             course_id=course_id,
             subject_type="personal_task",
             subject_id=task_id,

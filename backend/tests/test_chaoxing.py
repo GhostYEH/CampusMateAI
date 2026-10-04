@@ -425,6 +425,20 @@ async def test_chaoxing_status_network_failure_is_unavailable(mock_httpx_client)
     assert status.status == "unavailable"
 
 
+@pytest.mark.asyncio
+async def test_chaoxing_status_programming_error_is_not_cached_as_unavailable(db, mock_httpx_client):
+    repo = ChaoxingRepository(db)
+    repo.save_credentials("user1", {"session": "test-only"})
+    container = type("Container", (), {"chaoxing_repository": repo, "db": db})()
+    user = UserRow(id="user1", username="test", password_hash="test", role="student")
+    mock_httpx_client.side_effect = RuntimeError("injected unexpected failure")
+
+    with pytest.raises(RuntimeError, match="injected unexpected failure"):
+        await get_chaoxing_status(user=user, container=container)
+
+    assert "user1" not in _status_cache
+
+
 def test_chaoxing_routes_require_student_role():
     from app.api.routes.chaoxing import router
 

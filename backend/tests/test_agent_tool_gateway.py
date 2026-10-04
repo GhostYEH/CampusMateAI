@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import threading
 
 import pytest
 from pydantic import BaseModel, Field
@@ -237,6 +239,42 @@ class TestValidationOrder:
 
 
 class TestApprovalAndIdempotency:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("with_approval", [False, True])
+    async def test_parallel_invocations_execute_once_and_leave_loop_responsive(self, env, with_approval):
+        repo, _ = env
+        run_id = _run(repo)
+        entered, release = threading.Event(), threading.Event()
+        calls = []
+
+        def execute(arguments):
+            calls.append(arguments)
+            entered.set()
+            assert release.wait(timeout=5), "executor must run outside the event loop"
+            return {"plan_id": "one"}
+
+        tool = _make_tool(execute, requires_approval=with_approval)
+        first_gateway = _gateway(env, tool)
+        second_gateway = _gateway(env, tool)
+        request = _request(run_id)
+        if with_approval:
+            pending = await first_gateway.invoke(request)
+            ApprovalGate(repo).resolve(pending.approval_id, decision="APPROVED", user_id="u1")
+        first = asyncio.create_task(first_gateway.invoke(request))
+        try:
+            async def wait_for_executor():
+                while not entered.is_set():
+                    await asyncio.sleep(0.001)
+            await asyncio.wait_for(wait_for_executor(), timeout=3)
+            with pytest.raises(AgentRuntimeError) as error:
+                await second_gateway.invoke(request)
+            assert error.value.code == "AGENT_INVALID_STATE"
+        finally:
+            release.set()
+        assert (await first).status == "COMPLETED"
+        assert len(calls) == 1
+        assert (await second_gateway.invoke(request)).status == "REPLAYED"
+
     @pytest.mark.asyncio
     async def test_approval_required_returns_waiting(self, env):
         repo, _ = env

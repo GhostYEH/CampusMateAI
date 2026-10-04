@@ -78,7 +78,7 @@ class TestCreateJobWithRunAndEvent:
     def test_creates_job_run_and_queued_event(self, repo):
         created = repo.create_job_with_run_and_event(
             user_id="u1", job_kind="learning_goal",
-            input_ref={"goal_id": "g1"}, request_hash="h1",
+            input_ref={"goal_id": "g1"}, request_hash="h1", handler_code="learning_goal",
         )
         assert created["replayed"] is False
         assert created["run_id"]
@@ -375,7 +375,7 @@ class TestCompleteRunWithJobOutput:
     def _claimed(self, repo: AgentRuntimeRepository) -> tuple[str, str]:
         created = repo.create_job_with_run_and_event(
             user_id="u1", job_kind="learning_goal",
-            input_ref={"goal_id": "g1"}, request_hash="h1",
+            input_ref={"goal_id": "g1"}, request_hash="h1", handler_code="learning_goal",
         )
         run_id = created["run_id"]
         repo.claim_next_run(owner="w1", now=_now(), lease_expires_at=_now(30))
@@ -423,12 +423,20 @@ class TestCompleteRunWithJobOutput:
 
 
 class TestLeaseAndClaim:
+    def test_inline_run_is_not_claimed_even_when_the_queue_contains_it(self, repo):
+        inline = repo.create_job_with_run_and_event(user_id="u1", job_kind="notice_workflow")
+        queued = repo.create_job_with_run_and_event(user_id="u1", job_kind="learning_goal", handler_code="learning_goal")
+        claimed = repo.claim_next_run(owner="w1", now=_now(), lease_expires_at=_now(30))
+        assert claimed["run_id"] == queued["run_id"]
+        assert repo.get_run(inline["run_id"])["status"] == "QUEUED"
+        assert repo.claim_next_run(owner="w2", now=_now(), lease_expires_at=_now(30)) is None
+
     def _enqueue(self, repo: AgentRuntimeRepository, n: int = 1) -> list[str]:
         ids = []
         for i in range(n):
             created = repo.create_job_with_run_and_event(
                 user_id="u1", job_kind="learning_goal",
-                input_ref={"goal_id": f"g{i}"}, request_hash=f"h{i}",
+                input_ref={"goal_id": f"g{i}"}, request_hash=f"h{i}", handler_code="learning_goal",
             )
             ids.append(created["run_id"])
         return ids

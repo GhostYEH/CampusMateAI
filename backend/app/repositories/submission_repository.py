@@ -1030,6 +1030,26 @@ class SubmissionRepository:
             )
             student_rows = cur.fetchall()
 
+            # 一次加载全部已评分提交，避免每份作业重新连接并逐项查找满分。
+            score_rows = conn.execute(
+                f"""SELECT submissions.score, assignments.max_score
+                    FROM submissions
+                    JOIN assignments ON assignments.id = submissions.assignment_id
+                    JOIN class_groups ON class_groups.id = assignments.class_group_id
+                    JOIN courses ON courses.id = class_groups.course_id
+                    {where} AND submissions.score IS NOT NULL""",
+                params,
+            ).fetchall()
+            unscored = int(conn.execute(
+                f"""SELECT COUNT(*) AS n FROM submissions
+                    JOIN assignments ON assignments.id = submissions.assignment_id
+                    JOIN class_groups ON class_groups.id = assignments.class_group_id
+                    JOIN courses ON courses.id = class_groups.course_id
+                    {where} AND submissions.score IS NULL
+                      AND submissions.status IN ('submitted','resubmitted','late')""",
+                params,
+            ).fetchone()["n"])
+
         # 聚合总览
         total_assignments = len(assignment_rows)
         total_submitted = sum(int(r["submitted"] or 0) for r in assignment_rows)
@@ -1069,43 +1089,21 @@ class SubmissionRepository:
             })
         # 分数分布(基于 100 分制归一化)
         cur2_scores: list = []
-        for r in assignment_rows:
-            with self._db.query() as conn2:
-                cur2 = conn2.execute(
-                    """SELECT s.score, s.assignment_id FROM submissions s
-                       WHERE s.assignment_id = ? AND s.score IS NOT NULL""",
-                    (r["id"],),
-                )
-                for sr in cur2.fetchall():
-                    score = float(sr["score"])
-                    cur2_scores.append(score)
-                    # 归一化到 100 分制
-                    asg_max = next(
-                        (a["max_score"] for a in assignment_summaries
-                         if a["assignment_id"] == sr["assignment_id"]),
-                        None,
-                    )
-                    normalized = (score / asg_max * 100) if asg_max else score
-                    if normalized >= 90:
-                        score_distribution["excellent"] += 1
-                    elif normalized >= 75:
-                        score_distribution["good"] += 1
-                    elif normalized >= 60:
-                        score_distribution["pass"] += 1
-                    else:
-                        score_distribution["fail"] += 1
+        for row in score_rows:
+            score = float(row["score"])
+            cur2_scores.append(score)
+            asg_max = row["max_score"]
+            normalized = (score / asg_max * 100) if asg_max else score
+            if normalized >= 90:
+                score_distribution["excellent"] += 1
+            elif normalized >= 75:
+                score_distribution["good"] += 1
+            elif normalized >= 60:
+                score_distribution["pass"] += 1
+            else:
+                score_distribution["fail"] += 1
         # 未评分提交数
-        with self._db.query() as conn3:
-            cur3 = conn3.execute(
-                f"""SELECT COUNT(*) AS n FROM submissions
-                    JOIN assignments ON assignments.id = submissions.assignment_id
-                    JOIN class_groups ON class_groups.id = assignments.class_group_id
-                    JOIN courses ON courses.id = class_groups.course_id
-                    {where} AND submissions.score IS NULL
-                      AND submissions.status IN ('submitted','resubmitted','late')""",
-                params,
-            )
-            score_distribution["unscored"] = int(cur3.fetchone()["n"])
+        score_distribution["unscored"] = unscored
 
         # 学生完成率
         student_summaries = []

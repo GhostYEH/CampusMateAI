@@ -74,6 +74,10 @@ const user = payload.user;
 
 例外：TTS 503 为兼容旧客户端会省略 body.request_id；壁纸代理直接构造 `{code,message,details}`；SSE 已建立后使用流内 error 事件；独立学习空间使用自己的响应信封。默认 OpenAPI 的 422 HTTPValidationError 并不代表真实全局错误响应。
 
+正常业务错误与意外 500 响应均携带 `X-Request-ID`，允许的跨源请求也可读取 500 的 JSON 错误体。CORS 的端口通配只接受数字端口，域名通配只匹配一个 DNS 标签；精确 Origin 按字面匹配。
+
+登录、注册及匿名聊天新增进程内限流，具体额度见 [认证](01-auth.md) 和 [AI 助手](10-assistant-knowledge.md)；429 返回 `RATE_LIMITED`、`details.retry_after_seconds` 与 `Retry-After`。测验保存的 409 统一为 `QUIZ_ATTEMPT_CONFLICT` 信封，见 [magic class](14-magicclass.md)。成功协议不变；源码核对覆盖四端调用，运行验证仅覆盖后端与 Web 调用对照，专门的重试倒计时和移动端真机流程尚未验证。
+
 ## 分页、时间、空值与表单
 
 - 普通分页常见 `{items,total,page,page_size,has_more}`，page 从 1 开始；具体上限以接口参数表为准。社区分页没有 has_more，考试列表直接是数组。

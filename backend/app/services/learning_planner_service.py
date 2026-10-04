@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from ..core.logging import logger
+
 from ..core.exceptions import (
     AppException, InvalidTransition, LearningPlanExecutionFailed, LearningPlanExpired,
     LearningPlanIdempotencyConflict, LearningPlanStale, LearningPlanUndoConflict, NotFoundError,
@@ -135,8 +137,9 @@ class LearningPlannerService:
                         user_id=user_id, as_of=now, forecast_type=forecast_type, horizon_days=7,
                         goal_id=goal_id, course_id=course_id,
                     ))
-                except Exception:
+                except Exception as exc:
                     # Forecasts are an enhancement; a plan remains usable if one is unavailable.
+                    logger.warning("plan_forecast_unavailable forecast_type={} error_type={}", forecast_type, type(exc).__name__)
                     continue
         tasks, task_total = self.task_repository.list_tasks(user_id, page=1, page_size=MAX_TASKS)
         warnings = list(core.warnings)
@@ -333,6 +336,10 @@ class LearningPlannerService:
             item_key = [run["run_id"], item["item_type"], item.get("task_id")]
             item["item_id"] = f"lpitem_{_digest(item_key)[:16]}"
         plan = self.repository.create_plan(user_id=user_id, run=run, items=selected)
+        if plan.run.run_id != run_id:
+            # A concurrent generation won the same key. Replay its complete
+            # persisted state without applying creation-only lineage again.
+            return plan
         if supersedes_plan_id and not defer_lineage:
             # 普通计划替换：血缘必须在这里一次写成双向，不能只留"新计划指向旧计划"
             # 的一半 —— 那会让旧计划仍被当成正式版本，同一时间存在两份"当前计划"。

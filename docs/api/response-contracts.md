@@ -4,6 +4,10 @@
 
 本页补充默认 OpenAPI 未能表达的实际响应及开放对象。模块手册中的 Python 返回构造表达式用于核对字段，不是可直接执行的前端代码。下列字典来自源码，没有用数据库中的真实用户或生产数据生成示例。
 
+## 错误信封与响应头
+
+认证和匿名聊天限流返回 `429 {code:"RATE_LIMITED",message,details:{retry_after_seconds},request_id}`，并带 `Retry-After` 头；必须在 SSE 建立前按普通 HTTP 错误处理。测验保存冲突返回 `409 {code:"QUIZ_ATTEMPT_CONFLICT",message,details:null,request_id}`，不再返回裸 detail。社区管理对他校资源返回 404 `NOT_FOUND`。意外 500 的 body.request_id 与响应头一致，允许的 Origin 可收到 CORS 响应头；内部异常文本不会回传。
+
 ## 普通对象与空响应
 
 | 接口 | 实际成功响应 |

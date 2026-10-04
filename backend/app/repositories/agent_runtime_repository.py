@@ -245,6 +245,7 @@ class AgentRuntimeRepository:
         handler_code: Optional[str] = None,
         handler_version: Optional[str] = None,
         scope: str = IDEMPOTENCY_SCOPE_AGENT_JOB,
+        request_id: Optional[str] = None,
     ) -> dict:
         """原子创建 Job + 首个 Run + 幂等声明 + `RUN_QUEUED` 事件。
 
@@ -293,8 +294,8 @@ class AgentRuntimeRepository:
                 "INSERT INTO agent_runs (run_id, job_id, user_id, status, phase, request_id, "
                 "idempotency_key, handler_code, handler_version, attempt_no, next_attempt_at, "
                 "created_at, updated_at) "
-                "VALUES (?, ?, ?, 'QUEUED', 'IDLE', NULL, ?, ?, ?, 0, ?, ?, ?)",
-                (run_id, job_id, user_id, idempotency_key, handler_code, handler_version,
+                "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, 0, ?, ?, ?)",
+                (run_id, job_id, user_id, request_id, idempotency_key, handler_code, handler_version,
                  now, now, now),
             )
             event_id, sequence = self._insert_event(
@@ -527,6 +528,7 @@ class AgentRuntimeRepository:
             rows = conn.execute(
                 "SELECT run_id FROM agent_runs "
                 "WHERE status = 'QUEUED' "
+                "AND handler_code IS NOT NULL AND handler_code <> '' "
                 "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) "
                 "AND (lease_owner IS NULL OR lease_expires_at IS NULL OR lease_expires_at <= ?) "
                 "ORDER BY created_at ASC, run_id ASC LIMIT ?",
@@ -539,6 +541,7 @@ class AgentRuntimeRepository:
                     "started_at = COALESCE(started_at, ?), attempt_no = attempt_no + 1, "
                     "updated_at = ? "
                     "WHERE run_id = ? AND status = 'QUEUED' "
+                    "AND handler_code IS NOT NULL AND handler_code <> '' "
                     "AND (next_attempt_at IS NULL OR next_attempt_at <= ?) "
                     "AND (lease_owner IS NULL OR lease_expires_at IS NULL "
                     "OR lease_expires_at <= ?)",
@@ -1212,6 +1215,16 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
+    def claim_tool_call_execution(self, call_id: str) -> bool:
+        """One invocation may resume an approved call; concurrent ones must wait."""
+        with self._db.transaction() as conn:
+            result = conn.execute(
+                "UPDATE agent_tool_calls SET status = 'running', finished_at = NULL "
+                "WHERE call_id = ? AND status IN ('awaiting_approval', 'approved')",
+                (call_id,),
+            )
+            return result.rowcount == 1
+
     def record_tool_call_finish(
         self,
         call_id: str,
@@ -1401,8 +1414,7 @@ class AgentRuntimeRepository:
         """
         approval_id = _uuid("apv")
         now = _now()
-        conn = self._conn()
-        try:
+        with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agent_approvals (approval_id, run_id, user_id, status, risk_level, "
                 "action_summary, tool_name, request_hash, call_id, expires_at, created_at) "
@@ -1420,10 +1432,7 @@ class AgentRuntimeRepository:
                     now,
                 ),
             )
-            conn.commit()
             return approval_id
-        finally:
-            self._release(conn)
 
     def get_approval(self, approval_id: str) -> Optional[AgentApprovalRow]:
         conn = self._conn()

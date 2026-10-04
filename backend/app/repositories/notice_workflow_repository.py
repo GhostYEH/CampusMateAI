@@ -415,32 +415,25 @@ class NoticeWorkflowRepository:
         display_name: Optional[str] = None,
     ) -> Optional[NotificationSourceRow]:
         """只更新当前用户偏好，绝不修改全局来源定义。"""
-        if self.get_source(source_id) is None:
-            return None
-        current = self.get_source_for_user(source_id, user_id)
-        enabled = bool(current and current.automation_enabled)
-        name = None
-        with self._db.query() as conn:
-            pref = conn.execute(
-                "SELECT display_name FROM notification_source_preferences "
-                "WHERE user_id = ? AND source_id = ?",
-                (user_id, source_id),
-            ).fetchone()
-            if pref:
-                name = pref["display_name"]
-        if automation_enabled is not None:
-            enabled = automation_enabled
-        if display_name is not None:
-            name = display_name
         now = _now()
+        updates = ["updated_at=excluded.updated_at"]
+        if automation_enabled is not None:
+            updates.append("automation_enabled=excluded.automation_enabled")
+        if display_name is not None:
+            updates.append("display_name=excluded.display_name")
         with self._db.transaction() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if conn.execute(
+                "SELECT 1 FROM notification_sources WHERE source_id = ?", (source_id,)
+            ).fetchone() is None:
+                return None
+            # 更新只包含本次明确提交的字段，不能把并发请求前读到的旧偏好写回。
             conn.execute(
                 "INSERT INTO notification_source_preferences "
                 "(user_id, source_id, automation_enabled, display_name, updated_at) "
                 "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, source_id) DO UPDATE SET "
-                "automation_enabled=excluded.automation_enabled, "
-                "display_name=excluded.display_name, updated_at=excluded.updated_at",
-                (user_id, source_id, int(enabled), name, now),
+                + ", ".join(updates),
+                (user_id, source_id, int(bool(automation_enabled)), display_name, now),
             )
         return self.get_source_for_user(source_id, user_id)
 
@@ -451,6 +444,8 @@ class NoticeWorkflowRepository:
         automation_enabled: Optional[bool] = None,
         display_name: Optional[str] = None,
     ) -> Optional[NotificationSourceRow]:
+        if automation_enabled is None and display_name is None:
+            return self.get_source(source_id)
         now = _now()
         with self._db.transaction() as conn:
             sets: list[str] = []
@@ -461,8 +456,6 @@ class NoticeWorkflowRepository:
             if display_name is not None:
                 sets.append("display_name = ?")
                 params.append(display_name)
-            if not sets:
-                return self.get_source(source_id)
             sets.append("updated_at = ?")
             params.append(now)
             params.append(source_id)
@@ -604,21 +597,28 @@ class NoticeWorkflowRepository:
 
     def mark_step_done(self, workflow_id: str, step_index: int) -> None:
         """标记步骤完成(不覆盖已完成步骤)。"""
-        wf = self.get_workflow(workflow_id)
-        if not wf or not wf.steps_json:
-            return
-        try:
-            steps = json.loads(wf.steps_json)
-        except (ValueError, TypeError):
-            return
-        if 0 <= step_index < len(steps) and not steps[step_index].get("done"):
-            steps[step_index]["done"] = True
-            now = _now()
-            with self._db.transaction() as conn:
-                conn.execute(
-                    "UPDATE notice_workflows SET steps_json=?, updated_at=? WHERE workflow_id=?",
-                    (json.dumps(steps, ensure_ascii=False), now, workflow_id),
-                )
+        with self._db.transaction() as conn:
+            # 在读取 JSON 前获取写锁；不同 Database 实例/进程也不能覆盖彼此的步骤。
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT steps_json FROM notice_workflows WHERE workflow_id=?", (workflow_id,)
+            ).fetchone()
+            if row is None or not row["steps_json"]:
+                return
+            try:
+                steps = json.loads(row["steps_json"])
+            except (ValueError, TypeError):
+                return
+            if not isinstance(steps, list) or not 0 <= step_index < len(steps):
+                return
+            step = steps[step_index]
+            if not isinstance(step, dict) or step.get("done"):
+                return
+            step["done"] = True
+            conn.execute(
+                "UPDATE notice_workflows SET steps_json=?, updated_at=? WHERE workflow_id=?",
+                (json.dumps(steps, ensure_ascii=False), _now(), workflow_id),
+            )
 
     # ===== notice_workflow_actions =====
 

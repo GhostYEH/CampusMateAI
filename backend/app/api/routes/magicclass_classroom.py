@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 from dataclasses import replace
 from typing import Any, Dict, Optional, Sequence
 
@@ -140,7 +142,7 @@ async def get_status(
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassStatusOut:
     # 先校验权限（即使服务未启用，也只在有权限时暴露状态）
-    assert_course_access(container, user, course_id)
+    await run_in_threadpool(assert_course_access, container, user, course_id)
     payload: Dict[str, Any] = await service.status()
     if payload.get("reason") is None and not payload.get("enabled"):
         payload["reason"] = "互动课堂服务未启用"
@@ -162,12 +164,12 @@ async def get_plan(
 
     这个接口不产生任何外部任务、不产生费用；学生确认后才调用 generate。
     """
-    course = assert_course_access(container, user, course_id)
+    course = await run_in_threadpool(assert_course_access, container, user, course_id)
     try:
         requested = normalize_mode(mode)
     except ValueError:
         requested = "adaptive"
-    context = build_learning_context(
+    context = await run_in_threadpool(build_learning_context,
         container, user, course, limits=_limits(container)
     )
     resolved = requested
@@ -214,8 +216,8 @@ async def generate_classroom(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassGenerateOut:
-    course = assert_course_access(container, user, course_id)
-    context = build_learning_context(
+    course = await run_in_threadpool(assert_course_access, container, user, course_id)
+    context = await run_in_threadpool(build_learning_context,
         container,
         user,
         course,
@@ -260,8 +262,8 @@ async def get_progress(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassSessionOut:
-    assert_course_access(container, user, course_id)
-    session = service.get_session(user_id=user.id, course_id=course_id, session_id=session_id)
+    await run_in_threadpool(assert_course_access, container, user, course_id)
+    session = await run_in_threadpool(service.get_session, user_id=user.id, course_id=course_id, session_id=session_id)
     if session is None:
         raise NotFoundError("课堂生成任务不存在")
     session = await service.poll(session)
@@ -284,8 +286,8 @@ async def get_composition(
     只读、按需调用（不在历史列表里批量拉取上游）。请求 mode 只是意图，
     这里返回的才是实际产出，UI 必须用这份数据向学生说明"已生成内容包含……"。
     """
-    assert_course_access(container, user, course_id)
-    session = service.get_session(user_id=user.id, course_id=course_id, session_id=session_id)
+    await run_in_threadpool(assert_course_access, container, user, course_id)
+    session = await run_in_threadpool(service.get_session, user_id=user.id, course_id=course_id, session_id=session_id)
     if session is None:
         raise NotFoundError("课堂生成任务不存在")
     composition = await service.composition(session)
@@ -302,9 +304,9 @@ async def list_classrooms(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassClassroomsOut:
-    assert_course_access(container, user, course_id)
+    await run_in_threadpool(assert_course_access, container, user, course_id)
     status = await service.status()
-    items = service.list_classrooms(user_id=user.id, course_id=course_id)
+    items = await run_in_threadpool(service.list_classrooms, user_id=user.id, course_id=course_id)
     return MagicClassClassroomsOut(enabled=status.get("enabled", False), items=items)
 
 
@@ -331,8 +333,8 @@ async def retry_session(
     - 课程权限、资料授权、用户身份一律重新校验；
     - 绝不篡改旧 session。
     """
-    course = assert_course_access(container, user, course_id)
-    session = service.get_session(user_id=user.id, course_id=course_id, session_id=session_id)
+    course = await run_in_threadpool(assert_course_access, container, user, course_id)
+    session = await run_in_threadpool(service.get_session, user_id=user.id, course_id=course_id, session_id=session_id)
     if session is None:
         raise NotFoundError("课堂生成任务不存在")
     if session.status not in ("failed", "succeeded"):
@@ -351,7 +353,7 @@ async def retry_session(
 
     snapshot, source, note = _resolve_retry_snapshot(session, body)
     # 重新从服务端读取课程 / 资料 / 学生上下文，并重新做资料授权校验
-    context = build_learning_context(
+    context = await run_in_threadpool(build_learning_context,
         container,
         user,
         course,

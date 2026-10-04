@@ -62,7 +62,7 @@ class CounselorRecentTask(BaseModel):
     - 未登录用户: 全部忽略 + warning。
     - 已登录用户: 后端按 user_id 查询;不存在 / 越权 / 已软删除的任务不得进入上下文。
     """
-    id: str = Field(..., min_length=1, description="PersonalTask ID")
+    id: str = Field(..., min_length=1, max_length=128, description="PersonalTask ID")
     title: Optional[str] = Field(
         None, description="客户端 hint,后端不信任,仅作 debug 用途"
     )
@@ -92,8 +92,8 @@ class ChatRequest(BaseModel):
 
     前端必须在 JSON Body 中发送独立上下文字段,不得把上下文编码进 conversation_id。
     """
-    message: str = Field(..., min_length=1, description="用户问题")
-    conversation_id: Optional[str] = Field(None, description="会话 ID(仅作会话标识)")
+    message: str = Field(..., min_length=1, max_length=20000, description="用户问题")
+    conversation_id: Optional[str] = Field(None, max_length=128, description="会话 ID(仅作会话标识)")
     workspace_id: Optional[str] = Field(
         None,
         min_length=1,
@@ -102,6 +102,7 @@ class ChatRequest(BaseModel):
     )
     recent_tasks: List[CounselorRecentTask] = Field(
         default_factory=list,
+        max_length=100,
         description="最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),"
         "后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略",
     )
@@ -113,10 +114,10 @@ class ChatRequest(BaseModel):
     )
     # 多角色上下文(可选): 后端会校验当前用户是否有权访问这些资源,
     # 不存在/越权/已删除的对象将被忽略并生成 warning
-    course_id: Optional[str] = Field(None, description="课程 ID(需有权限)")
-    class_id: Optional[str] = Field(None, description="班级 ID(需有权限)")
-    assignment_id: Optional[str] = Field(None, description="任务 ID(需有权限)")
-    announcement_id: Optional[str] = Field(None, description="通知 ID(需有权限)")
+    course_id: Optional[str] = Field(None, max_length=128, description="课程 ID(需有权限)")
+    class_id: Optional[str] = Field(None, max_length=128, description="班级 ID(需有权限)")
+    assignment_id: Optional[str] = Field(None, max_length=128, description="任务 ID(需有权限)")
+    announcement_id: Optional[str] = Field(None, max_length=128, description="通知 ID(需有权限)")
     # 学习会话上下文(可选): 用于结合学习状态给出执行建议
     study_session_id: Optional[str] = Field(
         None, description="当前学习会话 ID(可选,用于学习陪伴场景)"

@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 import hashlib
 import json
 from typing import Any, Literal, Optional
@@ -116,7 +118,7 @@ class ToolInvocationGateway:
 
     async def invoke(self, request: ToolInvocationRequest) -> ToolInvocationResult:
         # 1. 运行/用户有效性
-        run = self._repo.get_run(request.run_id)
+        run = await run_in_threadpool(self._repo.get_run, request.run_id)
         if run is None:
             raise AgentRunNotFound("Run 不存在")
         user_id = run["user_id"]
@@ -155,7 +157,7 @@ class ToolInvocationGateway:
         arguments = self._validate_arguments(spec, request.arguments)
 
         # 6. 资源归属:AUTO_SAFE 也必须校验,不得跳过
-        self._assert_ownership(spec, arguments, user_id)
+        await run_in_threadpool(self._assert_ownership, spec, arguments, user_id)
 
         # 7. Hard Deny(不可被审批、配置或角色覆盖)
         check_hard_deny(request.tool_name, arguments)
@@ -179,14 +181,14 @@ class ToolInvocationGateway:
 
         # 9. 幂等原子声明(审批前先声明,避免重复开票)
         request_hash = build_request_hash(request.tool_name, arguments)
-        call_id, is_new = self._repo.claim_tool_call(
+        call_id, is_new = await run_in_threadpool(self._repo.claim_tool_call,
             run_id=request.run_id,
             tool_name=request.tool_name,
             request_hash=request_hash,
             idempotency_key=request.idempotency_key,
         )
         if not is_new:
-            existing = self._repo.get_tool_call(call_id) or {}
+            existing = await run_in_threadpool(self._repo.get_tool_call, call_id) or {}
             existing_status = existing.get("status")
             if existing_status == "completed":
                 return ToolInvocationResult(
@@ -194,6 +196,18 @@ class ToolInvocationGateway:
                     call_id=call_id,
                     result_ref=self._decode_result_ref(existing.get("result_digest")),
                 )
+            if existing_status not in {"awaiting_approval", "approved"}:
+                if existing_status == "failed" and existing.get("error_code") == "AGENT_TOOL_REJECTED":
+                    raise AgentToolRejected("工具调用已被拒绝，不能重放执行")
+                if existing_status == "running" and request.approval_id:
+                    # Preserve approval rejection semantics on repeated requests
+                    # without allowing another invocation to take over a call.
+                    await run_in_threadpool(
+                        self._approval_decision, request.approval_id, user_id=user_id,
+                        run_id=request.run_id, tool_name=request.tool_name,
+                        request_hash=request_hash, call_id=call_id,
+                    )
+                raise AgentRuntimeError("工具调用仍在执行或已失败", code="AGENT_INVALID_STATE", http_status=409)
             if existing_status in {"awaiting_approval", "approved"}:
                 # 重放必须复核审批状态:已批准才继续执行,未决策就继续等,
                 # 已拒绝/已过期一律不执行——过期绝不等于批准。
@@ -206,7 +220,7 @@ class ToolInvocationGateway:
                 if not resumed_approval_id:
                     raise AgentToolRejected("工具调用缺少关联审批，拒绝执行")
                 if existing_status == "awaiting_approval":
-                    decision = self._approval_decision(
+                    decision = await run_in_threadpool(self._approval_decision,
                         resumed_approval_id,
                         user_id=user_id,
                         run_id=request.run_id,
@@ -220,19 +234,16 @@ class ToolInvocationGateway:
                             call_id=call_id,
                             approval_id=resumed_approval_id,
                         )
-                    # 审批已通过:补记状态后继续执行(执行器必须自带幂等)。
-                    self._repo.record_tool_call_finish(
-                        call_id, status="approved", result_digest=None,
-                        error_code=resumed_approval_id,
-                    )
+                if not await run_in_threadpool(self._repo.claim_tool_call_execution, call_id):
+                    raise AgentRuntimeError("工具调用已由另一执行者接管", code="AGENT_INVALID_STATE", http_status=409)
 
         # 10. 审批门:只保存动作摘要与请求哈希,不保存原始参数
         if needs_approval:
-            approval_id = request.approval_id
+            approval_id = resumed_approval_id if not is_new else request.approval_id
             if approval_id:
                 # 领域层已确认过的动作:复核后直接执行,不重复开票。
                 # 复核内容包含工具名与参数指纹 —— 换了工具或改了参数一律拒绝。
-                if self._approval_decision(
+                if await run_in_threadpool(self._approval_decision,
                     approval_id,
                     user_id=user_id,
                     run_id=request.run_id,
@@ -240,22 +251,19 @@ class ToolInvocationGateway:
                     request_hash=request_hash,
                     call_id=call_id,
                 ) == "WAIT":
-                    self._repo.record_tool_call_finish(
+                    await run_in_threadpool(self._repo.record_tool_call_finish,
                         call_id, status="awaiting_approval", result_digest=None,
                         error_code=approval_id,
                     )
-                    self._emit(request.run_id, "APPROVAL_REQUIRED", run["status"],
+                    await run_in_threadpool(self._emit, request.run_id, "APPROVAL_REQUIRED", run["status"],
                                summary="工具调用需要用户确认", approval_id=approval_id)
                     return ToolInvocationResult(
                         status="AWAITING_APPROVAL", call_id=call_id, approval_id=approval_id
                     )
-                self._repo.record_tool_call_finish(
-                    call_id, status="approved", result_digest=None, error_code=approval_id,
-                )
-                self._emit(request.run_id, "APPROVAL_GRANTED", run["status"],
+                await run_in_threadpool(self._emit, request.run_id, "APPROVAL_GRANTED", run["status"],
                            summary="用户已确认，继续执行工具调用", approval_id=approval_id)
             else:
-                approval_id = self._approvals.require(
+                approval_id = await run_in_threadpool(self._approvals.require,
                     run_id=request.run_id,
                     user_id=user_id,
                     risk_level=effective_risk,
@@ -266,11 +274,11 @@ class ToolInvocationGateway:
                     request_hash=request_hash,
                     call_id=call_id,
                 )
-                self._repo.record_tool_call_finish(
+                await run_in_threadpool(self._repo.record_tool_call_finish,
                     call_id, status="awaiting_approval", result_digest=None,
                     error_code=approval_id,
                 )
-                self._emit(request.run_id, "APPROVAL_REQUIRED", run["status"],
+                await run_in_threadpool(self._emit, request.run_id, "APPROVAL_REQUIRED", run["status"],
                            summary="工具调用需要用户确认", approval_id=approval_id)
                 return ToolInvocationResult(
                     status="AWAITING_APPROVAL", call_id=call_id, approval_id=approval_id
@@ -278,7 +286,7 @@ class ToolInvocationGateway:
 
         # 11. 领域 Service 执行
         if spec.executor is None:
-            self._repo.record_tool_call_finish(
+            await run_in_threadpool(self._repo.record_tool_call_finish,
                 call_id, status="failed", error_code="AGENT_TOOL_REJECTED"
             )
             raise AgentToolRejected(
@@ -286,21 +294,21 @@ class ToolInvocationGateway:
             )
         try:
             # 执行器统一接收已校验参数字典,便于领域 Service 自行决定签名。
-            outcome = spec.executor(arguments)
+            outcome = await run_in_threadpool(spec.executor, arguments)
             if hasattr(outcome, "__await__"):
                 outcome = await outcome
         except AgentRuntimeError as exc:
-            self._repo.record_tool_call_finish(
+            await run_in_threadpool(self._repo.record_tool_call_finish,
                 call_id, status="failed", error_code=exc.code
             )
-            self._emit(request.run_id, "TOOL_FAILED", run["status"],
+            await run_in_threadpool(self._emit, request.run_id, "TOOL_FAILED", run["status"],
                        summary="工具调用失败")
             raise
         except Exception as exc:  # noqa: BLE001 - 统一收口为工具失败,不泄漏参数
-            self._repo.record_tool_call_finish(
+            await run_in_threadpool(self._repo.record_tool_call_finish,
                 call_id, status="failed", error_code="AGENT_INVALID_STATE"
             )
-            self._emit(request.run_id, "TOOL_FAILED", run["status"],
+            await run_in_threadpool(self._emit, request.run_id, "TOOL_FAILED", run["status"],
                        summary="工具调用失败")
             raise AgentRuntimeError(
                 "工具执行失败", code="AGENT_INVALID_STATE", http_status=409
@@ -308,11 +316,11 @@ class ToolInvocationGateway:
 
         result_ref = _safe_result_ref(getattr(spec, "result_builder", None)(outcome)
                                       if getattr(spec, "result_builder", None) else None)
-        self._repo.record_tool_call_finish(
+        await run_in_threadpool(self._repo.record_tool_call_finish,
             call_id, status="completed",
             result_digest=json.dumps(result_ref, ensure_ascii=False) if result_ref else None,
         )
-        self._emit(request.run_id, "TOOL_COMPLETED", run["status"],
+        await run_in_threadpool(self._emit, request.run_id, "TOOL_COMPLETED", run["status"],
                    summary=self._action_summary(spec, arguments))
         return ToolInvocationResult(
             status="COMPLETED", call_id=call_id, result_ref=result_ref or None

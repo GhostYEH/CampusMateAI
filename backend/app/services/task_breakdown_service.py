@@ -45,6 +45,8 @@
 """
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 import hashlib
 import json
 import re
@@ -253,7 +255,7 @@ class TaskBreakdownService:
         display_goal = (req.goal or "").strip()
         generation_context = ""
         if req.task_id:
-            task_ctx, task_warn = self._resolve_task(req.task_id, user=user)
+            task_ctx, task_warn = await run_in_threadpool(self._resolve_task, req.task_id, user=user)
             if task_ctx is not None:
                 related_task_id = req.task_id
                 related_task_title = task_ctx["title"]
@@ -279,7 +281,7 @@ class TaskBreakdownService:
         )
 
         # 2. 检索政策相关资料(若涉及政策)
-        policy_kb = self._retrieve_policy_knowledge(
+        policy_kb = await run_in_threadpool(self._retrieve_policy_knowledge,
             display_goal,
             generation_context=generation_context,
             warnings=warnings,

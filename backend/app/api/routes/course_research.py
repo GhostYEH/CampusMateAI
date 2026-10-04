@@ -15,7 +15,10 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 
-from ...core.exceptions import AgentRuntimeError, AgentRunNotFound
+from ...core.exceptions import AgentIdempotencyConflict, AgentRuntimeError, AgentRunNotFound
+from ...core.logging import logger
+from starlette.concurrency import run_in_threadpool
+from ...repositories.agent_runtime_repository import build_request_hash
 from ...models.multi_role import UserRow
 from ...repositories.agent_runtime_repository import AgentRuntimeRepository
 from ...repositories.course_research_repository import CourseResearchRepository
@@ -43,7 +46,7 @@ router = APIRouter(prefix="/course-research", tags=["course-research"])
 
 
 def _repo(container: ServiceContainer) -> CourseResearchRepository:
-    return CourseResearchRepository(container.db)
+    return container.course_research_repository
 
 
 def _runtime_repo(container: ServiceContainer) -> AgentRuntimeRepository:
@@ -51,19 +54,7 @@ def _runtime_repo(container: ServiceContainer) -> AgentRuntimeRepository:
 
 
 def _build_pipeline(container: ServiceContainer) -> CourseResearchPipeline:
-    repo = _repo(container)
-    return CourseResearchPipeline(
-        repository=repo,
-        executor=container.agent_executor,
-        model_router=container.agent_model_router,
-        artifact_manager=container.agent_artifact_manager,
-        run_manager=container.agent_run_manager,
-        event_store=container.agent_event_store,
-        source_fetcher=ControlledSourceFetcher(),
-        citation_verifier=CitationVerifier(),
-        course_content_lookup=container.course_content_repository,
-        retrieval_service=container.retrieval,
-    )
+    return container.course_research_pipeline
 
 
 async def _execute_pipeline_background(
@@ -89,17 +80,18 @@ async def _execute_pipeline_background(
             source_policy=source_policy,
             user_upload_refs=body.user_upload_refs,
         )
-    except Exception:
-        _repo(container).update_session(
+    except Exception as exc:
+        logger.warning("course_research_pipeline_failed error_type={}", type(exc).__name__)
+        await run_in_threadpool(_repo(container).update_session,
             session_id,
             status=RunStatus.FAILED.value,
             error_code="AGENT_PIPELINE_FAILED",
         )
         try:
-            container.agent_run_manager.transition(
+            await run_in_threadpool(container.agent_run_manager.transition,
                 run_id, RunStatus.FAILED.value, phase="IDLE"
             )
-            container.agent_event_store.append(
+            await run_in_threadpool(container.agent_event_store.append,
                 run_id=run_id,
                 type="RUN_FAILED",
                 status=RunStatus.FAILED.value,
@@ -107,8 +99,8 @@ async def _execute_pipeline_background(
                 role="coordinator",
                 summary="课程研究执行失败",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("course_research_failure_finalize_failed error_type={}", type(exc).__name__)
 
 
 def _session_to_out(
@@ -139,7 +131,7 @@ def _session_to_out(
 
 
 @router.post("/runs")
-async def create_run(
+def create_run(
     body: CourseResearchRunCreateIn,
     request: Request,
     background_tasks: BackgroundTasks,
@@ -147,14 +139,27 @@ async def create_run(
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> CourseResearchRunOut:
-    """创建课程研究 Run 并同步执行。"""
+    """创建课程研究 Run；响应后执行研究流水线。"""
     repo = _repo(container)
     runtime_repo = _runtime_repo(container)
     effective_key = body.idempotency_key or idempotency_key
+    fingerprint = build_request_hash("course_research", body.model_dump(mode="json", exclude={"idempotency_key"}))
     # 幂等
     if effective_key:
         existing = repo.find_session_by_idempotency(user.id, effective_key)
         if existing:
+            import json
+            job = runtime_repo.get_job(existing.job_id) if existing.job_id else None
+            prior = json.loads(job["input_ref_json"] or "{}") if job else {}
+            if (
+                (prior.get("request_hash") is not None and prior["request_hash"] != fingerprint)
+                or existing.question != body.question
+                or existing.course_id != body.course_id
+                or existing.assistance_mode != body.assistance_mode.value
+                or existing.academic_policy != body.academic_policy.value
+                or json.loads(existing.source_policy_json) != body.source_policy.model_dump(mode="json")
+            ):
+                raise AgentIdempotencyConflict()
             artifacts = container.agent_artifact_manager.list_by_run(
                 existing.run_id, user.id
             )
@@ -163,15 +168,18 @@ async def create_run(
                 artifact_ids=[a["artifact_id"] for a in artifacts],
             )
     # 创建 job + run
-    job_id = runtime_repo.create_job(
+    input_ref = {"question": body.question, "course_id": body.course_id, "request_hash": fingerprint}
+    created = runtime_repo.create_job_with_run_and_event(
         user_id=user.id,
         job_kind="course_research",
-        input_ref={"question": body.question, "course_id": body.course_id},
+        input_ref=input_ref,
         idempotency_key=effective_key,
+        request_hash=fingerprint,
+        request_id=getattr(request.state, "request_id", None),
     )
-    run_id = runtime_repo.create_run(
-        job_id=job_id, user_id=user.id, idempotency_key=effective_key,
-    )
+    if created["replayed"]:
+        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+    job_id, run_id = created["job_id"], created["run_id"]
     # 创建 session
     source_policy = SourcePolicy(
         course_material_priority=body.source_policy.course_material_priority,
@@ -220,7 +228,7 @@ async def create_run(
 
 
 @router.get("/runs")
-async def list_runs(
+def list_runs(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     limit: int = Query(50, ge=1, le=200),
@@ -239,7 +247,7 @@ async def list_runs(
 
 
 @router.get("/runs/{run_id}")
-async def get_run(
+def get_run(
     run_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
@@ -258,7 +266,7 @@ async def get_run(
 
 
 @router.post("/runs/{run_id}/cancel")
-async def cancel_run(
+def cancel_run(
     run_id: str,
     body: CourseResearchRunCancelIn,
     user: UserRow = Depends(current_user),
@@ -288,11 +296,11 @@ async def cancel_run(
         role="coordinator",
         summary="用户已取消课程研究",
     )
-    return await get_run(run_id, user, container)
+    return get_run(run_id, user, container)
 
 
 @router.get("/runs/{run_id}/artifacts")
-async def list_artifacts(
+def list_artifacts(
     run_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),

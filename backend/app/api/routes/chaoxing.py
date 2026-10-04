@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import threading
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
+from ...core.logging import logger
 
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, _auth_error
 from ...services.chaoxing.session_cache import (
@@ -125,10 +127,14 @@ async def get_chaoxing_status(
             result = ChaoxingSyncStatus(status="unavailable")
             _status_cache_set(user.id, result)
             return result
-    except Exception:
+    except httpx.RequestError as exc:
+        logger.warning("chaoxing_status_transport_unavailable error_type={}", type(exc).__name__)
         result = ChaoxingSyncStatus(status="unavailable")
         _status_cache_set(user.id, result)
         return result
+    except Exception as exc:
+        logger.error("chaoxing_status_unexpected_failure error_type={}", type(exc).__name__)
+        raise
     finally:
         await client.client.aclose()
 

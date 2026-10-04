@@ -1576,17 +1576,17 @@ AI 导员聊天请求 — 统一上下文 API Schema。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `message` | string | 是 | minLength=1 | 用户问题 |
-| `conversation_id` | string / null | 否 | — | 会话 ID(仅作会话标识) |
+| `message` | string | 是 | minLength=1; maxLength=20000 | 用户问题 |
+| `conversation_id` | string / null | 否 | maxLength=128 | 会话 ID(仅作会话标识) |
 | `workspace_id` | string / null | 否 | string约束: minLength=1; maxLength=120 | 原生 magic class workspace 会话归属；必须与 course_id 一起提供并通过服务端归属校验 |
-| `recent_tasks` | array<[CounselorRecentTask](schemas.md#schema-counselorrecenttask)> | 否 | — | 最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略 |
+| `recent_tasks` | array<[CounselorRecentTask](schemas.md#schema-counselorrecenttask)> | 否 | maxItems=100 | 最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略 |
 | `stream` | boolean | 否 | default=true | 是否使用 SSE 流式响应 |
 | `web_search` | boolean | 否 | default=false | 是否检索公开网页并将结果作为非官方辅助上下文 |
 | `attachment` | [CounselorAttachment](schemas.md#schema-counselorattachment) / null | 否 | — | 本轮用户选择的文本附件；作为不可信上下文使用，不得覆盖系统规则 |
-| `course_id` | string / null | 否 | — | 课程 ID(需有权限) |
-| `class_id` | string / null | 否 | — | 班级 ID(需有权限) |
-| `assignment_id` | string / null | 否 | — | 任务 ID(需有权限) |
-| `announcement_id` | string / null | 否 | — | 通知 ID(需有权限) |
+| `course_id` | string / null | 否 | maxLength=128 | 课程 ID(需有权限) |
+| `class_id` | string / null | 否 | maxLength=128 | 班级 ID(需有权限) |
+| `assignment_id` | string / null | 否 | maxLength=128 | 任务 ID(需有权限) |
+| `announcement_id` | string / null | 否 | maxLength=128 | 通知 ID(需有权限) |
 | `study_session_id` | string / null | 否 | — | 当前学习会话 ID(可选,用于学习陪伴场景) |
 | `self_report` | string / null | 否 | string约束: maxLength=500 | 用户自报状态(如'有些疲惫'),仅作个性化参考,不得作为校园规则事实,不得绕过 RAG 拒答规则 |
 | `expression_signal` | [ExpressionSignal](schemas.md#schema-expressionsignal) / null | 否 | — | CNN 观察到的可见表情信号。后端会白名单校验并仅用于调整措辞，不用于心理或医学判断，不保存原始图像 |
@@ -1825,7 +1825,7 @@ AI 导员上下文中的"最近待办"条目 — 仅表示 PersonalTask。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `id` | string | 是 | minLength=1 | PersonalTask ID |
+| `id` | string | 是 | minLength=1; maxLength=128 | PersonalTask ID |
 | `title` | string / null | 否 | — | 客户端 hint,后端不信任,仅作 debug 用途 |
 | `deadline` | string / null | 否 | — | 客户端 hint,后端不信任 |
 | `priority` | string / null | 否 | — | 客户端 hint,后端不信任 |

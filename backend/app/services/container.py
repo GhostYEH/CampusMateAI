@@ -4,6 +4,9 @@
 """
 from __future__ import annotations
 
+from ..core.logging import logger
+from threading import RLock
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -231,6 +234,7 @@ class ServiceContainer:
 
 
 _container: Optional[ServiceContainer] = None
+_container_lock = RLock()
 
 
 def _magicclass_store_dir(settings: Settings) -> Path:
@@ -636,8 +640,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # 启动时重建索引(从已持久化的 chunks 重建 BM25)
     try:
         retrieval.rebuild()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("retrieval_startup_rebuild_failed error_type={}", type(exc).__name__)
     # 容器已构造完成：把延迟引用绑定到真实实例，互动课堂工具才能执行。
     interactive_classroom_ref.bind(container)
     return container
@@ -646,17 +650,19 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
 def build_container(settings: Optional[Settings] = None) -> ServiceContainer:
     """构造 ServiceContainer 并执行启动初始化。"""
     global _container
-    s = settings or get_settings()
-    db = init_db(s)
-    container = _build_container_inner(s, db)
-    _container = container
-    return container
+    with _container_lock:
+        s = settings or get_settings()
+        db = init_db(s)
+        container = _build_container_inner(s, db)
+        _container = container
+        return container
 
 
 def get_container() -> ServiceContainer:
-    if _container is None:
-        build_container()
-    return _container  # type: ignore[return-value]
+    with _container_lock:
+        if _container is None:
+            build_container()
+        return _container  # type: ignore[return-value]
 
 
 def reset_container_for_tests(settings: Optional[Settings] = None) -> ServiceContainer:
@@ -664,11 +670,12 @@ def reset_container_for_tests(settings: Optional[Settings] = None) -> ServiceCon
     global _container
     from ..database.sqlite_db import reset_db_for_tests
 
-    s = settings or get_settings()
-    db = reset_db_for_tests()
-    container = _build_container_inner(s, db)
-    _container = container
-    return container
+    with _container_lock:
+        s = settings or get_settings()
+        db = reset_db_for_tests()
+        container = _build_container_inner(s, db)
+        _container = container
+        return container
 
 
 __all__ = ["ServiceContainer", "build_container", "get_container", "reset_container_for_tests"]

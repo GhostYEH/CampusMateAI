@@ -856,7 +856,7 @@ async def discovery_submit_url(
 
 
 @router.get("/discovery/candidates", response_model=list[EduDiscoveryCandidateOut])
-async def discovery_list_candidates(
+def discovery_list_candidates(
     school_code: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     provider: Optional[str] = Query(None),
@@ -878,7 +878,7 @@ async def discovery_list_candidates(
 
 
 @router.post("/discovery/candidates/{school_code}/review")
-async def discovery_review_candidate(
+def discovery_review_candidate(
     school_code: str,
     request: EduDiscoveryReviewRequest,
     user: UserRow = Depends(require_role("admin")),
@@ -888,7 +888,7 @@ async def discovery_review_candidate(
 
 
 @router.get("/discovery/stats", response_model=EduDiscoveryStatsOut)
-async def discovery_stats(
+def discovery_stats(
     user: UserRow = Depends(require_role("admin")),
 ) -> EduDiscoveryStatsOut:
     """管理后台：发现统计。"""

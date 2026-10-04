@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 import asyncio
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,6 +23,7 @@ from .api.router import api_router
 from .core.config import get_settings
 from .core.exceptions import register_exception_handlers
 from .core.logging import configure_logging, logger
+from .core.rate_limit import RequestRateLimiter
 from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human_assets_dir
 from .api.routes.home_banners import banner_image_storage_dir
 from .api.routes.community import community_image_storage_dir
@@ -50,7 +52,12 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         with logger.contextualize(request_id=request_id):
             response = None
             try:
-                response = await call_next(request)
+                try:
+                    response = await call_next(request)
+                except Exception as exc:
+                    # Handle errors inside the user middleware stack so CORS
+                    # and request-id headers also reach unexpected 500s.
+                    response = await request.app.exception_handlers[Exception](request, exc)
                 response.headers["x-request-id"] = request_id
                 return response
             finally:
@@ -139,6 +146,9 @@ def create_app() -> FastAPI:
         description="大学生校园事务智能陪伴助手 — 后端 API",
         lifespan=lifespan,
     )
+    register_exception_handlers(app)
+    app.state.request_rate_limiter = RequestRateLimiter()
+    app.add_middleware(RequestIdMiddleware)
 
     # CORS
     origins = settings.cors_origins_list
@@ -158,6 +168,7 @@ def create_app() -> FastAPI:
             allow_credentials=False,  # 通配源不能与 credentials=True 共存
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=["X-Request-ID", "Retry-After"],
         )
     else:
         # 精确源 + 通配源正则;公网 Origin 不会被允许
@@ -168,10 +179,9 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=["X-Request-ID", "Retry-After"],
         )
 
-    register_exception_handlers(app)
-    app.add_middleware(RequestIdMiddleware)
     app.include_router(api_router)
 
     images_dir = community_image_storage_dir()
@@ -203,16 +213,15 @@ def create_app() -> FastAPI:
 def _build_origin_regex(origins) -> str:
     """把 ['http://localhost:*', 'http://127.0.0.1:*'] 转成正则。"""
     if not origins:
-        return ".*"
+        return r"(?!)"
     parts = []
     for o in origins:
-        if "*" not in o:
-            parts.append(o.replace(".", r"\."))
-        else:
-            # 转义点，把 * 替换为 .*
-            esc = o.replace(".", r"\.").replace("*", ".*")
-            parts.append(esc)
-    return "^(" + "|".join(parts) + ")$"
+        esc = re.escape(o)
+        if o.endswith(":*"):
+            esc = esc[:-2] + r"\d+"
+        # A host wildcard covers one DNS label, never a path, port or suffix.
+        parts.append(esc.replace(r"\*", r"[a-zA-Z0-9-]+"))
+    return "^(?:" + "|".join(parts) + ")$"
 
 
 app = create_app()

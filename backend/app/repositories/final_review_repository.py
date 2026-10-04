@@ -214,8 +214,7 @@ class FinalReviewRepository:
         supersedes_version: Optional[int] = None,
     ) -> FinalReviewPlanVersionRow:
         now = _now()
-        conn = self._conn()
-        try:
+        with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO final_review_plan_versions "
                 "(campaign_id, version, user_id, plan_json, source_snapshot_id, "
@@ -235,10 +234,7 @@ class FinalReviewRepository:
                     now,
                 ),
             )
-            conn.commit()
             return self._plan_version_row(conn, campaign_id, version)
-        finally:
-            self._release(conn)
 
     def get_plan_version(
         self, campaign_id: str, version: int, *, user_id: str
@@ -269,16 +265,13 @@ class FinalReviewRepository:
             self._release(conn)
 
     def next_plan_version(self, campaign_id: str) -> int:
-        conn = self._conn()
-        try:
+        with self._db.query() as conn:
             row = conn.execute(
                 "SELECT COALESCE(MAX(version), 0) AS max_v "
                 "FROM final_review_plan_versions WHERE campaign_id = ?",
                 (campaign_id,),
             ).fetchone()
             return int(row["max_v"]) + 1
-        finally:
-            self._release(conn)
 
     def _plan_version_row(self, conn, campaign_id: str, version: int) -> FinalReviewPlanVersionRow:
         row = conn.execute(
@@ -637,7 +630,7 @@ class FinalReviewRepository:
         仅当提案仍为 `pending` 时才生效;否则返回既有结果(幂等重放)。
         """
         now = _now()
-        with self._db.transaction() as conn:
+        with self._db.transaction(immediate=True) as conn:
             proposal = conn.execute(
                 "SELECT campaign_id, source_version, model_provider, risk_level, status, "
                 "target_version FROM final_review_adjustment_proposals "

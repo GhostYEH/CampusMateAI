@@ -236,6 +236,26 @@ def test_assignment_graded_dedupes_on_same_score():
     assert service.record_chaoxing_assignment_graded(**kwargs).created is False
 
 
+@pytest.mark.parametrize("observed_at", [
+    "2026-09-13T20:00:00+08:00",
+    datetime(2026, 9, 13, 20, tzinfo=timezone(timedelta(hours=8))),
+])
+def test_assignment_graded_uses_normalized_utc_observation(observed_at):
+    db = _make_db()
+    try:
+        _add_user(db)
+        service = _event_service(db)
+        result = service.record_chaoxing_assignment_graded(
+            user_id="user1", task_id="task_utc", course_id=None,
+            score=88, observed_at=observed_at,
+        )
+        assert result.created is True
+        events, _ = service.list_events(user_id="user1", page=1, page_size=10)
+        assert events[0].occurred_at == "2026-09-13T12:00:00+00:00"
+    finally:
+        db.dispose()
+
+
 def test_assignment_submitted_prefers_remote_submitted_at():
     db = _make_db()
     _add_user(db)

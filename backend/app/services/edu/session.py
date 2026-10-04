@@ -23,6 +23,19 @@ from ...models.edu import (
 )
 
 
+def _is_expired(expires_at: Optional[str], now: Optional[datetime]) -> bool:
+    if expires_at is None:
+        return False
+    try:
+        expiry = datetime.fromisoformat(expires_at)
+        current = now or datetime.now(timezone.utc)
+        if expiry.tzinfo is None or current.tzinfo is None:
+            return True
+        return expiry <= current
+    except (TypeError, ValueError, OverflowError):
+        return True
+
+
 @dataclass
 class EduSession:
     """教务会话。"""
@@ -38,13 +51,7 @@ class EduSession:
     _internal: dict = field(default_factory=dict, repr=False)
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
-        if not self.expires_at:
-            return False
-        n = now or datetime.now(timezone.utc)
-        try:
-            return datetime.fromisoformat(self.expires_at) < n
-        except Exception:
-            return False
+        return _is_expired(self.expires_at, now)
 
     def is_mock(self) -> bool:
         return self.session_type == SESSION_MOCK or self.provider == "mock"
@@ -96,6 +103,7 @@ class InMemorySessionStore(EduSessionStore):
     def __init__(self, session_ttl_seconds: int = 1800) -> None:
         self._sessions: dict[str, EduSession] = {}
         self._ttl = session_ttl_seconds
+        self._lock = RLock()
 
     def create_session(
         self,
@@ -124,34 +132,39 @@ class InMemorySessionStore(EduSessionStore):
             expires_at=expires.isoformat(),
             _internal=internal or {},
         )
-        self._sessions[session_id] = session
+        with self._lock:
+            self._sessions[session_id] = session
         return session
 
     def get_session(self, session_id: str) -> Optional[EduSession]:
-        session = self._sessions.get(session_id)
-        if session is None:
-            return None
-        if session.is_expired():
-            self._sessions.pop(session_id, None)
-            return None
-        return session
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                return None
+            if session.is_expired():
+                self._sessions.pop(session_id, None)
+                return None
+            return session
 
     def get_session_by_user(self, user_id: str) -> Optional[EduSession]:
-        for sid, session in list(self._sessions.items()):
-            if session.user_id == user_id:
-                if session.is_expired():
-                    self._sessions.pop(sid, None)
-                    continue
-                return session
+        with self._lock:
+            for sid, session in list(self._sessions.items()):
+                if session.user_id == user_id:
+                    if session.is_expired():
+                        self._sessions.pop(sid, None)
+                        continue
+                    return session
         return None
 
     def destroy_session(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+        with self._lock:
+            self._sessions.pop(session_id, None)
 
     def destroy_user_sessions(self, user_id: str) -> None:
-        for sid in list(self._sessions.keys()):
-            if self._sessions[sid].user_id == user_id:
-                self._sessions.pop(sid, None)
+        with self._lock:
+            for sid, session in list(self._sessions.items()):
+                if session.user_id == user_id:
+                    self._sessions.pop(sid, None)
 
 
 class SessionManager(InMemorySessionStore):
@@ -183,13 +196,7 @@ class PreLoginSession:
     expires_at: Optional[str] = None
 
     def is_expired(self, now: Optional[datetime] = None) -> bool:
-        if not self.expires_at:
-            return False
-        n = now or datetime.now(timezone.utc)
-        try:
-            return datetime.fromisoformat(self.expires_at) < n
-        except Exception:
-            return False
+        return _is_expired(self.expires_at, now)
 
 
 class PreLoginSessionStore:

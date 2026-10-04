@@ -16,6 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from ..core.config import Settings, get_settings
 from ..core.exceptions import Forbidden, Unauthorized
 from ..core.security import JWTError, decode_jwt
+from ..core.rate_limit import check_request_rate
 from ..models.multi_role import UserRow
 from ..services.container import ServiceContainer, get_container
 
@@ -107,6 +108,11 @@ def require_role(*roles: str):
         return user
 
     return _check
+
+
+def limit_anonymous_chat(request: Request, user: Optional[UserRow] = Depends(current_user_optional)) -> None:
+    if user is None:
+        check_request_rate(request, "anonymous_chat", limit=10)
 
 
 def student_only(user: UserRow = Depends(current_user)) -> UserRow:

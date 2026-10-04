@@ -1405,6 +1405,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         },
         "security": [
@@ -1449,6 +1452,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         },
         "security": [
@@ -1635,6 +1641,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         }
       }
@@ -1678,6 +1687,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         }
       }
@@ -11875,7 +11887,7 @@
           "course-research"
         ],
         "summary": "Create Run",
-        "description": "创建课程研究 Run 并同步执行。",
+        "description": "创建课程研究 Run；响应后执行研究流水线。",
         "operationId": "create_run_api_v1_course_research_runs_post",
         "security": [
           {
@@ -17117,6 +17129,9 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "测验状态回退或课堂归属冲突（QUIZ_ATTEMPT_CONFLICT）"
           }
         }
       }
@@ -21520,12 +21535,14 @@
             "type": "string",
             "minLength": 1,
             "title": "Message",
-            "description": "用户问题"
+            "description": "用户问题",
+            "maxLength": 20000
           },
           "conversation_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               {
                 "type": "null"
@@ -21554,7 +21571,8 @@
             },
             "type": "array",
             "title": "Recent Tasks",
-            "description": "最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略"
+            "description": "最近待办(仅 PersonalTask,id 为必填,其他字段为 hint),后端会通过 PersonalTaskRepository 校验归属,越权/不存在/已删除的条目会被忽略",
+            "maxItems": 100
           },
           "stream": {
             "type": "boolean",
@@ -21582,7 +21600,8 @@
           "course_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               {
                 "type": "null"
@@ -21594,7 +21613,8 @@
           "class_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               {
                 "type": "null"
@@ -21606,7 +21626,8 @@
           "assignment_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               {
                 "type": "null"
@@ -21618,7 +21639,8 @@
           "announcement_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 128
               },
               {
                 "type": "null"
@@ -22187,7 +22209,8 @@
             "type": "string",
             "minLength": 1,
             "title": "Id",
-            "description": "PersonalTask ID"
+            "description": "PersonalTask ID",
+            "maxLength": 128
           },
           "title": {
             "anyOf": [

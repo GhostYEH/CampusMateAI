@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -193,7 +195,7 @@ class NoticeWorkflowService:
         run_id: Optional[str] = None,
     ) -> NoticeWorkflowRow:
         """Async production path that can call configured model providers."""
-        workflow, content = self._prepare_workflow_for_notice(
+        workflow, content = await run_in_threadpool(self._prepare_workflow_for_notice,
             user_id=user_id,
             notice_id=notice_id,
             source_code=source_code,
@@ -204,10 +206,10 @@ class NoticeWorkflowService:
         interp = await self._interp.interpret_async(
             content, source_code, run_id=run_id
         )
-        self._persist_interpretation_and_plan(
+        await run_in_threadpool(self._persist_interpretation_and_plan,
             workflow.workflow_id, user_id, content, source_code, interp
         )
-        return self._repo.get_workflow(workflow.workflow_id)  # type: ignore[return-value]
+        return await run_in_threadpool(self._repo.get_workflow, workflow.workflow_id)  # type: ignore[return-value]
 
     def _analyze_and_plan(
         self,

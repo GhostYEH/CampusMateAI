@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+from starlette.concurrency import run_in_threadpool
+
 import json
 import hashlib
 from typing import Optional
@@ -58,7 +60,7 @@ _ADJUST_APPLY_JOB_KIND = "final_review_adjust_apply"
 
 
 def _repo(container: ServiceContainer) -> FinalReviewRepository:
-    return FinalReviewRepository(container.db)
+    return container.final_review_repository
 
 
 def _settle_waiting_run(container: ServiceContainer, approval_id: Optional[str], status: str) -> None:
@@ -152,11 +154,55 @@ def _request_hash(payload: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _persist_generated_plan(
+    container: ServiceContainer,
+    *,
+    campaign_id: str,
+    user_id: str,
+    run_id: str,
+    plan: dict,
+    source_snapshot_id: str,
+    model_provider: str,
+    route_policy: str,
+):
+    """Allocate the version and persist its exact approval in one write transaction."""
+    from ...services.agent_runtime.handlers.final_review import PLAN_ACTIVATE_TOOL
+    from ...services.agent_runtime.tool_gateway import build_request_hash
+
+    repo = _repo(container)
+    # Keep every nested repository call on this worker thread so it reuses the
+    # transaction connection. BEGIN IMMEDIATE also serializes other DB instances.
+    with container.db.transaction(immediate=True):
+        version = repo.next_plan_version(campaign_id)
+        approval_id = container.agent_approval_gate.require(
+            run_id=run_id,
+            user_id=user_id,
+            risk_level=RiskLevel.CONFIRM_REQUIRED,
+            action_summary=f"激活期末复习计划版本 {version}",
+            tool_name=PLAN_ACTIVATE_TOOL,
+            request_hash=build_request_hash(
+                PLAN_ACTIVATE_TOOL,
+                {"campaign_id": campaign_id, "version": version, "user_id": user_id},
+            ),
+        )
+        return repo.create_plan_version(
+            campaign_id=campaign_id,
+            version=version,
+            user_id=user_id,
+            plan=plan,
+            source_snapshot_id=source_snapshot_id,
+            model_provider=model_provider,
+            route_policy=route_policy,
+            risk_level=RiskLevel.CONFIRM_REQUIRED.value,
+            approval_id=approval_id,
+        )
+
+
 # ===== Campaigns =====
 
 
 @router.post("/campaigns")
-async def create_campaign(
+def create_campaign(
     body: FinalReviewCampaignIn,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -185,7 +231,7 @@ async def create_campaign(
 
 
 @router.get("/campaigns")
-async def list_campaigns(
+def list_campaigns(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[FinalReviewCampaignOut]:
@@ -195,7 +241,7 @@ async def list_campaigns(
 
 
 @router.get("/campaigns/{campaign_id}")
-async def get_campaign(
+def get_campaign(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -221,7 +267,7 @@ async def generate_plan(
 ) -> PlanGenerateOut:
     """生成首版或新版计划。使用 reasoning_primary 路由。"""
     repo = _repo(container)
-    campaign = repo.get_campaign(campaign_id, user_id=user.id)
+    campaign = await run_in_threadpool(repo.get_campaign, campaign_id, user_id=user.id)
     if not campaign:
         raise NotFoundError("campaign 不存在")
 
@@ -235,7 +281,7 @@ async def generate_plan(
     }
     runtime_repo = container.agent_runtime_repository
     if effective_key:
-        existing_job = runtime_repo.find_job_by_idempotency(user.id, effective_key)
+        existing_job = await run_in_threadpool(runtime_repo.find_job_by_idempotency, user.id, effective_key)
         if existing_job:
             existing_ref = json.loads(existing_job.get("input_ref_json") or "{}")
             if (
@@ -243,10 +289,10 @@ async def generate_plan(
                 or existing_ref.get("request_hash") != request_ref["request_hash"]
             ):
                 raise AgentIdempotencyConflict()
-            existing_run = runtime_repo.get_run_by_job(existing_job["job_id"])
+            existing_run = await run_in_threadpool(runtime_repo.get_run_by_job, existing_job["job_id"])
             existing_version = existing_ref.get("version")
             if existing_run and existing_version:
-                existing_plan = repo.get_plan_version(
+                existing_plan = await run_in_threadpool(repo.get_plan_version,
                     campaign_id, int(existing_version), user_id=user.id
                 )
                 if existing_plan:
@@ -262,19 +308,18 @@ async def generate_plan(
                 "幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409
             )
 
-    job_id = runtime_repo.create_job(
+    created = await run_in_threadpool(runtime_repo.create_job_with_run_and_event,
         user_id=user.id,
         job_kind="final_review_plan_generate",
         input_ref=request_ref,
         idempotency_key=effective_key,
-    )
-    run_id = runtime_repo.create_run(
-        job_id=job_id,
-        user_id=user.id,
         request_id=getattr(request.state, "request_id", None),
-        idempotency_key=effective_key,
+        request_hash=request_ref["request_hash"],
     )
-    container.agent_run_manager.transition(
+    if created["replayed"]:
+        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+    job_id, run_id = created["job_id"], created["run_id"]
+    await run_in_threadpool(container.agent_run_manager.transition,
         run_id, "RUNNING", phase="WAITING_FOR_MODEL"
     )
 
@@ -287,49 +332,33 @@ async def generate_plan(
         context_manager=container.agent_context_manager,
         db=container.db,
     )
-    snapshot_id, facts = ctx_builder.build(
+    snapshot_id, facts = await run_in_threadpool(ctx_builder.build,
         user_id=user.id, campaign_id=campaign_id
     )
 
     # 生成计划
     # 取消检查点:进入计划生成前确认 run 仍可推进。
-    container.agent_run_manager.assert_active(run_id)
+    await run_in_threadpool(container.agent_run_manager.assert_active, run_id)
     planner = Planner(model_router=container.agent_model_router)
     result = await planner.generate(
         facts=facts, user_edits=body.user_edits, run_id=run_id
     )
 
-    # 创建 plan version
-    version = repo.next_plan_version(campaign_id)
-    risk_level = RiskLevel.CONFIRM_REQUIRED.value
-    # 审批必须绑定"具体工具 + 具体参数"：这里提前签发，稍后 activate 命令
-    # 会用同一组 (campaign_id, version, user_id) 触发该工具，指纹必须完全一致。
-    from ...services.agent_runtime.handlers.final_review import PLAN_ACTIVATE_TOOL
-    from ...services.agent_runtime.tool_gateway import build_request_hash
-
-    approval_id = container.agent_approval_gate.require(
-        run_id=run_id,
-        user_id=user.id,
-        risk_level=RiskLevel.CONFIRM_REQUIRED,
-        action_summary=f"激活期末复习计划版本 {version}",
-        tool_name=PLAN_ACTIVATE_TOOL,
-        request_hash=build_request_hash(
-            PLAN_ACTIVATE_TOOL,
-            {"campaign_id": campaign_id, "version": int(version), "user_id": user.id},
-        ),
-    )
-    plan_row = repo.create_plan_version(
+    plan_row = await run_in_threadpool(
+        _persist_generated_plan,
+        container,
         campaign_id=campaign_id,
-        version=version,
         user_id=user.id,
+        run_id=run_id,
         plan=result.plan,
         source_snapshot_id=snapshot_id,
         model_provider=result.provider,
         route_policy=result.route_policy,
-        risk_level=risk_level,
-        approval_id=approval_id,
     )
-    artifact_id = container.agent_artifact_manager.create(
+    version = plan_row.version
+    approval_id = plan_row.approval_id
+    risk_level = plan_row.risk_level
+    artifact_id = await run_in_threadpool(container.agent_artifact_manager.create,
         run_id=run_id,
         user_id=user.id,
         artifact_type="FINAL_REVIEW_PLAN",
@@ -343,7 +372,7 @@ async def generate_plan(
         mime_type="application/json",
         version=version,
     )
-    container.agent_event_store.append(
+    await run_in_threadpool(container.agent_event_store.append,
         run_id=run_id,
         type="ARTIFACT_CREATED",
         status="RUNNING",
@@ -352,17 +381,17 @@ async def generate_plan(
         summary="复习计划制品已生成",
         artifact_id=artifact_id,
     )
-    runtime_repo.update_job_input_ref(
+    await run_in_threadpool(runtime_repo.update_job_input_ref,
         job_id,
         {**request_ref, "version": version, "approval_id": approval_id},
     )
-    container.agent_run_manager.transition(
+    await run_in_threadpool(container.agent_run_manager.transition,
         run_id,
         "AWAITING_APPROVAL",
         phase="WAITING_FOR_APPROVAL",
         risk_level=risk_level,
     )
-    container.agent_event_store.append(
+    await run_in_threadpool(container.agent_event_store.append,
         run_id=run_id,
         type="APPROVAL_REQUIRED",
         status="AWAITING_APPROVAL",
@@ -383,7 +412,7 @@ async def generate_plan(
 
 
 @router.get("/campaigns/{campaign_id}/plan-versions")
-async def list_plan_versions(
+def list_plan_versions(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -394,7 +423,7 @@ async def list_plan_versions(
 
 
 @router.get("/campaigns/{campaign_id}/plan-versions/{version}")
-async def get_plan_version(
+def get_plan_version(
     campaign_id: str,
     version: int,
     user: UserRow = Depends(student_only),
@@ -411,7 +440,7 @@ async def get_plan_version(
 
 
 @router.post("/campaigns/{campaign_id}/activate")
-async def activate_campaign(
+def activate_campaign(
     campaign_id: str,
     body: ActivateIn,
     user: UserRow = Depends(student_only),
@@ -512,7 +541,7 @@ def get_today_agenda(
 
 
 @router.post("/daily-items/{item_id}/complete")
-async def complete_item(
+def complete_item(
     item_id: str,
     body: CompleteItemIn,
     user: UserRow = Depends(student_only),
@@ -544,7 +573,7 @@ async def complete_item(
 
 
 @router.post("/campaigns/{campaign_id}/daily-checkins")
-async def daily_checkin(
+def daily_checkin(
     campaign_id: str,
     body: DailyCheckinIn,
     user: UserRow = Depends(student_only),
@@ -588,7 +617,7 @@ async def analyze_adjustments(
 ) -> AdjustmentAnalyzeOut:
     """Analyzer 分析证据,产生 adjustment proposal。不直接改 active plan。"""
     repo = _repo(container)
-    campaign = repo.get_campaign(campaign_id, user_id=user.id)
+    campaign = await run_in_threadpool(repo.get_campaign, campaign_id, user_id=user.id)
     if not campaign:
         raise NotFoundError("campaign 不存在")
     if campaign.active_version is None:
@@ -597,13 +626,13 @@ async def analyze_adjustments(
     # 收集 evidence
     from datetime import datetime, timezone
     today = datetime.now(timezone.utc).date().isoformat()
-    agenda = repo.get_agenda_by_date(
+    agenda = await run_in_threadpool(repo.get_agenda_by_date,
         campaign_id, campaign.active_version, today, user_id=user.id
     )
     missed_items = []
     completed_items = []
     if agenda:
-        items = repo.list_items(agenda.agenda_id, user_id=user.id)
+        items = await run_in_threadpool(repo.list_items, agenda.agenda_id, user_id=user.id)
         for it in items:
             if it.status == "pending":
                 missed_items.append({"item_id": it.item_id, "title": it.title})
@@ -623,7 +652,7 @@ async def analyze_adjustments(
         "request_hash": _request_hash({"campaign_id": campaign_id}),
     }
     if effective_key:
-        existing_job = runtime_repo.find_job_by_idempotency(user.id, effective_key)
+        existing_job = await run_in_threadpool(runtime_repo.find_job_by_idempotency, user.id, effective_key)
         if existing_job:
             existing_ref = json.loads(existing_job.get("input_ref_json") or "{}")
             if (
@@ -631,9 +660,9 @@ async def analyze_adjustments(
                 or existing_ref.get("request_hash") != request_ref["request_hash"]
             ):
                 raise AgentIdempotencyConflict()
-            existing_run = runtime_repo.get_run_by_job(existing_job["job_id"])
+            existing_run = await run_in_threadpool(runtime_repo.get_run_by_job, existing_job["job_id"])
             proposal_id = existing_ref.get("proposal_id")
-            proposal = repo.get_proposal(proposal_id, user_id=user.id) if proposal_id else None
+            proposal = await run_in_threadpool(repo.get_proposal, proposal_id, user_id=user.id) if proposal_id else None
             if existing_run and proposal:
                 return AdjustmentAnalyzeOut(
                     run_id=existing_run["run_id"],
@@ -644,7 +673,7 @@ async def analyze_adjustments(
                 )
             raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
 
-    checkins = repo.list_checkin_evidence(campaign_id, user_id=user.id)
+    checkins = await run_in_threadpool(repo.list_checkin_evidence, campaign_id, user_id=user.id)
     evidence["checkins"] = checkins
     evidence["difficulty_notes"] = [
         item["difficulty_notes"] for item in checkins if item["difficulty_notes"]
@@ -652,26 +681,25 @@ async def analyze_adjustments(
     evidence["insufficient_time"] = evidence["insufficient_time"] or any(
         item["insufficient_time"] for item in checkins
     )
-    job_id = runtime_repo.create_job(
+    created = await run_in_threadpool(runtime_repo.create_job_with_run_and_event,
         user_id=user.id,
         job_kind="final_review_adjustment",
         input_ref=request_ref,
         idempotency_key=effective_key,
-    )
-    run_id = runtime_repo.create_run(
-        job_id=job_id,
-        user_id=user.id,
         request_id=getattr(request.state, "request_id", None),
-        idempotency_key=effective_key,
+        request_hash=request_ref["request_hash"],
     )
-    container.agent_run_manager.transition(
+    if created["replayed"]:
+        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+    job_id, run_id = created["job_id"], created["run_id"]
+    await run_in_threadpool(container.agent_run_manager.transition,
         run_id, "RUNNING", phase="WAITING_FOR_MODEL"
     )
 
     from ...services.final_review.adjustment_service import AdjustmentAnalyzer
 
     # 取消检查点:进入模型分析前确认 run 仍可推进,避免取消后继续消耗额度。
-    container.agent_run_manager.assert_active(run_id)
+    await run_in_threadpool(container.agent_run_manager.assert_active, run_id)
     analyzer = AdjustmentAnalyzer(
         final_review_repo=repo,
         model_router=container.agent_model_router,
@@ -691,7 +719,7 @@ async def analyze_adjustments(
         from ...services.agent_runtime.handlers.final_review import ADJUST_APPLY_TOOL
         from ...services.agent_runtime.tool_gateway import build_request_hash
 
-        approval_id = container.agent_approval_gate.require(
+        approval_id = await run_in_threadpool(container.agent_approval_gate.require,
             run_id=run_id,
             user_id=user.id,
             risk_level=RiskLevel.CONFIRM_REQUIRED,
@@ -707,10 +735,10 @@ async def analyze_adjustments(
             ),
         )
         # 将 approval_id 关联到 proposal(不改变 status)
-        repo.attach_approval(
+        await run_in_threadpool(repo.attach_approval,
             result["proposal_id"], user_id=user.id, approval_id=approval_id,
         )
-        runtime_repo.update_job_input_ref(
+        await run_in_threadpool(runtime_repo.update_job_input_ref,
             job_id,
             {
                 **request_ref,
@@ -718,18 +746,18 @@ async def analyze_adjustments(
                 "approval_id": approval_id,
             },
         )
-        container.agent_run_manager.transition(
+        await run_in_threadpool(container.agent_run_manager.transition,
             run_id,
             "AWAITING_APPROVAL",
             phase="WAITING_FOR_APPROVAL",
             risk_level=result["risk_level"],
         )
     else:
-        runtime_repo.update_job_input_ref(
+        await run_in_threadpool(runtime_repo.update_job_input_ref,
             job_id,
             {**request_ref, "proposal_id": result["proposal_id"]},
         )
-        container.agent_run_manager.transition(run_id, "SUCCEEDED", phase="IDLE")
+        await run_in_threadpool(container.agent_run_manager.transition, run_id, "SUCCEEDED", phase="IDLE")
 
     return AdjustmentAnalyzeOut(
         run_id=run_id,
@@ -741,7 +769,7 @@ async def analyze_adjustments(
 
 
 @router.get("/campaigns/{campaign_id}/adjustment-proposals")
-async def list_proposals(
+def list_proposals(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -752,7 +780,7 @@ async def list_proposals(
 
 
 @router.post("/adjustment-proposals/{proposal_id}/decision")
-async def proposal_decision(
+def proposal_decision(
     proposal_id: str,
     body: AdjustmentDecisionIn,
     user: UserRow = Depends(student_only),

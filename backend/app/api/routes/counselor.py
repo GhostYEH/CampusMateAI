@@ -57,7 +57,8 @@ from ...services.course_access import can_view_course
 from ...services.emotion_context import EmotionContextBuilder
 from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ...services.magicclass.fusion_errors import FusionInvalidRequest
-from ..deps import current_user_optional
+from ..deps import current_user_optional, limit_anonymous_chat
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
 _emotion_context_builder = EmotionContextBuilder()
@@ -657,8 +658,8 @@ async def build_interactive_classroom_action(
     )
 
 
-@router.post("/counselor/chat")
-@router.post("/assistant/chat")
+@router.post("/counselor/chat", dependencies=[Depends(limit_anonymous_chat)], responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
+@router.post("/assistant/chat", dependencies=[Depends(limit_anonymous_chat)], responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
 async def chat(
     req: ChatRequest,
     user: Optional[UserRow] = Depends(current_user_optional),
@@ -671,20 +672,20 @@ async def chat(
     if req.workspace_id:
         if user is None or not req.course_id:
             raise FusionInvalidRequest("workspace_id 必须与已登录用户的 course_id 一起提供")
-        course = container.course_repository.get_course(req.course_id)
-        if course is None or not can_view_course(container, user, course):
+        course = await run_in_threadpool(container.course_repository.get_course, req.course_id)
+        if course is None or not await run_in_threadpool(can_view_course, container, user, course):
             raise FusionInvalidRequest("无法把快速询问绑定到该课程")
         await workspace_client.get_workspace(
             user_id=str(user.id), course_id=req.course_id, workspace_id=req.workspace_id
         )
     # 解析多角色上下文(忽略+warning 模式,不抛异常)
-    context_block, ctx_used, ctx_warnings = _collect_teaching_context(
-        container, user, req
+    context_block, ctx_used, ctx_warnings = await run_in_threadpool(
+        _collect_teaching_context, container, user, req
     )
     # 校验 recent_tasks 归属(通过 PersonalTaskRepository,删除"未验证本地待办"逻辑)
-    sanitized_tasks, task_warnings = _validate_recent_tasks(container, user, req)
+    sanitized_tasks, task_warnings = await run_in_threadpool(_validate_recent_tasks, container, user, req)
     learner_state_context, learner_state_count, learner_state_warnings = (
-        _collect_learner_state_context(container, user)
+        await run_in_threadpool(_collect_learner_state_context, container, user)
     )
 
     # 构造 context_used(新结构: count + accepted + ignored + self_report_present)

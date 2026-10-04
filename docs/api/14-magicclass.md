@@ -4,6 +4,18 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 测验并发保存与冲突
+
+`GET` / `POST /api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/quiz-attempt` 继续要求已登录且有课程访问权限。POST 对已有作答的课堂归属及 `draft → submitted → reviewed` 阶段进行校验；原子读写覆盖重试 ID 分配，并发重试不会相互覆盖。
+
+状态回退或试图把已有作答移到另一课堂时返回 HTTP 409 `QUIZ_ATTEMPT_CONFLICT`，使用统一错误信封；原 `{detail: ...}` 冲突响应已替换。客户端应回读 GET 获取当前作答，不能把 409 当作成功保存。
+
+```json
+{"code":"QUIZ_ATTEMPT_CONFLICT","message":"测验状态不能回退或更改所属课堂","details":null,"request_id":"req_example"}
+```
+
+成功响应、`start_new_attempt` 和根作答 ID 规则保持兼容。Web 保存封装使用通用 HTTP 错误流程，源码已核对，无需修改成功字段；专门的冲突提示尚未验证，Android、HarmonyOS、微信小程序没有在本次运行测验流程或原生构建。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |

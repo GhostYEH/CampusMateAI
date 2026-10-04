@@ -34,6 +34,7 @@ from ...core.exceptions import (
     ValidationFailed,
 )
 from ...core.logging import logger
+from ...core.rate_limit import request_rate_limit
 from ...core.security import (
     create_access_token,
     create_refresh_token,
@@ -109,7 +110,7 @@ def _create_user(req: RegisterRequest | UserCreate, container: ServiceContainer)
     return UserPublic(**created.to_public_dict())
 
 
-@router.post("/login", response_model=TokenPair)
+@router.post("/login", response_model=TokenPair, dependencies=[Depends(request_rate_limit("login", limit=20))], responses={429: {"description": "请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
 def login(
     req: LoginRequest,
     settings: Settings = Depends(get_settings_dep),
@@ -124,7 +125,7 @@ def login(
     return _issue_tokens(user, settings, container)
 
 
-@router.post("/register", response_model=UserPublic, status_code=201)
+@router.post("/register", response_model=UserPublic, status_code=201, dependencies=[Depends(request_rate_limit("register", limit=5))], responses={429: {"description": "请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
 def register(
     req: RegisterRequest,
     container: ServiceContainer = Depends(_container),

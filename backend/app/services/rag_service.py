@@ -491,7 +491,8 @@ def _build_llm_messages(
             for t in sample:
                 if isinstance(t, dict):
                     task_hint += f" - {t.get('title', '未知')} (截止: {t.get('deadline', '未知')})\n"
-        except Exception:
+        except Exception as exc:
+            logger.warning("rag_task_context_unavailable error_type={}", type(exc).__name__)
             task_hint = ""
     world_model_hint = ""
     if world_model_context:

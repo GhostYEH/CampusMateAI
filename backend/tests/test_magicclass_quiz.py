@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from app.api.routes import magicclass_quiz
 from test_magicclass_workspaces import _setup
 
@@ -47,3 +49,24 @@ def test_quiz_attempt_rejects_phase_regression():
     http.post(_path(course_id), json={"attempt_id": attempt_id, "phase": "reviewed", "answers": {}, "results": []}, headers=headers)
     response = http.post(_path(course_id), json={"attempt_id": attempt_id, "phase": "draft", "answers": {}}, headers=headers)
     assert response.status_code == 409
+    assert response.json()["code"] == "QUIZ_ATTEMPT_CONFLICT"
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+def test_parallel_retries_are_unique_across_store_instances(tmp_path):
+    from app.services.magicclass.quiz_attempt_store import QuizAttemptStore, root_attempt_id
+    stores = [QuizAttemptStore(tmp_path), QuizAttemptStore(tmp_path)]
+    root = root_attempt_id("u", "stage", "scene")
+
+    def retry(index):
+        return stores[index % 2].update(
+            attempt_id=root, user_id="u", course_id="course", workspace_id="ws",
+            stage_id="stage", scene_id="scene", phase="draft", answers={}, results=[],
+            start_new_attempt=True,
+        ).attempt_id
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ids = list(pool.map(retry, range(30)))
+    assert len(set(ids)) == 30
+    assert all(stores[0].get(attempt_id, user_id="u") is not None for attempt_id in ids)
+    assert stores[0].latest(root, user_id="u").attempt_id == f"{root}:retry:30"

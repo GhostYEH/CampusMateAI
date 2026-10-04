@@ -4,6 +4,16 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 管理员学校范围
+
+`POST /api/v1/admin/community/posts/{post_id}/hide` 和 `POST /api/v1/admin/community/reports/{report_id}/resolve?action=resolve|reject` 与管理员列表使用相同范围：有 `university_id` 的管理员只能操作该校帖子或举报；没有学校归属的管理员可全局管理。资源不存在或属于其他学校时均返回 404 `NOT_FOUND`，不修改目标内容。
+
+```json
+{"code":"NOT_FOUND","message":"举报不存在","details":null,"request_id":"req_example"}
+```
+
+成功仍返回原帖子或举报对象；请求字段不变。Web 当前没有这两个管理操作的封装，Android、HarmonyOS、微信小程序的管理流程本次未运行验证；新管理界面需把跨校 404 作为不可见资源处理。此规则不扩大普通学生权限。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |
