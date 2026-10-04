@@ -243,6 +243,9 @@ def _magicclass_store_dir(settings: Settings) -> Path:
 
 
 def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
+    # 数据源策略在模型与学习服务构造前就绪，依赖通过构造参数显式传递。
+    learner_control_repository = LearnerControlRepository(db)
+    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
     repo = DocumentRepository(db)
     retrieval = RetrievalService(repo)
     ingestion = KnowledgeIngestionService(repo, retrieval, settings)
@@ -267,6 +270,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         seed=settings.campusmate_lm_seed, circuit_breaker_threshold=settings.campusmate_lm_circuit_breaker_threshold,
         circuit_breaker_cooldown_seconds=settings.campusmate_lm_circuit_breaker_cooldown_seconds,
         repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+        source_policy=learner_model_source_policy,
     )
     tts = (
         MiMoTtsClient(
@@ -283,6 +287,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
     course_repo = CourseRepository(db)
+    notice_repository = NoticeRepository(db)
+    edu_repo = EduRepository(db)
+    edu_data_repo = EduDataRepository(db)
     personal_task_repo = PersonalTaskRepository(db)
     personal_file_repo = PersonalFileRepository(db)
     favorite_repo = FavoriteRepository(db)
@@ -302,16 +309,15 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     home_banner_repository = HomeBannerRepository(db)
     home_banner_repository.seed_defaults()
     learner_event_repository = LearnerEventRepository(db)
-    learner_control_repository = LearnerControlRepository(db)
-    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
-    model_shadow_runner._source_policy = learner_model_source_policy
     learner_event_service = LearnerEventService(
         learner_event_repository,
         study_session_repository=study_session_repo,
         personal_task_repository=personal_task_repo,
         course_repository=course_repo,
-        notice_repository=NoticeRepository(db),
+        notice_repository=notice_repository,
         course_content_repository=course_content_repository,
+        edu_data_repository=edu_data_repo,
+        edu_repository=edu_repo,
         source_policy=learner_model_source_policy,
     )
     learner_state_repository = LearnerStateRepository(db)
@@ -319,6 +325,18 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_repository,
         control_repository=learner_control_repository,
         source_policy=learner_model_source_policy,
+        edu_data_repository=edu_data_repo,
+        learner_event_repository=learner_event_repository,
+        student_goal_repository=student_goal_repo,
+    )
+    # 投影 -> 预测 -> 规划 -> 干预构成单向依赖，后续无需补写私有属性。
+    forecast_service = ForecastService(
+        learner_state_service=learner_state_service,
+        personal_task_repository=personal_task_repo,
+        study_session_repository=study_session_repo,
+        student_goal_repository=student_goal_repo,
+        edu_data_repository=edu_data_repo,
+        learner_event_repository=learner_event_repository,
     )
     learning_plan_repository = LearningPlanRepository(db)
     learning_planner_service = LearningPlannerService(
@@ -328,6 +346,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         content_repository=course_content_repository, llm=llm,
         source_policy=learner_model_source_policy,
         student_goal_repository=student_goal_repo,
+        notice_repository=notice_repository,
+        forecast_service=forecast_service,
     )
 
     learner_control_service = LearnerControlService(
@@ -355,9 +375,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     agent_artifact_repository = AgentArtifactRepository(db, artifact_root)
     final_review_repository = FinalReviewRepository(db)
     course_research_repository = CourseResearchRepository(db)
-    notice_repository = NoticeRepository(db)
     notice_workflow_repository = NoticeWorkflowRepository(db)
-    learning_planner_service._notice_repository = notice_repository
 
     # CampusAgentRuntime services
     agent_event_store = AgentEventStore(agent_runtime_repository)
@@ -394,7 +412,6 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         known_tool_names=(tool.tool_code for tool in agent_tool_registry.list_tools())
     )
     # 状态驱动干预：状态分析 -> 策略选择 -> 干预记录 -> 差异化计划。
-    # forecast_service 在下面才构造，先用延迟绑定挂上（与 learner_state_service 的既有做法一致）。
     adaptive_intervention_repository = AdaptiveInterventionRepository(db)
     student_state_analyzer = StudentStateAnalyzer()
     strategy_policy = StrategyPolicy()
@@ -404,6 +421,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         policy=strategy_policy,
         planner=learning_planner_service,
         state_service=learner_state_service,
+        forecast_service=forecast_service,
         student_goal_repository=student_goal_repo,
         outcome_evaluator=InterventionOutcomeEvaluator(),
         learner_event_service=learner_event_service,
@@ -456,33 +474,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
 
     # EduConnector
-    edu_repo = EduRepository(db)
-    edu_data_repo = EduDataRepository(db)
-    learner_event_service._edu_data_repository = edu_data_repo
-    learner_event_service._edu_repository = edu_repo
-    learner_state_service._edu_data_repository = edu_data_repo
-    learner_state_service._learner_event_repository = learner_event_repository
-    learner_state_service._student_goal_repository = student_goal_repo
-
-    forecast_service = ForecastService(
-        learner_state_service=learner_state_service,
-        personal_task_repository=personal_task_repo,
-        study_session_repository=study_session_repo,
-        student_goal_repository=student_goal_repo,
-        edu_data_repository=edu_data_repo,
-        learner_event_repository=learner_event_repository,
-    )
-
     simulation_service = SimulationService(
         forecast_service=forecast_service,
         learner_state_service=learner_state_service,
         learner_state_repository=learner_state_repository,
         learning_plan_repository=learning_plan_repository,
     )
-    # 预测是状态分析的增强信号：在这里补上，避免把构造顺序问题带进 Handler。
-    learning_planner_service._forecast_service = forecast_service
-    adaptive_intervention_service._forecast_service = forecast_service
-
     school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":

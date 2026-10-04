@@ -14,9 +14,10 @@ import sqlite3
 import re
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from app.core.config import Settings
 
@@ -1895,6 +1896,15 @@ CREATE INDEX IF NOT EXISTS idx_student_goal_progress_goal
 """
 
 
+@dataclass(frozen=True)
+class _SchemaStep:
+    """建表阶段及其旧库预处理；预处理必须先于本阶段的建表和索引。"""
+
+    name: str
+    sql: str
+    prepare: Callable[[sqlite3.Connection], None] | None = None
+
+
 class Database:
     """线程安全的 SQLite 包装。
 
@@ -2041,6 +2051,50 @@ class Database:
             raise sqlite3.IntegrityError("adaptive intervention recovery foreign-key validation failed")
         conn.execute(f"DROP TABLE {stash}")
 
+    def _schema_steps(self) -> tuple[_SchemaStep, ...]:
+        """保持既有建表顺序，将旧库必须先执行的升级绑定到对应阶段。"""
+        return (
+            _SchemaStep("core", SCHEMA_SQL),
+            _SchemaStep("multi_role", MULTI_ROLE_SCHEMA_SQL),
+            _SchemaStep("university", UNIVERSITY_SCHEMA_SQL),
+            _SchemaStep("community", COMMUNITY_SCHEMA_SQL),
+            _SchemaStep("academic", ACADEMIC_SCHEMA_SQL),
+            # 绑定表补列/重建后才能创建依赖它的新索引和同步记录表。
+            _SchemaStep("edu_connector", EDU_CONNECTOR_SCHEMA_SQL, self._migrate_edu_bindings),
+            _SchemaStep("edu_data", EDU_DATA_SCHEMA_SQL),
+            _SchemaStep("personal_task", PERSONAL_TASK_SCHEMA_SQL),
+            _SchemaStep("study", STUDY_SCHEMA_SQL),
+            _SchemaStep("personal_hub", PERSONAL_HUB_SCHEMA_SQL),
+            _SchemaStep("home_banner", HOME_BANNER_SCHEMA_SQL),
+            _SchemaStep("chaoxing_credentials", CHAOXING_CREDENTIALS_SCHEMA_SQL),
+            _SchemaStep("chaoxing_assessment", CHAOXING_ASSESSMENT_SCHEMA_SQL),
+            _SchemaStep("chaoxing_knowledge", CHAOXING_KNOWLEDGE_SCHEMA_SQL),
+            _SchemaStep("notices", NOTICES_SCHEMA_SQL),
+            _SchemaStep("qr_auth", QR_AUTH_SCHEMA_SQL),
+            _SchemaStep("edu_session", EDU_SESSION_SCHEMA_SQL),
+            _SchemaStep("learner_event", LEARNER_EVENT_SCHEMA_SQL),
+            _SchemaStep("learner_state", LEARNER_STATE_SCHEMA_SQL),
+            # 旧运行记录的 goal_id 必须先补齐，才能建目标关联索引。
+            _SchemaStep("learning_plan", LEARNING_PLAN_SCHEMA_SQL, self._prepare_legacy_learning_plan_runs),
+            _SchemaStep("adaptive_intervention", ADAPTIVE_INTERVENTION_SCHEMA_SQL),
+            # 父表重建必须先于新子表创建；已有子表由关闭的 FK 保护。
+            _SchemaStep("intervention_evaluation", INTERVENTION_EVALUATION_SCHEMA_SQL,
+                        self._migrate_adaptive_intervention_statuses),
+            _SchemaStep("model_shadow", MODEL_SHADOW_SCHEMA_SQL),
+            _SchemaStep("learner_control", LEARNER_CONTROL_SCHEMA_SQL),
+            _SchemaStep("agent_runtime", AGENT_RUNTIME_SCHEMA_SQL),
+            _SchemaStep("student_goal", STUDENT_GOAL_SCHEMA_SQL),
+        )
+
+    @staticmethod
+    def _validate_schema_foreign_keys(conn: sqlite3.Connection, steps: tuple[_SchemaStep, ...]) -> None:
+        # 仓储自管表在其构造时另行升级，此处只验证本层负责的表。
+        # 否则尚待升级的 notification_sources 等旧表会阻断启动。
+        tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", "\n".join(step.sql for step in steps))
+        for table in tables:
+            if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
+                raise sqlite3.IntegrityError("schema migration foreign-key validation failed")
+
     def _init_schema(self) -> None:
         with self._lock:
             conn = self._connect()
@@ -2051,51 +2105,14 @@ class Database:
                 conn.execute("PRAGMA foreign_keys=OFF")
                 conn.execute("PRAGMA legacy_alter_table=ON")
                 conn.execute("BEGIN IMMEDIATE")
-                schema_scripts = (
-                    SCHEMA_SQL,
-                    MULTI_ROLE_SCHEMA_SQL,
-                    UNIVERSITY_SCHEMA_SQL,
-                    COMMUNITY_SCHEMA_SQL,
-                    ACADEMIC_SCHEMA_SQL,
-                    EDU_CONNECTOR_SCHEMA_SQL,
-                    EDU_DATA_SCHEMA_SQL,
-                    PERSONAL_TASK_SCHEMA_SQL,
-                    STUDY_SCHEMA_SQL,
-                    PERSONAL_HUB_SCHEMA_SQL,
-                    HOME_BANNER_SCHEMA_SQL,
-                    CHAOXING_CREDENTIALS_SCHEMA_SQL,
-                    CHAOXING_ASSESSMENT_SCHEMA_SQL,
-                    CHAOXING_KNOWLEDGE_SCHEMA_SQL,
-                    NOTICES_SCHEMA_SQL,
-                    QR_AUTH_SCHEMA_SQL,
-                    EDU_SESSION_SCHEMA_SQL,
-                    LEARNER_EVENT_SCHEMA_SQL,
-                    LEARNER_STATE_SCHEMA_SQL,
-                    LEARNING_PLAN_SCHEMA_SQL,
-                    ADAPTIVE_INTERVENTION_SCHEMA_SQL,
-                    INTERVENTION_EVALUATION_SCHEMA_SQL,
-                    MODEL_SHADOW_SCHEMA_SQL,
-                    LEARNER_CONTROL_SCHEMA_SQL,
-                    AGENT_RUNTIME_SCHEMA_SQL,
-                    STUDENT_GOAL_SCHEMA_SQL,
-                )
-                for script in schema_scripts:
-                    if script == EDU_CONNECTOR_SCHEMA_SQL:
-                        self._migrate_edu_bindings(conn)
-                    elif script == LEARNING_PLAN_SCHEMA_SQL:
-                        self._prepare_legacy_learning_plan_runs(conn)
-                    elif script == INTERVENTION_EVALUATION_SCHEMA_SQL:
-                        # 父表重建必须先于新子表创建；已有子表由关闭的 FK 保护。
-                        self._migrate_adaptive_intervention_statuses(conn)
-                    self._execute_schema_script(conn, script)
+                steps = self._schema_steps()
+                for step in steps:
+                    if step.prepare is not None:
+                        step.prepare(conn)
+                    self._execute_schema_script(conn, step.sql)
                 self._migrate(conn)
                 self._repair_edu_sync_binding_foreign_key(conn)
-                # 仓储自管表在其构造时另行升级，此处只验证本层负责的表。
-                # 否则尚待升级的 notification_sources 等旧表会阻断启动。
-                tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", "\n".join(schema_scripts))
-                for table in tables:
-                    if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
-                        raise sqlite3.IntegrityError("schema migration foreign-key validation failed")
+                self._validate_schema_foreign_keys(conn, steps)
                 conn.commit()
             except BaseException:
                 conn.rollback()
@@ -2106,7 +2123,23 @@ class Database:
                 self._release(conn)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
-        """轻量级迁移：补齐旧库缺失的列(幂等)。"""
+        """按既有顺序补列、回填和建索引；所有阶段共用启动事务。"""
+        self._migrate_learning_runtime_columns(conn)
+        self._migrate_runtime_indexes_and_observations(conn)
+        self._migrate_learning_plan_feedback(conn)
+        self._migrate_documents_and_retired_activities(conn)
+        self._migrate_task_notice_index(conn)
+        self._migrate_course_metadata(conn)
+        self._migrate_user_numbers(conn)
+        self._migrate_personal_tasks(conn)
+        self._migrate_study_sessions(conn)
+        self._migrate_university_membership(conn)
+        self._migrate_university_catalog(conn)
+        self._migrate_forum_posts(conn)
+        self._migrate_learner_evidence(conn)
+        self._migrate_edu_schema(conn)
+
+    def _migrate_learning_runtime_columns(self, conn: sqlite3.Connection) -> None:
         for table, columns in {
             "learner_state_projection_runs": {
                 "projection_kind": "TEXT NOT NULL DEFAULT 'CORE'",
@@ -2178,6 +2211,8 @@ class Database:
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+    def _migrate_runtime_indexes_and_observations(self, conn: sqlite3.Connection) -> None:
         # 旧库回填: 当前状态为 complete/partial 的行，其 last_synced_at 就是一次
         # 成功的尝试时间。failed 行不回填 —— 无法区分"从未成功"与"曾成功后失败"，
         # 宁可少报也不要把失败当成功。
@@ -2223,6 +2258,8 @@ class Database:
                 "WHERE inference_source NOT IN "
                 "('REAL_MODEL','FIXTURE','DETERMINISTIC_FALLBACK','LEGACY_UNVERIFIED','NOT_OBSERVED')"
             )
+
+    def _migrate_learning_plan_feedback(self, conn: sqlite3.Connection) -> None:
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
         self._execute_schema_script(conn, """
         CREATE TABLE IF NOT EXISTS learning_plan_feedback (
@@ -2251,6 +2288,8 @@ class Database:
             "ON learner_state_projection_runs(user_id, projection_kind, projection_scope) "
             "WHERE is_current = 1"
         )
+
+    def _migrate_documents_and_retired_activities(self, conn: sqlite3.Connection) -> None:
         # 永久退役校园活动功能，并删除已有活动与报名记录。
         self._execute_schema_script(
             conn,
@@ -2272,6 +2311,8 @@ class Database:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_documents_is_demo ON documents(is_demo)"
         )
+
+    def _migrate_task_notice_index(self, conn: sqlite3.Connection) -> None:
         # 个人待办增加 UNIQUE 约束
         cur = conn.execute("PRAGMA index_list(personal_tasks)")
         indexes = cur.fetchall()
@@ -2290,6 +2331,7 @@ class Database:
                 "ON personal_tasks(user_id, source_notice_id) WHERE source_notice_id IS NOT NULL"
             )
 
+    def _migrate_course_metadata(self, conn: sqlite3.Connection) -> None:
         # 检查 courses 表新增列
         cur = conn.execute("PRAGMA table_info(courses)")
         course_cols = {row["name"] for row in cur.fetchall()}
@@ -2320,6 +2362,7 @@ class Database:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)")
 
+    def _migrate_user_numbers(self, conn: sqlite3.Connection) -> None:
         # 检查 users 表新增列。旧库可能在 MULTI_ROLE_SCHEMA_SQL 执行时仍缺少
         # student_number/teacher_number；先补列，再创建依赖这些列的索引。
         cur = conn.execute("PRAGMA table_info(users)")
@@ -2342,6 +2385,7 @@ class Database:
             "ON users(teacher_number) WHERE teacher_number IS NOT NULL"
         )
 
+    def _migrate_personal_tasks(self, conn: sqlite3.Connection) -> None:
         # 检查 personal_tasks 表新增列
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
         task_cols = {row["name"] for row in cur.fetchall()}
@@ -2406,6 +2450,7 @@ class Database:
                 "ON personal_tasks(user_id, source, external_id) WHERE source IS NOT NULL AND external_id IS NOT NULL"
             )
 
+    def _migrate_study_sessions(self, conn: sqlite3.Connection) -> None:
         cur = conn.execute("PRAGMA table_info(study_sessions)")
         study_cols = {row["name"] for row in cur.fetchall()}
         if "mode" not in study_cols:
@@ -2423,6 +2468,7 @@ class Database:
         if "behavior_summary" not in study_cols:
             conn.execute("ALTER TABLE study_sessions ADD COLUMN behavior_summary TEXT")
 
+    def _migrate_university_membership(self, conn: sqlite3.Connection) -> None:
         # 多角色表均为 CREATE TABLE IF NOT EXISTS，已自动幂等。
         cur = conn.execute("PRAGMA table_info(users)")
         user_cols = {row["name"] for row in cur.fetchall()}
@@ -2430,6 +2476,7 @@ class Database:
             conn.execute("ALTER TABLE users ADD COLUMN university_id TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)")
 
+    def _migrate_university_catalog(self, conn: sqlite3.Connection) -> None:
         # universities 表新增 level 列(本科/专科)，旧库补齐
         cur = conn.execute("PRAGMA table_info(universities)")
         uni_cols = {row["name"] for row in cur.fetchall()}
@@ -2454,6 +2501,7 @@ class Database:
             "ON universities(school_code) WHERE school_code IS NOT NULL"
         )
 
+    def _migrate_forum_posts(self, conn: sqlite3.Connection) -> None:
         # ---- forum_posts 表补齐 extra_json / view_count 列(旧库) ----
         cur = conn.execute("PRAGMA table_info(forum_posts)")
         post_cols = {row["name"] for row in cur.fetchall()}
@@ -2466,14 +2514,13 @@ class Database:
             "ON forum_posts(university_id, status, category, created_at DESC)"
         )
 
-        # ---- EduConnector 架构迁移 ----
+    def _migrate_learner_evidence(self, conn: sqlite3.Connection) -> None:
         cur = conn.execute("PRAGMA table_info(learner_state_evidence)")
         state_evidence_cols = {row["name"] for row in cur.fetchall()}
         if state_evidence_cols and "explanation_code" not in state_evidence_cols:
             conn.execute(
                 "ALTER TABLE learner_state_evidence ADD COLUMN explanation_code TEXT NOT NULL DEFAULT 'state_observed'"
             )
-        self._migrate_edu_schema(conn)
 
     def _migrate_edu_bindings(self, conn: sqlite3.Connection) -> None:
         """在创建依赖新列的索引前升级旧教务绑定表。"""

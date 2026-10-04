@@ -4,20 +4,28 @@ import pytest
 from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL
 
 
-def test_startup_migration_failure_rolls_back_schema_and_data(tmp_path, monkeypatch):
+@pytest.mark.parametrize("phase", [
+    "_migrate_edu_bindings",
+    "_prepare_legacy_learning_plan_runs",
+    "_migrate_adaptive_intervention_statuses",
+    "_migrate_runtime_indexes_and_observations",
+    "_migrate",
+    "_repair_edu_sync_binding_foreign_key",
+])
+def test_startup_migration_failure_rolls_back_schema_and_data(tmp_path, monkeypatch, phase):
     path = tmp_path / "interrupted.db"
     with sqlite3.connect(path) as conn:
         conn.executescript("CREATE TABLE existing (id TEXT PRIMARY KEY); INSERT INTO existing VALUES ('keep');")
-    migrate = Database._migrate
+    migrate = Database.__dict__[phase]
 
     def fail_after_migration(self, conn):
-        migrate(self, conn)
+        migrate.__get__(self, Database)(conn)
         conn.execute("ALTER TABLE existing ADD COLUMN changed TEXT")
         self._execute_schema_script(conn, "CREATE TABLE transient (id TEXT); INSERT INTO transient VALUES ('discard');")
         raise RuntimeError("migration interrupted")
 
     with monkeypatch.context() as patcher:
-        patcher.setattr(Database, "_migrate", fail_after_migration)
+        patcher.setattr(Database, phase, fail_after_migration)
         with pytest.raises(RuntimeError, match="interrupted"):
             Database(path)
     with sqlite3.connect(path) as conn:

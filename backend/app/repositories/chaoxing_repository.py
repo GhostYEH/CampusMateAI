@@ -23,6 +23,74 @@ class ChaoxingRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    def count_synced_items(self, user_id: str, kind: str) -> int:
+        """读取当前用户已持久化的同步统计，不触发远端请求。"""
+        queries = {
+            "courses": "SELECT COUNT(*) AS n FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing'",
+            "teachers": (
+                "SELECT COUNT(DISTINCT remote_teacher_name) AS n FROM courses "
+                "WHERE owner_user_id = ? AND provider = 'chaoxing' AND remote_teacher_name IS NOT NULL"
+            ),
+            "pending_assignments": (
+                "SELECT COUNT(*) AS n FROM personal_tasks "
+                "WHERE user_id = ? AND source = 'chaoxing' AND status = 'pending'"
+            ),
+            "notices": "SELECT COUNT(*) AS n FROM notices WHERE user_id = ? AND source = 'chaoxing'",
+        }
+        with self._db.query() as conn:
+            return int(conn.execute(queries[kind], (user_id,)).fetchone()["n"])
+
+    def get_assignment_snapshot(self, user_id: str, external_id: str) -> dict | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
+                (user_id, external_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def assignment_exists(self, user_id: str, external_id: str) -> bool:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT id FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
+                (user_id, external_id),
+            ).fetchone()
+        return row is not None
+
+    def list_assignment_duplicate_candidates(self, user_id: str, course_ids: list[str]) -> list[dict]:
+        sql = "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND status != 'deleted'"
+        params = [user_id]
+        if course_ids:
+            placeholders = ", ".join("?" for _ in course_ids)
+            sql += f" AND (course_id IN ({placeholders}) OR course_id IS NULL)"
+            params.extend(course_ids)
+        with self._db.query() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+        return [dict(row) for row in rows]
+
+    def scored_assignment_ids(self, user_id: str) -> set[str | None]:
+        with self._db.query() as conn:
+            return {
+                row["external_id"]
+                for row in conn.execute(
+                    "SELECT external_id FROM personal_tasks "
+                    "WHERE user_id = ? AND source = 'chaoxing' AND score IS NOT NULL",
+                    (user_id,),
+                ).fetchall()
+            }
+
+    def get_notice_sync_snapshot(self, user_id: str, external_id: str) -> tuple[dict | None, dict | None]:
+        """在同一查询上下文读取通知正文及其待办，保留空正文与无记录的区别。"""
+        with self._db.query() as conn:
+            notice = conn.execute(
+                "SELECT content FROM notices WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
+                (user_id, external_id),
+            ).fetchone()
+            task = conn.execute(
+                "SELECT id, status FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing_notice' AND source_notice_id = ?",
+                (user_id, external_id),
+            ).fetchone()
+        return (dict(notice) if notice is not None else None, dict(task) if task is not None else None)
+
     def save_credentials(self, user_id: str, cookies: dict):
         encrypted_cookies = encrypt(json.dumps(cookies))
         with self._db.transaction() as conn:
