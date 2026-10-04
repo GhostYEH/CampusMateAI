@@ -21,6 +21,8 @@ interface PresentationSpeechOverlayProps {
   readonly userAvatar?: string;
   /** Which side this overlay instance renders — 'left' or 'right' */
   readonly side?: 'left' | 'right';
+  /** Reserve space for the classmate panes beneath the teacher bubble. */
+  readonly bottomOffset?: number;
   readonly onBubbleClick?: () => void;
   readonly audioIndicatorState?: AudioIndicatorState;
   readonly buttonState?: 'play' | 'bars' | 'restart' | 'none';
@@ -392,6 +394,7 @@ export function PresentationSpeechOverlay({
   isTopicPending,
   userAvatar,
   side = 'left',
+  bottomOffset = 24,
   onBubbleClick,
   audioIndicatorState,
   buttonState,
@@ -468,7 +471,9 @@ export function PresentationSpeechOverlay({
               animate={{ opacity: 1, x: 0, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.22, ease: [0.21, 1, 0.36, 1] }}
-              className="absolute bottom-6 left-6 z-30 pointer-events-auto"
+              className="absolute left-6 z-30 pointer-events-auto"
+              style={{ bottom: bottomOffset }}
+              data-testid="presentation-teacher-overlay"
             >
               {renderContent(bubble)}
             </motion.div>

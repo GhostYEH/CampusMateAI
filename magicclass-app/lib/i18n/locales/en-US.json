@@ -711,6 +711,14 @@
     "retry": "Retry"
   },
   "roundtable": {
+    "classmates": {
+      "title": "Classmates",
+      "style": "Classmate perspective",
+      "speaking": "Speaking",
+      "loading": "Preparing a reaction...",
+      "idle": "Following this lesson",
+      "error": "Could not load classmate reactions"
+    },
     "teacher": "TEACHER",
     "you": "YOU",
     "inputPlaceholder": "Type your message...",

@@ -711,6 +711,14 @@
     "retry": "重新答题"
   },
   "roundtable": {
+    "classmates": {
+      "title": "AI 同学",
+      "style": "同学视角",
+      "speaking": "发言中",
+      "loading": "正在准备课堂发言…",
+      "idle": "正在跟随课堂学习",
+      "error": "同学发言加载失败"
+    },
     "teacher": "教师",
     "you": "你",
     "inputPlaceholder": "输入你的消息...",

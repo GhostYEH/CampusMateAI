@@ -1,6 +1,6 @@
 # 独立学习空间 API
 
-> 核对日期：2026-09-30。当前独立应用 app/api 下 69 个 route.ts 文件的全部导出 HTTP handler 均列入本手册。它与本站课程工作台的数据、身份、路径前缀不同。
+> 核对日期：2026-10-04。当前独立应用 app/api 下 70 个 route.ts 文件的全部导出 HTTP handler 均列入本手册。它与本站课程工作台的数据、身份、路径前缀不同。
 
 [总目录](README.md) · [课程侧 54 个接口](14-magicclass.md) · [已有模块说明](../magicclass-module-report.md)
 
@@ -26,7 +26,7 @@ apiSuccess 返回 {success:true,...业务字段}，apiError 返回 {success:fals
 
 ## 全部路由索引
 
-共 86 个方法与路径组合。
+共 87 个方法与路径组合。
 
 | 方法 | 路径（相对独立 Origin） | 实现 |
 | --- | --- | --- |
@@ -50,6 +50,7 @@ apiSuccess 返回 {success:true,...业务字段}，apiError 返回 {success:fals
 | POST | `/api/chat/pi` | [magicclass-app/app/api/chat/pi/route.ts](../../magicclass-app/app/api/chat/pi/route.ts) |
 | POST | `/api/chat/pi/whiteboard-visibility` | [magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts) |
 | POST | `/api/chat` | [magicclass-app/app/api/chat/route.ts](../../magicclass-app/app/api/chat/route.ts) |
+| POST | `/api/chat/classmates` | [magicclass-app/app/api/chat/classmates/route.ts](../../magicclass-app/app/api/chat/classmates/route.ts) |
 | GET | `/api/classroom-media/{classroomId}/{...path}` | [magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts](../../magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts) |
 | POST | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
 | GET | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
@@ -1427,6 +1428,14 @@ apiError('INVALID_REQUEST', 400, 'Invalid whiteboard visibility response')
 
 apiError('INVALID_REQUEST', 404, 'Whiteboard visibility query is not pending here')
 ```
+
+### `POST /api/chat/classmates`
+
+课堂每页的 AI 同学短发言，复用 `chat-adapter` 模型配置和标准模型请求头。请求包含 `scene`（当前页内容和讲稿）、`agents`（每位角色的 `id/name/role/persona`）及可选的 `language/thinkingConfig`。开始播放或进入无播放脚本的页面时调用，按当前选人生成。
+
+成功返回 `{success:true,messages:[{agentId,text}]}`，每位同学一条独立发言；老师和用户不参与。一次模型请求必须覆盖全部已选同学，未知、重复、空文本或缺人的输出会报错。输入最多 256 KiB、7 位同学，支持取消与 55 秒超时；测验页面排除答案、解析及讲稿，只生成鼓励或思考方法。生成失败会显示真实错误并允许重试，不提供静态假发言。
+
+实现：[route.ts](../../magicclass-app/app/api/chat/classmates/route.ts)、[生成与校验](../../magicclass-app/lib/server/classmate-participation.ts)。
 
 ### `POST /api/chat`
 
@@ -6827,7 +6836,7 @@ result.text
 <a id="persistence-contract"></a>
 ## 持久化 catch-all 的具体子路由
 
-上述 /api/persistence/{...path} 的五个显式 HTTP 导出委托给 createStorageHttpHandler；下表展开实际 documents/assets/runtime 子路由，计数仍归入 86 个导出 handler。无 KVStore 路由。路径在下表已加 /api/persistence 前缀。
+上述 /api/persistence/{...path} 的五个显式 HTTP 导出委托给 createStorageHttpHandler；下表展开实际 documents/assets/runtime 子路由，计数仍归入 87 个导出 handler。无 KVStore 路由。路径在下表已加 /api/persistence 前缀。
 
 前置条件：DATABASE_URL 缺失返回 404 PERSISTENCE_NOT_CONFIGURED，PERSISTENCE_DEV_TOKEN 缺失返回 503 PERSISTENCE_DEV_TOKEN_MISSING。工作台 owner cookie 与 ACCESS_CODE 中间件仍适用。
 

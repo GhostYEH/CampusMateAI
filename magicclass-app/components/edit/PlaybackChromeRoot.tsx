@@ -37,6 +37,7 @@ import { loadCursor, saveCursor, type PlaybackCursor } from '@/lib/playback/curs
 import { ActionEngine } from '@/lib/action/engine';
 import { createAudioPlayer } from '@/lib/utils/audio-player';
 import { useDiscussionTTS } from '@/lib/hooks/use-discussion-tts';
+import { useClassmateParticipation } from '@/lib/hooks/use-classmate-participation';
 import { useWidgetIframeStore } from '@/lib/store/widget-iframe';
 import type { AudioIndicatorState } from '@/components/roundtable/audio-indicator';
 import type { Action, DiscussionAction, SpeechAction } from '@/lib/types/action';
@@ -132,7 +133,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     },
     ref,
   ) {
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     const {
       mode,
       stage,
@@ -189,6 +190,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
     const [lectureSpeech, setLectureSpeech] = useState<string | null>(null); // From PlaybackEngine (lecture)
     const [currentPlaybackActionIndex, setCurrentPlaybackActionIndex] = useState<number | null>(0);
     const [liveSpeech, setLiveSpeech] = useState<string | null>(null); // From buffer (discussion/QA)
+    const [liveSpeechSceneId, setLiveSpeechSceneId] = useState<string | null>(null);
     const [speechProgress, setSpeechProgress] = useState<number | null>(null); // StreamBuffer reveal progress (0–1)
     const [discussionTrigger, setDiscussionTrigger] = useState<TriggerEvent | null>(null);
 
@@ -255,6 +257,27 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
         selectedAgentIds.map((id) => agentsRecord[id]).filter((a): a is AgentConfig => a != null),
       [agentsRecord, selectedAgentIds],
     );
+
+    const classmates = useMemo(
+      () =>
+        selectedAgents.filter((agent) =>
+          participants.some(
+            (participant) => participant.id === agent.id && participant.role === 'student',
+          ),
+        ),
+      [selectedAgents, participants],
+    );
+    const classmateParticipation = useClassmateParticipation({
+      scene: currentScene,
+      agents: classmates,
+      language: locale,
+      enabled: mode === 'playback' && currentSceneId !== PENDING_SCENE_ID,
+      started:
+        engineMode !== 'idle' ||
+        playbackCompleted ||
+        Boolean(currentScene && !currentScene.actions?.length),
+    });
+    const classmateSceneKey = `${stage?.id || ''}:${currentSceneId || ''}`;
 
     // Discussion TTS: audio indicator state
     const [audioIndicatorState, setAudioIndicatorState] = useState<AudioIndicatorState>('idle');
@@ -1701,8 +1724,10 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
               <Roundtable
                 mode={mode}
                 initialParticipants={participants}
+                classmateParticipation={classmateParticipation}
+                classmateSceneKey={classmateSceneKey}
                 playbackView={playbackView}
-                currentSpeech={liveSpeech}
+                currentSpeech={liveSpeechSceneId === currentSceneId ? liveSpeech : null}
                 lectureSpeech={lectureSpeech}
                 idleText={firstSpeechText}
                 playbackCompleted={playbackCompleted}
@@ -1718,7 +1743,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
                       ? 'discussion'
                       : undefined
                 }
-                speakingAgentId={speakingAgentId}
+                speakingAgentId={liveSpeechSceneId === currentSceneId ? speakingAgentId : null}
                 speechProgress={speechProgress}
                 showEndFlash={showEndFlash}
                 endFlashSessionType={endFlashSessionType}
@@ -1894,6 +1919,7 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
               queueMicrotask(() => {
                 if (sceneEpochRef.current !== epoch) return; // stale — scene changed
                 setLiveSpeech(text);
+                setLiveSpeechSceneId(currentSceneId);
                 if (agentId !== undefined) {
                   setSpeakingAgentId(agentId);
                 }
