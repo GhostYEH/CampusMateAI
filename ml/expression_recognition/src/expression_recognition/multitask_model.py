@@ -34,8 +34,8 @@ class MultiTaskExpressionModel(nn.Module):
     """Partially fine-tuned ResNet18 with a 7-way softmax and 3 binary logits.
 
     The shared visual trunk is initialized from the original seven-expression
-    checkpoint. ``layer4``, the original seven-class ``fc``, and the new
-    independent state heads are trainable. Earlier layers and all BatchNorm
+    checkpoint. ``layer4`` (optionally also ``layer3``), the original seven-class
+    ``fc``, and the new independent state heads are trainable. Earlier layers and all BatchNorm
     running statistics remain frozen. Clip inputs pool frame features and
     average per-frame expression logits, matching the four-frame DAiSEE path.
     """
@@ -52,11 +52,25 @@ class MultiTaskExpressionModel(nn.Module):
         self.config = copy.deepcopy(config)
         self.confidence_calibration: dict[str, Any] | None = None
         self.backbone = backbone
-        self.backbone.requires_grad_(False)
-        self.backbone.layer4.requires_grad_(True)
-        self.backbone.fc.requires_grad_(True)
         self.state_head = nn.Linear(512, len(STATE_NAMES))
+        self.set_trainable_blocks(self.config.get("trainable_blocks", ("layer4",)))
+
+    def set_trainable_blocks(self, blocks) -> "MultiTaskExpressionModel":
+        """Fine-tune a contiguous suffix without changing weights or label format."""
+        blocks = tuple(blocks)
+        if blocks not in (("layer4",), ("layer3", "layer4")):
+            raise ValueError("trainable_blocks must be layer4 or layer3 followed by layer4")
+        if not all(hasattr(self.backbone, name) for name in blocks):
+            raise ValueError("The selected trainable blocks are missing from the backbone")
+        self.backbone.requires_grad_(False)
+        for name in blocks:
+            getattr(self.backbone, name).requires_grad_(True)
+        self.backbone.fc.requires_grad_(True)
+        self.state_head.requires_grad_(True)
+        self.trainable_blocks = blocks
+        self.config["trainable_blocks"] = list(blocks)
         self._set_batch_norm_eval()
+        return self
 
     @classmethod
     def from_expression_checkpoint(cls, path: str | Path) -> "MultiTaskExpressionModel":
@@ -107,6 +121,9 @@ class MultiTaskExpressionModel(nn.Module):
         with torch.no_grad():
             features = self.backbone.layer1(features)
             features = self.backbone.layer2(features)
+            if "layer3" not in self.trainable_blocks:
+                features = self.backbone.layer3(features)
+        if "layer3" in self.trainable_blocks:
             features = self.backbone.layer3(features)
         features = self.backbone.layer4(features)
         features = torch.flatten(self.backbone.avgpool(features), 1)
@@ -122,7 +139,7 @@ class MultiTaskExpressionModel(nn.Module):
             raise ValueError("expression_logits must have shape [B,7]")
         if state_logits.shape != (len(expression_logits), len(STATE_NAMES)):
             raise ValueError("state_logits must have shape [B,3]")
-        # The ten independent outputs do not sum to one.
+        # Independent states do not compete with the seven expression classes.
         return torch.cat((expression_logits.softmax(dim=1), state_logits.sigmoid()), dim=1)
 
     def probabilities(self, inputs: torch.Tensor) -> torch.Tensor:

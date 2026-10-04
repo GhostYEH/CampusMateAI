@@ -225,3 +225,26 @@ $env:MKL_NUM_THREADS = "1"
 写入新的 `--output-dir`；报告中的状态指标使用校准后的概率，并保留原始概率的对照指标。
 已经查看过的测试集再次评估只能作为开发对照，不能宣称全新外部验证。
 本入口保持离线，不能直接替换旧七类手机模型；部署和客户端展示需要后续适配与实机验证。
+
+### 继续微调十标签模型
+
+`--checkpoint` 仍指定原七类来源，`--initialize-from` 指定通过 validation 七类保护检查的十标签 checkpoint。
+默认 `--teacher-source original` 使用原七类模型作教师；`--teacher-source initial` 使用继续训练起点的
+七类分支作教师，权重独立复制并冻结，适合保护当前模型已有的七类能力。
+继续训练会加载全部已训练权重，并清除旧的置信度校准参数；选择新模型后须重新在 validation 校准。
+这与从七类模型重新随机初始化三个状态分支不同。
+
+可调参数包括共享层与状态分支的学习率、状态损失权重、训练正类权重的指数/上限、
+状态采样与数据增强、余弦学习率调度及梯度裁剪。
+`--trainable-blocks layer3_layer4` 允许以较小学习率微调更多共享特征；默认仍仅微调 layer4，
+所有 BatchNorm 运行统计量继续冻结，十标签格式与输出顺序保持不变。
+
+```powershell
+& .venv/Scripts/python.exe -m expression_recognition.multitask_experiment train --checkpoint exports_v2/best_checkpoint.pt --initialize-from artifacts/joint_expression_states/best.pt --expression-manifest $env:CAMPUSMATE_EXPRESSION_MANIFEST --daisee-manifest $env:CAMPUSMATE_DAISEE_MANIFEST --output-dir artifacts/joint_expression_states_tuned --epochs 4 --learning-rate 0.00003 --state-learning-rate 0.0003 --state-loss-weight 0.75 --state-pos-weight-power 0.5 --pos-weight-cap 30 --state-augmentation mild --scheduler cosine --gradient-clip 1 --selection-metric average_precision --max-expression-f1-drop 0.005 --max-expression-accuracy-drop 0.005 --workers 2
+```
+
+调参比较使用未校准的 validation 预测，以三个状态 AP 的均值选候选，同时检查原七类 Macro-F1
+和准确率相对继续训练起点的变化，避免多数负类掩盖稀有状态的识别失败。
+正类权重和均衡采样权重只由 train 标签计算；均衡采样与正类加权会叠加，必须显式记录和比较。
+训练报告记录各状态正类 precision/recall/F1、AP、混淆矩阵、初始化哈希及实际训练参数。
+保持原始模型和各候选，不覆盖旧实验；如果验证结果没有提升，保留原模型。

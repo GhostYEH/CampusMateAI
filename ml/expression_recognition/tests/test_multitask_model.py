@@ -88,3 +88,31 @@ def test_model_rejects_wrong_input_shape(shape):
     model = MultiTaskExpressionModel(TinyResNet(), _config())
     with pytest.raises(ValueError):
         model(torch.zeros(shape))
+
+
+def test_optional_layer3_finetuning_has_gradients_and_keeps_earlier_layers_and_bn_frozen():
+    backbone = TinyResNet()
+    backbone.maxpool = nn.AvgPool2d(32)
+    backbone.layer3 = nn.Sequential(nn.Conv2d(512, 512, 1), nn.BatchNorm2d(512), nn.ReLU())
+    model = MultiTaskExpressionModel(backbone, _config()).set_trainable_blocks(("layer3", "layer4"))
+    running_mean = backbone.layer3[1].running_mean.clone()
+    model.train()
+    outputs = model(torch.randn(2, 3, 96, 96))
+    (outputs["expression_logits"].square().mean() + outputs["state_logits"].square().mean()).backward()
+    assert backbone.layer3[0].weight.grad is not None
+    assert backbone.layer4[0].weight.grad is not None
+    assert backbone.conv1.weight.grad is None
+    assert backbone.layer3[1].training is False
+    torch.testing.assert_close(backbone.layer3[1].running_mean, running_mean)
+    assert model.config["trainable_blocks"] == ["layer3", "layer4"]
+
+    model.set_trainable_blocks(("layer4",))
+    assert not backbone.layer3[0].weight.requires_grad
+    assert backbone.layer4[0].weight.requires_grad
+
+
+@pytest.mark.parametrize("blocks", [("layer3",), ("layer4", "layer3"), ("layer2", "layer3", "layer4"), ()])
+def test_finetuning_blocks_must_be_a_supported_contiguous_suffix(blocks):
+    model = MultiTaskExpressionModel(TinyResNet(), _config())
+    with pytest.raises(ValueError, match="trainable_blocks"):
+        model.set_trainable_blocks(blocks)
