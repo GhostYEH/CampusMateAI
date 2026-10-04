@@ -14,7 +14,6 @@ from ...schemas.community import (
     CommentCreate,
     PostCreate,
     PostUpdate,
-    ReportCreate,
     UploadImageResponse,
     validate_extra,
 )
@@ -241,11 +240,3 @@ def favorite(post_id: str, user: UserRow = Depends(require_role("student")), c: 
 @router.delete("/posts/{post_id}/favorite")
 def unfavorite(post_id: str, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)) -> dict:
     return _toggle(post_id, user, c, "forum_favorites", "favorite_count", False)
-
-
-@router.post("/reports", status_code=201)
-def report(req: ReportCreate, user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)) -> dict:
-    university_id = _scope(user)
-    if req.target_type == "post":
-        _ensure_visible(req.target_id, user, c)
-    return c.community_repository.create_report(university_id=university_id, reporter_id=user.id, **req.model_dump())

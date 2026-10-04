@@ -466,10 +466,6 @@ class CampusRepository {
     return this.request<CommunityComment>(`/community/posts/${id}/comments`, 'POST', payload)
   }
 
-  async reportCommunityPostAsync(payload: { target_type: string; target_id: string; reason: string; details?: string }): Promise<void> {
-    await this.request('/community/reports', 'POST', payload)
-  }
-
   async uploadCommunityImageAsync(filePath: string): Promise<string> {
     const settings = this.getSettings()
     const baseUrl = settings.apiBaseUrl.replace(/\/$/, '')

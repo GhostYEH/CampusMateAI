@@ -132,7 +132,7 @@ def test_anonymous_post_hides_identity_but_preserves_backend_ownership() -> None
     assert stored["author_id"]
 
 
-def test_comments_likes_favorites_and_reports_use_idempotent_contracts() -> None:
+def test_comments_likes_and_favorites_use_idempotent_contracts() -> None:
     client, _ = _setup()
     a = _headers(client, "student_a")
     post_id = client.post(
@@ -152,12 +152,23 @@ def test_comments_likes_favorites_and_reports_use_idempotent_contracts() -> None
     assert client.post(f"/api/v1/community/posts/{post_id}/like", headers=a).status_code == 200
     assert client.post(f"/api/v1/community/posts/{post_id}/like", headers=a).json()["like_count"] == 1
     assert client.post(f"/api/v1/community/posts/{post_id}/favorite", headers=a).status_code == 200
-    report = client.post(
-        "/api/v1/community/reports",
-        headers=a,
-        json={"target_type": "post", "target_id": post_id, "reason": "垃圾广告"},
-    )
-    assert report.status_code == 201, report.text
+
+
+def test_community_report_endpoint_is_removed() -> None:
+    client, _ = _setup()
+    headers = _headers(client, "student_a")
+    path = "/api/v1/community/reports"
+    for request_headers in ({}, headers):
+        response = client.post(
+            path,
+            headers=request_headers,
+            json={"target_type": "post", "target_id": "post", "reason": "垃圾广告"},
+        )
+        assert response.status_code == 404, response.text
+        assert response.json()["code"] == "NOT_FOUND"
+    schema = client.app.openapi()
+    assert path not in schema["paths"]
+    assert "ReportCreate" not in schema["components"]["schemas"]
 
 
 def test_community_requires_a_selected_university() -> None:

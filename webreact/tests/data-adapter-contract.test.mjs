@@ -13,7 +13,7 @@ const requiredFunctions = [
   "selectUniversity", "getCommunityPosts", "getCommunityCategories", "getCommunityPost",
   "createCommunityPost", "updateCommunityPost", "deleteCommunityPost", "likePost",
   "unlikePost", "favoritePost", "unfavoritePost", "getComments", "createComment",
-  "reportPost", "uploadCommunityImage", "getAnnouncement", "markAnnouncementRead",
+  "uploadCommunityImage", "getAnnouncement", "markAnnouncementRead",
   "getProfile", "updateProfile", "getAcademicStatus", "getAcademicProviders",
   "getEduBinding", "bindEdu", "unbindEdu", "syncEdu", "getEduSyncRecords",
   "probeEduPortal", "createEduConnection", "getEduConnection", "continueEduConnection",

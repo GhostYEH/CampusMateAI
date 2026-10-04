@@ -61,7 +61,7 @@ function timeText(value) {
   try { return new Date(value).toLocaleString("zh-CN"); } catch { return value; }
 }
 
-function PostCard({ post, categories, onLike, onFavorite, onOpen, onReport }) {
+function PostCard({ post, categories, onLike, onFavorite, onOpen }) {
   const meta = catMeta(post.category, categories);
   const content = post.content || "";
   const excerpt = content.length > 200 ? content.slice(0, 200) + "…" : content;
@@ -91,9 +91,7 @@ function PostCard({ post, categories, onLike, onFavorite, onOpen, onReport }) {
         <button type="button" className={post.liked ? "active" : ""} onClick={(e) => { e.stopPropagation(); onLike(post); }}><Icon name={post.liked ? "PhHeart" : "PhHeartStraight"} size={16} />{post.like_count || 0}</button>
         <button type="button" onClick={(e) => { e.stopPropagation(); onOpen(post); }}><Icon name="PhChatCircle" size={16} />{post.comment_count || 0}</button>
         <button type="button" className={post.favorited ? "active" : ""} onClick={(e) => { e.stopPropagation(); onFavorite(post); }}><Icon name={post.favorited ? "PhBookmarkSimple" : "PhBookmark"} size={16} />{post.favorite_count || 0}</button>
-        {!post.is_owner ? (
-          <button type="button" className="forum-report-btn" onClick={(e) => { e.stopPropagation(); onReport(post); }}><Icon name="PhFlag" size={14} /></button>
-        ) : (
+        {post.is_owner && (
           <span className="forum-owner-mark">我的发布</span>
         )}
       </footer>
@@ -112,10 +110,6 @@ export default function CommunityPage() {
   const [sort, setSort] = useState("time");
   const [categories, setCategories] = useState([]);
   const [hotTopics, setHotTopics] = useState(["图书馆占位技巧", "食堂隐藏菜单", "本周社团招新", "期末复习资料"]);
-  const [showReport, setShowReport] = useState(false);
-  const [reportTarget, setReportTarget] = useState(null);
-  const [reportReason, setReportReason] = useState("垃圾广告");
-  const [reportDetails, setReportDetails] = useState("");
   const filterEpoch = useRef(0);
   const listEpoch = useRef(0);
   const postMutationEpoch = useRef(new Map());
@@ -221,11 +215,6 @@ export default function CommunityPage() {
       if (mounted.current && scope === filterEpoch.current && mutationVersion === postMutationEpoch.current.get(key)) setError(e.response?.data?.message || "操作失败");
     }
   }
-  function onReport(post) { setReportTarget(post); setReportReason("垃圾广告"); setReportDetails(""); setShowReport(true); }
-  async function submitReport() {
-    if (!reportTarget) return;
-    try { await api.reportPost({ target_id: reportTarget.id, reason: reportReason, details: reportDetails || null }); setShowReport(false); } catch (e) { setError(e.response?.data?.message || "举报失败"); }
-  }
   function chooseTopic(topic) { setQuery(topic); }
   function loadMore() {
     const next = pageRef.current + 1;
@@ -295,7 +284,7 @@ export default function CommunityPage() {
             </section>
           ) : (
             <section className="forum-feed">
-              {items.map((item) => <PostCard key={item.id} post={item} categories={categoryOptions} onLike={onLike} onFavorite={onFavorite} onOpen={(post) => navigate(`/community/${post.id}`)} onReport={onReport} />)}
+              {items.map((item) => <PostCard key={item.id} post={item} categories={categoryOptions} onLike={onLike} onFavorite={onFavorite} onOpen={(post) => navigate(`/community/${post.id}`)} />)}
             </section>
           )}
 
@@ -325,25 +314,6 @@ export default function CommunityPage() {
           </section>
         </aside>
       </div>
-
-      {showReport && (
-        <div className="forum-modal-mask" onClick={(e) => { if (e.target === e.currentTarget) setShowReport(false); }}>
-          <div className="forum-modal">
-            <h3><Icon name="PhFlag" />举报帖子</h3>
-            <p className="forum-modal-desc">选择举报原因并提交反馈。</p>
-            <div className="forum-report-reasons">
-              {["垃圾广告", "辱骂攻击", "色情低俗", "违法违规", "隐私泄露", "诈骗", "其它"].map((reason) => (
-                <button key={reason} className={reportReason === reason ? "active" : ""} onClick={() => setReportReason(reason)}>{reason}</button>
-              ))}
-            </div>
-            <label className="forum-field">补充说明（可选）<textarea value={reportDetails} rows={3} onChange={(e) => setReportDetails(e.target.value)} /></label>
-            <div className="forum-modal-actions">
-              <button className="secondary" onClick={() => setShowReport(false)}>取消</button>
-              <button className="primary" onClick={submitReport}>提交举报</button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

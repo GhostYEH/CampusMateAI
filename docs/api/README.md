@@ -1,6 +1,6 @@
 # CampusMateAI 前端接口文档
 
-本目录供 Web、Android、HarmonyOS 和微信小程序客户端接入使用，依据 **2026-10-04 当前工作区**的后端路由、请求/响应模型、业务实现和 `webreact/src` 整理。覆盖 CampusMate 后端 **299 个 HTTP 操作、256 个路径、1 个 WebSocket**，包含当前 Web 使用和后端已注册但 Web 尚未使用的接口。移动端原生编译和真机验收不属于此文档快照的验证结果。
+本目录供 Web、Android、HarmonyOS 和微信小程序客户端接入使用，依据 **2026-10-05 当前工作区**的后端路由、请求/响应模型、业务实现和 `webreact/src` 整理。覆盖 CampusMate 后端 **298 个 HTTP 操作、255 个路径、1 个 WebSocket**，包含当前 Web 使用和后端已注册但 Web 尚未使用的接口。移动端原生编译和真机验收不属于此文档快照的验证结果。
 
 先阅读 [接入约定与功能流程](integration.md)，按下表查模块，再通过 [字段字典](schemas.md) 查嵌套对象。接口工具可导入 [OpenAPI JSON](openapi.json)。没有完整响应模型的接口、文件和流式传输以 [实际响应补充](response-contracts.md) 为准。
 
@@ -17,16 +17,16 @@
 | 专注会话、目标、签到、任务拆解、专注 AI、实时语音 | 16 | [学习陪伴](05-study.md) |
 | 学校选择、个人文件与收藏 | 11 | [个人中心](06-profile.md) |
 | 个人考试安排 | 4 | [考试](07-exams.md) |
-| 社区帖子、评论、图片、点赞、收藏、举报 | 14 | [校园社区](08-community.md) |
+| 社区帖子、评论、图片、点赞、收藏 | 13 | [校园社区](08-community.md) |
 | 学习通、教务系统、探测、绑定、验证码、同步与 URL 发现 | 32 | [外部连接](09-integrations.md) |
 | AI 聊天、语音、知识库与贡献 | 7 | [AI 助手](10-assistant-knowledge.md) |
 | 学习状态、证据、预测、模拟、目标、计划、自适应干预与数据控制 | 36 | [学习状态与计划](11-learner.md) |
 | Agent 任务、运行、控制、事件、审批、产物、记忆 | 20 | [Agent](12-agents.md) |
 | 期末复习、每日议程、调整与课程研究 | 18 | [复习与研究](13-workflows.md) |
 | 经典课堂、工作台、资料、编辑、播放、生成、测验、讨论、讲解与导出 | 68 | [magic class](14-magicclass.md) |
-| **合计** | **299** | [全部 Web 调用对照](web-map.md) |
+| **合计** | **298** | [全部 Web 调用对照](web-map.md) |
 
-导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 299 个接口；它的 **86 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。保留原有 [magic class 模块说明](../magicclass-module-report.md)，新 Web 开发优先使用本目录的契约和流程。
+导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 298 个接口；它的 **86 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。保留原有 [magic class 模块说明](../magicclass-module-report.md)，新 Web 开发优先使用本目录的契约和流程。
 
 ## 按 Web 功能查找
 
@@ -52,7 +52,7 @@
 
 - 每个接口给出完整方法与路径、鉴权、参数、请求体、成功响应模型或实际返回构造、显式业务异常和现有 Web 封装。
 - 参数表中的“OpenAPI 必填”只表示框架声明；`If-Match`、`Idempotency-Key`、扫码凭据等还可能由业务代码强制校验，见流程说明。
-- 字段字典包含 364 个模型 / 枚举（355 个运行时 OpenAPI 定义及 9 个动态响应、通用分页条目、社区 extra、Agent Handler 输入的补充定义）；必填、可空、默认值和大小写不得互相替代。
+- 字段字典包含 363 个模型 / 枚举（354 个运行时 OpenAPI 定义及 9 个动态响应、通用分页条目、社区 extra、Agent Handler 输入的补充定义）；必填、可空、默认值和大小写不得互相替代。
 - 示例中的 ID、密码和 token 都是占位符，不是可用账号。字段组合和状态前置条件按对应流程校验，不能直接复制占位符做验收。
 - `openapi.json` 保留 FastAPI 的声明；统一错误处理器、动态字典、透传内容、文件、SSE、WebSocket、开放 DSL 对象需要结合文字文档。不能把工具导出的空 object 当成空响应。
 - 系统仅有 `student` 用户角色；管理员接口已移除。历史角色与旧 Token 不赋予额外权限，见 [认证](01-auth.md)。
@@ -63,7 +63,7 @@
 
 文档更新时，应同步修改所属模块、字段字典、OpenAPI 和 Web 对照，并再次核对 HTTP 方法、路由、鉴权、业务必填头及动态响应。线上接口以部署版本为准，可通过后端 `/openapi.json`、`/docs`、`/redoc` 对照声明，但仍须检查本文记录的业务校验。
 
-使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 299 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
+使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 298 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
 
 检查还会独立核对学习通凭据异常可达的四条已登记操作是否声明对应 HTTP 状态和错误码；删除运行时声明后重新生成快照也不能绕过此项。该清单不代表所有 AppException 的自动可达性分析。
 

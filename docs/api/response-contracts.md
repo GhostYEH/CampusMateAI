@@ -101,7 +101,7 @@
 
 categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分类为 question/recruit/errand/campus/study/life/secondhand/activity/experience/other。
 
-`PostCreate.extra`、`PostUpdate.extra` 虽然是 object，但 category=recruit 时按 [RecruitExtra](schemas.md#schema-recruitextra) 校验 headcount/deadline/location；category=errand 时按 [ErrandExtra](schemas.md#schema-errandextra) 校验 price/location/deadline。其他分类保留提供的对象。图片最多 9 个，title/content、评论及举报的限制见字段字典；社区图片上传成功为 UploadImageResponse，静态地址通常从 `/static/community_images/` 解析。
+`PostCreate.extra`、`PostUpdate.extra` 虽然是 object，但 category=recruit 时按 [RecruitExtra](schemas.md#schema-recruitextra) 校验 headcount/deadline/location；category=errand 时按 [ErrandExtra](schemas.md#schema-errandextra) 校验 price/location/deadline。其他分类保留提供的对象。图片最多 9 个，title/content、评论的限制见字段字典；社区图片上传成功为 UploadImageResponse，静态地址通常从 `/static/community_images/` 解析。
 
 评论列表 `{items:CommentRecord[],page:1,page_size:items.length,total:items.length}`，当前一次返回全部已发布评论，不提供真正服务端评论分页。创建返回 CommentRecord，父评论必须属于当前帖子。
 
@@ -112,17 +112,6 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 | author_name / content / status | string |
 | parent_comment_id | string / null |
 | is_anonymous | boolean |
-| created_at / updated_at | string |
-
-创建举报返回 ReportRecord，初始 status 为 pending。举报列表、审核和处理接口已移除，当前没有在线审核流程；历史记录可能保留 resolved/rejected 状态。
-
-| ReportRecord 字段 | 类型 |
-| --- | --- |
-| id / university_id / reporter_id / target_id | string |
-| target_type | post / comment |
-| reason | string，按请求枚举 |
-| details | string / null |
-| status | pending / resolved / rejected |
 | created_at / updated_at | string |
 
 学校为空返回 UNIVERSITY_REQUIRED（409）；普通列表按当前学校隔离，作者才可编辑/删除。学生隐藏的他校资源可能表现为 404，不能据此判断原始资源存在性。

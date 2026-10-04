@@ -7,7 +7,6 @@ import com.example.campusai.data.remote.CommentDto
 import com.example.campusai.data.remote.CommentCreateRequest
 import com.example.campusai.data.remote.CommunityPostCreateRequest
 import com.example.campusai.data.remote.CommunityPostDto
-import com.example.campusai.data.remote.CommunityReportRequest
 import com.example.campusai.data.remote.UploadImageResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -164,10 +163,6 @@ class CommunityRepository(private val api: ApiService = ApiClient.api) {
             val resp = api.createCommunityComment(id, request)
             if (resp.isSuccessful) Result.success(resp.body()!!) else Result.failure(Exception(parseError(resp.code())))
         } catch (e: Exception) { Result.failure(e) }
-    }
-
-    suspend fun report(request: CommunityReportRequest): Boolean {
-        return try { api.reportCommunity(request).isSuccessful } catch (_: Exception) { false }
     }
 
     suspend fun uploadImage(bytes: ByteArray, fileName: String = "image.jpg"): Result<UploadImageResponse> {

@@ -92,7 +92,6 @@ export interface CommunityPostExtra {
 }
 export interface CommunityComment { id: string; post_id: string; author_id: string; author_name: string; parent_comment_id?: string; content: string; is_anonymous: boolean; status: string; created_at: string; }
 export interface CommunityCommentCreatePayload { content: string; is_anonymous: boolean; parent_comment_id: string; }
-export interface CommunityReportCreatePayload { target_type: string; target_id: string; reason: string; details?: string; }
 export interface CommunityPostPayload {
   title: string;
   content: string;

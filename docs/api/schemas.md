@@ -5624,18 +5624,6 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 | `major` | string / null | 否 | string约束: maxLength=64 | — |
 | `grade` | string / null | 否 | string约束: maxLength=32 | — |
 
-<a id="schema-reportcreate"></a>
-## ReportCreate
-
-模型定义：[backend/app/schemas/community.py](../../backend/app/schemas/community.py)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `target_type` | string | 是 | pattern="^(post\|comment)$" | — |
-| `target_id` | string | 是 | minLength=1; maxLength=128 | — |
-| `reason` | string | 是 | pattern="^(垃圾广告\|辱骂攻击\|色情低俗\|违法违规\|隐私泄露\|诈骗\|其它)$" | 原因 |
-| `details` | string / null | 否 | string约束: maxLength=1000 | — |
-
 <a id="schema-rescheduletaskintervention"></a>
 ## RescheduleTaskIntervention
 

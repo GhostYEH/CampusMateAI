@@ -42,7 +42,6 @@ export struct V3CorePage {
   onDetailLike: () => void = () => {};
   onDetailFavorite: () => void = () => {};
   onDetailDelete: () => void = () => {};
-  onDetailReport: () => void = () => {};
   onAddComment: (content: string, anonymous: boolean, parentId?: string) => void = () => {};
   onChooseImage: () => void = () => {};
   onRemoveImage: (url: string) => void = () => {};
@@ -283,7 +282,6 @@ export struct V3CorePage {
           Text(`${this.detailPost.liked ? '♥' : '♡'} ${this.detailPost.like_count}`).fontColor(this.detailPost.liked ? '#FF6B5D' : this.palette().muted).onClick(() => this.onDetailLike())
           Text(`★ ${this.detailPost.favorite_count}`).fontColor(this.detailPost.favorited ? this.palette().primary : this.palette().muted).onClick(() => this.onDetailFavorite())
           if (this.detailPost.is_owner) { Text('编辑').fontColor(this.palette().primary).onClick(() => this.onDetailEdit()); Text('删除').fontColor('#FF6B5D').onClick(() => this.onDetailDelete()) }
-          Text('举报').fontColor(this.palette().muted).onClick(() => this.onDetailReport())
         }
       }.width('100%').alignItems(HorizontalAlign.Start).padding(18).backgroundColor(this.palette().surface).borderRadius(22)
       Text(`评论 ${this.detailComments.length}`).fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.palette().text)

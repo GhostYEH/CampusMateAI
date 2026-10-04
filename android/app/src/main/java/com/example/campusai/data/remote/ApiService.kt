@@ -238,12 +238,6 @@ data class CategoryMetaDto(
     val icon: String = "",
     val color: String = "",
 )
-data class CommunityReportRequest(
-    val target_type: String,
-    val target_id: String,
-    val reason: String,
-    val details: String? = null,
-)
 data class UploadImageResponse(
     val url: String,
     val filename: String = "",
@@ -1068,9 +1062,6 @@ interface ApiService {
 
     @POST("community/posts/{postId}/comments")
     suspend fun createCommunityComment(@Path("postId") postId: String, @Body request: CommentCreateRequest): Response<CommentDto>
-
-    @POST("community/reports")
-    suspend fun reportCommunity(@Body request: CommunityReportRequest): Response<Unit>
 
     @Multipart
     @POST("community/upload-image")

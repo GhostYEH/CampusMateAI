@@ -135,7 +135,6 @@ export async function favoritePost(id) { return dataOf(await client.post(`/commu
 export async function unfavoritePost(id) { return dataOf(await client.delete(`/community/posts/${id}/favorite`)); }
 export async function getComments(id) { return dataOf(await client.get(`/community/posts/${id}/comments`)); }
 export async function createComment(id, payload) { return dataOf(await client.post(`/community/posts/${id}/comments`, payload)); }
-export async function reportPost(payload) { return dataOf(await client.post("/community/reports", { target_type: "post", target_id: payload.target_id || payload.post_id, reason: payload.reason === "其他" ? "其它" : payload.reason, details: payload.details })); }
 export async function uploadCommunityImage(file) {
   const form = new FormData();
   form.append("image", file);

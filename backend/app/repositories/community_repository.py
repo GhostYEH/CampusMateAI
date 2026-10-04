@@ -92,17 +92,6 @@ class CommunityRepository:
             ).fetchall()
         return {row["id"]: row["display_name"] or row["username"] or "已注销用户" for row in rows}
 
-    def report_author_names(self, report_ids: list[str]) -> dict[str, str]:
-        if not report_ids:
-            return {}
-        marks = ",".join("?" for _ in report_ids)
-        with self.db.query() as conn:
-            rows = conn.execute(
-                f"""SELECT r.id, u.display_name, u.username FROM forum_reports r
-                    LEFT JOIN users u ON u.id=r.reporter_id WHERE r.id IN ({marks})""",
-                report_ids,
-            ).fetchall()
-        return {row["id"]: row["display_name"] or row["username"] or "已注销用户" for row in rows}
     def update_post(self, post_id: str, *, title: Optional[str] = None, content: Optional[str] = None,
                     category: Optional[str] = None, images: Optional[list[str]] = None,
                     is_anonymous: Optional[bool] = None, extra: Optional[dict] = None) -> Optional[dict]:
@@ -187,46 +176,6 @@ class CommunityRepository:
         with self.db.query() as conn:
             row = conn.execute("SELECT 1 FROM forum_favorites WHERE post_id=? AND user_id=?", (post_id, user_id)).fetchone()
         return row is not None
-
-    def create_report(self, *, university_id: str, reporter_id: str, target_type: str,
-                      target_id: str, reason: str, details: Optional[str]) -> dict:
-        report_id, now = _id("report"), _now()
-        with self.db.transaction() as conn:
-            conn.execute(
-                """INSERT INTO forum_reports
-                   (id,university_id,reporter_id,target_type,target_id,reason,details,status,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,'pending',?,?)""",
-                (report_id, university_id, reporter_id, target_type, target_id, reason, details, now, now),
-            )
-            row = conn.execute("SELECT * FROM forum_reports WHERE id=?", (report_id,)).fetchone()
-        return dict(row)
-
-    def list_reports(self, university_id: Optional[str] = None, *, status: Optional[str] = None,
-                     page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
-        conditions: list[str] = []
-        params: list[object] = []
-        if university_id:
-            conditions.append("university_id = ?"); params.append(university_id)
-        if status:
-            conditions.append("status = ?"); params.append(status)
-        where = " AND ".join(conditions) if conditions else "1=1"
-        with self.db.query() as conn:
-            total = int(conn.execute(f"SELECT COUNT(*) n FROM forum_reports WHERE {where}", params).fetchone()["n"])
-            rows = conn.execute(
-                f"SELECT * FROM forum_reports WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-                [*params, page_size, (page - 1) * page_size],
-            ).fetchall()
-        return [dict(row) for row in rows], total
-
-    def get_report(self, report_id: str) -> Optional[dict]:
-        with self.db.query() as conn:
-            row = conn.execute("SELECT * FROM forum_reports WHERE id = ?", (report_id,)).fetchone()
-        return dict(row) if row else None
-
-    def update_report_status(self, report_id: str, status: str) -> Optional[dict]:
-        with self.db.transaction() as conn:
-            conn.execute("UPDATE forum_reports SET status=?, updated_at=? WHERE id=?", (status, _now(), report_id))
-        return self.get_report(report_id)
 
     def list_posts_admin(self, *, university_id: Optional[str] = None, status: Optional[str] = None,
                          q: Optional[str] = None, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:

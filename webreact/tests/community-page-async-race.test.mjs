@@ -40,7 +40,6 @@ const vite = await createServer({
         export const unlikePost = (...args) => api().unlikePost(...args);
         export const favoritePost = (...args) => api().favoritePost(...args);
         export const unfavoritePost = (...args) => api().unfavoritePost(...args);
-        export const reportPost = (...args) => api().reportPost(...args);
         export const resolveAssetUrl = (value) => value;
       `;
     },
@@ -78,7 +77,6 @@ test("community pagination uses its target page and drops page results after fil
     unlikePost: async (item) => item,
     favoritePost: async (item) => item,
     unfavoritePost: async (item) => item,
-    reportPost: async () => ({}),
   };
 
   const { default: CommunityPage } = await vite.ssrLoadModule("/src/pages/CommunityPage.jsx");
@@ -97,8 +95,8 @@ test("community pagination uses its target page and drops page results after fil
     await act(async () => host.querySelector(".forum-load-more button").click());
     assert.equal(calls[1].page, 2, "load more must pass the incremented page directly");
 
-    const likeButtons = host.querySelectorAll(".forum-card-foot button");
-    await act(async () => { likeButtons[0].click(); likeButtons[4].click(); });
+    const likeButtons = host.querySelectorAll(".forum-card-foot button:first-child");
+    await act(async () => { likeButtons[0].click(); likeButtons[1].click(); });
     await act(async () => likes.second.resolve({ id: "second", liked: true, like_count: 1 }));
     await act(async () => likes.first.resolve({ id: "first", liked: true, like_count: 1 }));
     assert.equal(host.querySelectorAll(".forum-load-more button").length, 0, "page two remains busy until its own request settles");
@@ -138,7 +136,6 @@ test("community reset from page two requests page one and next pagination resume
     unlikePost: async (item) => item,
     favoritePost: async (item) => item,
     unfavoritePost: async (item) => item,
-    reportPost: async () => ({}),
   };
   const { default: CommunityPage } = await vite.ssrLoadModule("/src/pages/CommunityPage.jsx");
   const host = document.createElement("div");

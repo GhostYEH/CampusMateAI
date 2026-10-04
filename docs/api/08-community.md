@@ -1,16 +1,18 @@
 # 校园社区与内容管理
 
-> 对照日期：2026-10-04。本模块共 14 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-05。本模块共 13 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
-## 学校隔离与举报反馈
+## 学校隔离与功能范围
 
-社区仅提供普通用户接口。帖子、评论、互动和举报按当前用户的 `university_id` 限定范围，未选学校返回 409 `UNIVERSITY_REQUIRED`，他校帖子返回 404 `NOT_FOUND`；历史账号同样遵守此规则。
+社区仅提供普通用户接口。帖子、评论和互动按当前用户的 `university_id` 限定范围，未选学校返回 409 `UNIVERSITY_REQUIRED`，他校帖子返回 404 `NOT_FOUND`；历史账号同样遵守此规则。
 
-所有 `/api/v1/admin/community/*` 管理接口已移除并返回 404，包括帖子隐藏、全校/全局列表和举报处理。用户仍可举报，记录保持 `pending`；当前产品没有在线审核入口，客户端不得展示管理员审核承诺。
+产品不提供举报功能。`POST /api/v1/community/reports` 已删除，已登录与未登录请求均返回 404 `NOT_FOUND`，使用[统一错误结构](integration.md#errors)；旧客户端须移除举报入口和请求，不应重试该路径或展示处理承诺。历史举报表和记录保留，不需要数据库迁移。
 
-Web 与 HarmonyOS 已同步调整举报提示；Android 和微信小程序仍使用原普通用户请求。请求结构不变；移动端编译与真机流程未验证。
+所有 `/api/v1/admin/community/*` 管理接口继续返回 404，包括帖子隐藏、全校/全局列表和举报处理。
+
+Web、Android、HarmonyOS、微信小程序已同步移除举报界面、回调或调用封装。其余社区请求结构不变；Android 与 HarmonyOS 原生构建、各移动端真机流程尚未验证。
 
 ## 接口索引
 
@@ -29,7 +31,6 @@ Web 与 HarmonyOS 已同步调整举报提示；Android 和微信小程序仍使
 | DELETE | `/api/v1/community/posts/{post_id}/like` | 取消点赞 |
 | POST | `/api/v1/community/posts/{post_id}/favorite` | 收藏 |
 | DELETE | `/api/v1/community/posts/{post_id}/favorite` | 取消收藏 |
-| POST | `/api/v1/community/reports` | 举报 |
 
 ## 接口契约
 
@@ -638,56 +639,3 @@ _toggle(post_id, user, c, 'forum_favorites', 'favorite_count', False)
 | --- | --- | --- |
 | 404 | NOT_FOUND | '帖子不存在' |
 | 409 | UNIVERSITY_REQUIRED | 请先选择你的大学 |
-
-### `POST /api/v1/community/reports`
-
-用途：举报。
-
-鉴权：Bearer access token；角色 student。
-
-实现：[backend/app/api/routes/community.py](../../backend/app/api/routes/community.py)，`report`。
-
-Web 封装：`reportPost`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
-
-未声明响应模型的社区接口字段见 [实际响应补充](response-contracts.md#community)。点赞、收藏、删除返回帖子对象，不能统一当作 `{ok:true}`。
-
-参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
-
-请求体：`application/json`，必填；[ReportCreate](schemas.md#schema-reportcreate)。
-
-| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
-| --- | --- | --- | --- | --- |
-| `target_type` | string | 是 | pattern="^(post\|comment)$" | — |
-| `target_id` | string | 是 | minLength=1; maxLength=128 | — |
-| `reason` | string | 是 | pattern="^(垃圾广告\|辱骂攻击\|色情低俗\|违法违规\|隐私泄露\|诈骗\|其它)$" | 原因 |
-| `details` | string / null | 否 | string约束: maxLength=1000 | — |
-
-请求结构示例（占位符需替换；业务约束见字段字典与流程）：
-
-```json
-{
-  "target_type": "<target_type>",
-  "target_id": "<target_id>",
-  "reason": "<reason>"
-}
-```
-
-响应：
-
-| HTTP | Content-Type | 结构 |
-| --- | --- | --- |
-| 201 | application/json | 动态响应；见下方补充与 response-contracts.md |
-| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
-
-实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
-
-```python
-c.community_repository.create_report(university_id=university_id, reporter_id=user.id, **req.model_dump())
-```
-
-路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
-
-| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
-| --- | --- | --- |
-| 409 | UNIVERSITY_REQUIRED | 请先选择你的大学 |
-| 404 | NOT_FOUND | '帖子不存在' |

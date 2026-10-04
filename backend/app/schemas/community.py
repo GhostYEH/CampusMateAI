@@ -75,13 +75,6 @@ class CommentCreate(BaseModel):
     is_anonymous: bool = False
 
 
-class ReportCreate(BaseModel):
-    target_type: str = Field(..., pattern="^(post|comment)$")
-    target_id: str = Field(..., min_length=1, max_length=128)
-    reason: str = Field(..., pattern="^(垃圾广告|辱骂攻击|色情低俗|违法违规|隐私泄露|诈骗|其它)$")
-    details: Optional[str] = Field(None, max_length=1000)
-
-
 class UploadImageResponse(BaseModel):
     url: str
     filename: str

@@ -6751,53 +6751,6 @@
         }
       }
     },
-    "/api/v1/community/reports": {
-      "post": {
-        "tags": [
-          "community"
-        ],
-        "summary": "Report",
-        "operationId": "report_api_v1_community_reports_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReportCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "title": "Response Report Api V1 Community Reports Post"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/academic/providers": {
       "get": {
         "tags": [
@@ -32405,45 +32358,6 @@
         ],
         "title": "RegisterRequest",
         "description": "公开注册请求(无需鉴权,仅限 student 自注册)。\n\n约束:\n- username: 3-64 字符,仅字母/数字/下划线\n- password: 8-128 字符\n- role: 仅允许 student\n- display_name: 选填,≤128 字符\n- student_number: 选填,学生学号\n- college / major / grade: 选填,学生常用"
-      },
-      "ReportCreate": {
-        "properties": {
-          "target_type": {
-            "type": "string",
-            "pattern": "^(post|comment)$",
-            "title": "Target Type"
-          },
-          "target_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Target Id"
-          },
-          "reason": {
-            "type": "string",
-            "pattern": "^(垃圾广告|辱骂攻击|色情低俗|违法违规|隐私泄露|诈骗|其它)$",
-            "title": "Reason"
-          },
-          "details": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Details"
-          }
-        },
-        "type": "object",
-        "required": [
-          "target_type",
-          "target_id",
-          "reason"
-        ],
-        "title": "ReportCreate"
       },
       "RescheduleTaskIntervention": {
         "properties": {

@@ -35,7 +35,7 @@ import { EduSystemPage } from '../features/profile/EduSystemPage';
 import { EduLoginPage } from '../features/edu/EduLoginPage';
 import { EduSchedulePage } from '../features/edu/EduSchedulePage';
 import { EduScheduleDetailPage } from '../features/edu/EduScheduleDetailPage';
-import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CommunityReportCreatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseKnowledgeGraph, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
+import { AcademicStatusItem, ChatMessage, ChatMessageModel, ChatRequest, CommunityComment, CommunityCommentCreatePayload, CommunityPostExtra, CommunityPostItem, CommunityPostPayload, CommunityPostUpdatePayload, CourseContentBundle, CourseContentPage, CourseContentSummary, CourseKnowledgeGraph, CourseItem, ExamItem, FavoriteItem, FocusMode, FocusPlan, HomeBannerFeed, HomeBannerItem, LocalCapturedNotice, MeResponse, NoticeItem, PagedResponse, PersonalFileItem, StudyBehaviorSummary, StudySession, TaskItem, ExtractResult, UniversityItem, UniversitySelectionRequest, UniversitySelectionResponse, UploadImageResult } from '../data/Models';
 import { NotificationIngestService } from '../data/notification/NotificationIngestService';
 import { NotificationSource } from '../data/notification/NotificationSource';
 import { NotificationCaptureCapability } from '../data/notification/NotificationCaptureCapability';
@@ -1154,34 +1154,6 @@ struct Index {
     } catch (_) { toastError('删除失败'); }
   }
 
-  reportCommunityDetail(): void {
-    promptAction.showActionMenu({
-      title: '选择举报原因',
-      buttons: [
-        { text: '垃圾广告', color: '#dc2626' },
-        { text: '辱骂攻击', color: '#dc2626' },
-        { text: '色情低俗', color: '#dc2626' },
-        { text: '违法违规', color: '#dc2626' },
-        { text: '隐私泄露', color: '#dc2626' },
-        { text: '其它', color: '#666666' }
-      ]
-    }).then((res: promptAction.ActionMenuSuccessResponse) => {
-      const reasons: string[] = ['垃圾广告', '辱骂攻击', '色情低俗', '违法违规', '隐私泄露', '其它'];
-      if (res.index >= 0 && res.index < reasons.length) {
-        this.doReportCommunityDetail(reasons[res.index]);
-      }
-    }).catch(() => {});
-  }
-
-  async doReportCommunityDetail(reason: string): Promise<void> {
-    if (this.communityDetailPost === null) return;
-    try {
-      const body: CommunityReportCreatePayload = { target_type: 'post', target_id: this.communityDetailPost.id, reason: reason };
-      await this.createApiClient().requestVoid(http.RequestMethod.POST, 'community/reports', body);
-      toastError('已提交举报');
-    } catch (_) { toastError('举报失败'); }
-  }
-
   async addCommunityComment(content: string, anonymous: boolean, parentId?: string): Promise<void> {
     if (this.communityDetailId.length === 0) return;
     try {
@@ -1625,7 +1597,7 @@ struct Index {
     } else if (route === AppRoute.EXAM_FORM) {
       ExamFormPage({ exam: this.examFormItem(), isEditing: this.examFormId.length > 0, darkMode: this.darkMode, reduceMotion: this.reduceMotion, onBack: () => this.popRoute(), onSave: (payload: ExamItem, id?: string) => this.saveExam(payload, id) })
     } else if (route === AppRoute.UNIVERSITY || route === AppRoute.COMMUNITY || route === AppRoute.COMMUNITY_HOT || route === AppRoute.COMMUNITY_PUBLISH || route === AppRoute.COMMUNITY_DETAIL || route === AppRoute.COMMUNITY_EDIT || route === AppRoute.ACADEMIC) {
-      V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailReport: () => this.reportCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
+      V3CorePage({ route: route, darkMode: this.darkMode, loading: this.secondaryLoading, selectedUniversityId: this.selectedUniversityId, selectedUniversityName: this.selectedUniversityName, universities: this.universities, posts: this.communityPosts, hotPosts: this.communityHotPosts, academicStatus: this.academicStatus, detailLoading: this.communityDetailLoading, detailPost: this.communityDetailPost, detailComments: this.communityComments, postImages: this.communityPostImages, editPost: this.communityEditPost, apiBaseUrl: API_BASE_URL, onBack: () => { if (route === AppRoute.COMMUNITY_EDIT) { this.communityEditPost = null; this.communityPostImages = []; } this.popRoute(); }, onRefresh: () => this.refreshSecondaryData(route), onSelectUniversity: (id: string) => this.selectUniversity(id), onPublish: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.publishCommunityPost(title, content, anonymous, category, extra), onLike: (id: string) => this.likeCommunityPost(id), onOpenHot: () => { this.pushRoute(AppRoute.COMMUNITY_HOT); if (this.communityHotPosts.length === 0) { this.refreshSecondaryData(AppRoute.COMMUNITY); } }, onOpenPublish: () => { this.communityPostImages = []; this.pushRoute(AppRoute.COMMUNITY_PUBLISH); }, onOpenDetail: (id: string) => this.openCommunityDetail(id), onDetailLike: () => this.likeCommunityDetail(), onDetailFavorite: () => this.favoriteCommunityDetail(), onDetailDelete: () => this.deleteCommunityDetail(), onDetailEdit: () => this.openCommunityEdit(), onAddComment: (content: string, anonymous: boolean, parentId?: string) => this.addCommunityComment(content, anonymous, parentId), onChooseImage: () => this.uploadCommunityImage(), onRemoveImage: (url: string) => this.removeCommunityImage(url), onEdit: (title: string, content: string, anonymous: boolean, category: string, extra?: CommunityPostExtra) => this.updateCommunityPost(title, content, anonymous, category, extra), onCancelEdit: () => this.cancelCommunityEdit() })
     } else if (route === AppRoute.FOCUS) {
       FocusPage({ sessions: this.studySessions, activeSession: this.activeStudySession, loading: this.secondaryLoading, darkMode: this.darkMode, reduceMotion: this.reduceMotion, focusAssistDetail: this.focusAssistDetail, focusAssistLabel: this.focusAssistLabel, focusAssistConfidence: this.focusAssistConfidence, behaviorReminder: this.focusBehaviorReminder, plan: this.focusPlan, onBack: () => { this.applyFocusCameraLifecycle(FocusCameraLifecycleEvent.LEAVE, this.activeStudySession?.mode ?? 'focus'); this.popRoute(); }, onStart: (mode: FocusMode, durationSeconds: number, sessionMode: FocusSessionMode) => this.startFocusSession(mode, durationSeconds, sessionMode), onResumeActive: () => this.reopenFocusSession(), onOpenPlan: () => this.openFocusPlan() })
     } else if (route === AppRoute.FOCUS_PLAN) {
