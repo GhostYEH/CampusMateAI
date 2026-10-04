@@ -121,6 +121,7 @@ def evaluate_litert(
     metrics = compute_classification_metrics(
         np.concatenate(probabilities),
         np.concatenate(targets),
+        calibrate_abstention=split == "validation",
     )
     return metrics
 

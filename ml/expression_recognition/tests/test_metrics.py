@@ -24,4 +24,24 @@ def test_threshold_coverage_is_monotonic():
     assert [row["coverage"] for row in rows] == [1.0, 2 / 3, 0.0]
 
 
+def test_locked_metrics_do_not_select_thresholds_from_test_labels(monkeypatch):
+    def forbidden_calibration(*args, **kwargs):
+        raise AssertionError("Locked evaluation must not fit thresholds")
+
+    monkeypatch.setattr("expression_recognition.metrics.calibrate_class_thresholds", forbidden_calibration)
+    result = compute_classification_metrics(np.eye(7), np.arange(7), calibrate_abstention=False)
+    assert result["accuracy"] == 1.0
+    assert result["macro_f1"] == 1.0
+    assert "class_thresholds" not in result
+    assert "class_threshold_metrics" not in result
+    assert "abstention_target_precision" not in result
+
+
+def test_validation_metrics_still_calibrate_thresholds():
+    result = compute_classification_metrics(np.eye(7), np.arange(7))
+    assert set(result["class_thresholds"]) == {
+        "angry", "disgust", "fear", "happy", "neutral", "sad", "surprise",
+    }
+
+
 import pytest

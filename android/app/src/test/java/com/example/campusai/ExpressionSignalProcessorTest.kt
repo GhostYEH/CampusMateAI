@@ -98,6 +98,7 @@ class ExpressionSignalProcessorTest {
         val processor = ExpressionSignalProcessor(
             ExpressionSignalConfig(
                 emaAlpha = 1.0,
+                minimumConfidence = 0.7,
                 minimumStableFrames = 1,
                 minimumStableDurationMs = 0,
                 classThresholds = mapOf(ExpressionLabel.FEAR to 1.01),
@@ -122,5 +123,57 @@ class ExpressionSignalProcessorTest {
             ExpressionLabel.UNKNOWN,
             processor.process(probabilities(ExpressionLabel.HAPPY, 0.6), 1000L).label,
         )
+    }
+
+    @Test
+    fun rejectedFaceClearsOldEvidenceAndRequiresFreshStableFrames() {
+        val processor = ExpressionSignalProcessor(
+            ExpressionSignalConfig(
+                minimumConfidence = 0.7,
+                minimumStableFrames = 2,
+                minimumStableDurationMs = 200,
+            ),
+            "test",
+        )
+        processor.process(probabilities(ExpressionLabel.HAPPY, 0.9), 1000)
+        assertTrue(processor.process(probabilities(ExpressionLabel.HAPPY, 0.9), 1200).isStable)
+
+        val rejected = processor.process(emptyMap(), 1400, hasFace = true)
+        assertEquals(ExpressionLabel.UNKNOWN, rejected.label)
+        assertEquals(0.0, rejected.confidence, 0.0)
+        assertTrue(rejected.probabilities.isEmpty())
+        assertFalse(rejected.isStable)
+        assertFalse(processor.shouldOfferNeutralSuggestion(rejected, 1400))
+
+        val fresh = processor.process(probabilities(ExpressionLabel.SAD, 0.9), 1600)
+        assertEquals(ExpressionLabel.SAD, fresh.label)
+        assertEquals(0.9, fresh.confidence, 1e-9)
+        assertFalse(fresh.isStable)
+        assertTrue(processor.process(probabilities(ExpressionLabel.SAD, 0.9), 1800).isStable)
+    }
+
+    @Test
+    fun invalidProbabilitiesCannotReuseStableEvidence() {
+        val invalidFrames = listOf(
+            ExpressionMath.modelLabels.associateWith { 0.0 },
+            mapOf(ExpressionLabel.HAPPY to Double.NaN),
+            mapOf(ExpressionLabel.HAPPY to Double.POSITIVE_INFINITY),
+            mapOf(ExpressionLabel.HAPPY to -0.1),
+        )
+        invalidFrames.forEach { invalid ->
+            val processor = ExpressionSignalProcessor(
+                ExpressionSignalConfig(
+                    minimumConfidence = 0.7,
+                    minimumStableFrames = 1,
+                    minimumStableDurationMs = 0,
+                ),
+                "test",
+            )
+            assertTrue(processor.process(probabilities(ExpressionLabel.HAPPY, 0.9), 1000).isStable)
+            val result = processor.process(invalid, 1200)
+            assertEquals(ExpressionLabel.UNKNOWN, result.label)
+            assertFalse(result.isStable)
+            assertEquals(0.0, result.confidence, 0.0)
+        }
     }
 }

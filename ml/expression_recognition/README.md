@@ -78,9 +78,24 @@ if (-not $env:CAMPUSMATE_EXPRESSION_DATASET_ROOT) { throw 'Set CAMPUSMATE_EXPRES
 
 候选模型只在 validation 上比较。架构和阈值锁定后，test 仅用于最终评估及已锁定导出模型的数值回归：
 
+PyTorch 和 LiteRT 评估只在 `validation` 生成 `class_thresholds`；`test` 报告保留准确率、F1 和固定阈值曲线，不拟合类别阈值。生产阈值必须取自验证集校准结果。
+
 ```powershell
+$env:PYTHONPATH = "src"
 & .\.venv\Scripts\python.exe -m expression_recognition.evaluate --checkpoint runs_v2\full_resnet18\best.pt --manifest manifests_v2\included.csv --split validation --output-dir reports\generated_v2\resnet18
 ```
+
+离线评估可添加 `--horizontal-flip-tta`，将原图和水平翻转图的 softmax 概率取均值；默认仍为单图推理。
+两种策略应使用同一 checkpoint 和固定 validation，分别写入新的输出目录，比较准确率、Macro-F1
+以及分类别精度和覆盖率。报告的 `inference_strategy` 与推理基准均记录所选策略，loss 是最终概率分布的 NLL。
+
+```powershell
+& .\.venv\Scripts\python.exe -m expression_recognition.evaluate --checkpoint runs_v2\full_resnet18\best.pt --manifest manifests_v2\included.csv --split validation --horizontal-flip-tta --output-dir reports\generated_v2\resnet18_flip
+```
+
+策略改变后必须在 validation 上重新校准类别门禁，不能沿用单图阈值；总体准确率上升也不代表高精度信号的覆盖率增加。
+锁定策略后，可用同一开关和 `--split test` 做数值回归；test 不拟合门禁。该选项仅用于离线 PyTorch 评估，
+不会改变 Android/Harmony 推理或部署模型，实机延迟须单独验证。
 
 ## LiteRT 导出与验证
 

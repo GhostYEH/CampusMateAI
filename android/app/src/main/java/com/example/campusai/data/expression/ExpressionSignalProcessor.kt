@@ -39,6 +39,23 @@ class ExpressionSignalProcessor(
                 modelVersion = modelVersion,
             )
         }
+        // A rejected face crop carries no classifier evidence. Mixing zeros
+        // with the old EMA and renormalizing would preserve its confidence.
+        val currentValues = ExpressionMath.modelLabels.map { rawProbabilities[it] ?: 0.0 }
+        val currentTotal = currentValues.sum()
+        if (currentValues.any { !it.isFinite() || it < 0.0 } ||
+            !currentTotal.isFinite() || currentTotal <= 0.0
+        ) {
+            reset()
+            return ExpressionResult(
+                label = ExpressionLabel.UNKNOWN,
+                confidence = 0.0,
+                probabilities = emptyMap(),
+                timestamp = timestamp,
+                isStable = false,
+                modelVersion = modelVersion,
+            )
+        }
         val smoothed = ExpressionMath.modelLabels.associateWith { label ->
             val current = rawProbabilities[label] ?: 0.0
             val previous = ema?.get(label) ?: current

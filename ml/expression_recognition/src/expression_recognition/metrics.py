@@ -158,6 +158,8 @@ def compute_classification_metrics(
     probabilities: np.ndarray,
     targets: np.ndarray,
     abstention_precision: float = 0.80,
+    *,
+    calibrate_abstention: bool = True,
 ) -> dict[str, Any]:
     predictions = probabilities.argmax(axis=1)
     report = classification_report(
@@ -168,12 +170,7 @@ def compute_classification_metrics(
         zero_division=0,
         output_dict=True,
     )
-    class_thresholds, class_threshold_metrics = calibrate_class_thresholds(
-        probabilities,
-        targets,
-        target_precision=abstention_precision,
-    )
-    return {
+    result = {
         "accuracy": float(accuracy_score(targets, predictions)),
         "macro_f1": float(f1_score(targets, predictions, average="macro", zero_division=0)),
         "weighted_f1": float(f1_score(targets, predictions, average="weighted", zero_division=0)),
@@ -188,8 +185,19 @@ def compute_classification_metrics(
         ).tolist(),
         "threshold_metrics": threshold_metrics(probabilities, targets),
         "probability_distributions": probability_distributions(probabilities, targets),
-        "class_thresholds": class_thresholds,
-        "class_threshold_metrics": class_threshold_metrics,
-        "abstention_target_precision": abstention_precision,
         "sample_count": int(len(targets)),
     }
+    # Test labels must never select abstention gates. Their accuracy/F1 and
+    # fixed-threshold curves remain useful as locked regression evidence.
+    if calibrate_abstention:
+        class_thresholds, class_threshold_metrics = calibrate_class_thresholds(
+            probabilities,
+            targets,
+            target_precision=abstention_precision,
+        )
+        result.update({
+            "class_thresholds": class_thresholds,
+            "class_threshold_metrics": class_threshold_metrics,
+            "abstention_target_precision": abstention_precision,
+        })
+    return result

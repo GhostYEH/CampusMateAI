@@ -18,7 +18,23 @@ from .models import build_model, parameter_count
 from .utils import save_json
 
 
-def collect_predictions(model, loader, device) -> tuple[np.ndarray, np.ndarray, float]:
+def prediction_probabilities(model, inputs, horizontal_flip_tta: bool = False):
+    """Average view probabilities; retain stable log probabilities for NLL."""
+    logits = model(inputs)
+    probabilities = torch.softmax(logits, dim=1)
+    log_probabilities = F.log_softmax(logits, dim=1)
+    if horizontal_flip_tta:
+        flipped_logits = model(inputs.flip(-1))
+        probabilities = (probabilities + torch.softmax(flipped_logits, dim=1)) * 0.5
+        log_probabilities = torch.logaddexp(
+            log_probabilities, F.log_softmax(flipped_logits, dim=1),
+        ) - np.log(2.0)
+    return probabilities, log_probabilities
+
+
+def collect_predictions(
+    model, loader, device, horizontal_flip_tta: bool = False,
+) -> tuple[np.ndarray, np.ndarray, float]:
     model.eval()
     probabilities = []
     targets = []
@@ -27,15 +43,19 @@ def collect_predictions(model, loader, device) -> tuple[np.ndarray, np.ndarray, 
         for inputs, labels in loader:
             inputs = inputs.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
-            logits = model(inputs)
-            losses.append(float(F.cross_entropy(logits, labels, reduction="sum").cpu()))
-            probabilities.append(torch.softmax(logits, dim=1).cpu().numpy())
+            batch_probabilities, log_probabilities = prediction_probabilities(
+                model, inputs, horizontal_flip_tta,
+            )
+            losses.append(float(F.nll_loss(log_probabilities, labels, reduction="sum").cpu()))
+            probabilities.append(batch_probabilities.cpu().numpy())
             targets.append(labels.cpu().numpy())
     all_targets = np.concatenate(targets)
     return np.concatenate(probabilities), all_targets, float(sum(losses) / len(all_targets))
 
 
-def benchmark_model(model, config: dict, device: torch.device) -> dict:
+def benchmark_model(
+    model, config: dict, device: torch.device, horizontal_flip_tta: bool = False,
+) -> dict:
     model.eval()
     result = {}
     for batch_size in (1, 32):
@@ -48,14 +68,14 @@ def benchmark_model(model, config: dict, device: torch.device) -> dict:
         )
         with torch.no_grad():
             for _ in range(20):
-                model(sample)
+                prediction_probabilities(model, sample, horizontal_flip_tta)
             if device.type == "cuda":
                 torch.cuda.synchronize()
             timings = []
             iterations = 100 if batch_size == 1 else 40
             for _ in range(iterations):
                 started = time.perf_counter()
-                model(sample)
+                prediction_probabilities(model, sample, horizontal_flip_tta)
                 if device.type == "cuda":
                     torch.cuda.synchronize()
                 timings.append((time.perf_counter() - started) * 1000)
@@ -113,8 +133,13 @@ def evaluate(args: argparse.Namespace) -> dict:
         args.manifest, args.split, config, training=False,
         batch_size_override=args.batch_size,
     )
-    probabilities, targets, loss = collect_predictions(model, loader, device)
-    metrics = compute_classification_metrics(probabilities, targets)
+    horizontal_flip_tta = bool(getattr(args, "horizontal_flip_tta", False))
+    probabilities, targets, loss = collect_predictions(
+        model, loader, device, horizontal_flip_tta,
+    )
+    metrics = compute_classification_metrics(
+        probabilities, targets, calibrate_abstention=args.split == "validation",
+    )
     checkpoint_size = Path(args.checkpoint).stat().st_size
     metrics.update({
         "split": args.split,
@@ -123,9 +148,15 @@ def evaluate(args: argparse.Namespace) -> dict:
         "input_size": config["input_size"],
         "input_channels": config["input_channels"],
         "normalization": config["normalization"],
+        "inference_strategy": "horizontal_flip_probability_mean" if horizontal_flip_tta else "single",
         "parameter_count": parameter_count(model),
         "checkpoint_size_bytes": checkpoint_size,
-        "pytorch_benchmark": benchmark_model(model, config, device),
+        "pytorch_benchmark": benchmark_model(model, config, device, horizontal_flip_tta),
+        "pytorch_benchmark_scope": (
+            "Model forward(s), softmax/log-softmax, and optional horizontal flip/probability averaging; "
+            "excludes decoding, image preprocessing, device transfers and NLL reduction. "
+            "CUDA timings are synchronized; historical pure-forward timings have a different scope."
+        ),
         "benchmark_device": str(device),
         "checkpoint": str(Path(args.checkpoint).resolve()),
     })
@@ -163,6 +194,10 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument(
+        "--horizontal-flip-tta", action="store_true",
+        help="Average original and horizontally flipped softmax probabilities; compare on validation before locking the test strategy.",
+    )
     args = parser.parse_args()
     evaluate(args)
 
