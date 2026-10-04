@@ -119,6 +119,7 @@ Web 封装：`getChaoxingStatus`（[webreact/src/data/api.js](../../webreact/src
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | [ChaoxingSyncStatus](schemas.md#schema-chaoxingsyncstatus) |
+| 503 | application/json | `code: CHAOXING_CREDENTIALS_UNAVAILABLE`；已有连接信息无法解密或损坏，保留已同步数据，重新登录学习通或解除连接后重绑；等待和自动重试无法修复 |
 
 200 响应顶层字段：
 
@@ -168,18 +169,17 @@ await _perform_sync_chaoxing(user, container)
 ```
 
 ```python
-await container.notice_extraction.extract(content, source_name=course['name'], published_at=published_at)
+container.notice_extraction.extract_bounded(content, source_name=course['name'], published_at=published_at)
 ```
 
-```python
-rule_extract(content, source_name=course['name'], published_at=published_at)
-```
+自动同步使用有界规则提取，不调用外部 LLM。空文本、超过 5000 字及其他提取失败会保留通知原文，继续处理后续通知，但 `sections.notices` 不会标记为 `complete`，并在警告与错误码中说明处理失败；后续同步可在原通知上重试生成待办。
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
 | HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
 | --- | --- | --- |
 | 409 | HTTPException | 'sync_in_progress' |
+| 503 | CHAOXING_CREDENTIALS_UNAVAILABLE | 连接信息无法读取，请重新连接学习通；不应自动反复重试 |
 | 401 | HTTPException | 'Chaoxing credentials not found' |
 | 401 | HTTPException | 'reauth_required' |
 | 403 | HTTPException | 'verification_required' |

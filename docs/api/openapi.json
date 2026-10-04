@@ -6160,6 +6160,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "CHAOXING_CREDENTIALS_UNAVAILABLE：连接信息无法读取，请重新连接学习通"
           }
         },
         "security": [
@@ -6184,6 +6187,9 @@
                 "schema": {}
               }
             }
+          },
+          "503": {
+            "description": "CHAOXING_CREDENTIALS_UNAVAILABLE：连接信息无法读取，请重新连接学习通"
           }
         },
         "security": [
@@ -17282,6 +17288,25 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Root  Get"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

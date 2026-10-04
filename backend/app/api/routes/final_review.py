@@ -477,7 +477,7 @@ async def activate_campaign(
 
 
 @router.get("/campaigns/{campaign_id}/agendas/today")
-async def get_today_agenda(
+def get_today_agenda(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),

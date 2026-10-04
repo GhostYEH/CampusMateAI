@@ -531,10 +531,17 @@ async def test_chaoxing_concurrent_sync(mock_container: ServiceContainer, user_i
 
     # Run sync twice concurrently
     import asyncio
-    await asyncio.gather(
+    results = await asyncio.gather(
         sync_chaoxing(user=user_row, container=mock_container),
-        sync_chaoxing(user=user_row, container=mock_container)
+        sync_chaoxing(user=user_row, container=mock_container),
+        return_exceptions=True,
     )
+    from fastapi import HTTPException
+    assert sum(isinstance(result, dict) for result in results) == 1
+    errors = [result for result in results if isinstance(result, HTTPException)]
+    assert len(errors) == 1
+    assert errors[0].status_code == 409
+    assert errors[0].detail == "sync_in_progress"
 
     # Should only have 1 task due to idempotent logic / DB constraints
     tasks, _ = mock_container.personal_task_repository.list_tasks(user_id, page=1, page_size=100)

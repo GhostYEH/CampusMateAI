@@ -27,7 +27,7 @@ class ChaoxingCredentialsUnavailable(AppException):
 
     code = "CHAOXING_CREDENTIALS_UNAVAILABLE"
     http_status = 503
-    message = "学习通连接信息暂时无法读取，请稍后重试。"
+    message = "学习通连接信息无法读取，请重新连接学习通。"
 
 
 class ChaoxingRepository:

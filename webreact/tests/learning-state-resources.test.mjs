@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
-import { act, createElement, StrictMode } from "react";
+import { act, createElement, StrictMode, Suspense, startTransition } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
@@ -106,6 +106,30 @@ test("unmount invalidates pending requests and retained reload callbacks", async
   await reload();
   assert.equal(calls, 1);
   assert.equal(view.state.data, null);
+});
+
+test("discarded concurrent renders cannot change the committed resource or reload loader", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const suspended = deferred();
+  let latest, discardedRendered = false;
+  const calls = [];
+  function Probe({ resourceKey, suspend = false }) {
+    const state = useAsyncResource(async () => { calls.push(resourceKey); return resourceKey; }, [resourceKey]);
+    if (suspend) { discardedRendered = true; throw suspended.promise; }
+    latest = state;
+    return createElement("output", null, state.data);
+  }
+  const render = (resourceKey, suspend = false) => root.render(createElement(Suspense, { fallback: "pending" }, createElement(Probe, { resourceKey, suspend })));
+  try {
+    await act(async () => render("committed"));
+    await act(async () => startTransition(() => render("discarded", true)));
+    assert.equal(discardedRendered, true);
+    await act(async () => render("committed"));
+    assert.deepEqual(calls, ["committed"]);
+    await act(async () => latest.reload());
+    assert.deepEqual(calls, ["committed", "committed"]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
 test("the extracted forecast section renders populated data and the empty fallback", async () => {

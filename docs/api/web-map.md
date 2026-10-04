@@ -245,15 +245,15 @@
 | [webreact/src/data/api.js:735](../../webreact/src/data/api.js) | streamAssistantSpeech | POST | `/assistant/tts` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
 | [webreact/src/data/api.js:747](../../webreact/src/data/api.js) | extractNotice | POST | `/notices/extract-multi` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
 | [webreact/src/data/api.js:749](../../webreact/src/data/api.js) | downloadAssignmentAttachment | GET | `/assignments/{assignmentId}/attachments/{attachmentId}` | [课程、班级、公告、作业与提交](03-courses.md) |
-| [webreact/src/data/http/authEndpoints.js:6](../../webreact/src/data/http/authEndpoints.js) | probeBackend | GET | `/health` | [首页、今日待办、横幅与壁纸](02-home.md) |
-| [webreact/src/data/http/authEndpoints.js:10](../../webreact/src/data/http/authEndpoints.js) | login | POST | `/auth/login` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/http/authEndpoints.js:12](../../webreact/src/data/http/authEndpoints.js) | login | GET | `/auth/me` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/authEndpoints.js:5](../../webreact/src/data/http/authEndpoints.js) | probeBackend | GET | `/health` | [首页、今日待办、横幅与壁纸](02-home.md) |
+| [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | POST | `/auth/login` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | GET | `/auth/me` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:25](../../webreact/src/data/http/authEndpoints.js) | qrCreate | POST | `/auth/qr/create` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:26](../../webreact/src/data/http/authEndpoints.js) | qrStatus | GET | `/auth/qr/{sessionId}/status` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:27](../../webreact/src/data/http/authEndpoints.js) | qrExchange | POST | `/auth/qr/exchange` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/http/authEndpoints.js:29](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/authEndpoints.js:28](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:32](../../webreact/src/data/http/authEndpoints.js) | revokeTrustedDevice | POST | `/auth/trusted-device/revoke` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/http/client.js:77](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/client.js:204](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/learnerStateApi.js:34](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
 | [webreact/src/data/learnerStateApi.js:38](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
 | [webreact/src/data/learnerStateApi.js:49](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |

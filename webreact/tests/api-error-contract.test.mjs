@@ -62,3 +62,14 @@ test("normalization is idempotent and retains useful local Chinese messages", ()
   assert.equal(userErrorMessage(error), "登录状态已变更，请重试");
   assert.equal(userErrorMessage(new Error("internal implementation error"), "资料加载失败"), "资料加载失败");
 });
+
+test("unexplained HTTP errors retain the calling page's fallback across all adapters", async () => {
+  for (const error of await collectErrors((config) => ({ config, response: { status: 500, data: {} }, message: "Request failed with status code 500" }))) {
+    assert.equal(userErrorMessage(error, "课程详情加载失败"), "课程详情加载失败");
+    assert.equal(userErrorMessage(error), "操作失败，请稍后重试");
+    assert.equal(normalizeApiError(error), error);
+    assert.equal(error.status, 500);
+  }
+  const error = normalizeApiError({ response: { status: 409, data: { code: "AGENT_INVALID_STATE" } } });
+  assert.equal(userErrorMessage(error, "资料加载失败"), "资料加载失败");
+});

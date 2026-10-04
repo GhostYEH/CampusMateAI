@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
+from starlette.concurrency import run_in_threadpool
 
+from ...core.exceptions import AppException
 from ...models.multi_role import UserRow
 from ...schemas.notice import DuplicateNoticeCheckRequest, RecentNoticeItem
 from .ChaoxingClient import ChaoxingClient, ChaoxingFetchError
@@ -65,6 +67,7 @@ class _NoticeSyncSummary:
     attempted: int
     succeeded: int
     failures: int
+    processing_failures: int = 0
 
 
 def _normalize_compact(value):
@@ -249,13 +252,13 @@ class ChaoxingSyncService:
             user, client, courses, now_iso, stats, warnings, sections,
             course_by_remote_id={str(course.get("course_id")): course for course in courses},
         )
-        self._save_courses(state)
+        await run_in_threadpool(self._save_courses, state)
         await self._sync_assignments(state)
         await self._sync_exams(state)
         notice_summary = await self._sync_notices(state)
-        return self._finish_sync(state, credentials, notice_summary)
+        return await run_in_threadpool(self._finish_sync, state, credentials, notice_summary)
 
-    async def _extract_notice(self, notice: dict, course: dict):
+    def _extract_notice(self, notice: dict, course: dict):
         dependencies = self._dependencies
         content = notice.get("content") or notice["title"]
         published_at = _parse_chaoxing_datetime(notice.get("published_at"))
@@ -428,7 +431,7 @@ class ChaoxingSyncService:
         # 单次请求量由 enrich_assignment_scores 的 limit 兜底。
         if hasattr(client, "enrich_assignment_scores"):
             try:
-                already_scored = dependencies.chaoxing_repository.scored_assignment_ids(user_id=user.id)
+                already_scored = await run_in_threadpool(dependencies.chaoxing_repository.scored_assignment_ids, user_id=user.id)
                 candidates = [
                     assignment
                     for _course, items in assignment_batches
@@ -619,7 +622,7 @@ class ChaoxingSyncService:
         score_error = await self._enrich_assignment_scores(state, assignment_batches)
         for course, assignments in assignment_batches:
             for assignment in assignments:
-                self._save_assignment(state, course, assignment)
+                await run_in_threadpool(self._save_assignment, state, course, assignment)
         sections["assignments"] = {
             "status": "failed" if assignment_error else "partial" if score_error else "complete",
             "item_count": stats["assignments_fetched"],
@@ -678,7 +681,7 @@ class ChaoxingSyncService:
                         metadata = item.get("metadata") or {}
                         # 幂等键与 deep 同步保持一致(course_external_id:exam_id)，避免两条
                         # 路径各写一行、同一场考试在课程详情里出现两次。
-                        exam_row = exam_repo.upsert_exam(
+                        exam_row = await run_in_threadpool(exam_repo.upsert_exam,
                             user_id=user.id,
                             course_id=course_data.get("local_course_id"),
                             external_id=(
@@ -789,14 +792,23 @@ class ChaoxingSyncService:
                 notice_succeeded += 1
                 notice_batches.append((course, notices))
 
+        processing_failures = 0
         for course, notices in notice_batches:
             for notice in notices:
-                await self._save_notice(state, course, notice)
+                try:
+                    await run_in_threadpool(self._save_notice, state, course, notice)
+                except Exception as error:
+                    processing_failures += 1
+                    code = error.code if isinstance(error, AppException) else "unexpected_error"
+                    notice_error = notice_error or f"notice_processing:{code}"
+                    warnings.append(f"notice_processing:{code}")
+                    self._log.warning("chaoxing notice processing failed: %s", type(error).__name__)
         return _NoticeSyncSummary(
             notice_sync_available, notice_error, notice_attempted, notice_succeeded, notice_failures,
+            processing_failures,
         )
 
-    async def _save_notice(self, state: _SyncState, course: dict, notice: dict) -> None:
+    def _save_notice(self, state: _SyncState, course: dict, notice: dict) -> None:
         dependencies = self._dependencies
         user = state.user
         now_iso = state.now_iso
@@ -812,10 +824,6 @@ class ChaoxingSyncService:
         existing_notice, existing_notice_task = dependencies.chaoxing_repository.get_notice_sync_snapshot(
             user_id=user.id, external_id=external_id,
         )
-        if existing_notice:
-            stats["notices_updated"] += 1
-        else:
-            stats["notices_created"] += 1
         # A task proves actionable extraction already succeeded. Without one,
         # retry unchanged notices so a transient extraction failure cannot lose work.
         skip_extraction = (
@@ -834,6 +842,7 @@ class ChaoxingSyncService:
             source_url=notice.get("link"),
             last_synced_at=now_iso,
         )
+        stats["notices_updated" if existing_notice else "notices_created"] += 1
         _project_learner_event(
             dependencies,
             action="notice_synced",
@@ -845,15 +854,16 @@ class ChaoxingSyncService:
             return
         # 2. 调用 AI 提取判断是否 actionable，如果是则创建/更新 PersonalTask
         try:
-            extracted = await self._extract_notice(notice, course)
+            extracted = self._extract_notice(notice, course)
         except Exception as e:
-            # AI 抽取失败：Notice 仍然正常保存，不抛异常
+            # The notice is already saved; the batch must report the failed
+            # extraction and continue with its remaining items.
             self._log.warning(
                 "chaoxing_notice_extract_failed subject_type=notice subject_id=%s exception_type=%s",
                 external_id,
                 type(e).__name__,
             )
-            return
+            raise
 
         if extracted.actionable:
             fields = {
@@ -921,27 +931,30 @@ class ChaoxingSyncService:
         notice_attempted = notice_summary.attempted
         notice_succeeded = notice_summary.succeeded
         notice_failures = notice_summary.failures
+        processing_failures = notice_summary.processing_failures
         # 更新同步时间
         dependencies.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
 
         _invalidate_status(user.id)
 
+        notice_messages = []
+        if notice_failures:
+            notice_messages.append(f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败")
+        if processing_failures:
+            notice_messages.append(f"{processing_failures} 条通知处理失败")
         sections["notices"] = {
             # 按**来源**的成功/失败如实分类，不能用条目数推断成功数:
             # "成功但返回 0 条" + "另一来源失败" 是 partial，不是 failed。
             "status": (
                 "unavailable" if (not notice_sync_available and notice_succeeded == 0)
-                else "complete" if notice_failures == 0
+                else "complete" if notice_failures == 0 and processing_failures == 0
                 else "failed" if notice_succeeded == 0
                 else "partial"
             ),
             "item_count": stats["notices_fetched"],
             "last_synced_at": now_iso,
             "error_code": notice_error,
-            "error_message": (
-                None if notice_error is None
-                else f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败"
-            ),
+            "error_message": "；".join(notice_messages) or None,
         }
 
         return {

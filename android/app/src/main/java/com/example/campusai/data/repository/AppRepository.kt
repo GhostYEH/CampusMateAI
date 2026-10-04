@@ -341,11 +341,7 @@ class AppRepository(
                 Pair(true, "")
             } else {
                 val errorStr = resp.errorBody()?.string() ?: ""
-                if (resp.code() == 401 || errorStr.contains("reauth_required") || resp.code() == 403 || errorStr.contains("verification_required")) {
-                    Pair(false, if (errorStr.contains("verification_required") || resp.code() == 403) "verification_required" else "reauth_required")
-                } else {
-                    Pair(false, "同步失败: ${resp.code()}")
-                }
+                Pair(false, chaoxingSyncFailure(resp.code(), errorStr))
             }
         } catch (e: Exception) {
             Pair(false, "网络错误: ${e.message}")
@@ -355,11 +351,7 @@ class AppRepository(
     suspend fun getChaoxingStatus(): com.example.campusai.data.remote.ChaoxingSyncStatusResponse? {
         return try {
             val resp = ApiClient.chaoxingApi.getChaoxingStatus()
-            if (resp.isSuccessful) {
-                resp.body()
-            } else {
-                null
-            }
+            chaoxingStatus(resp)
         } catch (e: Exception) {
             null
         }

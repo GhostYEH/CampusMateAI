@@ -33,7 +33,7 @@ export function ProfileSectionPage() {
   const navigate = useNavigate();
   const meta = sectionMeta[section] || sectionMeta.favorites;
   const { data, loading, error: loadError, reload: load } = useAsyncResource(async () => {
-    const user = await api.getProfile();
+    const user = section === "id-card" ? await api.getProfile() : {};
     const records = section === "learning" ? itemsOf(await api.getStudySessions()) : [];
     return { user, records };
   }, [section]);

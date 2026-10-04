@@ -37,7 +37,18 @@ export default function IslandPage() {
   const [checkinError, setCheckinError] = useState("");
 
   useEffect(() => {
-    Promise.all([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => { setSessions(itemsOf(studySessions)); setCheckins(studyCheckinSummary || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false }); if (studyCheckinSummary?.unsupported) setCheckinError("签到服务尚未加载，请重启后端后再签到。"); }).catch(() => setCheckinError("签到数据加载失败，请稍后重试。")).finally(() => setLoaded(true));
+    let cancelled = false;
+    Promise.allSettled([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => {
+      if (cancelled) return;
+      if (studySessions.status === "fulfilled") setSessions(itemsOf(studySessions.value));
+      if (studyCheckinSummary.status === "fulfilled") {
+        setCheckins(studyCheckinSummary.value || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false });
+        if (studyCheckinSummary.value?.unsupported) setCheckinError("签到服务尚未加载，请重启后端后再签到。");
+      } else setCheckinError("签到数据加载失败，请稍后重试。");
+      if (studySessions.status === "rejected") setCheckinError("学习记录加载失败，请稍后重试。");
+      setLoaded(true);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // 3D 小岛按 html[data-scene] 换肤，与场景按钮保持同步

@@ -63,4 +63,6 @@
 
 文档更新时，应同步修改所属模块、字段字典、OpenAPI 和 Web 对照，并再次核对 HTTP 方法、路由、鉴权、业务必填头及动态响应。线上接口以部署版本为准，可通过后端 `/openapi.json`、`/docs`、`/redoc` 对照声明，但仍须检查本文记录的业务校验。
 
+使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息也保留在快照中，不计入上表的 310 个业务操作。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
+
 本次验证为源码契约和文档覆盖核验，未使用真实学校账号、真实模型或外部服务做运行验收；服务可用性以相应 status / capabilities 接口为准。

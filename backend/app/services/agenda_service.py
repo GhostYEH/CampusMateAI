@@ -20,6 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Optional
 
+from ..repositories.chaoxing_repository import ChaoxingCredentialsUnavailable
 from ._time import SHANGHAI, iso_preserve_offset as _iso, parse_iso_assume_shanghai
 from .chaoxing.session_cache import cached_auth_state
 from .chaoxing.sync_facts import last_chaoxing_sync_at
@@ -139,10 +140,7 @@ class TodayAgendaService:
         repository = getattr(self.container, "chaoxing_repository", None)
         if repository is None:
             return False
-        try:
-            return bool(repository.get_credentials(user_id))
-        except Exception:
-            return False
+        return bool(repository.get_credentials(user_id))
 
     def _chaoxing_items(self, user_id: str, start: datetime, end: datetime,
                         now: datetime) -> tuple[list[dict], dict]:
@@ -413,13 +411,22 @@ class TodayAgendaService:
             last_synced_at is not None
             and moment - last_synced_at > CHAOXING_STALE_AFTER
         )
-        bound = self._chaoxing_credentials_bound(user_id)
+        credentials_unavailable = False
+        try:
+            bound = self._chaoxing_credentials_bound(user_id)
+        except ChaoxingCredentialsUnavailable:
+            # Cached facts remain useful when their credentials need replacing.
+            bound = True
+            credentials_unavailable = True
         # 登录态只读共享缓存，绝不在这里触网: 今日待办必须保持纯读库、快速返回。
-        auth_state = cached_auth_state(user_id)
+        auth_state = "unavailable" if credentials_unavailable else cached_auth_state(user_id)
         chaoxing_state = "not_bound"
         message: Optional[str] = None
         if bound:
-            if auth_state == "expired":
+            if credentials_unavailable:
+                chaoxing_state = "unavailable"
+                message = "学习通连接信息无法读取，当前显示的是上一次同步的数据，请重新连接学习通"
+            elif auth_state == "expired":
                 # 会话失效优先于"今天有没有任务": 否则用户会把"数据没同步"误读成"今天没事"。
                 chaoxing_state = "expired"
                 message = "学习通登录态已过期，当前显示的是上一次同步的数据"

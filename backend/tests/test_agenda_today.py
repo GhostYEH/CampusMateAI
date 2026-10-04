@@ -144,6 +144,31 @@ def _titles(payload: dict) -> list[str]:
     return [item["title"] for item in payload["items"]]
 
 
+def test_damaged_credentials_preserve_cached_agenda_and_report_unavailable(db):
+    container = FakeContainer(db, bound=True)
+    _chaoxing_task(container, title="仍需处理的作业", external_id="work", deadline=_at(18))
+    with db.transaction() as conn:
+        conn.execute("UPDATE chaoxing_credentials SET encrypted_cookies='damaged' WHERE user_id='user1'")
+    payload = _build(container)
+    assert "仍需处理的作业" in _titles(payload)
+    assert payload["sources"]["chaoxing"]["state"] == "unavailable"
+    assert payload["sources"]["chaoxing"]["auth_state"] == "unavailable"
+    assert "重新连接" in payload["sources"]["chaoxing"]["message"]
+    assert payload["summary"]["pending"] == 1
+
+
+def test_agenda_does_not_disguise_database_failure_as_unbound(db, monkeypatch):
+    import sqlite3
+    container = FakeContainer(db)
+
+    def fail(_user_id):
+        raise sqlite3.OperationalError("database unavailable")
+
+    monkeypatch.setattr(container.chaoxing_repository, "get_credentials", fail)
+    with pytest.raises(sqlite3.OperationalError):
+        _build(container)
+
+
 # ---------- 上海时区自然日边界 ----------
 
 def test_shanghai_day_boundary_not_utc_date_truncation(db):

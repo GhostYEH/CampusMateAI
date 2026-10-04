@@ -1,3 +1,6 @@
+const fallbackMessage = Symbol("fallbackMessage");
+const defaultErrorMessage = "操作失败，请稍后重试";
+
 export function itemsOf(value) {
   if (Array.isArray(value)) return value;
   return Array.isArray(value?.items) ? value.items : [];
@@ -8,7 +11,7 @@ export function itemsOf(value) {
 // - 兼容旧的 { detail } 结构。
 // - 网络层错误（超时/后端未启动）不把 Axios 原始英文抛给用户，用中文兜底。
 // - 原始错误保留在 console（见 logApiError），仅供开发诊断。
-export function userErrorMessage(error, fallback = "操作失败，请稍后重试") {
+export function userErrorMessage(error, fallback = defaultErrorMessage) {
   const data = error?.response?.data;
   if (data && typeof data === "object" && typeof data.message === "string" && data.message.trim()) {
     return data.message;
@@ -16,6 +19,7 @@ export function userErrorMessage(error, fallback = "操作失败，请稍后重�
   if (data && typeof data === "object" && typeof data.detail === "string" && data.detail.trim()) {
     return data.detail;
   }
+  if (error?.[fallbackMessage] && error.userMessage === defaultErrorMessage) return fallback;
   if (typeof error?.userMessage === "string" && error.userMessage.trim()) return error.userMessage;
   if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") return "已取消";
   if (error?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(error?.message))) {
@@ -33,7 +37,8 @@ export function normalizeApiError(error) {
   if (error?.userMessage) return error;
   const body = error?.response?.data;
   const data = body && typeof body === "object" ? body : {};
-  const message = userErrorMessage(error);
+  const specificMessage = userErrorMessage(error, "");
+  const message = specificMessage || defaultErrorMessage;
   const normalized = new Error(message, { cause: error });
   Object.assign(normalized, {
     name: error?.name || "Error",
@@ -49,6 +54,7 @@ export function normalizeApiError(error) {
     request: error?.request,
     config: error?.config,
     isAxiosError: error?.isAxiosError,
+    [fallbackMessage]: !specificMessage,
   });
   return normalized;
 }

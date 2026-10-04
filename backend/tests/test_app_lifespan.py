@@ -65,3 +65,15 @@ def test_one_shutdown_failure_does_not_skip_other_resources(services):
     with TestClient(main.create_app()):
         pass
     assert_closed(services)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_explicit_demo_seed_is_optional_and_does_not_break_service_lifecycle(services, monkeypatch, failure):
+    settings = main.get_settings()
+    settings.auto_seed_demo_users = True
+    seed = Mock(return_value={"skipped": False}, side_effect=RuntimeError("demo unavailable") if failure else None)
+    monkeypatch.setattr(main, "seed_demo_data", seed)
+    with TestClient(main.create_app()) as client:
+        assert client.get("/openapi.json").status_code == 200
+        seed.assert_called_once_with(services)
+    assert_closed(services)

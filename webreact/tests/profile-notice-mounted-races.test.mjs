@@ -4,7 +4,7 @@ import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { Simulate } from "react-dom/test-utils";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
 
@@ -20,7 +20,13 @@ const vite = await createServer({
   plugins: [{
     name: "profile-notice-race-doubles", enforce: "pre",
     resolveId(source, importer) {
-      if (source === "../data/api.js" && /\/pages\/(ProfilePage|NoticeCenterPage)\.jsx$/.test(importer || "")) return "\0profile-notice-api";
+      if (source === "../data/api.js" && /\/pages\/(ProfilePage|ProfileSecondaryPage|IslandPage|NoticeCenterPage)\.jsx$/.test(importer || "")) return "\0profile-notice-api";
+      if (importer?.endsWith("/pages/IslandPage.jsx")) {
+        if (source.endsWith("LearningIsland.tsx")) return "\0island-view";
+        if (source.endsWith("Heatmap.jsx")) return "\0island-heatmap";
+        if (source.endsWith("SummerNavDock.jsx")) return "\0profile-notice-stub";
+        if (source.endsWith("ambientSound.js")) return "\0island-audio";
+      }
       if (source === "../app/AppContext.jsx" && importer?.endsWith("/pages/ProfilePage.jsx")) return "\0profile-notice-context";
       if (["../components/settings/SkeuomorphicGlassToggle.jsx", "../components/FloatingNav/LiquidMetalNav.jsx", "../components/TargetCursor.jsx"].includes(source) && importer?.endsWith("/pages/ProfilePage.jsx")) return "\0profile-notice-stub";
       if (source === "./Icon.jsx" && /\/components\/(Primitives|pages\/ProfilePage)\.jsx$/.test(importer || "")) return "\0profile-notice-icon";
@@ -31,6 +37,7 @@ const vite = await createServer({
         export const getProfile = (...args) => api().getProfile(...args);
         export const getDashboard = (...args) => api().getDashboard(...args);
         export const getStudySessions = (...args) => api().getStudySessions(...args);
+        export const getStudyCheckins = (...args) => api().getStudyCheckins(...args);
         export const updateProfile = (...args) => api().updateProfile(...args);
         export const getNotices = (...args) => api().getNotices(...args);
         export const markAnnouncementRead = (...args) => api().markAnnouncementRead(...args);
@@ -40,8 +47,58 @@ const vite = await createServer({
       if (id === "\0profile-notice-context") return `export function useApp(){return {pendingCount:0,reduceMotion:false,setReduceMotion(){},logout(){}}}`;
       if (id === "\0profile-notice-stub") return `export default function Stub(props){return props.children || null}`;
       if (id === "\0profile-notice-icon") return `export function Icon(){return null}`;
+      if (id === "\0island-view") return `export function LearningIsland(props){globalThis.__islandView = props; return null}`;
+      if (id === "\0island-heatmap") return `export function Heatmap({data}){globalThis.__islandHeatmap = data; return null}`;
+      if (id === "\0island-audio") return `export function useAmbientSound(){return {}}`;
     },
   }],
+});
+
+test("a failed checkin probe preserves successful study sessions and their heatmap", async () => {
+  const today = new Date().toISOString();
+  globalThis.__profileNoticeApi = {
+    getStudySessions: async () => [{ id: "session", started_at: today, status: "completed", duration_seconds: 3600 }],
+    getStudyCheckins: async () => { throw new Error("health probe unavailable"); },
+  };
+  const { default: IslandPage } = await vite.ssrLoadModule("/src/pages/IslandPage.jsx");
+  const view = await mount(IslandPage);
+  try {
+    assert.equal(globalThis.__islandView.totalHours, 1);
+    assert.ok(globalThis.__islandHeatmap.some((day) => day.checked));
+    assert.match(view.host.textContent, /签到数据加载失败/);
+  } finally { await view.unmount(); delete globalThis.__profileNoticeApi; delete globalThis.__islandView; delete globalThis.__islandHeatmap; }
+});
+
+test("a failed session request preserves successful checkins", async () => {
+  globalThis.__profileNoticeApi = {
+    getStudySessions: async () => { throw new Error("sessions unavailable"); },
+    getStudyCheckins: async () => ({ items: [{ date: new Date().toISOString().slice(0, 10) }], total: 3, streak: 2 }),
+  };
+  const { default: IslandPage } = await vite.ssrLoadModule("/src/pages/IslandPage.jsx");
+  const view = await mount(IslandPage);
+  try {
+    assert.equal(globalThis.__islandView.totalCheckins, 3);
+    assert.match(view.host.textContent, /学习记录加载失败/);
+  } finally { await view.unmount(); delete globalThis.__profileNoticeApi; delete globalThis.__islandView; delete globalThis.__islandHeatmap; }
+});
+
+test("profile sections only load data needed for their content", async () => {
+  let profileRequests = 0;
+  globalThis.__profileNoticeApi = {
+    getProfile: async () => { profileRequests += 1; throw new Error("profile unavailable"); },
+    getStudySessions: async () => [{ id: "s1", goal: "已成功加载的学习记录", status: "completed" }],
+  };
+  const { ProfileSectionPage } = await vite.ssrLoadModule("/src/pages/ProfileSecondaryPage.jsx");
+  function Page() { return createElement(Routes, null, createElement(Route, { path: "/profile/:section", element: createElement(ProfileSectionPage) })); }
+  for (const section of ["learning", "favorites", "id-card"]) {
+    const view = await mount(Page, `/profile/${section}`);
+    try {
+      if (section === "learning") assert.match(view.host.textContent, /已成功加载的学习记录/);
+      assert.equal(Boolean(view.host.querySelector('[role="alert"]')), section === "id-card");
+    } finally { await view.unmount(); }
+  }
+  assert.equal(profileRequests, 1);
+  delete globalThis.__profileNoticeApi;
 });
 after(async () => { await vite.close(); dom.window.close(); });
 

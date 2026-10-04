@@ -35,6 +35,7 @@ export default function QuizRuntimePanel(props) {
 function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
+  const hasLocalSnapshot = Boolean(saved && ["intro", "answering", "review"].includes(saved.phase) && saved.answers && typeof saved.answers === "object" && !Array.isArray(saved.answers));
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
   const [answers, setAnswers] = React.useState(saved?.answers || {});
   const [review, setReview] = React.useState(saved?.review || null);
@@ -48,7 +49,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
   const edited = React.useRef(Boolean(saved?.pending_sync));
   const writer = React.useRef({
     queue: Promise.resolve(), attemptId: saved?.attempt_id || `${stageId}:${sceneId}`,
-    ready: null, readVersion: 0, sequence: 0, pending: 0, startNew: Boolean(saved?.start_new_attempt),
+    ready: null, readVersion: 0, sequence: 0, completedWrites: 0, pending: 0, startNew: Boolean(saved?.start_new_attempt),
     startNewBase: saved?.start_new_base_id || saved?.attempt_id || "",
     startNewUncertain: Boolean(saved?.start_new_attempt),
   });
@@ -87,9 +88,22 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
       if (resuming && !session.startNew) {
         current ||= await api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId);
         if (current?.attempt_id) session.attemptId = current.attempt_id;
-        if (nextPhase === "review" && current?.state?.phase === "reviewed") phases.shift();
         if (mounted.current) setLoadError("");
-      } else await session.ready;
+      } else if (session.completedWrites === 0) current ||= await session.ready;
+      if (current?.attempt_id && session.completedWrites === 0) session.attemptId = current.attempt_id;
+      const remotePhase = current?.state?.phase;
+      const remoteAnswers = current?.state?.answers || {};
+      const sameAnswers = Object.keys({ ...remoteAnswers, ...nextAnswers }).every((key) => JSON.stringify(remoteAnswers[key]) === JSON.stringify(nextAnswers[key]));
+      if (!session.startNew && current?.attempt_id === session.attemptId &&
+          (remotePhase === "submitted" || remotePhase === "reviewed") &&
+          (!sameAnswers || (nextPhase !== "review" && nextPhase !== "submitted"))) {
+        // The server may have finished this attempt while the local draft was
+        // offline. Preserve both records using the existing retry mechanism.
+        session.startNew = true;
+        session.startNewBase = session.attemptId;
+        session.startNewUncertain = false;
+      }
+      if (!session.startNew && nextPhase === "review" && remotePhase === "reviewed") phases.shift();
       for (const phase of phases) {
         if (session.startNew) session.startNewUncertain = true;
         const remote = await api.saveMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId, {
@@ -97,6 +111,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
           results: phase === "reviewed" ? nextReview?.results || [] : [],
           ...(session.startNew ? { start_new_attempt: true } : {}),
         });
+        session.completedWrites += 1;
         session.startNew = false;
         session.startNewUncertain = false;
         if (remote?.attempt_id) session.attemptId = remote.attempt_id;
@@ -124,14 +139,19 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
     const session = writer.current;
     setLoadPending(true);
     const readVersion = ++session.readVersion;
+    const readSequence = session.sequence;
     const ready = api.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId).then((remote) => {
-      if (readVersion !== session.readVersion) return;
+      if (readVersion !== session.readVersion) return remote;
+      if (readSequence !== session.sequence) {
+        if (!cancelled) setLoadError("");
+        return remote;
+      }
       session.attemptId = remote?.attempt_id || session.attemptId;
-      if (cancelled) return;
+      if (cancelled) return remote;
       setLoadError("");
       setRemoteAttemptId(remote?.attempt_id || "");
-      if (edited.current) return;
-      if (!remote?.state) return;
+      if (edited.current) return remote;
+      if (!remote?.state) return remote;
       const state = remote.state;
       const submitted = state.phase === "submitted";
       const nextPhase = state.phase === "reviewed" || submitted ? "review" : state.phase === "draft" && Object.keys(state.answers || {}).length ? "answering" : "intro";
@@ -148,8 +168,12 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
         setSyncError("答案已提交，结果尚未同步，请重试同步。");
       }
       saveAttempt(sceneId, { phase: nextPhase, answers: state.answers || {}, review: nextReview, attempt_id: remote.attempt_id, pending_sync: submitted });
+      return remote;
     }).catch((error) => {
-      if (!cancelled) setLoadError(userErrorMessage(error, "无法读取已保存的答题记录，请重试读取。"));
+      if (!cancelled && readVersion === session.readVersion && readSequence === session.sequence) {
+        setLoadError(userErrorMessage(error, "无法读取已保存的答题记录，请重试读取。"));
+      }
+      if (session.completedWrites > 0) return null;
       throw error;
     }).finally(() => {
       if (!cancelled) setLoadPending(false);
@@ -207,7 +231,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
       <span className="magicclass-runtime-kicker">互动测验</span>
       <strong>{questions.length} 道题 · 共 {questions.reduce((sum, question) => sum + question.points, 0)} 分</strong>
       <p>完成答题后提交，系统会立即给出得分和逐题解析。</p>
-      <Button type="button" disabled={loadPending || Boolean(loadError)} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
+      <Button type="button" disabled={loadPending || (Boolean(loadError) && !hasLocalSnapshot)} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
     </div>
   </section>;
 
@@ -227,7 +251,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
         </li>;
       })}
     </ol>
-    <Button type="button" variant="secondary" disabled={syncing || loadPending || Boolean(loadError)} onClick={retry}>重新作答</Button>
+    <Button type="button" variant="secondary" disabled={syncing || loadPending || (Boolean(loadError) && !hasLocalSnapshot)} onClick={retry}>重新作答</Button>
   </section>;
 
   return <section className="magicclass-quiz-runtime" aria-label="测验答题">

@@ -197,7 +197,7 @@ def test_http_world_read_includes_a_session_finished_in_the_same_second(client, 
         def now(cls, tz=None):
             return fixed_now.astimezone(tz) if tz else fixed_now.replace(tzinfo=None)
 
-    monkeypatch.setattr(sessions, "datetime", Clock)
+    monkeypatch.setattr(sessions, "_now_iso", lambda: fixed_now.isoformat())
     headers = _auth(client)
     goal = _request(client, headers, "POST", "/student-goals", json={
         "name": "Prepare documents", "category": "campus_affair",

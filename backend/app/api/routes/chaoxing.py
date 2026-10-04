@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from fastapi import APIRouter, Depends, HTTPException
+from starlette.concurrency import run_in_threadpool
 
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, _auth_error
 from ...services.chaoxing.session_cache import (
@@ -86,13 +87,18 @@ async def _login_with_client(req, user, container, client):
     # The repository stores a portable cookie map; use the jar directly and let
     # the most recently received value win for duplicate names.
     cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
-    container.chaoxing_repository.save_credentials(user.id, cookies)
+    await run_in_threadpool(container.chaoxing_repository.save_credentials, user.id, cookies)
 
     # 换账号/重新登录后，上一个账号的登录态观测必须作废。
     _forget_status(user.id)
     return {"status": "success"}
 
-@router.get("/chaoxing/status", response_model=ChaoxingSyncStatus)
+_credentials_unavailable_response = {
+    503: {"description": "CHAOXING_CREDENTIALS_UNAVAILABLE：连接信息无法读取，请重新连接学习通"},
+}
+
+
+@router.get("/chaoxing/status", response_model=ChaoxingSyncStatus, responses=_credentials_unavailable_response)
 async def get_chaoxing_status(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
@@ -101,7 +107,7 @@ async def get_chaoxing_status(
     if cached is not None:
         return cached
 
-    credentials = container.chaoxing_repository.get_credentials(user.id)
+    credentials = await run_in_threadpool(container.chaoxing_repository.get_credentials, user.id)
     if not credentials:
         result = ChaoxingSyncStatus(status="offline")
         _status_cache_set(user.id, result)
@@ -126,19 +132,22 @@ async def get_chaoxing_status(
     finally:
         await client.client.aclose()
 
-    result = ChaoxingSyncStatus(
-        status="online",
-        last_synced_at=_last_user_sync_at(container, user.id),
-        source="chaoxing_live",
-        courses=_count_user_chaoxing(container, user.id, "courses"),
-        teachers=_count_user_chaoxing(container, user.id, "teachers"),
-        pending_assignments=_count_user_chaoxing(container, user.id, "pending_assignments"),
-        notices=_count_user_chaoxing(container, user.id, "notices"),
-    )
+    def read_status():
+        return ChaoxingSyncStatus(
+            status="online",
+            last_synced_at=_last_user_sync_at(container, user.id),
+            source="chaoxing_live",
+            courses=_count_user_chaoxing(container, user.id, "courses"),
+            teachers=_count_user_chaoxing(container, user.id, "teachers"),
+            pending_assignments=_count_user_chaoxing(container, user.id, "pending_assignments"),
+            notices=_count_user_chaoxing(container, user.id, "notices"),
+        )
+
+    result = await run_in_threadpool(read_status)
     _status_cache_set(user.id, result)
     return result
 
-@router.post("/chaoxing/sync")
+@router.post("/chaoxing/sync", responses=_credentials_unavailable_response)
 async def sync_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
@@ -156,7 +165,7 @@ async def _perform_sync_chaoxing(
     user: UserRow,
     container: ServiceContainer,
 ):
-    credentials = container.chaoxing_repository.get_credentials(user.id)
+    credentials = await run_in_threadpool(container.chaoxing_repository.get_credentials, user.id)
     if not credentials:
         raise HTTPException(status_code=401, detail="Chaoxing credentials not found")
 
@@ -179,7 +188,7 @@ async def disconnect_chaoxing(
     if not sync_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="sync_in_progress")
     try:
-        container.chaoxing_repository.delete_credentials(user.id)
+        await run_in_threadpool(container.chaoxing_repository.delete_credentials, user.id)
         _forget_status(user.id)
         return {"status": "disconnected"}
     finally:

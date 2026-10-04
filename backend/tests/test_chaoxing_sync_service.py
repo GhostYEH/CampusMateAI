@@ -224,6 +224,9 @@ async def test_sync_service_continues_items_and_retries_without_duplicate_rows()
         assert first["stats"]["assignments_created"] == 2
         assert first["stats"]["notices_fetched"] == 3
         assert first["stats"]["notices_created"] == 2
+        assert first["complete"] is False
+        assert first["sections"]["notices"]["status"] == "partial"
+        assert first["sections"]["notices"]["error_code"] == "notice_processing:unexpected_error"
         with database.query() as conn:
             assert conn.execute("SELECT COUNT(*) FROM personal_tasks").fetchone()[0] == 3
             completed = conn.execute("SELECT status, score FROM personal_tasks WHERE external_id='done'").fetchone()
@@ -234,6 +237,7 @@ async def test_sync_service_continues_items_and_retries_without_duplicate_rows()
         assert second["stats"]["assignments_created"] == 0
         assert second["stats"]["notices_created"] == 0
         assert second["stats"]["notices_updated"] == 2
+        assert second["sections"]["notices"]["status"] == "complete"
         # 已提取的后续通知跳过抽取，失败通知在原记录上补出待办。
         assert extraction.attempts == ["整理复习清单", "准备课堂展示材料", "整理复习清单"]
         with database.query() as conn:
@@ -244,3 +248,57 @@ async def test_sync_service_continues_items_and_retries_without_duplicate_rows()
             assert not conn.execute("PRAGMA foreign_key_check").fetchall()
     finally:
         database.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content, code", [(" ", "NOTICE_EMPTY"), ("通知" * 2501, "NOTICE_TOO_LONG")])
+async def test_notice_validation_failure_preserves_original_and_continues_batch(isolated_sync_container, content, code):
+    container = isolated_sync_container
+
+    class Client:
+        async def get_courses(self):
+            return True, [{"external_id": "course", "course_id": "remote", "name": "课程", "link": "https://example.invalid/course"}]
+
+        async def get_all_notices(self):
+            return [
+                {"external_id": "invalid", "course_id": "remote", "title": "通知", "content": content},
+                {"external_id": "valid", "course_id": "remote", "title": "资料", "content": "请提交课堂报告"},
+            ]
+
+    user = UserRow(id="u", username="u", password_hash="hash", role="student")
+    result = await container.chaoxing_sync_service.sync(user, {}, Client())
+    assert result["complete"] is False
+    assert result["sections"]["notices"]["status"] == "partial"
+    assert f"notice_processing:{code}" in result["warnings"]
+    notices = container.notice_repository.list_notices("u")
+    assert len(notices) == 2
+    assert next(item for item in notices if item.external_id == "invalid").content == content
+    tasks, _ = container.personal_task_repository.list_tasks("u")
+    assert any(item.source_notice_id == "valid" for item in tasks)
+
+
+@pytest.mark.asyncio
+async def test_failed_notice_persistence_is_not_counted_as_created(isolated_sync_container, monkeypatch):
+    container = isolated_sync_container
+    save = container.notice_repository.create_or_update_notice
+
+    def save_notice(**fields):
+        if fields["external_id"] == "bad":
+            raise RuntimeError("storage unavailable")
+        return save(**fields)
+
+    monkeypatch.setattr(container.notice_repository, "create_or_update_notice", save_notice)
+
+    class Client:
+        async def get_courses(self):
+            return True, []
+
+        async def get_all_notices(self):
+            return [{"external_id": external_id, "title": "课堂地点", "content": "上课地点保持不变"} for external_id in ("bad", "good")]
+
+    user = UserRow(id="u", username="u", password_hash="hash", role="student")
+    result = await container.chaoxing_sync_service.sync(user, {}, Client())
+    assert result["stats"]["notices_created"] == 1
+    assert result["stats"]["notices_updated"] == 0
+    assert len(container.notice_repository.list_notices("u")) == 1
+    assert result["sections"]["notices"]["status"] == "partial"

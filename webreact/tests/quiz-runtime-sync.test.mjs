@@ -34,9 +34,9 @@ afterEach(() => { window.localStorage.clear(); delete globalThis.__quizApi; });
 const questions = [{ id: "q1", question: "选择正确答案", options: ["A", "B"], answer: "A", analysis: "答案是 A", points: 2 }];
 const props = { questions, courseId: "course", workspaceId: "workspace", stageId: "stage", sceneId: "scene" };
 function deferred() {
-  let resolve;
-  const promise = new Promise((yes) => { resolve = yes; });
-  return { promise, resolve };
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }
 async function mount(extra = {}) {
   const host = document.createElement("div"); document.body.append(host);
@@ -254,6 +254,141 @@ test("a failed initial read keeps start disabled until the server state is recov
     await click(view.host, "重试读取");
     assert.match(view.host.textContent, /测验完成/);
     assert.equal(calls.length, 0);
+    assert.equal(view.host.querySelector('[role="alert"]'), null);
+  } finally { await view.close(); }
+});
+
+test("a cached draft remains usable offline and writes wait for a recovered server identity", async () => {
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
+    phase: "answering", answers: { q1: "A" }, attempt_id: "root:retry:1", review: null,
+  }));
+  let offline = true; const calls = [];
+  globalThis.__quizApi = {
+    get: async () => {
+      if (offline) throw { request: {}, code: "ERR_NETWORK" };
+      return { attempt_id: "root:retry:1", state: { phase: "draft", answers: {} } };
+    },
+    save: async (...args) => { calls.push(args.at(-1)); return { attempt_id: "root:retry:1" }; },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "开始答题");
+    assert.equal(view.host.querySelector('input[value="A"]').checked, true);
+    await choose(view.host, 1);
+    assert.equal(calls.length, 0);
+    assert.equal(JSON.parse(window.localStorage.getItem("campusmate:magicclass:quiz:scene")).pending_sync, true);
+    offline = false;
+    await click(view.host, "重试读取");
+    await click(view.host, "重试同步");
+    assert.deepEqual(calls.at(-1).answers, { q1: "B" });
+    assert.equal(calls.at(-1).attempt_id, "root:retry:1");
+  } finally { await view.close(); }
+});
+
+test("a cached completed quiz can start a new local attempt while its read is unavailable", async () => {
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
+    phase: "review", answers: { q1: "A" }, attempt_id: "root", review: { score: 2, total: 2, results: [{ correct: true, analysis: "正确" }] },
+  }));
+  let offline = true; const calls = [];
+  globalThis.__quizApi = {
+    get: async () => {
+      if (offline) throw { request: {}, code: "ERR_NETWORK" };
+      return { attempt_id: "root", state: { phase: "reviewed", answers: { q1: "A" } } };
+    },
+    save: async (...args) => { calls.push(args.at(-1)); return { attempt_id: "root:retry:1" }; },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "重新作答");
+    await choose(view.host, 1);
+    assert.equal(calls.length, 0);
+    offline = false;
+    await click(view.host, "重试读取");
+    await click(view.host, "重试同步");
+    assert.equal(calls[0].start_new_attempt, true);
+    assert.deepEqual(calls[0].answers, { q1: "B" });
+  } finally { await view.close(); }
+});
+
+test("a pending local draft creates one retry when the server has finished the original", async () => {
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
+    phase: "answering", answers: { q1: "B" }, attempt_id: "root", pending_sync: true,
+  }));
+  const original = { phase: "reviewed", answers: { q1: "A" }, results: [{ correct: true, analysis: "正确" }] };
+  let attemptId = "root", state = original, creations = 0;
+  globalThis.__quizApi = {
+    get: async () => ({ attempt_id: attemptId, state }),
+    save: async (...args) => {
+      const payload = args.at(-1);
+      if (payload.start_new_attempt) {
+        attemptId = `root:retry:${++creations}`;
+      } else assert.equal(payload.attempt_id, attemptId);
+      if (attemptId === "root") assert.fail("the existing reviewed record must remain unchanged");
+      state = payload;
+      return { attempt_id: attemptId };
+    },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "重试同步");
+    assert.equal(creations, 1);
+    assert.deepEqual(state.answers, { q1: "B" });
+    assert.deepEqual(original.answers, { q1: "A" });
+    await click(view.host, "开始答题");
+    await choose(view.host, 0);
+    assert.equal(creations, 1, "stale hydration must not create another retry after its first write");
+    assert.equal(view.host.querySelector('[role="alert"]'), null);
+  } finally { await view.close(); }
+});
+
+test("a late initial read cannot undo an attempt created by an earlier sync retry", async () => {
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
+    phase: "answering", answers: { q1: "B" }, attempt_id: "root", pending_sync: true,
+  }));
+  const initial = deferred();
+  const old = { attempt_id: "root", state: { phase: "reviewed", answers: { q1: "A" } } };
+  let reads = 0, attemptId = "root", state = old.state, creations = 0;
+  globalThis.__quizApi = {
+    get: () => ++reads === 1 ? initial.promise : Promise.resolve({ attempt_id: attemptId, state }),
+    save: async (...args) => {
+      const payload = args.at(-1);
+      if (payload.start_new_attempt) attemptId = `root:retry:${++creations}`;
+      else assert.equal(payload.attempt_id, attemptId);
+      state = payload;
+      return { attempt_id: attemptId };
+    },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "重试同步");
+    assert.equal(creations, 1);
+    await act(async () => initial.resolve(old));
+    await click(view.host, "开始答题");
+    await choose(view.host, 0);
+    assert.equal(creations, 1);
+    assert.equal(JSON.parse(window.localStorage.getItem("campusmate:magicclass:quiz:scene")).attempt_id, "root:retry:1");
+    assert.equal(view.host.querySelector('[role="alert"]'), null);
+  } finally { await view.close(); }
+});
+
+test("a late failed read cannot hide a recovered sync or block later edits", async () => {
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
+    phase: "answering", answers: { q1: "B" }, attempt_id: "root", pending_sync: true,
+  }));
+  const initial = deferred();
+  let reads = 0, saves = 0;
+  globalThis.__quizApi = {
+    get: () => ++reads === 1 ? initial.promise : Promise.resolve({ attempt_id: "root", state: { phase: "draft", answers: {} } }),
+    save: async () => { saves += 1; return { attempt_id: "root" }; },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "重试同步");
+    await act(async () => initial.reject({ request: {}, code: "ECONNABORTED" }));
+    assert.equal(view.host.querySelector('[role="alert"]'), null);
+    await click(view.host, "开始答题");
+    await choose(view.host, 0);
+    assert.equal(saves, 3);
     assert.equal(view.host.querySelector('[role="alert"]'), null);
   } finally { await view.close(); }
 });
