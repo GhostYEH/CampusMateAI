@@ -1,10 +1,11 @@
 """The campus entry must keep free topics and course materials in their own scopes."""
 
 import asyncio
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 
 from app.api.routes import magicclass_classroom as routes
 from app.core.config import Settings
@@ -13,7 +14,7 @@ from app.services.magicclass.course_context import LearningContext
 from app.services.magicclass.result_store import MagicClassSession
 
 
-def test_free_topic_requires_a_topic_and_rejects_course_material_ids():
+def test_free_topic_requires_a_topic():
     user = SimpleNamespace(id=7, role="student")
     container = SimpleNamespace(settings=SimpleNamespace())
     service = SimpleNamespace()
@@ -22,10 +23,17 @@ def test_free_topic_requires_a_topic_and_rejects_course_material_ids():
             MagicClassGenerateRequest(learning_objective="  "), user, container, service
         ))
     assert empty.value.status_code == 400
+
+
+def test_free_topic_rejects_unresolved_private_material_ids(monkeypatch):
+    async def unresolved(*args):
+        return LearningContext(text="Linux", unresolved_material_ids=("other-course",))
+    monkeypatch.setattr(routes, "_attach_uploaded_materials", unresolved)
+    container = SimpleNamespace(settings=SimpleNamespace(magicclass_fusion_enabled=True))
     with pytest.raises(HTTPException) as selected:
         asyncio.run(routes.generate_self_classroom(
             MagicClassGenerateRequest(learning_objective="Linux", selected_material_ids=["other-course"]),
-            user, container, service,
+            SimpleNamespace(id=7, role="student"), container, SimpleNamespace(),
         ))
     assert selected.value.status_code == 400
 
@@ -50,6 +58,30 @@ def test_free_topic_uses_private_student_scope_and_own_text():
     assert seen["user_id"] == 7
     assert "Linux 文件权限" in seen["context"].text
     assert seen["context"].selected_material_ids == ()
+
+
+def test_self_upload_is_scoped_to_current_student(monkeypatch):
+    seen = {}
+
+    class Client:
+        async def create_material(self, **kwargs):
+            seen.update(kwargs)
+            return {
+                "id": "own-doc", "course_id": routes.SELF_COURSE_ID,
+                "filename": kwargs["filename"], "extraction_status": "extracted",
+                "text_chars": len(kwargs["text"]),
+            }
+
+    monkeypatch.setattr(routes, "_material_client", lambda _: Client())
+    output = asyncio.run(routes.upload_self_classroom_material(
+        UploadFile(file=BytesIO(b"chmod 755"), filename="notes.txt"),
+        "unique-request", SimpleNamespace(id=7, role="student"),
+        SimpleNamespace(settings=SimpleNamespace(magicclass_fusion_enabled=True)),
+    ))
+    assert output.id == "own-doc"
+    assert seen["user_id"] == "7"
+    assert seen["course_id"] == routes.SELF_COURSE_ID
+    assert seen["text"] == "chmod 755"
 
 
 def test_uploaded_course_material_text_is_used_only_after_service_resolution(monkeypatch):

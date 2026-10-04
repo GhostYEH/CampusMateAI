@@ -1,5 +1,8 @@
 package com.example.campusai.ui.screens.courses
 
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,7 +43,10 @@ import com.example.campusai.data.remote.InteractiveClassroomSessionDto
 import com.example.campusai.data.remote.InteractiveClassroomStatusDto
 import com.example.campusai.data.repository.AppRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 private val midnight = Color(0xFF172747)
 private val paper = Color(0xFFFFECD0)
@@ -49,6 +56,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     onOpenCourses: () -> Unit, onOpenHistory: () -> Unit) {
     var topic by rememberSaveable { mutableStateOf("") }
     var teachingStyle by rememberSaveable { mutableStateOf("循序讲解") }
+    var selectedMaterialId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMaterialName by rememberSaveable { mutableStateOf<String?>(null) }
+    var uploading by remember { mutableStateOf(false) }
     var sessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<InteractiveClassroomStatusDto?>(null) }
     var history by remember { mutableStateOf<List<InteractiveClassroomItemDto>>(emptyList()) }
@@ -57,6 +67,39 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     var submitting by remember { mutableStateOf(false) }
     var viewerUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val pickMaterial = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            uploading = true; error = null
+            try {
+                val (filename, bytes) = withContext(Dispatchers.IO) {
+                    val resolver = context.contentResolver
+                    val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "学习资料.txt"
+                    val data = resolver.openInputStream(uri)?.use { input ->
+                        val output = ByteArrayOutputStream()
+                        val chunk = ByteArray(8192)
+                        while (true) {
+                            val read = input.read(chunk)
+                            if (read < 0) break
+                            output.write(chunk, 0, read)
+                            if (output.size() > 2 * 1024 * 1024) throw IllegalArgumentException("单份资料不能超过 2 MB")
+                        }
+                        output.toByteArray()
+                    } ?: throw IllegalArgumentException("无法读取所选文件")
+                    name to data
+                }
+                repository.uploadSelfClassroomMaterial(filename, bytes)
+                    .onSuccess { material ->
+                        if (material.extractionStatus == "extracted" && material.textChars > 0) {
+                            selectedMaterialId = material.id
+                            selectedMaterialName = material.filename
+                        } else error = "资料已上传，但正文尚未提取，暂不能用于课堂。"
+                    }.onFailure { error = it.message ?: "上传失败" }
+            } catch (failure: Exception) { error = failure.message ?: "无法读取文件" }
+            uploading = false
+        }
+    }
     val online by repository.backendOnline.collectAsStateWithLifecycle()
 
     LaunchedEffect(online) {
@@ -124,11 +167,26 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     modifier = Modifier.fillMaxWidth(), minLines = 4, maxLines = 7,
                     placeholder = { Text("例如：从零学 Linux 文件权限，边讲边练") },
                     label = { Text("今天想学什么？") })
+                Text("上传自己的学习资料", color = midnight, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(selectedMaterialName?.let { "已选：$it" } ?: "支持 PDF、Word、TXT、Markdown，单份不超过 2 MB。",
+                    color = Color(0xFF58647A), fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (uploading) "正在读取…" else "选择文件  →", color = Color(0xFF1C675B),
+                        modifier = Modifier.clickable(enabled = !uploading) {
+                            pickMaterial.launch(arrayOf("application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown"))
+                        }.padding(vertical = 8.dp))
+                    if (selectedMaterialId != null) Text("移除", color = Color(0xFF974D42),
+                        modifier = Modifier.clickable { selectedMaterialId = null; selectedMaterialName = null }.padding(8.dp))
+                }
                 Button(onClick = {
-                    if (topic.isBlank()) { error = "请先输入想学的内容"; return@Button }
+                    if (topic.isBlank() && selectedMaterialId == null) {
+                        error = "请输入学习主题，或先上传一份资料"; return@Button
+                    }
                     submitting = true; error = null
                     scope.launch {
-                        repository.generateSelfClassroom("请以${teachingStyle}的方式授课。学习主题：${topic.trim()}")
+                        val objective = topic.trim().ifBlank { "围绕上传资料讲解重点并带我练习" }
+                        repository.generateSelfClassroom("请以${teachingStyle}的方式授课。学习主题：$objective",
+                            selectedMaterialId?.let { listOf(it) } ?: emptyList())
                             .onSuccess { response ->
                                 progress = response.session
                                 sessionId = response.session.sessionId
@@ -136,7 +194,7 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                             .onFailure { error = it.message ?: "课堂生成失败" }
                         submitting = false
                     }
-                }, enabled = !submitting && sessionId == null && status?.enabled == true && status?.browserEmbedAvailable == true,
+                }, enabled = !submitting && !uploading && sessionId == null && status?.enabled == true && status?.browserEmbedAvailable == true,
                     modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = midnight)) {
                     Text(if (submitting) "正在准备…" else "生成我的课堂")
                 }

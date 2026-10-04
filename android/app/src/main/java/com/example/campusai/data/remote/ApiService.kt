@@ -1317,6 +1317,13 @@ interface ApiService {
     suspend fun getSelfClassrooms(): Response<InteractiveClassroomDto>
 
     @Multipart
+    @POST("self-classroom/materials")
+    suspend fun uploadSelfClassroomMaterial(
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Part file: MultipartBody.Part,
+    ): Response<UploadedClassroomMaterialDto>
+
+    @Multipart
     @POST("courses/{courseId}/materials")
     suspend fun uploadClassroomMaterial(
         @Path("courseId") courseId: String,

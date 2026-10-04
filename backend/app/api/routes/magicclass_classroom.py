@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Dict, Optional, Sequence
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, UploadFile, status
 
 from ...core.exceptions import Forbidden, NotFoundError
 from ...models.multi_role import UserRow
@@ -27,6 +27,7 @@ from ...schemas.magicclass import (
     MagicClassSessionOut,
     MagicClassStatusOut,
 )
+from ...schemas.magicclass_fusion import MaterialOut
 from ...services.container import ServiceContainer, get_container
 from ...services.magicclass.classroom_service import MagicClassClassroomService
 from ...services.magicclass.course_context import (
@@ -44,6 +45,7 @@ from ...services.magicclass.requirement_builder import (
     normalize_mode,
 )
 from ...services.magicclass.fusion_client import MagicClassFusionClient
+from ...services.magicclass.material_extraction import MAX_MATERIAL_BYTES, extract_material
 from ..deps import current_user
 
 router = APIRouter(prefix="/courses", tags=["interactive-classroom"])
@@ -84,9 +86,16 @@ async def generate_self_classroom(
     topic = (req.learning_objective or "").strip()
     if not topic:
         raise HTTPException(status_code=400, detail="请先输入想学的内容")
+    context = LearningContext(
+        text=f"学生自主选题：{topic}", sources={"topic": "student"},
+        unresolved_material_ids=tuple(req.selected_material_ids),
+    )
     if req.selected_material_ids:
-        raise HTTPException(status_code=400, detail="自主课堂暂不接受课程资料 ID，请从课程内建立课堂")
-    context = LearningContext(text=f"学生自主选题：{topic}", sources={"topic": "student"})
+        if not container.settings.magicclass_fusion_enabled:
+            raise HTTPException(status_code=503, detail="资料服务暂时不可用")
+        context = await _attach_uploaded_materials(container, user, SELF_COURSE_ID, context)
+        if context.unresolved_material_ids:
+            raise HTTPException(status_code=400, detail="所选资料不存在、尚未完成提取，或不属于当前账号")
     session = await service.generate(
         user_id=user.id,
         course_id=SELF_COURSE_ID,
@@ -104,6 +113,31 @@ async def generate_self_classroom(
         adaptive_reason=session.adaptive_reason,
         request_source="request",
     )
+
+
+@self_router.post("/materials", response_model=MaterialOut, status_code=status.HTTP_201_CREATED)
+async def upload_self_classroom_material(
+    file: UploadFile = File(...),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    user: UserRow = Depends(current_user),
+    container: ServiceContainer = Depends(_container),
+) -> MaterialOut:
+    _self_student(user)
+    if not container.settings.magicclass_fusion_enabled:
+        raise HTTPException(status_code=503, detail="资料服务暂时不可用")
+    if not idempotency_key.strip() or len(idempotency_key) > 200:
+        raise HTTPException(status_code=400, detail="无效的上传请求标识")
+    extracted = extract_material(
+        filename=file.filename or "", content=await file.read(MAX_MATERIAL_BYTES + 1)
+    )
+    payload = await _material_client(container).create_material(
+        user_id=str(user.id), course_id=SELF_COURSE_ID,
+        filename=extracted.filename, media_type=extracted.media_type,
+        byte_size=extracted.byte_size, sha256=extracted.sha256,
+        extraction_status=extracted.extraction_status, text=extracted.text,
+        content_base64=extracted.content_base64, idempotency_key=idempotency_key,
+    )
+    return MaterialOut(**{key: payload[key] for key in MaterialOut.model_fields if key in payload})
 
 
 @self_router.get("/jobs/{session_id}", response_model=MagicClassSessionOut)

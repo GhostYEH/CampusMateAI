@@ -1517,11 +1517,11 @@ class AppRepository(
         } catch (_: Exception) { emptyList() }
     }
 
-    suspend fun generateSelfClassroom(topic: String): Result<InteractiveClassroomGenerateResponse> {
+    suspend fun generateSelfClassroom(topic: String, materialIds: List<String> = emptyList()): Result<InteractiveClassroomGenerateResponse> {
         if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法生成课堂"))
         return try {
             val response = ApiClient.classroomApi.generateSelfClassroom(
-                InteractiveClassroomGenerateRequest(learningObjective = topic.trim())
+                InteractiveClassroomGenerateRequest(learningObjective = topic.trim(), selectedMaterialIds = materialIds)
             )
             response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
                 ?: Result.failure(IllegalStateException(response.errorMessage("自主课堂生成失败")))
@@ -1565,6 +1565,18 @@ class AppRepository(
             val file = MultipartBody.Part.createFormData("file", filename,
                 bytes.toRequestBody("application/octet-stream".toMediaType()))
             val response = ApiClient.classroomApi.uploadClassroomMaterial(courseId, java.util.UUID.randomUUID().toString(), file)
+            response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(response.errorMessage("资料上传失败")))
+        } catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun uploadSelfClassroomMaterial(filename: String, bytes: ByteArray): Result<UploadedClassroomMaterialDto> {
+        if (bytes.size > 2 * 1024 * 1024) return Result.failure(IllegalArgumentException("单份资料不能超过 2 MB"))
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("请先连接课堂服务"))
+        return try {
+            val file = MultipartBody.Part.createFormData("file", filename,
+                bytes.toRequestBody("application/octet-stream".toMediaType()))
+            val response = ApiClient.classroomApi.uploadSelfClassroomMaterial(java.util.UUID.randomUUID().toString(), file)
             response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
                 ?: Result.failure(IllegalStateException(response.errorMessage("资料上传失败")))
         } catch (error: Exception) { Result.failure(error) }
