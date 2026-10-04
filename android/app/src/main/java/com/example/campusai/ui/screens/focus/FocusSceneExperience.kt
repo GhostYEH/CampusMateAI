@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -189,16 +192,12 @@ internal fun FocusSceneToolbar(
                     .align(Alignment.TopEnd)
                     .padding(top = 54.dp)
                     .width(294.dp),
-                tint = Color.White.copy(alpha = .34f),
+                tint = Color(0xF7FFF9EC),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(
-                        settings.scene.title,
-                        modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 3.dp),
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                    )
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()).padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("选择专注场景", modifier = Modifier.padding(start = 12.dp, top = 6.dp),
+                        color = Color(0xFF203B32), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     FocusScene.entries.forEach { scene ->
                         val selected = scene == settings.scene
                         Row(

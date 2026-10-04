@@ -11,6 +11,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.app.NotificationManagerCompat
@@ -21,6 +35,7 @@ import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.ui.navigation.AppNavHost
 import com.example.campusai.ui.screens.login.LoginScreen
 import com.example.campusai.ui.screens.shell.AppShell
+import com.example.campusai.ui.screens.tasks.isCurrentSemesterAssignment
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
 import com.example.campusai.ui.glass.CampusGlassScene
@@ -90,6 +105,17 @@ fun CampusAIApp(
     val session by repository.session.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appEntry by remember { mutableIntStateOf(1) }
+    var showTaskReminder by remember { mutableStateOf(false) }
+    var reminderCount by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) appEntry++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     if (session == null) {
         LoginScreen(
@@ -97,19 +123,33 @@ fun CampusAIApp(
             onLoginSuccess = { }
         )
     } else {
+        LaunchedEffect(session?.accountId, appEntry) {
+            repository.refreshCourses()
+            repository.refreshTasks()
+            reminderCount = repository.tasks.value.count {
+                !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
+            }
+            showTaskReminder = reminderCount > 0
+        }
+        LaunchedEffect(showTaskReminder, appEntry) {
+            if (showTaskReminder) {
+                kotlinx.coroutines.delay(6000)
+                showTaskReminder = false
+            }
+        }
         // 应用启动时，自动同步一次学习通任务
         LaunchedEffect(session) {
             val syncStateStore = com.example.campusai.workers.ChaoxingSyncStateStore(context)
             if (syncStateStore.isConnected.first()) {
                 val syncResult = repository.syncChaoxing()
                 if (syncResult.first) {
-                    coroutineScope {
-                        awaitAll(
-                            async { repository.refreshCourses() },
-                            async { repository.refreshTasks() },
-                            async { repository.refreshNotices() },
-                        )
+                    repository.refreshCourses()
+                    repository.refreshTasks()
+                    repository.refreshNotices()
+                    reminderCount = repository.tasks.value.count {
+                        !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
                     }
+                    if (reminderCount > 0) showTaskReminder = true
                 } else if (syncResult.second == "reauth_required" || syncResult.second == "verification_required") {
                     syncStateStore.setReauthRequired(true)
                 }
@@ -122,16 +162,37 @@ fun CampusAIApp(
             }
         }
 
-        AppShell(
-            navController = navController,
-            repository = repository
-        ) {
-            AppNavHost(
-                navController = navController,
-                repository = repository,
-                modules = modules,
-                notificationInboxRepository = notificationInboxRepository,
-            )
+        Box(Modifier.fillMaxSize()) {
+            AppShell(navController = navController, repository = repository) {
+                AppNavHost(
+                    navController = navController,
+                    repository = repository,
+                    modules = modules,
+                    notificationInboxRepository = notificationInboxRepository,
+                )
+            }
+            if (showTaskReminder) {
+                Surface(
+                    onClick = {
+                        showTaskReminder = false
+                        navController.navigate("tasks") { launchSingleTop = true }
+                    },
+                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
+                        .fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFFF9F2E6),
+                    shadowElevation = 10.dp,
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("课程待办提醒", color = Color(0xFF203B32), fontWeight = FontWeight.Bold)
+                            Text("还有 $reminderCount 项本学期作业待处理 · 点击查看",
+                                color = Color(0xFF4C655A), fontSize = 13.sp)
+                        }
+                        Text("查看", color = Color(0xFF295643), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

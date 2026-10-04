@@ -58,8 +58,8 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
         infiniteRepeatable(tween(8500, easing = LinearEasing), RepeatMode.Reverse), label = "cloud-drift")
     val leafSway by transition.animateFloat(-1f, 1f,
         infiniteRepeatable(tween(3400), RepeatMode.Reverse), label = "leaf-sway")
-    val lampSway by transition.animateFloat(-1f, 1f,
-        infiniteRepeatable(tween(2600), RepeatMode.Reverse), label = "pendant-sway")
+    var lampTarget by remember { mutableFloatStateOf(0f) }
+    val lampSway by animateFloatAsState(lampTarget, tween(850), label = "pendant-sway")
     var dimPendant by remember { mutableStateOf(false) }
     var dimPath by remember { mutableStateOf(false) }
     val pendantShade by animateFloatAsState(if (dimPendant && !reduceMotion) .58f else 0f,
@@ -73,6 +73,16 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
             delay(Random.nextLong(1500, 2700)); dimPendant = false
             delay(Random.nextLong(8000, 17000)); dimPath = true
             delay(Random.nextLong(1300, 2200)); dimPath = false
+        }
+    }
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) { lampTarget = 0f; return@LaunchedEffect }
+        while (true) {
+            delay(Random.nextLong(7000, 16000))
+            lampTarget = -1f; delay(850)
+            lampTarget = 1f; delay(850)
+            lampTarget = -.45f; delay(850)
+            lampTarget = 0f
         }
     }
     fun enter(route: String) {

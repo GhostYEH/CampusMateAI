@@ -1,8 +1,9 @@
 from fastapi.testclient import TestClient
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
@@ -121,6 +122,31 @@ def test_finish_session_round_trips_privacy_safe_behavior_summary() -> None:
     )
     assert detail.status_code == 200
     assert detail.json()["behavior_summary"] == summary
+
+
+def test_recovered_focus_session_does_not_count_time_after_timer_expired() -> None:
+    client = _client()
+    headers = _headers(client)
+    created = client.post(
+        "/api/v1/study/sessions",
+        headers=headers,
+        json={"mode": "focus", "planned_duration_seconds": 1500},
+    )
+    assert created.status_code == 201
+    with get_container().db.transaction() as conn:
+        conn.execute(
+            "UPDATE study_sessions SET started_at = ? WHERE id = ?",
+            ((datetime.now(timezone.utc) - timedelta(days=1)).isoformat(), created.json()["id"]),
+        )
+
+    finished = client.post(
+        f"/api/v1/study/sessions/{created.json()['id']}/finish",
+        headers=headers,
+        json={},
+    )
+
+    assert finished.status_code == 200
+    assert finished.json()["duration_seconds"] == 1500
 
 
 def test_finish_session_rejects_frame_level_behavior_payload() -> None:

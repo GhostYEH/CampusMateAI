@@ -160,7 +160,12 @@ fun AppShell(
     val backStack by navController.currentBackStackEntryAsState()
     // destination.route may contain query parameters; compare its base route.
     val route = (backStack?.destination?.route ?: "home").substringBefore('?').substringBefore('/')
-    val immersiveRoute = route in setOf("courses", "focus", "focus_session", "focus_summary", "focus_history", "classroom-hub", "course-classroom")
+    val immersiveRoute = route in setOf(
+        "courses", "focus", "focus_session", "focus_summary", "focus_history",
+        "classroom-hub", "course-classroom", "tasks", "task_detail",
+        "profile", "account", "settings", "university", "files", "favorites",
+        "help-feedback", "notifications", "edu_system", "edu_schedule", "edu_login",
+    )
     val view = LocalView.current
     val systemBarPolicy = systemBarPolicy(
         route = route,

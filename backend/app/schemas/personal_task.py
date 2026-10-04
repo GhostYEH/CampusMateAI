@@ -169,6 +169,7 @@ class PersonalTaskOut(BaseModel):
     external_id: Optional[str] = None
     course_id: Optional[str] = None
     source_url: Optional[str] = None
+    remote_submitted_at: Optional[str] = None
     last_synced_at: Optional[str] = None
     created_at: str
     updated_at: str

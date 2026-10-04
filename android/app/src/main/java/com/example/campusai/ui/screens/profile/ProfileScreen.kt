@@ -34,7 +34,6 @@ import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
-import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 
 @Composable
@@ -44,16 +43,16 @@ fun ProfileScreen(
 ) {
     val session by repository.session.collectAsStateWithLifecycle()
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
-    val darkMode by repository.darkMode.collectAsStateWithLifecycle()
     var showAbout by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().background(Background)) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF14243D))) {
+        Image(painterResource(R.drawable.campus_twilight_original), contentDescription = null,
+            modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(Color(0xA4132634)))
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                bottom = floatingDockContentBottomPadding(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ) + 26.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 26.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -62,10 +61,8 @@ fun ProfileScreen(
                     name = session?.name ?: "林知夏",
                     detail = session?.detail ?: "计算机科学与技术 · 大三",
                     reduceMotion = reduceMotion,
-                    darkMode = darkMode,
+                    onBack = { onNavigate("home") },
                     onAccount = { onNavigate("account") },
-                    onFiles = { onNavigate("files") },
-                    onCommunity = { onNavigate("community") },
                     onFavorites = { onNavigate("favorites") },
                     onSettings = { onNavigate("settings") },
                     onScan = { onNavigate("qr_scanner") },
@@ -74,7 +71,7 @@ fun ProfileScreen(
             item {
                 Text(
                     "更多服务",
-                    color = TextPrimary,
+                    color = Color(0xFFFFECD0),
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(start = 20.dp, top = 2.dp),
@@ -84,10 +81,9 @@ fun ProfileScreen(
                 ProfileMenu(
                     modifier = Modifier.enterAnimation(delayMs = 130, enabled = !reduceMotion),
                     rows = listOf(
-                        ProfileRow(Icons.Default.Groups, "校园社区", "当前大学的公开讨论与互助") { onNavigate("community") },
-                        ProfileRow(Icons.Default.AccountBalance, "教务系统", "连接教务系统，同步课表与成绩") { onNavigate("edu_system") },
-                        ProfileRow(Icons.Default.NotificationsActive, "通知与提醒", "管理校园通知和截止事项") { onNavigate("notifications") },
-                        ProfileRow(Icons.Default.Security, "资料、大学与隐私", "编辑个人资料和所在大学") { onNavigate("account") },
+                        ProfileRow(Icons.Default.Description, "我的文件", "查看保存的资料") { onNavigate("files") },
+                        ProfileRow(Icons.Default.NotificationsActive, "系统消息", "查看账号与校园消息") { onNavigate("notifications") },
+                        ProfileRow(Icons.Default.Security, "隐私与数据", "查看权限、通知与数据说明") { onNavigate("settings") },
                         ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "常见问题、问题反馈与服务状态") { onNavigate("help-feedback") },
                         ProfileRow(Icons.Default.Info, "关于 CampusMate", "版本与能力边界") { showAbout = true },
                     ),
@@ -122,10 +118,8 @@ private fun ProfileHero(
     name: String,
     detail: String,
     reduceMotion: Boolean,
-    darkMode: Boolean,
+    onBack: () -> Unit,
     onAccount: () -> Unit,
-    onFiles: () -> Unit,
-    onCommunity: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
     onScan: () -> Unit,
@@ -138,13 +132,7 @@ private fun ProfileHero(
             Modifier.fillMaxWidth().height(318.dp)
                 .clip(RoundedCornerShape(bottomStart = 30.dp, bottomEnd = 30.dp))
                 .background(
-                    Brush.horizontalGradient(
-                        colors = if (darkMode) {
-                            listOf(Color(0xFF17384A), Color(0xFF275C78), Color(0xFF2F6486))
-                        } else {
-                            listOf(Color(0xFF173D35), Color(0xFF2B6555), Color(0xFF557F6D))
-                        },
-                    ),
+                    Brush.verticalGradient(listOf(Color(0xD0172747), Color(0xC11E3553), Color(0x8B172747))),
                 ),
         ) {
             HeroDecorations()
@@ -154,7 +142,14 @@ private fun ProfileHero(
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column {
-                        Text("我的", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onBack, modifier = Modifier.size(42.dp)
+                                .background(Color(0xAA203B45), CircleShape)) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = Color.White)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text("我的", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                        }
                         Text("今天也照顾好自己的节奏", color = Color.White.copy(alpha = .74f), fontSize = 11.sp)
                     }
                     Spacer(Modifier.weight(1f))
@@ -197,7 +192,7 @@ private fun ProfileHero(
                         ) {
                             Box(Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF9BE1C0)))
                             Spacer(Modifier.width(6.dp))
-                            Text("资料已同步到当前账号", color = Color.White.copy(alpha = .88f), fontSize = 9.sp)
+                            Text("点击查看和编辑个人资料", color = Color.White.copy(alpha = .88f), fontSize = 9.sp)
                         }
                     }
                     Icon(Icons.Default.ChevronRight, null, tint = Color.White.copy(alpha = .8f))
@@ -206,8 +201,7 @@ private fun ProfileHero(
         }
         ProfileQuickActions(
             modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp),
-            onFiles = onFiles,
-            onCommunity = onCommunity,
+            onAccount = onAccount,
             onFavorites = onFavorites,
             onSettings = onSettings,
         )
@@ -242,14 +236,12 @@ private fun HeroDecorations() {
 @Composable
 private fun ProfileQuickActions(
     modifier: Modifier = Modifier,
-    onFiles: () -> Unit,
-    onCommunity: () -> Unit,
+    onAccount: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val actions = listOf(
-        QuickAction(Icons.Default.Description, "文件", onFiles),
-        QuickAction(Icons.Default.Groups, "论坛", onCommunity),
+        QuickAction(Icons.Default.Person, "资料", onAccount),
         QuickAction(Icons.Default.Bookmark, "收藏", onFavorites),
         QuickAction(Icons.Default.Settings, "设置", onSettings),
     )

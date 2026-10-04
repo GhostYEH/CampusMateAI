@@ -351,6 +351,10 @@ class StudySessionRepository:
             duration = _seconds_between(session.started_at, now) - total_pause
             if duration < 0:
                 duration = 0
+            # A focus timer finishes at its planned duration. A session recovered
+            # after the app spent hours in the background must not count that gap.
+            if session.planned_duration_seconds > 0:
+                duration = min(duration, session.planned_duration_seconds)
             tags_json = (
                 json.dumps(self_report_tags, ensure_ascii=False)
                 if self_report_tags

@@ -38,6 +38,7 @@ internal fun FocusEndDialog(
     timerExpired: Boolean,
     finishing: Boolean,
     hasPlanStep: Boolean,
+    goal: String,
     selfReport: String,
     error: String?,
     onReportChange: (String) -> Unit,
@@ -48,7 +49,7 @@ internal fun FocusEndDialog(
     Dialog(onDismissRequest = { if (!finishing && !timerExpired) onDismiss() }) {
         Box(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                .background(Color(0xFF102535)),
+                .background(Color(0xFFF8F2E8)),
         ) {
             Image(
                 painter = painterResource(scene.backgroundResource()),
@@ -59,7 +60,7 @@ internal fun FocusEndDialog(
             Box(
                 Modifier.matchParentSize().background(
                     Brush.verticalGradient(
-                        listOf(Color(0xE009202D), Color(0xEF102333)),
+                        listOf(Color(0xF8FFF9EF), Color(0xF2F8F0E5)),
                     ),
                 ),
             )
@@ -67,47 +68,49 @@ internal fun FocusEndDialog(
                 Modifier.fillMaxWidth().padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(13.dp),
             ) {
-                Text("STUDY ROOM  /  本次专注", color = Color(0xFFBDE7CA), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("自习室  /  本次专注", color = Color(0xFF517360), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text(
                     if (timerExpired) "这段学习完成了" else "结束本次专注？",
-                    color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold,
+                    color = Color(0xFF203B32), fontSize = 23.sp, fontWeight = FontWeight.Bold,
                 )
-                Text("小伴想问：刚才完成了什么？下次准备从哪里继续？", color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
+                Text("本次目标", color = Color(0xFF295643), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(goal.ifBlank { "自由专注" }, color = Color(0xFF203B32), fontSize = 16.sp, lineHeight = 22.sp)
+                Text("写下这次完成的事，也可以留空。", color = Color(0xFF5D7066), fontSize = 13.sp)
                 OutlinedTextField(
                     value = selfReport,
                     onValueChange = { onReportChange(it.take(2_000)) },
                     label = { Text("我的学习收获（选填）") },
-                    placeholder = { Text("例如：做完两道习题，下次继续第三题", color = Color.White.copy(alpha = .72f)) },
+                    placeholder = { Text("例如：做完两道习题，下次继续第三题", color = Color(0xFF63796E)) },
                     minLines = 2,
                     maxLines = 4,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedLabelColor = Color(0xFFBDE7CA),
-                        unfocusedLabelColor = Color.White.copy(alpha = .75f),
-                        focusedBorderColor = Color(0xFFBDE7CA),
-                        unfocusedBorderColor = Color.White.copy(alpha = .5f),
-                        cursorColor = Color.White,
+                        focusedTextColor = Color(0xFF203B32),
+                        unfocusedTextColor = Color(0xFF203B32),
+                        focusedLabelColor = Color(0xFF295643),
+                        unfocusedLabelColor = Color(0xFF5D7066),
+                        focusedBorderColor = Color(0xFF295643),
+                        unfocusedBorderColor = Color(0xFF93AA9A),
+                        cursorColor = Color(0xFF295643),
                     ),
                 )
-                error?.let { Text(it, color = Color(0xFFFFC7B8), fontSize = 12.sp) }
+                error?.let { Text(it, color = Color(0xFF974D42), fontSize = 12.sp) }
                 Spacer(Modifier.height(2.dp))
                 Button(
                     onClick = onComplete,
                     enabled = !finishing,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBDE7CA), contentColor = Color(0xFF173729)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF295643), contentColor = Color.White),
                 ) {
                     Text(if (hasPlanStep) "完成步骤并查看总结" else "结束并查看总结", fontWeight = FontWeight.Bold)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                     if (!timerExpired) TextButton(enabled = !finishing, onClick = onDismiss) {
-                        Text("继续专注", color = Color.White)
+                        Text("继续专注", color = Color(0xFF295643))
                     }
                     if (hasPlanStep) TextButton(enabled = !finishing, onClick = onEndOnly) {
-                        Text("仅结束专注", color = Color.White.copy(alpha = .8f))
+                        Text("仅结束专注", color = Color(0xFF63796E))
                     }
                 }
             }

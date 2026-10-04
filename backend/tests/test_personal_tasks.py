@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings
 from app.main import create_app
-from app.services.container import reset_container_for_tests
+from app.services.container import get_container, reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
@@ -69,3 +69,34 @@ def test_personal_task_rejects_likely_garbled_text_on_create_and_update() -> Non
     current = client.get(f"/api/v1/tasks/{created.json()['id']}", headers=headers)
     assert current.status_code == 200
     assert current.json()["description"] == "整理本周实验记录和截图，周末前完成初稿。"
+
+
+def test_synced_assignment_exposes_source_and_course_for_todo_filtering() -> None:
+    client = _client()
+    headers = _headers(client)
+    container = get_container()
+    student = container.user_repository.get_user_by_username("student_demo")
+    assert student is not None
+    task = container.personal_task_repository.create_task(
+        user_id=student.id,
+        title="实验一",
+        deadline="2026-10-11T08:43:00+08:00",
+        source="chaoxing",
+        external_id="remote-homework-1",
+        course_id="course-1",
+        source_url="https://example.org/assignment/1",
+    )
+    container.personal_task_repository.update_task(
+        task.id, user_id=student.id,
+        fields={"remote_submitted_at": "2026-10-10T08:43:00+08:00"},
+    )
+
+    response = client.get(f"/api/v1/tasks/{task.id}", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source"] == "chaoxing"
+    assert payload["external_id"] == "remote-homework-1"
+    assert payload["course_id"] == "course-1"
+    assert payload["source_url"] == "https://example.org/assignment/1"
+    assert payload["remote_submitted_at"] == "2026-10-10T08:43:00+08:00"

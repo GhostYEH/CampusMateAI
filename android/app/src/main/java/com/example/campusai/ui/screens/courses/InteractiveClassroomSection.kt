@@ -542,7 +542,7 @@ fun InteractiveClassroomSection(
             onDone = { showMaterials = false },
         )
     }
-    viewerUrl?.let { ClassroomViewer(it) { viewerUrl = null } }
+    viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null }, repository) }
 }
 
 @Composable

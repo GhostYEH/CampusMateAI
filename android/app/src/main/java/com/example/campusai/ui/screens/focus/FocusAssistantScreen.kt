@@ -1,5 +1,7 @@
 package com.example.campusai.ui.screens.focus
 
+import androidx.compose.ui.zIndex
+
 import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassIconButton as IconButton
 import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
@@ -476,6 +478,7 @@ fun FocusSessionScreen(
             timerExpired = timerExpired,
             finishing = finishingSession,
             hasPlanStep = planTaskId != null,
+            goal = taskName,
             selfReport = selfReport,
             error = completionError,
             onReportChange = { selfReport = it },
@@ -540,7 +543,7 @@ private fun FocusExecutionContent(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).zIndex(10f),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -738,11 +741,11 @@ private fun FocusSensingSystem(
         modifier = Modifier.campusGlass(
             shape = RoundedCornerShape(26.dp),
             role = CampusGlassRole.PANEL,
-            tint = Color.White.copy(alpha = .34f),
+            tint = Color(0xF8FFF9EE),
         ),
         shape = RoundedCornerShape(26.dp),
         color = Color.Transparent,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = .30f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0D7C8)),
     ) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -794,7 +797,7 @@ private fun FocusSensingSystem(
                                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                                 onAttachPreview(this)
                             } },
-                            modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f).clip(RoundedCornerShape(16.dp)),
+                            modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)),
                         )
                     }
                     Text("人在座位：${if (presence == PresenceState.PRESENT) "是" else "正在识别"}", color = TextPrimary, fontSize = 12.sp)

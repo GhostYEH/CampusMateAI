@@ -634,18 +634,52 @@ class AppRepository(
             val resp = ApiClient.api.listTasks(page = 1, pageSize = 200)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                _tasks.value = TaskRemotePolicy.replaceAfterSuccessfulRead(_tasks.value, items.map { dto ->
+                val remoteTasks = items.map { dto ->
                         Task(
                             id = dto.id,
                             title = dto.title,
                             due = dto.deadline ?: "待设置",
                             course = dto.source_name ?: "个人待办",
-                            done = dto.status == "completed",
+                            done = dto.status == "completed" || dto.remote_submitted_at != null,
                             description = dto.description ?: dto.source_text ?: "",
                             importance = dto.importance ?: "unknown",
                             completedAt = dto.updated_at.takeIf { dto.status == "completed" },
+                            source = dto.source,
+                            externalId = dto.external_id,
+                            courseId = dto.course_id,
+                            sourceUrl = dto.source_url,
+                            submittedAt = dto.remote_submitted_at,
                         )
-                    })
+                    }
+                val now = java.time.Instant.now()
+                val noticeTasks = _courses.value.filter { it.isCurrentSemesterAt(now) }
+                    .chunked(6).flatMap { batch ->
+                        coroutineScope {
+                            batch.map { course -> async {
+                                runCatching { loadCourseContent(course.id).second }
+                                    .getOrDefault(emptyList())
+                                    .mapNotNull { assignmentFromNotice(course, it) }
+                            } }.awaitAll().flatten()
+                        }
+                    }.filter { notice ->
+                        val matchingRemote = remoteTasks.any { task ->
+                            task.courseId == notice.courseId && task.source in setOf("chaoxing", "chaoxing_notice") &&
+                                ((task.externalId != null && task.externalId == notice.externalId) ||
+                                 task.title.contains(notice.title) || notice.title.contains(task.title))
+                        }
+                        !matchingRemote
+                    }.distinctBy { it.id }
+                val acknowledgementKey = "course_notice_ack_${accountStorageKey(_session.value ?: return@withLock)}"
+                val acknowledged = runCatching {
+                    val saved = JSONArray(dataStore.readRaw(acknowledgementKey) ?: "[]")
+                    (0 until saved.length()).map { saved.getString(it) }.toSet()
+                }.getOrDefault(emptySet())
+                _tasks.value = TaskRemotePolicy.replaceAfterSuccessfulRead(
+                    _tasks.value.filterNot { it.source == "course_notice" },
+                    remoteTasks + noticeTasks.map { notice ->
+                        if (notice.id in acknowledged) notice.copy(done = true) else notice
+                    },
+                )
                 _taskError.value = null
             } else {
                 _taskError.value = if (resp.code() == 401) {
@@ -853,6 +887,23 @@ class AppRepository(
                 )
             }
             _tasks.value = list
+        }
+    }
+
+    /** A provisional notice has no server task ID; keep the student's confirmation on this device. */
+    suspend fun confirmCourseNoticeSubmitted(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val user = checkNotNull(_session.value) { "请先登录" }
+            val task = _tasks.value.firstOrNull { it.id == id && it.source == "course_notice" }
+                ?: error("课程通知待办不存在")
+            val key = "course_notice_ack_${accountStorageKey(user)}"
+            val saved = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+            val ids = (0 until saved.length()).map { saved.getString(it) }.toMutableSet()
+            ids += task.id
+            dataStore.saveRaw(key, JSONArray(ids.toList()).toString())
+            _tasks.value = _tasks.value.map { current ->
+                if (current.id == id) current.copy(done = true, completedAt = java.time.Instant.now().toString()) else current
+            }
         }
     }
 
@@ -1477,6 +1528,27 @@ class AppRepository(
         } catch (error: Exception) { Result.failure(error) }
     }
 
+    fun classroomVisitFingerprint(url: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(url.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    suspend fun classroomEntryTimes(): Map<String, String> {
+        val user = _session.value ?: return emptyMap()
+        val raw = dataStore.readRaw("classroom_entry_${accountStorageKey(user)}") ?: return emptyMap()
+        return runCatching {
+            val entries = JSONObject(raw)
+            entries.keys().asSequence().associateWith { entries.getString(it) }
+        }.getOrDefault(emptyMap())
+    }
+
+    suspend fun recordClassroomEntry(url: String) {
+        val user = _session.value ?: return
+        val key = "classroom_entry_${accountStorageKey(user)}"
+        val entries = runCatching { JSONObject(dataStore.readRaw(key) ?: "{}") }.getOrDefault(JSONObject())
+        entries.put(classroomVisitFingerprint(url), java.time.Instant.now().toString())
+        dataStore.saveRaw(key, entries.toString())
+    }
+
     suspend fun selfClassroomJob(sessionId: String): Result<InteractiveClassroomSessionDto> {
         if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法查看课堂"))
         return try {
@@ -1716,6 +1788,12 @@ class AppRepository(
                 put("description", task.description)
                 put("importance", task.importance)
                 put("completedAt", task.completedAt)
+                put("source", task.source)
+                put("courseId", task.courseId)
+                put("sourceUrl", task.sourceUrl)
+                put("submittedAt", task.submittedAt)
+                put("startAt", task.startAt)
+                put("externalId", task.externalId)
             })
         }
     }.toString()
@@ -1734,6 +1812,12 @@ class AppRepository(
                     description = item.optString("description"),
                     importance = item.optString("importance", "unknown"),
                     completedAt = item.optString("completedAt").takeIf(String::isNotBlank),
+                    source = item.optString("source").takeIf(String::isNotBlank),
+                    courseId = item.optString("courseId").takeIf(String::isNotBlank),
+                    sourceUrl = item.optString("sourceUrl").takeIf(String::isNotBlank),
+                    submittedAt = item.optString("submittedAt").takeIf(String::isNotBlank),
+                    startAt = item.optString("startAt").takeIf(String::isNotBlank),
+                    externalId = item.optString("externalId").takeIf(String::isNotBlank),
                 )
             }
         }

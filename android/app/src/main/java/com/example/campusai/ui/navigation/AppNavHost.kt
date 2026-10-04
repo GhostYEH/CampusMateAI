@@ -253,6 +253,7 @@ fun AppNavHost(
                 repository = repository,
                 onBack = { navController.popBackStack() },
                 onTaskDeleted = { navController.popBackStack() },
+                onOpenCourse = { courseId -> go("courses/${Uri.encode(courseId)}") },
             )
         }
         composable("notifications") {
@@ -318,12 +319,14 @@ fun AppNavHost(
                 focusRepository = modules.focus,
                 onBack = { navController.popBackStack() },
                 onConnectChaoxing = { go("chaoxing") },
+                onOpenEduSystem = { go("edu_system") },
                 onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                 onOpenClassroom = { courseId -> go("course-classroom/${Uri.encode(courseId)}") },
             )
         }
         composable("classroom-hub") {
-            ClassroomHubScreen(repository, onBack = { navController.popBackStack() }, onOpenCourses = { go("courses") })
+            ClassroomHubScreen(repository, onBack = { navController.popBackStack() },
+                onOpenCourses = { go("courses") }, onOpenHistory = { go("focus_history") })
         }
         composable(
             route = "courses/{courseId}?tab={tab}&session={session}",
@@ -349,6 +352,7 @@ fun AppNavHost(
                     initialCourseId = courseId,
                     onBack = { navController.popBackStack() },
                     onConnectChaoxing = { go("chaoxing") },
+                    onOpenEduSystem = { go("edu_system") },
                     onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                     onOpenClassroom = { id -> go("course-classroom/${Uri.encode(id)}") },
                 )
@@ -497,6 +501,7 @@ fun AppNavHost(
             SettingsScreen(
                 repository = repository,
                 onOpenContribution = { navController.navigate("expression-contribution") },
+                onBack = { navController.popBackStack() },
             )
         }
         composable("help-feedback") {
@@ -642,7 +647,8 @@ fun AppNavHost(
             )
         }
         composable("focus_history") {
-            FocusHistoryScreen(repository = modules.focus, onBack = { navController.popBackStack() })
+            FocusHistoryScreen(repository = modules.focus, appRepository = repository,
+                onBack = { navController.popBackStack() })
         }
         composable(
             route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}&taskId={taskId}",

@@ -1,8 +1,11 @@
 package com.example.campusai.ui.screens.courses
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.speech.RecognizerIntent
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
@@ -22,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -40,12 +44,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.example.campusai.data.remote.ClassroomUrlPolicy
+import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
 import android.os.Handler
 import android.os.Looper
 import org.json.JSONTokener
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 
 /** Some Android WebViews report a zero CSS viewport for `100vh` inside a Compose dialog. */
 private val classroomViewportFix = """
@@ -54,7 +60,8 @@ private val classroomViewportFix = """
       if (window.__campusClassroomViewportFix) return;
       window.__campusClassroomViewportFix = true;
       function applyHeight() {
-        var height = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+        var height = Math.round((window.visualViewport && window.visualViewport.height) ||
+          window.innerHeight || document.documentElement.clientHeight || 0);
         if (!height || !document.body) return;
         var pixels = height + 'px';
         document.documentElement.style.setProperty('height', pixels, 'important');
@@ -67,6 +74,7 @@ private val classroomViewportFix = """
       }
       applyHeight();
       window.addEventListener('resize', applyHeight);
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', applyHeight);
       new MutationObserver(applyHeight).observe(document.body, { childList: true });
     })();
 """.trimIndent()
@@ -93,6 +101,49 @@ private val classroomMobileFix = """
           div[class*="rounded-[2.5rem]"][class*="backdrop-blur"] {
             backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
           }
+          div[class*="h-[192px]"][class*="backdrop-blur"] {
+            height: var(--campus-dialogue-height, 192px) !important;
+            min-height: 120px !important;
+            flex-shrink: 0 !important;
+          }
+          div[class*="w-[90px]"][class*="shrink-0"] { width: 72px !important; }
+          div[class*="w-[140px]"][class*="shrink-0"] {
+            width: 82px !important; padding-top: 4px !important;
+          }
+          div[class*="w-[140px]"][class*="shrink-0"] > div:first-child {
+            display: none !important;
+          }
+          [data-testid="roundtable-non-presentation-card"] {
+            padding-left: 4px !important; padding-right: 4px !important;
+            border-radius: 16px !important; overflow: visible !important;
+          }
+          [data-testid="roundtable-non-presentation-input-stage"] {
+            left: 4px !important; right: 4px !important; bottom: 6px !important;
+          }
+          [data-testid="roundtable-non-presentation-input-panel"] {
+            width: 100% !important; max-width: 100% !important;
+            min-width: 0 !important; padding: 5px !important; gap: 2px !important;
+          }
+          [data-testid="roundtable-non-presentation-input-panel"] textarea {
+            min-width: 0 !important; font-size: 16px !important;
+          }
+          .campus-dialogue-grip {
+            position: absolute; z-index: 100; left: 50%; top: -16px;
+            transform: translateX(-50%); width: 88px; height: 24px;
+            border-radius: 14px; border: 1px solid #9ca6b7;
+            background: rgba(255,255,255,.96); box-shadow: 0 2px 9px #18274435;
+            touch-action: none; display: flex; align-items: center; justify-content: center;
+          }
+          .campus-dialogue-grip::after {
+            content: ''; width: 38px; height: 4px; border-radius: 4px;
+            background: #506782;
+          }
+          .campus-slide-reset {
+            position: absolute; z-index: 120; right: 12px; bottom: 12px;
+            border: 0; border-radius: 16px; padding: 8px 12px;
+            color: #fff; background: #172747; font-size: 13px;
+            box-shadow: 0 3px 12px #17274755;
+          }
           [aria-live="polite"][class*="group/bubble"],
           div[class*="max-h-[110px]"][class*="group/bubble"] {
             display: none !important;
@@ -100,6 +151,92 @@ private val classroomMobileFix = """
         }
       `;
       document.head.appendChild(style);
+      function attachGrip() {
+        var panel = document.querySelector('div[class*="h-[192px]"][class*="backdrop-blur"]');
+        if (!panel || panel.querySelector('.campus-dialogue-grip')) return;
+        var grip = document.createElement('div');
+        grip.className = 'campus-dialogue-grip';
+        grip.setAttribute('role', 'separator');
+        grip.setAttribute('aria-label', '拖动调整课件与对话区域');
+        panel.appendChild(grip);
+        var startY = 0, startHeight = 192;
+        grip.addEventListener('pointerdown', function (event) {
+          startY = event.clientY;
+          startHeight = panel.getBoundingClientRect().height;
+          grip.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+        grip.addEventListener('pointermove', function (event) {
+          if (!grip.hasPointerCapture(event.pointerId)) return;
+          var upper = Math.min(320, Math.max(180, innerHeight * .48));
+          var next = Math.max(120, Math.min(upper, startHeight - (event.clientY - startY)));
+          panel.style.setProperty('--campus-dialogue-height', next + 'px');
+          event.preventDefault();
+        });
+      }
+      attachGrip();
+      new MutationObserver(attachGrip).observe(document.body, { childList: true, subtree: true });
+      function attachSlideZoom() {
+        var canvas = document.querySelector('[class*="group/canvas"]');
+        var area = canvas && canvas.firstElementChild;
+        var slide = area && area.firstElementChild;
+        if (!area || !slide || !slide.className.includes('aspect-[16/9]')) return;
+        if (area.__campusZoom) {
+          if (area.__campusZoomSlide !== slide) {
+            area.__campusZoomSlide = slide;
+            area.__campusZoomSetSlide(slide);
+          }
+          return;
+        }
+        area.__campusZoom = true;
+        area.__campusZoomSlide = slide;
+        var scale = 1, x = 0, y = 0, startDistance = 0;
+        var startScale = 1, startX = 0, startY = 0, touchX = 0, touchY = 0;
+        var reset = document.createElement('button');
+        reset.className = 'campus-slide-reset';
+        reset.textContent = '恢复原尺寸';
+        reset.style.display = 'none';
+        area.appendChild(reset);
+        function draw() {
+          slide.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + scale + ')';
+          slide.style.transformOrigin = 'center center';
+          reset.style.display = scale > 1.01 ? 'block' : 'none';
+        }
+        reset.addEventListener('click', function (event) {
+          event.stopPropagation(); scale = 1; x = 0; y = 0; draw();
+        });
+        area.__campusZoomSetSlide = function (nextSlide) {
+          slide = nextSlide; scale = 1; x = 0; y = 0; draw();
+        };
+        area.addEventListener('touchstart', function (event) {
+          if (event.touches.length === 2) {
+            var a = event.touches[0], b = event.touches[1];
+            startDistance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+            startScale = scale; startX = x; startY = y;
+            touchX = (a.clientX + b.clientX) / 2;
+            touchY = (a.clientY + b.clientY) / 2;
+          } else if (event.touches.length === 1 && scale > 1) {
+            touchX = event.touches[0].clientX; touchY = event.touches[0].clientY;
+            startX = x; startY = y;
+          }
+        }, { passive: true });
+        area.addEventListener('touchmove', function (event) {
+          if (event.touches.length === 2 && startDistance > 0) {
+            var a = event.touches[0], b = event.touches[1];
+            scale = Math.max(1, Math.min(3, startScale * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / startDistance));
+            x = startX + ((a.clientX + b.clientX) / 2 - touchX);
+            y = startY + ((a.clientY + b.clientY) / 2 - touchY);
+            if (scale === 1) { x = 0; y = 0; }
+            draw(); event.preventDefault();
+          } else if (event.touches.length === 1 && scale > 1) {
+            x = startX + event.touches[0].clientX - touchX;
+            y = startY + event.touches[0].clientY - touchY;
+            draw(); event.preventDefault();
+          }
+        }, { passive: false });
+      }
+      attachSlideZoom();
+      new MutationObserver(attachSlideZoom).observe(document.body, { childList: true, subtree: true });
     })();
 """.trimIndent()
 
@@ -121,7 +258,7 @@ private val classroomNarrationSnapshot = """
 
 /** A classroom remains inside CampusMate; navigation is confined to its trusted origin. */
 @Composable
-internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
+internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRepository? = null) {
     val context = LocalContext.current
     val origin = remember(url) { ClassroomUrlPolicy.originOf(url) }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
@@ -138,6 +275,37 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     var pendingAudioRequest by remember(url) { mutableStateOf<PermissionRequest?>(null) }
     val speaker = remember(url) { AndroidTextToSpeechSynthesizer(context) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(speechError) {
+        if (speechError != null) {
+            kotlinx.coroutines.delay(8000)
+            speechError = null
+        }
+    }
+    val nativeSpeechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()?.trim().orEmpty()
+            if (spoken.isNotBlank()) {
+                speechError = null
+                val quoted = JSONObject.quote(spoken)
+                webView?.evaluateJavascript("""
+                    (function () {
+                      var input = document.querySelector('[data-testid="roundtable-non-presentation-input-panel"] textarea')
+                        || document.querySelector('textarea');
+                      if (!input) return false;
+                      var setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+                      setter.call(input, $quoted);
+                      input.dispatchEvent(new Event('input', { bubbles: true }));
+                      input.focus();
+                      return true;
+                    })()
+                """.trimIndent()) { inserted ->
+                    if (inserted != "true") speechError = "已识别语音，但没找到提问框。请切换到课堂对话后重试。"
+                }
+            }
+        }
+    }
     val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val request = pendingAudioRequest
         pendingAudioRequest = null
@@ -205,11 +373,33 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(Color(0xFFF2F1E8)).statusBarsPadding().navigationBarsPadding()) {
+        Column(Modifier.fillMaxSize().background(Color(0xFFF2F1E8))
+            .statusBarsPadding().navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().height(56.dp).background(Color(0xFF153B34)), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回互动课堂", tint = Color.White) }
                 Text("互动课堂", color = Color.White, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
+                IconButton(onClick = {
+                    webView?.evaluateJavascript("""
+                        (function () {
+                          if (document.querySelector('[data-testid="roundtable-non-presentation-input-panel"] textarea')) return;
+                          var chat = document.querySelector('div[class*="w-[140px]"] svg.lucide-message-square');
+                          (chat && chat.closest('button'))?.click();
+                        })()
+                    """.trimIndent(), null)
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, "说出你要问老师的问题")
+                    }
+                    try {
+                        nativeSpeechLauncher.launch(intent)
+                    } catch (_: Exception) {
+                        speechError = "手机没有可用的语音识别服务，请使用文字提问。"
+                    }
+                }) {
+                    Icon(Icons.Default.Mic, contentDescription = "语音输入问题", tint = Color.White)
+                }
                 IconButton(onClick = {
                     if (speaking) {
                         speaker.stop(); speaking = false
@@ -286,8 +476,17 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                 }
 
                                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                                    val detail = message.message()
+                                    if (detail.contains("Speech recognition error") ||
+                                        detail.contains("speech recognition", ignoreCase = true) && detail.contains("network")) {
+                                        speechError = "网页语音识别连接失败。可点顶部麦克风使用手机语音输入，或直接打字。"
+                                    }
+                                    if (detail.contains("streamInterrupted", ignoreCase = true) ||
+                                        detail.contains("totalAgents: 0")) {
+                                        speechError = "老师没有生成回复。请稍后重试提问，并检查课堂模型服务额度。"
+                                    }
                                     if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
-                                        (message.message().contains("Uncaught") || message.message().contains("ChunkLoadError"))
+                                        (detail.contains("Uncaught") || detail.contains("ChunkLoadError"))
                                     ) {
                                         loadError = "课堂网页脚本运行失败，请重新加载；若仍失败，请检查课堂服务。"
                                     }
@@ -315,6 +514,9 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit) {
                                 override fun onPageFinished(view: WebView, pageUrl: String?) {
                                     view.evaluateJavascript(classroomViewportFix, null)
                                     view.evaluateJavascript(classroomMobileFix, null)
+                                    if (ClassroomUrlPolicy.originOf(pageUrl) == origin) {
+                                        scope.launch { repository?.recordClassroomEntry(url) }
+                                    }
                                     loading = false
                                     pageFinished = true
                                 }
