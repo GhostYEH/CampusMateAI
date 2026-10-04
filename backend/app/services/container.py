@@ -52,6 +52,7 @@ from ..repositories.learner_control_repository import LearnerControlRepository
 from ..repositories.agent_runtime_repository import AgentRuntimeRepository
 from ..repositories.agent_artifact_repository import AgentArtifactRepository
 from ..repositories.final_review_repository import FinalReviewRepository
+from ..repositories.student_exams_migration import apply_student_exams_migration
 from ..repositories.course_research_repository import CourseResearchRepository
 from ..repositories.notice_workflow_repository import NoticeWorkflowRepository
 from ..repositories.qr_auth_repository import (
@@ -383,6 +384,10 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         artifact_root = Path(__file__).resolve().parents[2] / artifact_root
     agent_artifact_repository = AgentArtifactRepository(db, artifact_root)
     final_review_repository = FinalReviewRepository(db)
+    # student_exams 由学生端路由、demo seeder 与期末复习校验共用，迁移在启动时
+    # 一次性执行，避免在请求路径上重复建表。
+    with db.transaction() as _student_exams_conn:
+        apply_student_exams_migration(_student_exams_conn)
     course_research_repository = CourseResearchRepository(db)
     notice_workflow_repository = NoticeWorkflowRepository(db)
 

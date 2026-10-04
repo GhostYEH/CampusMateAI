@@ -77,17 +77,9 @@ def _validate_exam_ids(user_id: str, exam_ids: list[str], container: ServiceCont
     """校验 exam_ids 全部来自 server /student/exams(即 student_exams 表)。"""
     if not exam_ids:
         raise ValidationFailed("至少需要一个 exam_id")
-    # 确保 student_exams 表存在
+    # student_exams 表由容器启动时的迁移保证存在(见 student_exams_migration)
     conn = container.db._connect()
     try:
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS student_exams ("
-            "id TEXT PRIMARY KEY, user_id TEXT NOT NULL, course_name TEXT NOT NULL, "
-            "exam_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, "
-            "seat_number TEXT, exam_type TEXT, reminder_enabled INTEGER NOT NULL DEFAULT 1, "
-            "notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
-        )
-        conn.commit()
         placeholders = ",".join("?" for _ in exam_ids)
         rows = conn.execute(
             f"SELECT id FROM student_exams WHERE user_id = ? AND id IN ({placeholders})",

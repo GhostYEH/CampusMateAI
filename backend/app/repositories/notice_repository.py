@@ -72,6 +72,20 @@ class NoticeRepository:
                 cur = conn.execute("SELECT * FROM notices WHERE id = ?", (notice_id,))
                 return NoticeRow.from_row(cur.fetchone())
 
+    def find_by_external_id(
+        self, user_id: str, source: str, external_id: str
+    ) -> Optional[NoticeRow]:
+        """定向查重：按 (user_id, source, external_id) 命中唯一通知。
+
+        避免为幂等判断把该用户全部通知(含正文)读入内存。
+        """
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM notices WHERE user_id = ? AND source = ? AND external_id = ?",
+                (user_id, source, external_id),
+            ).fetchone()
+        return NoticeRow.from_row(row) if row else None
+
     def list_notices(self, user_id: str) -> List[NoticeRow]:
         with self._db.query() as conn:
             cur = conn.execute(

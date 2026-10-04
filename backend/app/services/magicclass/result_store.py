@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .._time import parse_iso_assume_utc as _parse_iso
+from ...core.logging import logger
 
 _SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
@@ -334,8 +335,11 @@ class MagicClassResultStore:
             path = self._session_path(user_id, course_id, session.session_id)
             try:
                 os.unlink(path)
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning(
+                    "magicclass prune session unlink failed user_id={} course_id={} session_id={} reason={}",
+                    user_id, course_id, session.session_id, type(exc).__name__,
+                )
 
     # ===== 预占(跨进程原子) =====
 
@@ -458,8 +462,12 @@ class MagicClassResultStore:
                     return
             try:
                 os.unlink(path)
-            except OSError:
-                pass
+            except OSError as exc:
+                # 预占残留会让该课程一直被锁住，必须留痕。
+                logger.warning(
+                    "magicclass reservation release unlink failed user_id={} course_id={} reason={}",
+                    user_id, course_id, type(exc).__name__,
+                )
 
     @staticmethod
     def reservation_is_stale(reservation: MagicClassReservation, ttl_seconds: float) -> bool:

@@ -433,16 +433,11 @@ def _seed_agent_demo_data(container: ServiceContainer, demo_user: UserRow) -> di
 
     conn = db._connect()
     try:
-        # student_exams 表(与 student_tools 路由一致)
-        conn.executescript(
-            "CREATE TABLE IF NOT EXISTS student_exams ("
-            "id TEXT PRIMARY KEY, user_id TEXT NOT NULL, course_name TEXT NOT NULL, "
-            "exam_date TEXT NOT NULL, start_time TEXT, end_time TEXT, location TEXT, "
-            "seat_number TEXT, exam_type TEXT, reminder_enabled INTEGER NOT NULL DEFAULT 1, "
-            "notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
-            "CREATE INDEX IF NOT EXISTS idx_student_exams_user_date "
-            "ON student_exams(user_id, exam_date);"
+        # student_exams 表(与 student_tools 路由共用同一迁移)
+        from ..repositories.student_exams_migration import (
+            apply_student_exams_migration,
         )
+        apply_student_exams_migration(conn)
         # final_review 表
         from ..repositories.final_review_migration import (
             apply_final_review_migration,

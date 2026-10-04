@@ -393,11 +393,9 @@ def create_manual_notice(
         "\x1f".join((user.id, normalized)).encode("utf-8")
     ).hexdigest()
     external_id = f"manual:{fingerprint[:32]}"
-    existing = None
-    for n in container.notice_repository.list_notices(user.id):
-        if n.source == "manual_input" and n.external_id == external_id:
-            existing = n
-            break
+    existing = container.notice_repository.find_by_external_id(
+        user.id, "manual_input", external_id
+    )
     notice = container.notice_repository.create_or_update_notice(
         user_id=user.id,
         source="manual_input",

@@ -28,6 +28,7 @@ from typing import Optional
 
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
+from ....core.logging import logger
 from ....models.edu import (
     EDU_PROVIDER_ZHENGFANG,
     LOGIN_EXEC_BACKEND_HTTP,
@@ -604,7 +605,15 @@ class ZhengfangAdapter(EduAdapter):
             school, client = self._prepare(session)
             await self._authenticated_probe(school, client)
             return True
-        except Exception:
+        except (EduAdapterError, NeedUserAction, PermissionError) as exc:
+            # 会话确实不可用：网络/认证/需要用户操作。按"未通过验证"返回，
+            # 但保留可观测性；配置错误(AdapterNotImplemented)与程序 bug 不在此列，
+            # 会继续向上抛出，避免被误报为"会话失效"。
+            logger.info(
+                "zhengfang verify_session rejected provider={} reason={}",
+                self.provider,
+                type(exc).__name__,
+            )
             return False
         finally:
             if client is not None:

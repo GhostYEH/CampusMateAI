@@ -41,8 +41,9 @@ class DocumentRow:
             source_type=row["source_type"],
             original_filename=row["original_filename"],
             content_hash=row["content_hash"],
-            content_text=row["content_text"],
-            raw_text=row["raw_text"],
+            # 元数据查询不选中全文列，缺列时留空而非 KeyError。
+            content_text=row["content_text"] if "content_text" in row.keys() else "",
+            raw_text=row["raw_text"] if "raw_text" in row.keys() else "",
             published_at=row["published_at"],
             updated_at=row["updated_at"],
             effective_from=row["effective_from"],

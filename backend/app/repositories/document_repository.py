@@ -122,9 +122,22 @@ class DocumentRepository:
             return DocumentRow.from_row(row) if row else None
 
     def list_documents(self) -> List[DocumentRow]:
+        """列出文档元数据。
+
+        调用方(文档列表、检索索引重建)都只用元数据，因此不读取 content_text /
+        raw_text 两份全文，避免每次调用都产生 O(语料总字数) 的无用 IO。
+        """
         with self._db.query() as conn:
             cur = conn.execute(
-                "SELECT * FROM documents ORDER BY imported_at DESC"
+                """
+                SELECT
+                    document_id, title, source_department, source_type,
+                    original_filename, content_hash, published_at, updated_at,
+                    effective_from, effective_to, version, applicable_students,
+                    is_official, is_expired, is_demo, file_size, file_ext, imported_at
+                FROM documents
+                ORDER BY imported_at DESC
+                """
             )
             rows = cur.fetchall()
             return [DocumentRow.from_row(r) for r in rows]
