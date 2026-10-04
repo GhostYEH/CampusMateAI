@@ -273,6 +273,7 @@ export function Roundtable({
       liveSpeech={classmateLiveSpeech}
       speakingAgentId={speakingAgentId}
       thinkingAgentId={thinkingState?.stage === 'agent_loading' ? thinkingState.agentId : undefined}
+      compact={isPresenting}
       onAvatarRef={(id, element) => {
         if (element) studentAvatarRefs.current.set(id, element);
         else studentAvatarRefs.current.delete(id);
@@ -765,10 +766,10 @@ export function Roundtable({
       <div className="h-0 w-full relative z-10 overflow-visible">
         {studentParticipants.length > 0 && !isPresentationInteractionActive && (
           <div
-            className="fixed bottom-14 left-3 z-[35] h-24 pointer-events-auto rounded-xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-md"
+            className="fixed bottom-14 left-3 z-[35] h-32 pointer-events-auto rounded-2xl border border-border/50 bg-background/70 shadow-sm backdrop-blur-xl"
             data-testid="presentation-classmates"
             style={{
-              width: `min(680px, calc(100vw - ${chatCollapsed === false ? (chatAreaWidth ?? 320) : 0}px - 24px))`,
+              width: `min(${Math.min(680, studentParticipants.length * 252 + 6)}px, calc(100vw - ${chatCollapsed === false ? (chatAreaWidth ?? 320) : 0}px - 24px))`,
             }}
           >
             {classmatePanes}
@@ -782,7 +783,7 @@ export function Roundtable({
           isTopicPending={!!isTopicPending}
           side="left"
           bottomOffset={
-            studentParticipants.length > 0 && !isPresentationInteractionActive ? 168 : 24
+            studentParticipants.length > 0 && !isPresentationInteractionActive ? 200 : 24
           }
           onBubbleClick={handlePresentationBubbleClick}
           audioIndicatorState={audioIndicatorState ?? 'idle'}
@@ -1179,7 +1180,7 @@ export function Roundtable({
   return (
     <div
       className={cn(
-        'h-[192px] w-full flex flex-col relative z-10 transition-all duration-300',
+        '@container/roundtable h-[192px] w-full flex flex-col relative z-10 transition-all duration-300',
         isPresenting && !controlsVisible
           ? 'border-t border-transparent bg-transparent backdrop-blur-none'
           : 'border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md',
@@ -1194,12 +1195,20 @@ export function Roundtable({
       >
         {toolbar}
       </div>
-      {/* ── Interaction area — three-column layout ── */}
-      <div className="flex-1 flex items-stretch min-h-0">
+      {/* ── Interaction area ── */}
+      <div
+        className={cn(
+          'flex-1 flex items-stretch min-h-0',
+          studentParticipants.length > 0 &&
+            '@max-[800px]/roundtable:grid @max-[800px]/roundtable:grid-cols-[72px_minmax(0,1fr)_104px] @max-[800px]/roundtable:grid-rows-[64px_minmax(0,1fr)]',
+        )}
+      >
         {/* Left: Teacher identity */}
         <div
           className={cn(
             'w-[90px] shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 overflow-visible relative transition-opacity duration-300',
+            studentParticipants.length > 0 &&
+              '@max-[800px]/roundtable:col-start-1 @max-[800px]/roundtable:row-span-2 @max-[800px]/roundtable:w-auto',
             isPresenting && !controlsVisible && 'opacity-0 pointer-events-none',
           )}
         >
@@ -1324,7 +1333,14 @@ export function Roundtable({
         </div>
 
         {/* Center: Interaction stage */}
-        <div className="flex-1 relative mx-3 mb-2">
+        <div
+          className={cn(
+            'min-w-0 flex-1 relative mx-3 mb-2',
+            studentParticipants.length > 0 &&
+              '@max-[800px]/roundtable:col-start-2 @max-[800px]/roundtable:row-start-1 @max-[800px]/roundtable:mx-2 @max-[800px]/roundtable:mb-0',
+            (isInputOpen || isVoiceOpen) && '@max-[800px]/roundtable:row-span-2',
+          )}
+        >
           {/* End flash banner (Issue 3) */}
           <AnimatePresence>
             {endFlashVisible && (
@@ -1359,7 +1375,10 @@ export function Roundtable({
                 if (isRecording || isProcessing) cancelRecording();
               }
             }}
-            className="relative w-full h-full rounded-[2.5rem] bg-gradient-to-b from-white/40 to-white/80 dark:from-gray-800/40 dark:to-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05),inset_0_1px_0_0_rgba(255,255,255,0.9)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col justify-center px-6 overflow-hidden group transition-all duration-700 cursor-default"
+            className={cn(
+              'relative w-full h-full rounded-[2.5rem] bg-gradient-to-b from-white/40 to-white/80 dark:from-gray-800/40 dark:to-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05),inset_0_1px_0_0_rgba(255,255,255,0.9)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col justify-center px-6 overflow-hidden group transition-all duration-700 cursor-default',
+              studentParticipants.length > 0 && '@max-[800px]/roundtable:px-3',
+            )}
           >
             {elementReferencePill && (
               <div className="absolute left-1/2 top-2 z-30 -translate-x-1/2">{referencePill}</div>
@@ -1701,6 +1720,8 @@ export function Roundtable({
                       }}
                       className={cn(
                         'relative px-4 pt-2 pb-3 rounded-2xl text-[15px] leading-relaxed transition-all border w-[min(420px,calc(100%-3rem))] group/bubble flex flex-col max-h-[110px]',
+                        studentParticipants.length > 0 &&
+                          '@max-[800px]/roundtable:max-h-[52px] @max-[800px]/roundtable:w-full @max-[800px]/roundtable:py-1 @max-[800px]/roundtable:text-xs',
                         bubbleRole === 'teacher' ? 'pl-4 pr-10' : 'pl-4 pr-10',
                         bubbleRole === 'user'
                           ? 'bg-purple-600/95 dark:bg-purple-500/95 backdrop-blur-sm border-purple-400/40 dark:border-purple-300/40 text-white rounded-br-sm shadow-md shadow-purple-300/30 dark:shadow-purple-800/30'
@@ -1726,6 +1747,9 @@ export function Roundtable({
                               className={cn(
                                 'absolute -top-2.5 z-20 pointer-events-none select-none',
                                 bubbleRole === 'teacher' ? '-left-2.5' : '-right-2.5',
+                                studentParticipants.length > 0 &&
+                                  bubbleRole === 'teacher' &&
+                                  '@max-[800px]/roundtable:hidden',
                               )}
                               title={bubbleName}
                             >
@@ -1901,7 +1925,12 @@ export function Roundtable({
         </div>
 
         {studentParticipants.length > 0 && (
-          <div className="w-[40%] max-w-[680px] min-w-0 border-l border-gray-100/50 dark:border-gray-700/50">
+          <div
+            className={cn(
+              'w-[40%] max-w-[680px] min-w-0 border-l border-border/40 @max-[800px]/roundtable:col-start-2 @max-[800px]/roundtable:row-start-2 @max-[800px]/roundtable:w-auto @max-[800px]/roundtable:border-l-0 @max-[800px]/roundtable:border-t',
+              (isInputOpen || isVoiceOpen) && '@max-[800px]/roundtable:hidden',
+            )}
+          >
             {classmatePanes}
           </div>
         )}
@@ -1910,6 +1939,8 @@ export function Roundtable({
         <div
           className={cn(
             'w-[140px] shrink-0 flex flex-col py-3 border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 overflow-visible transition-opacity duration-300',
+            studentParticipants.length > 0 &&
+              '@max-[800px]/roundtable:col-start-3 @max-[800px]/roundtable:row-start-1 @max-[800px]/roundtable:row-span-2 @max-[800px]/roundtable:w-auto',
             isPresenting && !controlsVisible && 'opacity-0 pointer-events-none',
           )}
         >

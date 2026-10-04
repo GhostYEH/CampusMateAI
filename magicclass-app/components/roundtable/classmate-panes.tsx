@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
+import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import type { Participant } from '@/lib/types/roundtable';
@@ -57,6 +58,7 @@ export function ClassmatePanes({
   speakingAgentId,
   thinkingAgentId,
   onAvatarRef,
+  compact = false,
   className,
 }: {
   readonly participants: Participant[];
@@ -65,6 +67,7 @@ export function ClassmatePanes({
   readonly speakingAgentId?: string | null;
   readonly thinkingAgentId?: string;
   readonly onAvatarRef?: (id: string, element: HTMLDivElement | null) => void;
+  readonly compact?: boolean;
   readonly className?: string;
 }) {
   const { t } = useI18n();
@@ -75,7 +78,12 @@ export function ClassmatePanes({
   return (
     <section
       aria-label={t('roundtable.classmates.title')}
-      className={cn('flex min-w-0 gap-2 overflow-x-auto overscroll-x-contain p-2', className)}
+      tabIndex={0}
+      className={cn(
+        'flex min-w-0 gap-3 overflow-x-auto overscroll-x-contain scroll-p-3 snap-x snap-proximity rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary/25',
+        compact ? 'p-2' : 'p-3 @max-[800px]/roundtable:gap-2 @max-[800px]/roundtable:p-2',
+        className,
+      )}
     >
       {classmates.map((classmate) => {
         const localizedDescription = t(`settings.agentDescriptions.${classmate.id}`);
@@ -99,33 +107,45 @@ export function ClassmatePanes({
             data-classmate-id={classmate.id}
             aria-label={classmate.name}
             className={cn(
-              'flex h-full w-52 shrink-0 flex-col rounded-lg border bg-white/80 p-2 dark:bg-gray-900/80',
-              speaking
-                ? 'border-purple-400 dark:border-purple-500'
-                : 'border-gray-200 dark:border-gray-700',
+              'flex h-full w-60 max-w-full shrink-0 snap-start flex-col rounded-2xl border bg-gradient-to-b from-card/95 to-card/65 text-card-foreground shadow-sm backdrop-blur-sm transition-colors duration-200 motion-reduce:transition-none dark:from-gray-800/95 dark:to-gray-800/65',
+              classmates.length === 2 && 'basis-0 grow min-w-[min(180px,100%)]',
+              compact ? 'p-2.5' : 'p-3 @max-[800px]/roundtable:p-2',
+              speaking ? 'border-primary/40 ring-1 ring-primary/10' : 'border-border/60',
             )}
           >
             <header className="flex shrink-0 items-center gap-2">
               <div
                 ref={(element) => onAvatarRef?.(classmate.id, element)}
                 data-agent-id={classmate.id}
-                className="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                className={cn(
+                  'h-8 w-8 shrink-0 overflow-hidden rounded-full border border-border/60 bg-muted',
+                  !compact && '@max-[800px]/roundtable:h-6 @max-[800px]/roundtable:w-6',
+                  speaking && 'border-primary/30',
+                )}
               >
                 <AvatarDisplay src={classmate.avatar} alt={classmate.name} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">{classmate.name}</p>
-                <p className="truncate text-[10px] text-muted-foreground" title={description}>
+                <p className="truncate text-[13px] font-semibold leading-5" title={classmate.name}>
+                  {classmate.name}
+                </p>
+                <p
+                  className={cn(
+                    'truncate text-[11px] leading-4 text-muted-foreground',
+                    !compact && '@max-[800px]/roundtable:hidden',
+                  )}
+                  title={description}
+                >
                   {description}
                 </p>
               </div>
               {speaking && (
-                <span className="text-[10px] text-purple-600 dark:text-purple-300">
+                <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                   {t('roundtable.classmates.speaking')}
                 </span>
               )}
             </header>
-            <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto text-xs leading-relaxed">
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto text-[13px] leading-5 @max-[800px]/roundtable:mt-1 @max-[800px]/roundtable:text-xs @max-[800px]/roundtable:leading-[18px]">
               {text ? (
                 <p className="whitespace-pre-wrap break-words">{text}</p>
               ) : loading ? (
@@ -135,16 +155,18 @@ export function ClassmatePanes({
                 </p>
               ) : participation?.status === 'error' ? (
                 <div>
-                  <p className="break-words text-red-600 dark:text-red-400">
+                  <p className="break-words text-destructive">
                     {participation.error || t('roundtable.classmates.error')}
                   </p>
-                  <button
+                  <Button
                     type="button"
                     onClick={participation.retry}
-                    className="mt-1 text-purple-600 underline dark:text-purple-300"
+                    variant="link"
+                    size="xs"
+                    className="mt-1 px-0"
                   >
                     {t('common.retry')}
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <p className="text-muted-foreground">{t('roundtable.classmates.idle')}</p>

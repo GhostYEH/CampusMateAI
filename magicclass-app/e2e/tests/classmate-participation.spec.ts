@@ -5,7 +5,9 @@ import { defaultTheme } from '../fixtures/test-data/scene-content';
 test('playing each page generates distinct panes for selected classmates', async ({
   page,
   mockApi,
-}) => {
+}, testInfo) => {
+  const screenshot = (name: string) =>
+    page.screenshot({ path: testInfo.outputPath(name), animations: 'disabled' });
   await mockApi.mockServerProviders();
   await page.route('**/api/server-providers', (route) =>
     route.fulfill({
@@ -174,6 +176,12 @@ test('playing each page generates distinct panes for selected classmates', async
   );
   expect(requests[0].agents.map((agent) => agent.id)).toEqual(['default-3', 'default-4']);
   expect(requests[0].agents.every((agent) => agent.persona.length > 0)).toBe(true);
+  await screenshot('classmates-light.png');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await screenshot('classmates-dark.png');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
   await page.getByRole('button', { name: 'Fullscreen', exact: true }).click();
   const teacherOverlay = page.getByTestId('presentation-teacher-overlay');
   const classmates = page.getByTestId('presentation-classmates');
@@ -183,6 +191,7 @@ test('playing each page generates distinct panes for selected classmates', async
   expect(teacherBox).not.toBeNull();
   expect(classmatesBox).not.toBeNull();
   expect(teacherBox!.y + teacherBox!.height).toBeLessThanOrEqual(classmatesBox!.y);
+  await screenshot('classmates-presentation.png');
   await page.mouse.move(500, 700);
   await page.getByRole('button', { name: /exit fullscreen/i }).click();
   await expect(page.getByTestId('presentation-classmates')).toHaveCount(0);
@@ -207,4 +216,60 @@ test('playing each page generates distinct panes for selected classmates', async
     'classmate-quiz: default-3 reaction',
   );
   expect(requests.at(-1)?.scene.id).toBe('classmate-quiz');
+
+  await page.locator('[data-testid="scene-item"]').first().click();
+  const teacherCard = page.getByTestId('roundtable-non-presentation-card');
+  const classmateRail = page.getByRole('region', { name: 'Classmates', exact: true });
+  for (const width of [1024, 640]) {
+    if (width === 640) {
+      await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
+    }
+    await page.setViewportSize({ width, height: 720 });
+    // The panes must leave a readable teacher area when the classroom itself is narrow.
+    await expect
+      .poll(async () => {
+        const teacherBox = await teacherCard.boundingBox();
+        const railBox = await classmateRail.boundingBox();
+        return teacherBox && railBox ? railBox.y - (teacherBox.y + teacherBox.height) : -1;
+      })
+      .toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < 2; i++) {
+      await panes.nth(i).scrollIntoViewIfNeeded();
+      const paneBox = await panes.nth(i).boundingBox();
+      const railBox = await classmateRail.boundingBox();
+      expect(paneBox).not.toBeNull();
+      expect(railBox).not.toBeNull();
+      expect(paneBox!.x).toBeGreaterThanOrEqual(railBox!.x);
+      expect(paneBox!.x + paneBox!.width).toBeLessThanOrEqual(railBox!.x + railBox!.width);
+    }
+    await panes.first().scrollIntoViewIfNeeded();
+    await screenshot(`classmates-${width}.png`);
+  }
+  await page.keyboard.press('T');
+  const textarea = page.getByPlaceholder('Type your message...', { exact: true });
+  await expect(textarea).toBeVisible();
+  await expect(page.getByTestId('roundtable-non-presentation-input-stage')).toHaveCSS(
+    'transform',
+    'none',
+  );
+  await textarea.fill(Array.from({ length: 20 }, (_, i) => `Question line ${i + 1}`).join('\n'));
+  await expect(classmateRail).toBeHidden();
+  await expect
+    .poll(async () => {
+      const inputBox = await page
+        .getByTestId('roundtable-non-presentation-input-panel')
+        .boundingBox();
+      const teacherBox = await teacherCard.boundingBox();
+      if (!inputBox || !teacherBox) return false;
+      return (
+        inputBox.x >= teacherBox.x &&
+        inputBox.y >= teacherBox.y &&
+        inputBox.x + inputBox.width <= teacherBox.x + teacherBox.width &&
+        inputBox.y + inputBox.height <= teacherBox.y + teacherBox.height
+      );
+    })
+    .toBe(true);
+  await screenshot('classmates-narrow-input.png');
+  await page.keyboard.press('Escape');
+  await expect(classmateRail).toBeVisible();
 });
