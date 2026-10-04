@@ -1,6 +1,6 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-10-04。本模块共 68 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-05。本模块共 68 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -2642,3 +2642,146 @@ Web 封装：`getLearningSpaceStatus`（[webreact/src/data/learningSpaceApi.js](
 | `reason` | string / null | 否 | — | 原因 |
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
+
+<a id="learning-rooms"></a>
+## 共同课堂协议与接入
+
+以下 14 个接口属于 CampusMate 后端，统一使用 Bearer access token；路径不能改为 iframe 独立 Origin 的 /api。实现为 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py) 与 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，Web 封装见 [learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)。
+
+权限按账号 UID 与课堂成员关系校验，不要求与发起人同校或预先选择学校；历史 teacher/admin 账号按普通学生身份参与。发起人创建后自动成为 accepted 成员；待接受邀请的用户不能读取课堂、课件或消息。每位发起人最多保留 20 个活动课堂；每个课堂的 pending 与 accepted 成员合计最多 8 人，包含发起人。
+
+所有动态成功对象的完整字段、列表顺序和数据类型见[共同课堂响应](response-contracts.md#learning-rooms)。共同错误包括认证失败 401 `UNAUTHORIZED`、请求模型校验失败 422 `VALIDATION_FAILED`，及以下成员/状态错误：
+
+| HTTP | code | 触发条件与处理 |
+| --- | --- | --- |
+| 404 | LEARNING_ROOM_ERROR | 课堂不存在、不是 accepted 成员，或邀请失效；回到课堂/邀请列表 |
+| 403 | LEARNING_ROOM_ERROR | 已接受邀请的成员执行发起人专用操作 |
+| 409 | LEARNING_ROOM_ERROR | 活动课堂数或成员数达到上限；已加入后尝试拒绝邀请 |
+| 410 | LEARNING_ROOM_ERROR | 成员仍为 accepted，但课堂已结束；停止轮询 |
+| 422 | LEARNING_ROOM_ERROR | 邀请自己或场景索引超出课件范围 |
+
+发起人结束课堂会同时清空归档并将所有成员置为 left，因此后续访问通常返回 404；客户端不能只处理 410。其余接口特有错误列在各节，body.request_id 可用于问题追踪。
+
+接入顺序：读取本人 identity → 上传完整课件创建课堂 → 按 UID 校验并邀请同学 → 对方读取 invitations 并接受 → 双方读取课堂与 archive → 发起人更新 cursor、成员轮询 room/messages → 主动 leave。客户端保存自己已读取的最大消息 id 作为 after；满 100 条时继续读取，避免遗漏后续消息。本协议使用 HTTP 轮询，没有 SSE 或 WebSocket。消息重试复用 client_id，新的消息必须使用新的 client_id；创建课堂没有幂等键，重复提交会创建新课堂。
+
+Web 已有上述调用封装；Android、HarmonyOS、微信小程序在本次审查中未接入该共同课堂协议，须按本文独立适配，原生构建与真机流程未验证。
+
+### `GET /api/v1/magicclass/learning-space/identity`
+
+用途：取得本人 UID 与显示名；只要求登录，没有额外参数或请求体。成功返回 200 Identity。
+
+Web 封装：`getLearningIdentity`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+脱敏响应：`{"uid":"usr_host_example","name":"同学甲"}`。
+
+### `GET /api/v1/magicclass/learning-space/students/{uid}`
+
+用途：校验邀请对象。path 参数 uid 为账号唯一 ID，服务端去除首尾空白；没有请求体。目标必须存在且启用，历史角色按普通学生处理。成功返回 200 Identity，只暴露 UID 和显示名。
+
+Web 封装：`findLearningStudent`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+例如读取 /students/usr_guest_example，响应 `{"uid":"usr_guest_example","name":"同学乙"}`。目标不存在或停用返回 404 `STUDENT_UID_NOT_FOUND`；本人 UID 返回 422 `INVALID_INVITATION`。该预检不替代邀请时的权限和有效性校验。
+
+### `GET /api/v1/magicclass/learning-space/rooms`
+
+用途：取得本人已加入且活动的课堂。没有 query 参数或请求体，不包含仅收到邀请的课堂。成功返回 200 `{items:RoomSummary[]}`，最多 100 条，按创建时间降序，无分页参数。
+
+Web 封装：`listLearningRooms`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+脱敏响应：`{"items":[{"id":"room_example","title":"共同复习","host_uid":"usr_host_example","created_at":"2026-10-05T00:00:00+00:00"}]}`。
+
+### `POST /api/v1/magicclass/learning-space/rooms`
+
+用途：上传完整课件并创建课堂。`multipart/form-data` 请求的 title、stage_id、file 均必填，见[创建表单](schemas.md#schema-body-create-room-api-v1-magicclass-learning-space-rooms-post)。title 长度 1–200，stage_id 长度 1–128；服务端去除首尾空白。file 最大 64 MB，文件名与 MIME 不是验证依据。
+
+归档必须包含 JSON manifest.json，其 stage 为对象、scenes 为 1–1000 个对象，且每个场景的 content 为对象。归档最多 10000 个条目，声明的解压后大小合计最多 256 MB，manifest.json 最多 4 MB。客户端应在课件完整生成后上传已有 .maic.zip。
+
+Web 封装：`createLearningRoom`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+示例表单：title=共同复习、stage_id=stage_example、file=完整课堂.maic.zip 的二进制文件。成功返回 201 RoomRecord，例如：
+
+```json
+{"id":"room_example","title":"共同复习","stage_id":"stage_example","host_uid":"usr_host_example","scene_index":0,"scene_count":2,"active":1,"created_at":"2026-10-05T00:00:00+00:00","members":[{"uid":"usr_host_example","name":"同学甲","status":"accepted"}]}
+```
+
+上传超限返回 413 `CLASSROOM_ARCHIVE_TOO_LARGE`；无效或解压后过大的归档返回 422 `INVALID_CLASSROOM_ARCHIVE`；全空白 title/stage_id 返回 422 `INTERNAL_ERROR`（现有实现的错误码）；20 个活动课堂上限返回 409 `LEARNING_ROOM_ERROR`。没有 Idempotency-Key 语义，超时后应先回读 rooms 确认，再决定重试。
+
+### `GET /api/v1/magicclass/learning-space/invitations`
+
+用途：读取本人待接受邀请。没有参数或请求体；只列出活动课堂且发起人账号启用的邀请。成功返回 200 `{items:InvitationRecord[]}`，最多 100 条，按更新时间降序，不提供分页参数。
+
+Web 封装：`listLearningInvitations`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+脱敏响应：`{"items":[{"room_id":"room_example","title":"共同复习","host_uid":"usr_host_example","host_name":"同学甲","updated_at":"2026-10-05T00:00:00+00:00"}]}`。
+
+### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/invitations`
+
+用途：发起人邀请同学。path 参数 room_id 为课堂 ID；JSON body 见 [InvitationIn](schemas.md#schema-invitationin)，例如 `{"uid":"usr_guest_example"}`。uid 必填，长度 1–128，去除首尾空白后不能为空。
+
+Web 封装：`inviteLearningStudent`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+目标必须存在、启用且不是本人。成功返回 200，例如 `{"uid":"usr_guest_example","status":"pending"}`。重复邀请 pending/accepted 成员返回原状态，不占新名额；declined/left 成员可重新邀请。不存在的目标使用 404 `LEARNING_ROOM_ERROR`，与 students 预检的错误码不同；本人 UID 使用 422 `LEARNING_ROOM_ERROR`。其他权限与 8 人上限见共同错误表。
+
+### `POST /api/v1/magicclass/learning-space/invitations/{room_id}/accept`
+
+用途：本人接受有效邀请。path 参数 room_id 必填，没有请求体；仅本人 pending/accepted 成员关系可操作。成功返回 200 RoomRecord，字段与创建课堂的示例一致。
+
+Web 封装：`acceptLearningInvitation`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+重复接受已加入的活动课堂可返回同一课堂；拒绝后或发起人结束后再接受返回 404 `LEARNING_ROOM_ERROR`，不能据此进入归档下载流程。
+
+### `POST /api/v1/magicclass/learning-space/invitations/{room_id}/decline`
+
+用途：本人拒绝待接受邀请。path 参数 room_id 必填，没有请求体。成功返回 204，无响应体。
+
+Web 封装：`declineLearningInvitation`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+邀请不存在、已拒绝或失效返回 404 `LEARNING_ROOM_ERROR`；已经 accepted 时返回 409 `LEARNING_ROOM_ERROR`，须使用 leave。客户端不能将此接口当作可重复成功的删除操作。
+
+### `GET /api/v1/magicclass/learning-space/rooms/{room_id}`
+
+用途：accepted 成员读取活动课堂、共享页码和成员。path 参数 room_id 必填，没有请求体。成功返回 200 RoomRecord，字段与创建示例一致；members 只包含 pending/accepted 成员。
+
+Web 封装：`getLearningRoom`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+成员可轮询 scene_index 决定是否跟随发起人翻页，pending 邀请不能读取本接口。成员状态与结束错误见共同错误表。
+
+### `GET /api/v1/magicclass/learning-space/rooms/{room_id}/archive`
+
+用途：accepted 成员下载创建时的完整课件。path 参数 room_id 必填，没有请求体。成功为 200 `application/zip` 和 `Cache-Control: no-store`，响应体是二进制归档，未设置 Content-Disposition。
+
+Web 封装：`getLearningArchive`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+客户端按 Blob/二进制读取 .maic.zip，不可用 JSON 解析；失败时仍按统一 JSON 错误信封处理。无成员权限或已离开通常返回 404 `LEARNING_ROOM_ERROR`。
+
+### `PATCH /api/v1/magicclass/learning-space/rooms/{room_id}/cursor`
+
+用途：发起人更新共享场景索引。path 参数 room_id 必填；JSON body 见 [CursorIn](schemas.md#schema-cursorin)，例如 `{"scene_index":1}`。scene_index 必须是 0 起的非负整数，并小于当前 scene_count。成功返回 204，无响应体；重复写同一索引保持同一值。
+
+Web 封装：`setLearningCursor`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+普通 accepted 成员返回 403 `LEARNING_ROOM_ERROR`；索引超过课件范围返回 422 `LEARNING_ROOM_ERROR`，模型类型或非负约束不合法则是 422 `VALIDATION_FAILED`。
+
+### `GET /api/v1/magicclass/learning-space/rooms/{room_id}/messages`
+
+用途：accepted 成员增量读取消息。path 参数 room_id 必填；query after 为非负整数，默认 0，仅返回消息 id > after 的记录。成功返回 200 `{items:MessageRecord[]}`，按 id 升序最多 100 条。
+
+Web 封装：`getLearningMessages`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+脱敏响应：`{"items":[{"id":1,"uid":"usr_guest_example","name":"同学乙","content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}]}`。下一次将 after 设为最大已收 id；客户端按 id 去重。空列表仅表示暂无更新，没有实时通道或总量字段。
+
+### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/messages`
+
+用途：accepted 成员发送文字消息。path 参数 room_id 必填；JSON body 见 [MessageIn](schemas.md#schema-messagein)，例如 `{"content":"一起看第二页","client_id":"msg_example"}`。content 长度 1–2000，去除首尾空白后不能为空；client_id 长度 1–128，不做自动 trim。
+
+Web 封装：`sendLearningMessage`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+成功返回 201，例如 `{"id":1,"content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}`。同一成员、同一课堂的 client_id 去重；重试用同一 ID 返回原内容，即使新的 content 不同也不会覆盖。新消息使用新 ID。空白或超长正文返回 422 `VALIDATION_FAILED`。
+
+### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/leave`
+
+用途：accepted 成员主动离开。path 参数 room_id 必填，没有请求体。成功返回 204，无响应体。普通成员离开后不能再读取课件或消息，但发起人可重新邀请；发起人离开会结束整个课堂、清空共享归档、将全部成员置为 left。
+
+Web 封装：`leaveLearningRoom`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
+
+其他成员随后应停止轮询。重复离开通常返回 404 `LEARNING_ROOM_ERROR`；邀请列表与活动课堂列表不再包含已结束课堂。

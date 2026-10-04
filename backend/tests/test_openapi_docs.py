@@ -1,6 +1,7 @@
 """Catch runtime contract drift in the existing pytest/CI entry point."""
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,31 @@ def test_documented_openapi_matches_runtime_and_preserves_supplements():
     expected = docs.documented_schema(runtime, saved)
     assert not docs.differences(saved, expected)
     assert docs.SUPPLEMENTAL_SCHEMAS <= saved["components"]["schemas"].keys()
+
+
+def test_markdown_covers_all_http_operations_models_and_schema_links():
+    api_docs = docs.SNAPSHOT.parent
+    saved = json.loads(docs.SNAPSHOT.read_text(encoding="utf-8"))
+    methods = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+    expected = {(method.upper(), path) for path, operations in saved["paths"].items()
+                for method in operations if method in methods}
+    covered = set()
+    for module in sorted(api_docs.glob("[0-9][0-9]-*.md")):
+        source = module.read_text(encoding="utf-8")
+        rows = set(re.findall(r"^\| (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE) \| `([^`]+)` \|", source, re.MULTILINE))
+        sections = set(re.findall(r"^### `(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE) ([^`]+)`", source, re.MULTILINE))
+        assert rows == sections, f"{module.name}: index and full contract sections differ: {rows ^ sections}"
+        assert not covered & rows, f"{module.name}: duplicated operations: {covered & rows}"
+        covered.update(rows)
+    assert covered == expected, f"Missing/stale HTTP documentation: {covered ^ expected}"
+
+    fields = (api_docs / "schemas.md").read_text(encoding="utf-8")
+    headings = set(re.findall(r"^## (\w+)\s*$", fields, re.MULTILINE))
+    assert headings == saved["components"]["schemas"].keys()
+    anchors = set(re.findall(r'<a id="([^"]+)"', fields))
+    for document in api_docs.glob("*.md"):
+        referenced = set(re.findall(r"\]\(schemas\.md#([^)]*)\)", document.read_text(encoding="utf-8")))
+        assert referenced <= anchors, f"{document.name}: missing schema anchors: {referenced - anchors}"
 
 
 def test_missing_supplement_is_not_silently_erased():

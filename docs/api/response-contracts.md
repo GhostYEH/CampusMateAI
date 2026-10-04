@@ -243,6 +243,47 @@ multiAgent 为 `{enabled:boolean,agentIds:string[],directorPrompt?:string}`。Ac
 
 playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html / sandbox-url 时 sandbox 当前为 allow-scripts，不添加 allow-same-origin。steps 为 `{action_id,type,mode:"sync"|"fire_and_forget"}[]`；dropped_actions 为 `{action_id,type,reason}[]`；degraded 为 `{scene_id,reason}[]`。先读取 scene 正文，再按服务端播放计划决定本地渲染、沙箱及动作次序，不凭 html 字段自行判断可播放。
 
+<a id="learning-rooms"></a>
+## 共同课堂的动态响应
+
+以下类型名用于说明实际返回对象，来自 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，不是额外的 OpenAPI 模型。接口与完整流程见[共同课堂契约](14-magicclass.md#learning-rooms)。
+
+| Identity 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| uid | string | 账号唯一 ID，与 UserPublic.id 相同 |
+| name | string | 显示名，未填写时使用用户名 |
+
+| RoomSummary 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id / title / host_uid / created_at | string | 课堂 ID、标题、发起人 UID、UTC 时间 |
+
+列表接口分别返回 `{items:RoomSummary[]}` 和 `{items:InvitationRecord[]}`，最多 100 项，不带 total/page/page_size，按创建或邀请更新时间降序排列。
+
+| InvitationRecord 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| room_id / title / host_uid / host_name / updated_at | string | 课堂、发起人及邀请更新时间；只返回活动课堂中的待接受邀请 |
+
+| RoomRecord 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id / title / stage_id / host_uid / created_at | string | 课堂与课件标识、标题、发起人、UTC 时间 |
+| scene_index | integer | 当前共享场景索引，从 0 开始 |
+| scene_count | integer | 归档中的场景数量，1–1000 |
+| active | integer | SQLite 标志；成功读取时为 1，不能假定是 JSON boolean |
+| members | array | 每项为 `{uid:string,name:string,status:"pending"|"accepted"}`，包含发起人；没有约定成员排序 |
+
+创建、读取和接受邀请返回 RoomRecord，均不携带归档二进制正文。邀请同学返回 `{uid:string,status:"pending"|"accepted"}`；重复邀请已处于该状态的成员会返回原状态。
+
+| MessageRecord 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | integer | 服务端递增消息 ID；供 after 游标使用 |
+| uid / name / content / created_at | string | 发送者、显示名、去除首尾空白的正文、UTC 时间 |
+
+消息读取返回 `{items:MessageRecord[]}`，最多 100 条，按 id 升序，且 id > after。发送返回 `{id:integer,content:string,created_at:string}`，不含 uid/name/client_id。重复发送同一成员、同一课堂、同一 client_id 时仍返回 201 和原消息，新的正文不会覆盖原记录。
+
+拒绝邀请、更新页码和离开课堂返回 204，无响应体。下载归档返回 200 `application/zip` 和 `Cache-Control: no-store`，正文为创建时上传的原始 .maic.zip，不是 JSON 或 Base64，也未设置 Content-Disposition。
+
+所有错误遵循[统一错误结构](integration.md#errors)。未接受邀请、无成员权限、课堂不存在等均使用 404 `LEARNING_ROOM_ERROR`，避免暴露其他课堂。已结束课堂的旧成员访问通常也返回 404，因为结束操作同时将成员改为 left；若仍存在 accepted 成员，则返回 410。完整分支见模块手册。
+
 ## 错误码字典
 
 以下为当前加载的后端 AppException 子类的稳定默认错误码；具体接口可能覆盖 message 或 code，HTTPException、透传错误、流内错误另见模块说明。不是每个接口都会返回所有错误。

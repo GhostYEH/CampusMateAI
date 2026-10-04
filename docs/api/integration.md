@@ -124,7 +124,7 @@ notification-sources 配置来源开关；workflow/reanalyze 支持重新分析�
 
 | event | data |
 | --- | --- |
-| sources | `{sources:[SourceCitation,...]}`；有来源才发，不保证出现 |
+| sources | `{sources:[ChatSource,...]}`；字段见 [ChatSource](schemas.md#schema-chatsource)，有来源才发，不保证出现 |
 | chunk | `{text:"增量文本",mode:"..."}`，逐段拼接 text |
 | done | 完整 ChatFinalMeta，包含 answer、来源、置信度、证据等级、需确认标记、建议动作、warnings 和 context 信息 |
 | error | `{code:"RAG_ERROR",message:"..."}`；保留已收到文本并展示中断 |
@@ -260,3 +260,9 @@ pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运�
 管理员角色及所有管理专用 API 已删除，包括账号管理、社区审核、横幅编辑、课程写入、教务配置/候选审核、知识库写入和全局 Agent 观测。删除的路径返回 404；同一路径仍保留其他方法时，删除的方法返回 405。不要把这些能力改为普通用户可调用的全局写入入口。
 
 Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料；社区举报功能及 `POST /community/reports` 已移除，Web、Android、HarmonyOS、微信小程序的入口或调用封装已同步清理；旧客户端须停止调用，删除的路径返回 404。其余学生接口保持兼容，源码核对未发现管理接口调用；移动端构建和真机流程尚未验证。共享课程、公告、横幅与知识库的已有数据和只读能力保留，由仓库的内部数据准备/同步工具提供内容，产品没有在线管理界面。
+
+## 共同课堂邀请与消息
+
+共同课堂使用 CampusMate Bearer 认证和本人 UID，按[共同课堂协议](14-magicclass.md#learning-rooms)完成上传 → 邀请 → 接受 → 下载 → 页码/消息轮询 → 离开。该通道属于 /api/v1/magicclass/learning-space，与独立 iframe 内的 /api 是不同服务。
+
+动态对象字段见[实际响应](response-contracts.md#learning-rooms)。成员权限基于 accepted 状态，pending 不具备课件访问权；发起人结束会清空归档并撤销成员关系。客户端须处理 404/410 并停止轮询，204 不解析 JSON，消息重试复用同一 client_id。Web 已有调用封装；其他三端共同课堂流程尚未接入、未验证。
