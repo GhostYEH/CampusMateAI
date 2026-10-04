@@ -61,6 +61,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -70,6 +71,9 @@ import com.example.campusai.BuildConfig
 import com.example.campusai.R
 import com.example.campusai.data.expression.CounselorExpressionPolicy
 import com.example.campusai.data.expression.ExpressionServiceStatus
+import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.ExpressionResult
+import com.example.campusai.data.model.LearningStateLabel
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.AgentRuntimeRepository
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
@@ -183,6 +187,8 @@ fun CounselorScreen(
         expressionEnabled = assistanceEnabled,
         expressionPermissionGranted = cameraPermissionGranted,
         expressionStatus = expressionStatus,
+        expressionResult = expressionResult,
+        expressionObservationActive = observationActive,
         hasUsableExpression = observationActive && CounselorExpressionPolicy.isUsable(expressionResult),
         courseContext = state.courseContext,
         classroomProposal = state.classroomProposal,
@@ -224,6 +230,8 @@ private fun CpmCounselorContent(
     expressionEnabled: Boolean,
     expressionPermissionGranted: Boolean,
     expressionStatus: ExpressionServiceStatus,
+    expressionResult: ExpressionResult,
+    expressionObservationActive: Boolean,
     hasUsableExpression: Boolean,
     courseContext: CpmCourseContext?,
     classroomProposal: com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto?,
@@ -307,6 +315,7 @@ private fun CpmCounselorContent(
                         permissionGranted = expressionPermissionGranted,
                         status = expressionStatus,
                         hasUsableSignal = hasUsableExpression,
+                        result = expressionResult.takeIf { expressionObservationActive },
                     )
                 }
                 item("digital-human") {
@@ -421,6 +430,7 @@ private fun ExpressionPrivacyStatus(
     permissionGranted: Boolean,
     status: ExpressionServiceStatus,
     hasUsableSignal: Boolean,
+    result: ExpressionResult?,
 ) {
     val (text, color) = when {
         !enabled -> "情绪陪伴未启用" to Muted
@@ -429,13 +439,58 @@ private fun ExpressionPrivacyStatus(
         status is ExpressionServiceStatus.Error -> "表情识别暂不可用" to Color(0xFFC63D4F)
         else -> "正在本机观察表情 · 画面不上传" to CpmBlue
     }
-    Row(
+    Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0xCCFFFFFF))
             .border(1.dp, Color.White, RoundedCornerShape(18.dp)).padding(horizontal = 13.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Icon(Icons.Default.Visibility, null, tint = color, modifier = Modifier.size(16.dp))
-        Text("  $text", color = color, fontSize = 12.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Visibility, null, tint = color, modifier = Modifier.size(16.dp))
+            Text("  $text", color = color, fontSize = 12.sp)
+        }
+        if (enabled && permissionGranted && result != null) {
+            Text(
+                counselorExpressionConfidence(result),
+                color = Muted,
+                fontSize = 10.sp,
+            )
+            Text(
+                counselorLearningStateConfidence(result),
+                color = Muted,
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+private fun counselorExpressionConfidence(result: ExpressionResult): String =
+    if (result.displayExpressionProbabilities.isEmpty()) {
+        "表情置信度 · 等待有效人脸"
+    } else "表情置信度 · " + listOf(
+        ExpressionLabel.ANGRY to "愤怒",
+        ExpressionLabel.DISGUST to "厌恶",
+        ExpressionLabel.FEAR to "恐惧",
+        ExpressionLabel.HAPPY to "快乐",
+        ExpressionLabel.NEUTRAL to "中性",
+        ExpressionLabel.SAD to "悲伤",
+        ExpressionLabel.SURPRISE to "惊讶",
+    ).joinToString("  ") { (label, name) ->
+        "$name ${result.displayExpressionProbabilities[label]?.let { "${(it * 100).roundToInt()}%" } ?: "—"}"
+    }
+
+private fun counselorLearningStateConfidence(result: ExpressionResult): String {
+    if (!result.supportsLearningStates) {
+        return "学习状态置信度 · 当前模型不提供此输出"
+    }
+    if (result.learningStateFrameCount < 4 || result.learningStateProbabilities.size != 3) {
+        return "学习状态置信度（可同时出现）· 收集中 ${result.learningStateFrameCount.coerceIn(0, 4)}/4 帧"
+    }
+    return "学习状态置信度（可同时出现）· " + listOf(
+        LearningStateLabel.BOREDOM to "无聊",
+        LearningStateLabel.CONFUSION to "困惑",
+        LearningStateLabel.FRUSTRATION to "挫败",
+    ).joinToString("  ") { (label, name) ->
+        "$name ${result.learningStateProbabilities[label]?.let { "${(it * 100).roundToInt()}%" } ?: "—"}"
     }
 }
 

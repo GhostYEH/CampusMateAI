@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -83,6 +84,7 @@ import com.example.campusai.data.focus.voice.RemoteFocusAiRepository
 import com.example.campusai.data.focus.voice.RemoteRealtimeVoiceRepository
 import com.example.campusai.data.focus.voice.SeeduplexRealtimeVoiceSession
 import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.LearningStateLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
 import com.example.campusai.data.model.FocusPlan
@@ -102,7 +104,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import java.time.Instant
 
 private val FocusBlue: Color @Composable get() = Primary
@@ -882,6 +883,8 @@ private fun LearningStateMainCard(
                 StatusChip(Icons.Default.SentimentSatisfied, formatExpressionChip(expressionResult))
                 StatusChip(Icons.Default.Lock, "本机处理")
             }
+            Text(formatExpressionConfidenceLine(expressionResult), color = Muted, fontSize = 11.sp)
+            Text(formatLearningStateConfidenceLine(expressionResult), color = Muted, fontSize = 11.sp)
             StatusChip(Icons.Default.Person, presenceLabel(presence.state))
             if (continuityState == LearningContinuityState.STUDYING && currentStudyMs >= 3_000L) {
                 Text("已持续观察到学习行为 ${formatDuration(currentStudyMs)}", color = Muted, fontSize = 12.sp)
@@ -1148,6 +1151,43 @@ private fun formatExpressionChip(result: ExpressionResult): String {
     }
     return formatCurrentExpression(result)
 }
+
+private fun formatExpressionConfidenceLine(result: ExpressionResult): String =
+    if (result.displayExpressionProbabilities.isEmpty()) {
+        "表情置信度 · 等待有效人脸"
+    } else "表情置信度 · " + listOf(
+        ExpressionLabel.ANGRY to "愤怒",
+        ExpressionLabel.DISGUST to "厌恶",
+        ExpressionLabel.FEAR to "恐惧",
+        ExpressionLabel.HAPPY to "快乐",
+        ExpressionLabel.NEUTRAL to "中性",
+        ExpressionLabel.SAD to "悲伤",
+        ExpressionLabel.SURPRISE to "惊讶",
+    ).joinToString("  ") { (label, name) ->
+        "$name ${result.displayExpressionProbabilities[label]?.toPercent() ?: "—"}"
+    }
+
+private fun formatLearningStateConfidenceLine(result: ExpressionResult): String {
+    if (!result.supportsLearningStates) {
+        return "学习状态置信度 · 当前模型不提供此输出"
+    }
+    if (result.learningStateFrameCount < LEARNING_STATE_WINDOW_FRAMES ||
+        result.learningStateProbabilities.size != LearningStateLabel.values().size
+    ) {
+        return "学习状态置信度（可同时出现）· 收集中 ${result.learningStateFrameCount.coerceIn(0, LEARNING_STATE_WINDOW_FRAMES)}/$LEARNING_STATE_WINDOW_FRAMES 帧"
+    }
+    return "学习状态置信度（可同时出现）· " + listOf(
+        LearningStateLabel.BOREDOM to "无聊",
+        LearningStateLabel.CONFUSION to "困惑",
+        LearningStateLabel.FRUSTRATION to "挫败",
+    ).joinToString("  ") { (label, name) ->
+        "$name ${result.learningStateProbabilities[label]?.toPercent() ?: "—"}"
+    }
+}
+
+private fun Double.toPercent(): String = "${(this * 100.0).roundToInt()}%"
+
+private const val LEARNING_STATE_WINDOW_FRAMES = 4
 
 private fun presenceLabel(state: PresenceState): String = when (state) {
     PresenceState.PRESENT -> "人在画面中"

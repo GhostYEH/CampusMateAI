@@ -1,4 +1,8 @@
-import { ExpressionRecognitionProvider, UnavailableExpressionProvider } from './ExpressionRecognitionProvider';
+import {
+  ExpressionRecognitionProvider,
+  LocalExpressionConfidenceSnapshot,
+  UnavailableExpressionProvider
+} from './ExpressionRecognitionProvider';
 import { StableExpressionSignal } from './ExpressionSignalProcessor';
 
 export interface ExpressionRecognitionStats {
@@ -80,6 +84,11 @@ export class ExpressionRecognitionService {
 
   statusDetail(): string {
     return this.provider.detail();
+  }
+
+  latestLocalConfidence(nowMs: number = Date.now()): LocalExpressionConfidenceSnapshot | undefined {
+    if (!this.started) return undefined;
+    return this.provider.latestLocalConfidence(nowMs);
   }
 
   latestStableSignal(nowMs: number = Date.now()): StableExpressionSignal | undefined {

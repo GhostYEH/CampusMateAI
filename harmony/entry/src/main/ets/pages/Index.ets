@@ -186,6 +186,7 @@ struct Index {
   @State expressionAvailable: boolean = false;
   @State expressionDetail: string = '';
   @State expressionGreeting: string = ExpressionGreetingPolicy.greeting(undefined);
+  @State expressionConfidenceText: string = '';
   @State courseDetailId: string = '';
   @State taskDetailId: string = '';
   @State examDetailId: string = '';
@@ -784,6 +785,7 @@ struct Index {
     } catch (_) {
       this.expressionAvailable = false;
       this.expressionDetail = '情绪识别初始化失败，聊天不会上传相机画面';
+      this.expressionConfidenceText = '';
     }
   }
 
@@ -796,6 +798,7 @@ struct Index {
     this.expressionAvailable = false;
     this.expressionDetail = '情绪识别已停止；不会上传或保存相机画面';
     this.expressionGreeting = ExpressionGreetingPolicy.greeting(undefined);
+    this.expressionConfidenceText = '';
   }
 
   async requestExpressionPermissionAndStart(): Promise<void> {
@@ -807,8 +810,10 @@ struct Index {
       const result: PermissionRequestResult = await abilityAccessCtrl.createAtManager()
         .requestPermissionsFromUser(context, ['ohos.permission.CAMERA']);
       if (result.authResults.length === 0 || result.authResults[0] !== 0) {
+        await this.stopExpressionRecognition();
         this.expressionAvailable = false;
         this.expressionDetail = '需要相机权限才能在本机识别表情';
+        this.expressionConfidenceText = '';
         return;
       }
       if (!ExpressionCameraActivationPolicy.shouldRun(
@@ -825,15 +830,39 @@ struct Index {
         this.expressionPollingTimer = setInterval(() => this.refreshExpressionState(), 1000);
       }
     } catch (_) {
+      await this.stopExpressionRecognition();
       this.expressionAvailable = false;
       this.expressionDetail = '相机权限或本地模型不可用，聊天不会附带表情信息';
+      this.expressionConfidenceText = '';
     }
   }
 
   refreshExpressionState(): void {
     this.expressionAvailable = this.expressionService.available();
     this.expressionDetail = this.expressionService.statusDetail();
-    this.expressionGreeting = ExpressionGreetingPolicy.greeting(this.expressionService.latestStableSignal());
+    const stable = this.expressionService.latestStableSignal();
+    this.expressionGreeting = ExpressionGreetingPolicy.greeting(stable);
+    const confidence = this.expressionService.latestLocalConfidence();
+    if (confidence === undefined) {
+      this.expressionConfidenceText = '';
+      return;
+    }
+    const labels: string[] = ['愤怒', '厌恶', '恐惧', '快乐', '中性', '悲伤', '惊讶'];
+    const values: string[] = [];
+    for (let index: number = 0; index < labels.length; index++) {
+      values.push(`${labels[index]} ${Math.round(confidence.expressionProbabilities[index] * 100)}%`);
+    }
+    let detail: string = `表情参考（本地） ${values.join(' · ')}`;
+    if (confidence.stateWindowFrames > 0) {
+      if (confidence.stateProbabilities === undefined) {
+        detail += `\n学习状态参考：采样中 ${confidence.stateSampleCount}/${confidence.stateWindowFrames}`;
+      } else {
+        const state = confidence.stateProbabilities;
+        detail += `\n学习状态参考（本地，可同时出现） 无聊 ${Math.round(state.boredom * 100)}% · ` +
+          `困惑 ${Math.round(state.confusion * 100)}% · 挫败 ${Math.round(state.frustration * 100)}%`;
+      }
+    }
+    this.expressionConfidenceText = detail;
   }
 
   syncExpressionForTab(forceConsent: boolean = false): void {
@@ -847,6 +876,7 @@ struct Index {
     }
     if (this.appState.emotionAssistanceDecisionMade && !forceConsent) {
       this.expressionDetail = '情绪陪伴未启用；聊天不会获取或发送表情信息';
+      this.expressionConfidenceText = '';
       return;
     }
     if (this.expressionConsentDialogOpen) return;
@@ -859,7 +889,10 @@ struct Index {
       const enabled: boolean = result.index === 1;
       await this.appState.setEmotionAssistance(enabled);
       if (enabled) await this.requestExpressionPermissionAndStart();
-      else this.expressionDetail = '情绪陪伴未启用；聊天不会获取或发送表情信息';
+      else {
+        await this.stopExpressionRecognition();
+        this.expressionDetail = '情绪陪伴未启用；聊天不会获取或发送表情信息';
+      }
     }).catch(() => {}).finally(() => { this.expressionConsentDialogOpen = false; });
   }
 
@@ -1774,6 +1807,7 @@ struct Index {
       darkMode: this.darkMode,
       expressionAvailable: this.expressionAvailable,
       expressionDetail: this.expressionDetail,
+      expressionConfidenceText: this.expressionConfidenceText,
       expressionGreeting: this.expressionGreeting,
       apiBaseUrl: API_BASE_URL,
       authToken: this.appState.getAccessToken(),

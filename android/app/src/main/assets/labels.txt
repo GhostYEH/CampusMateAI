@@ -1,7 +1,10 @@
-0 angry ANGRY
-1 disgust DISGUST
-2 fear FEAR
-3 happy HAPPY
-4 neutral NEUTRAL
-5 sad SAD
-6 surprise SURPRISE
+angry
+disgust
+fear
+happy
+neutral
+sad
+surprise
+boredom
+confusion
+frustration

@@ -94,6 +94,13 @@ Set-Location (Join-Path $repoRoot 'android')
 - 隐私: 画面不保存、不上传、不写日志，仅在用户主动授权且专注计时运行中分析
 - 详见主 README 的"CNN 面部表情识别"章节
 
+联合模型按固定顺序输出七类表情和 `boredom/confusion/frustration` 三项原始 logits。
+七类单独使用温度校准 softmax；新增状态分别使用 sigmoid，可以同时出现，十项不合计为 100%。
+界面展示各项置信度，置信度不能解释为准确率。学习状态只在同一追踪人脸积累四帧后显示，
+先平均状态 logits，再应用 validation 拟合的校准参数；人脸变化、无脸、质量不合格和暂停时清空。
+四帧实时滑动窗口与 DAiSEE 均匀采样视频帧的分布不同，仍需前摄实机评估。
+聊天继续使用通过原七类稳定性和置信度门槛的表情信号。
+
 ## Focus 架构与生命周期
 
 `ExpressionSessionManager` 是 Activity-owned 的专注会话协调器。表情识别与行为识别共用一条 `FocusCameraPipeline`，不为行为识别启动第二个摄像头。CameraX 只有在“辅助开启 + 摄像头权限 + 计时运行 + 页面可见 + App 在前台”且模式为 `FOCUS` 时运行；暂停、离开页面或生命周期结束时会解绑/暂停 camera use case。

@@ -192,7 +192,11 @@ def _set_batch_norm_weights(keras_layer, torch_layer: nn.BatchNorm2d) -> None:
     )
 
 
-def create_tensorflow_resnet18(torch_model: nn.Module, input_size: int):
+def create_tensorflow_resnet18(
+    torch_model: nn.Module,
+    input_size: int,
+    state_head: nn.Linear | None = None,
+):
     """Create an inference-only NHWC Keras ResNet18 and transfer torchvision weights."""
     import tensorflow as tf
 
@@ -277,8 +281,15 @@ def create_tensorflow_resnet18(torch_model: nn.Module, input_size: int):
             x = layers.ReLU(name=f"{prefix}_relu2")(x)
 
     x = layers.GlobalAveragePooling2D(name="avgpool")(x)
-    outputs = layers.Dense(7, name="fc")(x)
-    keras_model = tf.keras.Model(inputs, outputs, name="expression_resnet18")
+    expression_logits = layers.Dense(7, name="fc")(x)
+    if state_head is None:
+        outputs = expression_logits
+        model_name = "expression_resnet18"
+    else:
+        state_logits = layers.Dense(3, name="state_head")(x)
+        outputs = layers.Concatenate(name="raw_logits")([expression_logits, state_logits])
+        model_name = "multitask_expression_state_resnet18"
+    keras_model = tf.keras.Model(inputs, outputs, name=model_name)
 
     _set_conv_weights(keras_model.get_layer("conv1"), torch_model.conv1)
     _set_batch_norm_weights(keras_model.get_layer("bn1"), torch_model.bn1)
@@ -324,6 +335,13 @@ def create_tensorflow_resnet18(torch_model: nn.Module, input_size: int):
             torch_model.fc.bias.detach().cpu().numpy(),
         ]
     )
+    if state_head is not None:
+        keras_model.get_layer("state_head").set_weights(
+            [
+                state_head.weight.detach().cpu().numpy().T,
+                state_head.bias.detach().cpu().numpy(),
+            ]
+        )
     return keras_model
 
 

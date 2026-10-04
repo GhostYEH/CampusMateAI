@@ -1,66 +1,25 @@
 {
   "model": "resnet18",
-  "seed": 20260731,
-  "input_size": 96,
-  "input_channels": 3,
-  "normalization": {
-    "mean": [
-      0.485,
-      0.456,
-      0.406
-    ],
-    "std": [
-      0.229,
-      0.224,
-      0.225
-    ]
-  },
-  "pretrained": true,
-  "pretrained_weights": "IMAGENET1K_V1",
-  "batch_size": 192,
-  "num_workers": 4,
-  "max_epochs": 30,
-  "early_stopping_patience": 6,
-  "learning_rate": 0.0003,
-  "weight_decay": 0.0001,
-  "label_smoothing": 0.05,
-  "loss": "weighted_cross_entropy",
-  "gradient_clip_norm": 1.0,
-  "amp": true,
-  "augmentation": {
-    "horizontal_flip_probability": 0.5,
-    "rotation_degrees": 8,
-    "translate_fraction": 0.08,
-    "scale": [
-      0.9,
-      1.1
-    ],
-    "brightness": 0.15,
-    "contrast": 0.15,
-    "blur_probability": 0.18,
-    "blur_kernel_size": 3,
-    "blur_sigma": [
-      0.1,
-      1.8
-    ],
-    "jpeg_probability": 0.25,
-    "jpeg_quality": [
-      45,
-      90
-    ],
-    "occlusion_probability": 0.2,
-    "occlusion_scale": [
-      0.02,
-      0.18
-    ],
-    "occlusion_ratio": [
-      0.3,
-      3.3
-    ]
-  },
-  "sampling": "shuffle",
-  "face_crop": {
-    "padding_x_fraction": 0.16,
-    "padding_y_fraction": 0.2
-  }
+  "checkpoint_sha256": "9f5549361e39ed1d4116f59807ffcb60d9f5b6d47f5de4e43d82a9f0a2a79953",
+  "checkpoint_version": "multitask-expression-states-v1",
+  "trainable_blocks": [
+    "layer4"
+  ],
+  "source_checkpoint_sha256": "3b1fa041a0bdd63eb39a70abd87d0faee8eaed360fd265294e3b0f92943daebc",
+  "calibration_method": "expression_temperature_and_regularized_monotone_platt",
+  "calibration_fitted_on": "validation",
+  "state_positive_definition": "DAiSEE level >= 2",
+  "class_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise",
+    "boredom",
+    "confusion",
+    "frustration"
+  ],
+  "exported_outputs": "seven expression raw logits and three independent state raw logits"
 }

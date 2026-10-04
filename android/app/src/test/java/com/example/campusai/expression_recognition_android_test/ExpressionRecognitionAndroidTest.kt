@@ -5,6 +5,8 @@ import com.example.campusai.ExpressionSignalProcessorTest
 import com.example.campusai.FaceQualityGateTest
 import com.example.campusai.ImageProxyBitmapConverterTest
 import com.example.campusai.data.expression.ExpressionClassThresholdsTest
+import com.example.campusai.data.expression.ExpressionModelAssetContractTest
+import com.example.campusai.data.expression.LearningStateWindowTest
 import org.junit.runner.RunWith
 import org.junit.runners.Suite
 
@@ -17,6 +19,8 @@ import org.junit.runners.Suite
     ExpressionPerformanceStatsTest::class,
     ExpressionSignalProcessorTest::class,
     ExpressionClassThresholdsTest::class,
+    ExpressionModelAssetContractTest::class,
+    LearningStateWindowTest::class,
     ImageProxyBitmapConverterTest::class,
     FaceQualityGateTest::class,
 )

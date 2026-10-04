@@ -224,7 +224,7 @@ $env:MKL_NUM_THREADS = "1"
 用 `multitask_experiment evaluate` 指定校准后的 checkpoint、原七类清单和独立 DAiSEE test 清单，
 写入新的 `--output-dir`；报告中的状态指标使用校准后的概率，并保留原始概率的对照指标。
 已经查看过的测试集再次评估只能作为开发对照，不能宣称全新外部验证。
-本入口保持离线，不能直接替换旧七类手机模型；部署和客户端展示需要后续适配与实机验证。
+本训练入口生成 PyTorch checkpoint；手机端须使用下述导出入口，不能把 `.pt` 直接作为端侧模型。
 
 ### 继续微调十标签模型
 
@@ -248,3 +248,37 @@ $env:MKL_NUM_THREADS = "1"
 正类权重和均衡采样权重只由 train 标签计算；均衡采样与正类加权会叠加，必须显式记录和比较。
 训练报告记录各状态正类 precision/recall/F1、AP、混淆矩阵、初始化哈希及实际训练参数。
 保持原始模型和各候选，不覆盖旧实验；如果验证结果没有提升，保留原模型。
+
+### 导出十项置信度并接入手机
+
+`export_multitask_mobile` 接收经过 validation 选择和置信度校准的联合 checkpoint，
+及校准时绑定哈希的 validation 预测。它复用现有 TensorFlow 同构 ResNet18 权重转换流程，
+生成 TFLite 和 ONNX。MindSpore Lite 转换脚本使用固定版本工具包并核对下载哈希。
+Android 导出输入为 float32 NHWC `[1,96,96,3]`，鸿蒙为 float32 NCHW `[1,3,96,96]`，
+两者都将灰度复制三通道后按 ImageNet 归一化；
+输出为固定顺序的十项原始 logits，校准参数随模型元数据保存。
+
+手机对当前帧前七项应用温度 softmax；对同一人物的四帧后三项先取均值，再应用
+单调 Platt 校准和各自 sigmoid。状态分类器是线性层，这与相同四帧的人脸特征均值数学等价。
+实时滑动窗口与 DAiSEE 均匀采样视频的分布仍不同，转换数值一致不能代替前摄实机验证。
+界面显示十项置信度，新状态不足四帧时显示采样进度；聊天仍使用原七类稳定信号。
+
+七类弃权门槛只由绑定的 validation 预测计算，要求至少 20 个接受样本达到 80% Precision，
+并保留已有跨端门槛下限；达不到要求的类别使用大于 1 的阈值禁用。新增状态仅报告概率，
+不根据曾查看过的 test 拟合二值判断门槛。
+
+导出环境独立于 CUDA 训练环境，从本模块目录运行：
+
+```powershell
+uv venv --python 3.12 .venv-mobile-export
+uv pip install --python .venv-mobile-export/Scripts/python.exe -r requirements-mobile-export.txt
+$env:PYTHONPATH = "src"
+$env:OMP_NUM_THREADS = "1"
+$env:MKL_NUM_THREADS = "1"
+& .venv-mobile-export/Scripts/python.exe -m expression_recognition.export_multitask_mobile --checkpoint artifacts/joint_expression_states_tuned/calibrated.pt --validation-predictions artifacts/joint_expression_states_tuned/validation_predictions.npz --manifest $env:CAMPUSMATE_EXPRESSION_MANIFEST --output-dir artifacts/mobile_multitask_new
+& ./scripts/export_multitask_mindspore.ps1 -ExportDirectory artifacts/mobile_multitask_new
+```
+
+转换会保留 float32 和动态 int8 的误差报告，只有满足数值及七类预测一致性检查的产物才能使用。
+模型替换须同步客户端的模型文件、标签、预处理和校准元数据，并按文件哈希核对。
+端侧完整构建、相机权限、人物切换和前后台行为仍须在各平台验证。

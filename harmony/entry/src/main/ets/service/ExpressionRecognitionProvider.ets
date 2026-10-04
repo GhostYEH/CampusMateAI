@@ -1,10 +1,20 @@
 import { StableExpressionSignal } from './ExpressionSignalProcessor';
+import { ExpressionStateConfidences } from './ExpressionModelMath';
+
+export interface LocalExpressionConfidenceSnapshot {
+  expressionProbabilities: number[];
+  stateProbabilities?: ExpressionStateConfidences;
+  stateSampleCount: number;
+  stateWindowFrames: number;
+  timestamp: number;
+}
 
 export interface ExpressionRecognitionProvider {
   available(): boolean;
   start(): Promise<void>;
   stop(): Promise<void>;
   latestSignal(): StableExpressionSignal | undefined;
+  latestLocalConfidence(nowMs?: number): LocalExpressionConfidenceSnapshot | undefined;
   detail(): string;
 }
 
@@ -14,5 +24,6 @@ export class UnavailableExpressionProvider implements ExpressionRecognitionProvi
   async start(): Promise<void> { return; }
   async stop(): Promise<void> { return; }
   latestSignal(): StableExpressionSignal | undefined { return undefined; }
+  latestLocalConfidence(): LocalExpressionConfidenceSnapshot | undefined { return undefined; }
   detail(): string { return '当前设备暂不支持本地表情模型，聊天不会上传相机画面'; }
 }

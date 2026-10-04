@@ -1,0 +1,10 @@
+# Isolated CPU conversion environment; leave the CUDA training environment unchanged.
+tensorflow==2.17.0
+torch==2.4.1
+torchvision==0.19.1
+numpy<2
+pillow>=11.0
+scikit-learn>=1.5
+PyYAML>=6.0
+onnx==1.17.0
+onnxruntime>=1.19,<2

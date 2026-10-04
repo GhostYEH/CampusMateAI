@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
 import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.LearningStateLabel
 import org.json.JSONObject
 import org.tensorflow.lite.Interpreter
 import java.io.Closeable
@@ -20,10 +21,19 @@ data class ExpressionPreprocessing(
     val confidenceThreshold: Double,
     val classThresholds: Map<ExpressionLabel, Double>,
     val modelVersion: String,
+    val outputSize: Int = 7,
+    val outputOrder: List<String> = emptyList(),
+    val outputType: String = "probabilities",
+    val expressionTemperature: Double = 1.0,
+    val stateScales: DoubleArray = doubleArrayOf(1.0, 1.0, 1.0),
+    val stateBiases: DoubleArray = doubleArrayOf(0.0, 0.0, 0.0),
+    val stateWindowFrames: Int = 4,
+    val stateWindowMaxAgeMs: Long = 5_000L,
 )
 
 data class ExpressionModelRun(
     val probabilities: Map<ExpressionLabel, Double>,
+    val learningStateLogits: FloatArray = floatArrayOf(),
     val preprocessMs: Long,
     val inferenceMs: Long,
     val postprocessMs: Long,
@@ -50,6 +60,7 @@ class ExpressionModelRunner(
     private val context: Context,
     private val modelAsset: String = "expression_model.tflite",
     private val preprocessingAsset: String = "preprocessing.json",
+    private val metadataAsset: String = "model_metadata.json",
 ) : Closeable {
     lateinit var preprocessing: ExpressionPreprocessing
         private set
@@ -126,16 +137,25 @@ class ExpressionModelRunner(
         val preprocessMs = elapsedMs(preprocessStartedAt)
 
         val inferenceStartedAt = SystemClock.elapsedRealtimeNanos()
-        val output = outputBuffer ?: Array(1) { FloatArray(ExpressionMath.modelLabels.size) }
+        val output = outputBuffer ?: Array(1) { FloatArray(preprocessing.outputSize) }
             .also { outputBuffer = it }
         output[0].fill(0f)
         checkNotNull(interpreter) { "Expression model is not initialized" }.run(input, output)
         val inferenceMs = elapsedMs(inferenceStartedAt)
 
         val postprocessStartedAt = SystemClock.elapsedRealtimeNanos()
-        val probabilities = ExpressionMath.toProbabilityMap(ExpressionMath.softmax(output[0]))
+        val expressionLogits = output[0].copyOfRange(0, ExpressionMath.modelLabels.size)
+        val probabilities = ExpressionMath.toProbabilityMap(
+            ExpressionMath.calibratedExpressionProbabilities(expressionLogits, config.expressionTemperature),
+        )
+        val stateLogits = if (config.outputSize == TEN_OUTPUTS) {
+            output[0].copyOfRange(ExpressionMath.modelLabels.size, TEN_OUTPUTS)
+        } else {
+            floatArrayOf()
+        }
         return ExpressionModelRun(
             probabilities = probabilities,
+            learningStateLogits = stateLogits,
             preprocessMs = preprocessMs,
             inferenceMs = inferenceMs,
             postprocessMs = elapsedMs(postprocessStartedAt),
@@ -153,9 +173,44 @@ class ExpressionModelRunner(
     private fun readPreprocessing(): ExpressionPreprocessing {
         val json = context.assets.open(preprocessingAsset).bufferedReader().use { it.readText() }
         val root = JSONObject(json)
+        val metadata = runCatching {
+            context.assets.open(metadataAsset).bufferedReader().use { JSONObject(it.readText()) }
+        }.getOrNull()
         val meanJson = root.getJSONArray("mean")
         val stdJson = root.getJSONArray("std")
-        val classThresholds = parseExpressionClassThresholds(root)
+        val outputSize = metadata?.optInt("output_size", ExpressionMath.modelLabels.size)
+            ?: ExpressionMath.modelLabels.size
+        val expectedOrder = (ExpressionMath.modelLabels.map { it.name.lowercase(java.util.Locale.US) } +
+            ExpressionMath.learningStateLabels.map { it.name.lowercase(java.util.Locale.US) })
+        val outputOrder = metadata?.optJSONArray("output_order")?.let { array ->
+            List(array.length()) { array.getString(it) }
+        }.orEmpty()
+        val calibration = metadata?.optJSONObject("confidence_calibration")
+        if (outputSize == TEN_OUTPUTS) {
+            require(metadata != null && calibration != null &&
+                calibration.has("expression_temperature") && calibration.has("state_scales") &&
+                calibration.has("state_biases") && metadata.has("output_order") &&
+                metadata.has("output_type") && metadata.has("state_window_frames") &&
+                metadata.has("state_window_max_age_ms")) {
+                "Ten-output model metadata is missing its output or confidence calibration contract"
+            }
+        }
+        val classThresholds = if (outputSize == TEN_OUTPUTS) {
+            metadata?.let(::parseExpressionClassThresholds).orEmpty().ifEmpty {
+                parseExpressionClassThresholds(root)
+            }
+        } else {
+            parseExpressionClassThresholds(root).ifEmpty {
+                metadata?.let(::parseExpressionClassThresholds).orEmpty()
+            }
+        }
+        val expressionTemperature = calibration?.optDouble("expression_temperature", 1.0) ?: 1.0
+        val stateScales = calibration?.optJSONArray("state_scales")?.let { values ->
+            DoubleArray(values.length()) { values.getDouble(it) }
+        } ?: doubleArrayOf(1.0, 1.0, 1.0)
+        val stateBiases = calibration?.optJSONArray("state_biases")?.let { values ->
+            DoubleArray(values.length()) { values.getDouble(it) }
+        } ?: doubleArrayOf(0.0, 0.0, 0.0)
         return ExpressionPreprocessing(
             inputSize = root.getInt("input_size"),
             inputChannels = root.getInt("input_channels"),
@@ -167,7 +222,17 @@ class ExpressionModelRunner(
             std = DoubleArray(stdJson.length()) { stdJson.getDouble(it) },
             confidenceThreshold = root.getDouble("confidence_threshold"),
             classThresholds = classThresholds,
-            modelVersion = root.getString("model_version"),
+            modelVersion = metadata?.optString("model_version")?.takeIf { !it.isNullOrBlank() }
+                ?: root.getString("model_version"),
+            outputSize = outputSize,
+            outputOrder = outputOrder.ifEmpty { if (outputSize == ExpressionMath.modelLabels.size) expectedOrder.take(7) else emptyList() },
+            outputType = metadata?.optString("output_type", if (outputSize == TEN_OUTPUTS) "logits" else "probabilities")
+                ?: if (outputSize == TEN_OUTPUTS) "logits" else "probabilities",
+            expressionTemperature = expressionTemperature,
+            stateScales = stateScales,
+            stateBiases = stateBiases,
+            stateWindowFrames = metadata?.optInt("state_window_frames", 4) ?: 4,
+            stateWindowMaxAgeMs = metadata?.optLong("state_window_max_age_ms", 5_000L) ?: 5_000L,
         )
     }
 
@@ -184,8 +249,29 @@ class ExpressionModelRunner(
         check(inputTensor.shape().contentEquals(intArrayOf(1, preprocessing.inputSize, preprocessing.inputSize, preprocessing.inputChannels))) {
             "Expression model input shape does not match preprocessing metadata"
         }
-        check(outputTensor.shape().contentEquals(intArrayOf(1, ExpressionMath.modelLabels.size))) {
+        check(preprocessing.outputSize in setOf(ExpressionMath.modelLabels.size, TEN_OUTPUTS)) {
+            "Expression model output_size must be 7 (legacy) or 10"
+        }
+        check(outputTensor.shape().contentEquals(intArrayOf(1, preprocessing.outputSize))) {
             "Expression model output shape does not match the class contract"
+        }
+        if (preprocessing.outputSize == TEN_OUTPUTS) {
+            val expectedOrder = ExpressionMath.modelLabels.map { it.name.lowercase(java.util.Locale.US) } +
+                ExpressionMath.learningStateLabels.map { it.name.lowercase(java.util.Locale.US) }
+            check(preprocessing.outputType == "logits" && preprocessing.outputOrder == expectedOrder) {
+                "Ten-output model metadata must declare the fixed ten-label raw-logit order"
+            }
+            check(preprocessing.stateWindowFrames == DEFAULT_STATE_WINDOW_FRAMES &&
+                preprocessing.stateWindowMaxAgeMs == DEFAULT_STATE_WINDOW_MAX_AGE_MS) {
+                "Ten-output state window metadata is invalid"
+            }
+            check(preprocessing.expressionTemperature.isFinite() && preprocessing.expressionTemperature > 0.0 &&
+                preprocessing.stateScales.size == ExpressionMath.learningStateLabels.size &&
+                preprocessing.stateBiases.size == ExpressionMath.learningStateLabels.size &&
+                preprocessing.stateScales.all { it.isFinite() && it >= 0.0 } &&
+                preprocessing.stateBiases.all { it.isFinite() }) {
+                "Ten-output confidence calibration metadata is invalid"
+            }
         }
         check(preprocessing.mean.size == preprocessing.inputChannels &&
             preprocessing.std.size == preprocessing.inputChannels) {
@@ -195,4 +281,10 @@ class ExpressionModelRunner(
 
     private fun elapsedMs(startedAtNanos: Long): Long =
         ((SystemClock.elapsedRealtimeNanos() - startedAtNanos) / 1_000_000L).coerceAtLeast(0L)
+
+    private companion object {
+        const val TEN_OUTPUTS = 10
+        const val DEFAULT_STATE_WINDOW_FRAMES = 4
+        const val DEFAULT_STATE_WINDOW_MAX_AGE_MS = 5_000L
+    }
 }

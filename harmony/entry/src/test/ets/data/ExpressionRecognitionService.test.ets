@@ -21,6 +21,7 @@ class DeferredExpressionProvider implements ExpressionRecognitionProvider {
 
   available(): boolean { return this.running; }
   latestSignal(): StableExpressionSignal | undefined { return undefined; }
+  latestLocalConfidence(): undefined { return undefined; }
   detail(): string { return this.running ? 'running' : 'stopped'; }
 
   async start(): Promise<void> {

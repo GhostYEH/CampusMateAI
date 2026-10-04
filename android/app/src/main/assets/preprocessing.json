@@ -2,9 +2,9 @@
   "input_size": 96,
   "input_channels": 3,
   "input_layout": "NHWC",
+  "input_dtype": "float32",
   "input_color_mode": "grayscale_replicated",
   "channel_order": "grayscale replicated to RGB channels",
-  "source_camera_conversion": "YUV_420_888 -> upright mirrored RGB bitmap",
   "resize": "bilinear",
   "value_scale": "[0,255] -> [0,1]",
   "mean": [
@@ -17,20 +17,21 @@
     0.224,
     0.225
   ],
+  "face_crop": {
+    "padding_x_fraction": 0.16,
+    "padding_y_fraction": 0.2
+  },
   "confidence_threshold": 0.7,
   "class_thresholds": {
     "angry": 0.81,
     "disgust": 0.91,
-    "fear": 0.8,
+    "fear": 0.84,
     "happy": 0.3,
     "neutral": 0.83,
     "sad": 0.68,
     "surprise": 0.78
   },
-  "threshold_basis": "per-class validation abstention calibration targeting 0.80 precision",
-  "face_crop": {
-    "padding_x_fraction": 0.16,
-    "padding_y_fraction": 0.2
-  },
-  "model_version": "expression-resnet18-multiv2-v1"
+  "threshold_basis": "calibrated validation predictions; 0.80 precision target, minimum 20 accepted samples, searched only at/above each prior deployed per-class threshold",
+  "model_version": "expression-multitask-calibrated10-v1",
+  "source_camera_conversion": "YUV_420_888 -> upright mirrored RGB bitmap"
 }

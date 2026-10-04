@@ -20,6 +20,7 @@ export struct CounselorPage {
   @Prop mockMode: boolean = false;
   @Prop expressionAvailable: boolean = false;
   @Prop expressionDetail: string = '';
+  @Prop expressionConfidenceText: string = '';
   @Prop expressionGreeting: string = '你好，我是 CPM 校园助手。今天有什么想聊的？';
   @Prop apiBaseUrl: string = '';
   @Prop authToken: string = '';
@@ -260,6 +261,13 @@ export struct CounselorPage {
             darkMode: this.darkMode,
             reduceMotion: this.reduceMotion
           })
+          if (this.expressionConfidenceText.length > 0) {
+            Text(this.expressionConfidenceText)
+              .width('100%').padding({ left: 12, right: 12, top: 9, bottom: 9 })
+              .fontColor(this.palette().muted).fontSize(10).lineHeight(16).maxLines(5)
+              .backgroundColor(this.palette().glass.surface)
+              .border({ width: 1, color: this.palette().glass.border }).borderRadius(14)
+          }
           if (CounselorConversationState.showSuggestions(this.messages.length)) {
             Row() {
               Row({ space: 5 }) {

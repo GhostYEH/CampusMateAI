@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class RealExpressionRecognitionService(
     private val application: Application,
@@ -28,8 +29,10 @@ class RealExpressionRecognitionService(
     private var analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var processor: ExpressionSignalProcessor? = null
     private var runner: ExpressionModelRunner? = null
+    private var learningStateWindow: LearningStateWindow? = null
     private val analyzing = AtomicBoolean(false)
-    private var running = false
+    @Volatile private var running = false
+    private val analysisGeneration = AtomicLong(0L)
     private var lastAnalyzedAt = 0L
     private val initializationMutex = Mutex()
     private val inferenceLock = Any()
@@ -85,6 +88,16 @@ class RealExpressionRecognitionService(
                     ),
                     modelRunner.preprocessing.modelVersion,
                 )
+                learningStateWindow = if (modelRunner.preprocessing.outputSize == 10) {
+                    LearningStateWindow(
+                        requiredFrames = modelRunner.preprocessing.stateWindowFrames,
+                        maxAgeMs = modelRunner.preprocessing.stateWindowMaxAgeMs,
+                        scales = modelRunner.preprocessing.stateScales,
+                        biases = modelRunner.preprocessing.stateBiases,
+                    )
+                } else {
+                    null
+                }
                 _status.value = ExpressionServiceStatus.Ready
             } catch (error: Exception) {
                 _status.value = ExpressionServiceStatus.Error(
@@ -97,6 +110,10 @@ class RealExpressionRecognitionService(
 
     override suspend fun start() {
         if (runner == null) initialize()
+        synchronized(inferenceLock) {
+            analysisGeneration.incrementAndGet()
+            learningStateWindow?.reset()
+        }
         performanceStats.start(SystemClock.elapsedRealtime())
         running = true
         _status.value = ExpressionServiceStatus.Running
@@ -104,23 +121,34 @@ class RealExpressionRecognitionService(
 
     override suspend fun pause() {
         running = false
-        emitUnavailableResult()
+        analysisGeneration.incrementAndGet()
+        synchronized(inferenceLock) {
+            learningStateWindow?.reset()
+            emitUnavailableResult()
+        }
         _status.value = ExpressionServiceStatus.Paused
     }
 
     override suspend fun stop() {
         running = false
-        emitUnavailableResult()
+        analysisGeneration.incrementAndGet()
+        synchronized(inferenceLock) {
+            learningStateWindow?.reset()
+            emitUnavailableResult()
+        }
         _status.value = ExpressionServiceStatus.Ready
     }
 
     override suspend fun dispose() {
         running = false
-        emitUnavailableResult()
+        analysisGeneration.incrementAndGet()
         synchronized(inferenceLock) {
+            learningStateWindow?.reset()
+            emitUnavailableResult()
             runner?.close()
             runner = null
             processor = null
+            learningStateWindow = null
         }
         detector.close()
         analysisExecutor.shutdownNow()
@@ -139,17 +167,21 @@ class RealExpressionRecognitionService(
             return
         }
         lastAnalyzedAt = now
+        val generation = analysisGeneration.get()
         val totalStartedAtNanos = SystemClock.elapsedRealtimeNanos()
         frame.retain()
         val bitmap = frame.bitmap
 
         detector.process(InputImage.fromBitmap(bitmap, 0))
             .addOnSuccessListener(analysisExecutor) { faces ->
-                if (!running) return@addOnSuccessListener
+                if (!isCurrentGeneration(generation)) return@addOnSuccessListener
                 val faceDetectionMs = elapsedMs(totalStartedAtNanos)
                 if (faces.isEmpty()) {
                     val postprocessStartedAt = SystemClock.elapsedRealtimeNanos()
-                    emitNoFace()
+                    synchronized(inferenceLock) {
+                        if (!isCurrentGeneration(generation)) return@addOnSuccessListener
+                        emitNoFace()
+                    }
                     performanceStats.recordFrame(
                         faceDetectionMs = faceDetectionMs,
                         preprocessMs = 0L,
@@ -164,14 +196,19 @@ class RealExpressionRecognitionService(
                         bitmap = bitmap,
                         face = selectLargestFace(faces),
                         faceCount = faces.size,
+                        generation = generation,
                         totalStartedAtNanos = totalStartedAtNanos,
                         faceDetectionMs = faceDetectionMs,
                     )
                 }
             }
             .addOnFailureListener(analysisExecutor) { error ->
-                if (!running) return@addOnFailureListener
-                emitUnavailableResult()
+                if (!isCurrentGeneration(generation)) return@addOnFailureListener
+                synchronized(inferenceLock) {
+                    if (!isCurrentGeneration(generation)) return@addOnFailureListener
+                    learningStateWindow?.reset()
+                    emitUnavailableResult()
+                }
                 _status.value = ExpressionServiceStatus.Error(
                     error.message ?: "人脸检测失败",
                 )
@@ -195,11 +232,12 @@ class RealExpressionRecognitionService(
         bitmap: Bitmap,
         face: Face,
         faceCount: Int,
+        generation: Long,
         totalStartedAtNanos: Long,
         faceDetectionMs: Long,
     ) {
         try {
-            if (!running) return
+            if (!isCurrentGeneration(generation)) return
             val crop = paddedCrop(face.boundingBox, bitmap.width, bitmap.height)
             val faceBitmap = Bitmap.createBitmap(
                 bitmap,
@@ -214,11 +252,16 @@ class RealExpressionRecognitionService(
                 val qualityMs = elapsedMs(qualityStartedAt)
                 if (!quality.accepted) {
                     val postprocessStartedAt = SystemClock.elapsedRealtimeNanos()
-                    val result = checkNotNull(processor).process(
-                        emptyMap(),
-                        System.currentTimeMillis(),
-                        hasFace = true,
-                    )
+                    val result = synchronized(inferenceLock) {
+                        if (!isCurrentGeneration(generation)) return
+                        learningStateWindow?.reset()
+                        checkNotNull(processor).process(
+                            emptyMap(),
+                            System.currentTimeMillis(),
+                            hasFace = true,
+                        )
+                    }
+                    if (!isCurrentGeneration(generation)) return
                     _results.value = result.copy(
                         facePresent = true,
                         headEulerAngleX = face.headEulerAngleX.toDouble(),
@@ -226,6 +269,7 @@ class RealExpressionRecognitionService(
                         headEulerAngleZ = face.headEulerAngleZ.toDouble(),
                         leftEyeOpenProbability = face.leftEyeOpenProbability?.toDouble(),
                         rightEyeOpenProbability = face.rightEyeOpenProbability?.toDouble(),
+                        supportsLearningStates = learningStateWindow != null,
                     )
                     _status.value = ExpressionServiceStatus.LowConfidence
                     performanceStats.recordFrame(
@@ -241,6 +285,7 @@ class RealExpressionRecognitionService(
                 }
 
                 val processed = synchronized(inferenceLock) {
+                    if (!isCurrentGeneration(generation)) return
                     val modelRun = checkNotNull(runner).runTimed(faceBitmap)
                     val processorStartedAt = SystemClock.elapsedRealtimeNanos()
                     val result = checkNotNull(processor).process(
@@ -248,11 +293,25 @@ class RealExpressionRecognitionService(
                         System.currentTimeMillis(),
                         hasFace = true,
                     )
-                    Triple(modelRun, result, elapsedMs(processorStartedAt))
+                    val stateSnapshot = learningStateWindow?.add(
+                        modelRun.learningStateLogits,
+                        face.trackingId,
+                        SystemClock.elapsedRealtime(),
+                    ) ?: LearningStateWindow.Snapshot(emptyMap(), 0)
+                    Triple(
+                        modelRun,
+                        result.copy(
+                            learningStateProbabilities = stateSnapshot.probabilities,
+                            learningStateFrameCount = stateSnapshot.frameCount,
+                            supportsLearningStates = learningStateWindow != null,
+                            displayExpressionProbabilities = modelRun.probabilities,
+                        ),
+                        elapsedMs(processorStartedAt),
+                    )
                 }
                 val modelRun = processed.first
                 val result = processed.second
-                if (!running) return
+                if (!isCurrentGeneration(generation)) return
                 _results.value = result.copy(
                     facePresent = true,
                     headEulerAngleX = face.headEulerAngleX.toDouble(),
@@ -278,8 +337,12 @@ class RealExpressionRecognitionService(
                 faceBitmap.recycle()
             }
         } catch (error: Exception) {
-            if (!running) return
-            emitUnavailableResult()
+            if (!isCurrentGeneration(generation)) return
+            synchronized(inferenceLock) {
+                if (!isCurrentGeneration(generation)) return
+                learningStateWindow?.reset()
+                emitUnavailableResult()
+            }
             _status.value = ExpressionServiceStatus.Error(
                 error.message ?: "表情推理失败",
             )
@@ -296,16 +359,21 @@ class RealExpressionRecognitionService(
     }
 
     private fun emitNoFace() {
+        learningStateWindow?.reset()
         val result = processor?.process(
             emptyMap(),
             System.currentTimeMillis(),
             hasFace = false,
         ) ?: return
-        _results.value = result.copy(facePresent = false)
+        _results.value = result.copy(
+            facePresent = false,
+            supportsLearningStates = learningStateWindow != null,
+        )
         _status.value = ExpressionServiceStatus.NoFace
     }
 
     private fun emitUnavailableResult() {
+        learningStateWindow?.reset()
         processor?.reset()
         _results.value = ExpressionResult(
             label = ExpressionLabel.UNKNOWN,
@@ -315,6 +383,7 @@ class RealExpressionRecognitionService(
             isStable = false,
             modelVersion = _results.value.modelVersion,
             facePresent = false,
+            supportsLearningStates = learningStateWindow != null,
         )
     }
 
@@ -340,6 +409,9 @@ class RealExpressionRecognitionService(
 
     private fun elapsedMs(startedAtNanos: Long): Long =
         ((SystemClock.elapsedRealtimeNanos() - startedAtNanos) / 1_000_000L).coerceAtLeast(0L)
+
+    private fun isCurrentGeneration(generation: Long): Boolean =
+        running && analysisGeneration.get() == generation
 
     companion object {
         private const val ANALYSIS_INTERVAL_MS = 200L

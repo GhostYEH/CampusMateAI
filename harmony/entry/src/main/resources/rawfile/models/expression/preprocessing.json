@@ -1,31 +1,82 @@
 {
   "input_size": 96,
   "input_channels": 3,
-  "input_layout": "NHWC",
+  "input_layout": "NCHW",
+  "input_dtype": "float32",
   "input_color_mode": "grayscale_replicated",
   "channel_order": "grayscale replicated to RGB channels",
-  "source_camera_conversion": "JPEG -> RGBA_8888 -> upright mirrored PixelMap",
   "resize": "bilinear",
   "value_scale": "[0,255] -> [0,1]",
-  "mean": [0.485, 0.456, 0.406],
-  "std": [0.229, 0.224, 0.225],
-  "confidence_threshold": 0.7,
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ],
+  "face_crop": {
+    "padding_x_fraction": 0.16,
+    "padding_y_fraction": 0.2
+  },
+  "output_size": 10,
+  "output_order": [
+    "angry",
+    "disgust",
+    "fear",
+    "happy",
+    "neutral",
+    "sad",
+    "surprise",
+    "boredom",
+    "confusion",
+    "frustration"
+  ],
+  "output_type": "logits",
+  "confidence_calibration": {
+    "expression_temperature": 1.0471285480508996,
+    "state_scales": [
+      0.6608489616943151,
+      0.8023012756049598,
+      0.5501442230714629
+    ],
+    "state_biases": [
+      -0.11038139222478235,
+      -1.8821206392472292,
+      -1.8834415679743548
+    ],
+    "positive_definition": "DAiSEE level >= 2",
+    "fitted_on": "validation"
+  },
+  "state_window_frames": 4,
+  "state_window_max_age_ms": 5000,
+  "states_are_independent": true,
   "class_thresholds": {
     "angry": 0.81,
     "disgust": 0.91,
-    "fear": 0.80,
-    "happy": 0.30,
+    "fear": 0.84,
+    "happy": 0.3,
     "neutral": 0.83,
     "sad": 0.68,
     "surprise": 0.78
   },
-  "threshold_basis": "per-class validation abstention calibration targeting 0.80 precision",
-  "face_crop": {
-    "padding_x_fraction": 0.16,
-    "padding_y_fraction": 0.20
-  },
+  "confidence_threshold": 0.7,
+  "threshold_basis": "calibrated validation predictions; 0.80 precision target, minimum 20 accepted samples, searched only at/above each prior deployed per-class threshold",
+  "checkpoint_sha256": "9f5549361e39ed1d4116f59807ffcb60d9f5b6d47f5de4e43d82a9f0a2a79953",
+  "input_shape": [
+    1,
+    3,
+    96,
+    96
+  ],
+  "model_version": "expression-multitask-calibrated10-v1-mslite",
+  "model_sha256": "5daadc97255e22f80bc349870435f5df6af0d124538820667f948a68a694764e",
+  "model_size_bytes": 44725872,
+  "source_camera_conversion": "JPEG -> RGBA_8888 -> upright mirrored PixelMap",
   "stable_frame_count": 3,
   "ema_alpha": 0.4,
   "max_age_ms": 5000,
-  "model_version": "expression-resnet18-multiv2-v1-mslite"
+  "face_continuity": "bounding_box_geometry_heuristic_not_identity_verification"
 }

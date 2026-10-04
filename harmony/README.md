@@ -30,6 +30,12 @@ $env:DEVECO_SDK_HOME = Join-Path $env:DEVECO_HOME 'sdk'
 两条识别链路都在 HarmonyOS 设备本地执行，不上传、不保存相机画面：
 
 - 表情识别使用 `rawfile/models/expression/campusmate_expression_v2.ms`。用户只有在 CPM/AI 页明确同意并授予相机权限后才会启动；离开 CPM 页、应用转入后台、退出登录或组件销毁时会停止。链路为 `MindSporeExpressionProvider -> ExpressionRecognitionService -> withExpressionSignal`；只有通过人脸质量、置信度、连续稳定性和时效检查的标签才会随对话发送。
+
+联合模型的十项输出包含七类表情和独立的无聊、困惑、挫败置信度。七类使用温度校准 softmax，
+三个状态分别使用 sigmoid，允许同时出现，十项不会合计为 100%。学习状态积累四帧后显示，
+先平均原始 logits，再应用 validation 拟合的校准参数；无脸、多脸、质量不足或暂停时清空窗口。
+当前人脸连续性使用裁剪框的变化约束，不能替代人物身份识别；实时采样分布和前摄效果须在真机验证。
+聊天仍仅使用经过门槛检查的原七类稳定信号，新增状态置信度用于本机展示。
 - 学习行为识别使用 `rawfile/models/behavior/campusmate_behavior_v34.ms` 单帧人体 ROI 模型，并在需要时用 `rawfile/models/behavior/campusmate_tsm_mobilenetv2_v4.ms` 的 8 帧时序结果做确认与融合。TSM V4 缺失或推理失败时会明确降级为 V3.4，不伪造时序结果；不稳定、无人或已停止的结果不会显示为稳定标签或触发提醒。
 - 行为相机只在后端成功创建或恢复 `focus` 专注会话后启动；短休息/长休息不启动，暂停、结束、切换模式、返回、页面隐藏和组件销毁都会停止。相机或模型失败不会回滚已成功的后端会话。相机帧最快每 500 ms 分析一次。
 

@@ -2,6 +2,7 @@ package com.example.campusai
 
 import com.example.campusai.data.expression.ExpressionMath
 import com.example.campusai.data.model.ExpressionLabel
+import com.example.campusai.data.model.LearningStateLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,5 +36,19 @@ class ExpressionMathTest {
     fun pixelNormalizationMatchesTrainingFormula() {
         assertEquals(-1f, ExpressionMath.normalizePixel(0, 0.5, 0.5), 1e-6f)
         assertEquals(1f, ExpressionMath.normalizePixel(255, 0.5, 0.5), 1e-6f)
+    }
+
+    @Test
+    fun tenLabelOrderKeepsIndependentStatesOutsideTheSevenClassSoftmax() {
+        assertEquals(
+            listOf(LearningStateLabel.BOREDOM, LearningStateLabel.CONFUSION, LearningStateLabel.FRUSTRATION),
+            ExpressionMath.learningStateLabels,
+        )
+        val probabilities = ExpressionMath.calibratedExpressionProbabilities(
+            FloatArray(7) { if (it == 0) 1f else 0f },
+            temperature = 2.0,
+        )
+        assertEquals(1.0, probabilities.sum(), 1e-9)
+        assertTrue(probabilities[0] < ExpressionMath.softmax(FloatArray(7) { if (it == 0) 1f else 0f })[0])
     }
 }
