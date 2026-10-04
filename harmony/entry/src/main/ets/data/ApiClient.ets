@@ -43,10 +43,12 @@ export enum ApiErrorCode {
 export class ApiError extends Error {
   readonly code: ApiErrorCode;
   readonly statusCode: number;
-  constructor(code: ApiErrorCode, message: string, statusCode: number = 0) {
+  readonly backendCode: string;
+  constructor(code: ApiErrorCode, message: string, statusCode: number = 0, backendCode: string = '') {
     super(message);
     this.code = code;
     this.statusCode = statusCode;
+    this.backendCode = backendCode;
   }
 }
 
@@ -66,7 +68,11 @@ export class ApiClient implements ChaoxingApiClient {
     return `${this.baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
   }
 
-  private createHttpError(statusCode: number): ApiError {
+  private createHttpError(statusCode: number, raw: string = ''): ApiError {
+    const backendCode: string = ApiResponseParser.errorCode(raw);
+    if (statusCode === 503 && backendCode === 'CHAOXING_CREDENTIALS_UNAVAILABLE') {
+      return new ApiError(ApiErrorCode.SERVER, '学习通连接信息无法读取，请重新连接学习通。', statusCode, backendCode);
+    }
     switch (statusCode) {
       case 401: return new ApiError(ApiErrorCode.SESSION_EXPIRED, '登录已过期，请重新登录', statusCode);
       case 403: return new ApiError(ApiErrorCode.FORBIDDEN, '没有访问权限', statusCode);
@@ -215,7 +221,7 @@ export class ApiClient implements ChaoxingApiClient {
         await this.auth.onSessionExpired();
         throw this.createHttpError(401);
       }
-      if (response.responseCode < 200 || response.responseCode >= 300) throw this.createHttpError(response.responseCode);
+      if (response.responseCode < 200 || response.responseCode >= 300) throw this.createHttpError(response.responseCode, response.result.toString());
       return ApiResponseParser.parseOptional<T>(response.result.toString());
     } catch (e) {
       if (e instanceof Error) throw e;

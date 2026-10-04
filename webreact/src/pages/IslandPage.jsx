@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../components/Icon.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 import { LearningIsland } from "../components/island/LearningIsland.tsx";
@@ -6,6 +6,7 @@ import { Heatmap } from "../components/island/Heatmap.jsx";
 import { useAmbientSound } from "../features/study/ambientSound.js";
 import * as api from "../data/api.js";
 import { itemsOf } from "../data/contracts.js";
+import { createEpochGuard } from "../data/epochGuard.js";
 import { saveStudyScene } from "../features/study/scenes.js";
 
 const SCENES = Object.freeze([
@@ -35,20 +36,24 @@ export default function IslandPage() {
   const [checkins, setCheckins] = useState({ items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false });
   const [loaded, setLoaded] = useState(false);
   const [checkinError, setCheckinError] = useState("");
+  const loadGuard = useRef(createEpochGuard());
 
   useEffect(() => {
-    let cancelled = false;
+    const guard = loadGuard.current;
+    const epoch = guard.next();
     Promise.allSettled([api.getStudySessions(), api.getStudyCheckins()]).then(([studySessions, studyCheckinSummary]) => {
-      if (cancelled) return;
+      if (!guard.isCurrent(epoch)) return;
+      const errors = [];
       if (studySessions.status === "fulfilled") setSessions(itemsOf(studySessions.value));
       if (studyCheckinSummary.status === "fulfilled") {
         setCheckins(studyCheckinSummary.value || { items: [], total: 0, streak: 0, longest_streak: 0, week_count: 0, today_checked: false });
-        if (studyCheckinSummary.value?.unsupported) setCheckinError("签到服务尚未加载，请重启后端后再签到。");
-      } else setCheckinError("签到数据加载失败，请稍后重试。");
-      if (studySessions.status === "rejected") setCheckinError("学习记录加载失败，请稍后重试。");
+        if (studyCheckinSummary.value?.unsupported) errors.push("签到服务尚未加载，请重启后端后再签到。");
+      } else errors.push("签到数据加载失败，请稍后重试。");
+      if (studySessions.status === "rejected") errors.push("学习记录加载失败，请稍后重试。");
+      setCheckinError(errors.join(" "));
       setLoaded(true);
     });
-    return () => { cancelled = true; };
+    return () => { guard.invalidate(); };
   }, []);
 
   // 3D 小岛按 html[data-scene] 换肤，与场景按钮保持同步

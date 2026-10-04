@@ -1379,6 +1379,7 @@ Web 封装：`syncCourse`（[webreact/src/data/api.js](../../webreact/src/data/a
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | 动态响应；见下方补充与 response-contracts.md |
+| 503 | application/json | `code: CHAOXING_CREDENTIALS_UNAVAILABLE`；连接信息无法读取，保留已同步数据，请重新连接学习通 |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
 
 实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
@@ -1391,9 +1392,12 @@ await ChaoxingCourseContentSyncService(container).sync_course(user_id=user.id, c
 
 | HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
 | --- | --- | --- |
+| 503 | CHAOXING_CREDENTIALS_UNAVAILABLE | 已有凭据损坏或无法解密；重新登录或解除连接后重绑，不应自动反复重试 |
 | 400 | HTTPException | 'not_chaoxing_course' |
 | 400 | HTTPException | str(error) |
 | 404 | HTTPException | 'course_not_found' |
+
+兼容性与客户端处理：成功响应和请求参数不变，503 是既有凭据读取失败的显式声明。Web、Android、HarmonyOS 均消费课程同步接口；收到 `CHAOXING_CREDENTIALS_UNAVAILABLE` 时保留已缓存课程，提示用户从学习通连接页重新登录或解除连接后重绑，停止自动反复重试。微信小程序当前没有该接口消费。Web 已通过自动化错误契约验证；Android、HarmonyOS 的原生编译未在本次环境验证。
 
 ### `GET /api/v1/courses/{course_id}/resources/{item_id}/open`
 
@@ -1462,6 +1466,7 @@ Web 封装：`downloadCourseResource`（[webreact/src/data/api.js](../../webreac
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | 实际资源媒体类型 | 文件 / 上游二进制流 |
+| 503 | application/json | `code: CHAOXING_CREDENTIALS_UNAVAILABLE`；连接信息无法读取，保留已同步数据，请重新连接学习通 |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
 | 206 | 实际资源媒体类型 | 文件 / 上游二进制流 |
 
@@ -1479,8 +1484,11 @@ StreamingResponse(stream_result['stream'], media_type=stream_result['mime_type']
 
 | HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
 | --- | --- | --- |
+| 503 | CHAOXING_CREDENTIALS_UNAVAILABLE | 已有凭据损坏或无法解密；重新登录或解除连接后重绑，不应自动反复重试 |
 | 404 | HTTPException | 'resource_not_found' |
 | 400 | HTTPException | 'resource_not_downloadable' |
 | 401 | HTTPException | 'chaoxing_credentials_not_found' |
 | status | HTTPException | error.code |
 | 404 | HTTPException | 'course_not_found' |
+
+兼容性与客户端处理：成功文件和流式协议不变；503 使用 JSON 统一错误结构，客户端须先检查 HTTP 状态，不能把错误体当作资源文件缓存。Web、Android、HarmonyOS 均消费下载接口，凭据损坏时应保留现有缓存并引导重新连接；微信小程序当前没有该接口消费。Web 自动化测试已验证错误文案，移动端原生编译未在本次环境验证。

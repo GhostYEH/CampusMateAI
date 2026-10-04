@@ -82,5 +82,22 @@ export default function chaoxingAccountTest(): void {
       expect(loginBody.username).assertEqual('student-1');
       expect(loginBody.password).assertEqual('secret-1');
     });
+
+    it('distinguishes damaged credentials from transient errors and retains cached counts', 0, () => {
+      const online: ChaoxingAccountStatus = ChaoxingStatusMapper.fromResponse({ status: 'online', courses: 4 });
+      const expired: ChaoxingAccountStatus = ChaoxingStatusMapper.fromFailure({
+        statusCode: 503, backendCode: 'CHAOXING_CREDENTIALS_UNAVAILABLE'
+      }, online);
+      expect(expired.rawStatus).assertEqual('expired');
+      expect(expired.requiresLogin).assertTrue();
+      expect(expired.canSync).assertFalse();
+      expect(expired.courses).assertEqual(4);
+      const transient: ChaoxingAccountStatus = ChaoxingStatusMapper.fromFailure({ statusCode: 503 }, online);
+      expect(transient.rawStatus).assertEqual('unavailable');
+      expect(transient.connected).assertTrue();
+      expect(transient.requiresLogin).assertFalse();
+      expect(transient.canSync).assertFalse();
+      expect(ChaoxingStatusMapper.fromFailure({ statusCode: 503 }, expired).rawStatus).assertEqual('expired');
+    });
   });
 }

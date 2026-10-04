@@ -14,7 +14,9 @@ spec.loader.exec_module(docs)
 
 def test_documented_openapi_matches_runtime_and_preserves_supplements():
     saved = json.loads(docs.SNAPSHOT.read_text(encoding="utf-8"))
-    expected = docs.documented_schema(create_app().openapi(), saved)
+    runtime = create_app().openapi()
+    assert not docs.exception_response_differences(runtime)
+    expected = docs.documented_schema(runtime, saved)
     assert not docs.differences(saved, expected)
     assert docs.SUPPLEMENTAL_SCHEMAS <= saved["components"]["schemas"].keys()
 
@@ -34,3 +36,13 @@ def test_checker_detects_changed_http_and_model_contracts():
     changes = docs.differences(saved, expected)
     assert any("responses/503" in path for path in changes)
     assert any("properties/status/type" in path for path in changes)
+
+
+@pytest.mark.parametrize("path,method", next(iter(docs.APP_EXCEPTION_OPERATIONS.values())))
+def test_checker_rejects_undocumented_indirect_exceptions_even_after_regeneration(path, method):
+    runtime = create_app().openapi()
+    del runtime["paths"][path][method]["responses"]["503"]
+    # Matching snapshots alone cannot detect the global-handler omission.
+    assert not docs.differences(runtime, runtime)
+    assert any(path in change and "CHAOXING_CREDENTIALS_UNAVAILABLE" in change
+               for change in docs.exception_response_differences(runtime))

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from importlib import import_module
 import json
 from pathlib import Path
 import sys
@@ -19,6 +20,32 @@ SUPPLEMENTAL_SCHEMAS = frozenset({
     "InteractiveClassroomInput", "LearningGoalInput", "NoticeOut", "RecruitExtra", "SuggestedAction",
 })
 DOCUMENT_INFO_FIELDS = ("title", "version", "description")
+APP_EXCEPTION_OPERATIONS = {
+    "app.repositories.chaoxing_repository.ChaoxingCredentialsUnavailable": (
+        ("/api/v1/chaoxing/status", "get"),
+        ("/api/v1/chaoxing/sync", "post"),
+        ("/api/v1/courses/{course_id}/sync", "post"),
+        ("/api/v1/courses/{course_id}/resources/{item_id}/download", "get"),
+    ),
+}
+
+
+def exception_response_differences(runtime: dict) -> list[str]:
+    """Check known indirect AppException paths independently of the snapshot.
+
+    A global exception handler does not add responses to OpenAPI. Keep the
+    known credential consumers here so deleting a runtime declaration and
+    regenerating the snapshot cannot silently bless that omission.
+    """
+    changes = []
+    for reference, operations in APP_EXCEPTION_OPERATIONS.items():
+        module, name = reference.rsplit(".", 1)
+        exception = getattr(import_module(module), name)
+        for path, method in operations:
+            response = runtime.get("paths", {}).get(path, {}).get(method, {}).get("responses", {}).get(str(exception.http_status))
+            if response is None or exception.code not in response.get("description", ""):
+                changes.append(f"$/paths/{path}/{method}/responses/{exception.http_status} ({exception.code})")
+    return changes
 
 
 def documented_schema(runtime: dict, saved: dict) -> dict:
@@ -67,7 +94,13 @@ def main() -> int:
     from app.main import create_app
 
     saved = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    expected = documented_schema(create_app().openapi(), saved)
+    runtime = create_app().openapi()
+    missing_exceptions = exception_response_differences(runtime)
+    if missing_exceptions:
+        print("Missing runtime AppException response declarations:")
+        print("\n".join(missing_exceptions))
+        return 1
+    expected = documented_schema(runtime, saved)
     changed = differences(saved, expected)
     if args.check:
         if changed:

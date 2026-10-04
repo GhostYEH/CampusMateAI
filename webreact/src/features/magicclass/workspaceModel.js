@@ -127,7 +127,7 @@ export function describeWorkspaceError(error) {
   }
   // 超时、断网、后端没起来都落在这里。走全站统一适配器，绝不把 Axios 的
   // "Request failed with status code 503" 这类英文原文交给用户。
-  return { kind: "unknown", reason: "", retryable: true, message: userErrorMessage(error, "操作失败，请稍后重试。") };
+  return { kind: "unknown", reason: "", retryable: true, message: userErrorMessage(error) };
 }
 
 /**

@@ -35,7 +35,6 @@ export default function QuizRuntimePanel(props) {
 function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
-  const hasLocalSnapshot = Boolean(saved && ["intro", "answering", "review"].includes(saved.phase) && saved.answers && typeof saved.answers === "object" && !Array.isArray(saved.answers));
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
   const [answers, setAnswers] = React.useState(saved?.answers || {});
   const [review, setReview] = React.useState(saved?.review || null);
@@ -207,6 +206,9 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
   }
 
   function retry() {
+    // A new attempt replaces the local snapshot. Recover/sync that snapshot
+    // first so a failed read or write cannot discard the only saved answers.
+    if (syncing || loadPending || loadError || syncError) return;
     setAnswers({});
     setReview(null);
     setPhase("answering");
@@ -231,7 +233,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
       <span className="magicclass-runtime-kicker">互动测验</span>
       <strong>{questions.length} 道题 · 共 {questions.reduce((sum, question) => sum + question.points, 0)} 分</strong>
       <p>完成答题后提交，系统会立即给出得分和逐题解析。</p>
-      <Button type="button" disabled={loadPending || (Boolean(loadError) && !hasLocalSnapshot)} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
+      <Button type="button" disabled={loadPending} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
     </div>
   </section>;
 
@@ -251,7 +253,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
         </li>;
       })}
     </ol>
-    <Button type="button" variant="secondary" disabled={syncing || loadPending || (Boolean(loadError) && !hasLocalSnapshot)} onClick={retry}>重新作答</Button>
+    <Button type="button" variant="secondary" disabled={syncing || loadPending || Boolean(loadError) || Boolean(syncError)} onClick={retry}>重新作答</Button>
   </section>;
 
   return <section className="magicclass-quiz-runtime" aria-label="测验答题">

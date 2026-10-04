@@ -1,4 +1,4 @@
-const fallbackMessage = Symbol("fallbackMessage");
+const normalizedErrors = new WeakSet();
 const defaultErrorMessage = "操作失败，请稍后重试";
 
 export function itemsOf(value) {
@@ -11,38 +11,47 @@ export function itemsOf(value) {
 // - 兼容旧的 { detail } 结构。
 // - 网络层错误（超时/后端未启动）不把 Axios 原始英文抛给用户，用中文兜底。
 // - 原始错误保留在 console（见 logApiError），仅供开发诊断。
-export function userErrorMessage(error, fallback = defaultErrorMessage) {
+function specificErrorMessage(error) {
   const data = error?.response?.data;
   if (data && typeof data === "object" && typeof data.message === "string" && data.message.trim()) {
     return data.message;
   }
-  if (data && typeof data === "object" && typeof data.detail === "string" && data.detail.trim()) {
+  if (data && typeof data === "object" && typeof data.detail === "string" && /[\u3400-\u9fff]/.test(data.detail)) {
     return data.detail;
   }
-  if (error?.[fallbackMessage] && error.userMessage === defaultErrorMessage) return fallback;
   if (typeof error?.userMessage === "string" && error.userMessage.trim()) return error.userMessage;
-  if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") return "已取消";
-  if (error?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(error?.message))) {
+  const original = normalizedErrors.has(error) ? error.cause : error;
+  if (!original?.request && typeof original?.message === "string" && /[\u3400-\u9fff]/.test(original.message)) return original.message;
+  return null;
+}
+
+export function userErrorMessage(error, fallback) {
+  const specific = specificErrorMessage(error);
+  if (specific) return specific;
+  // Transport defaults are chosen here, after the page has supplied context.
+  if (typeof fallback === "string" && fallback.trim()) return fallback;
+  const original = normalizedErrors.has(error) ? error.cause : error;
+  if (original?.name === "AbortError" || original?.code === "ERR_CANCELED") return "已取消";
+  if (original?.code === "ECONNABORTED" || /timeout|timed ?out|超时/i.test(String(original?.message))) {
     return "请求超时，请稍后重试";
   }
-  if (!error?.response && error?.request) {
+  if (!original?.response && original?.request) {
     return "无法连接到服务，请确认后端已启动后重试";
   }
-  if (typeof error?.message === "string" && /[\u3400-\u9fff]/.test(error.message)) return error.message;
-  return fallback;
+  return defaultErrorMessage;
 }
 
 /** Preserve transport diagnostics while giving all adapters the same error fields. */
 export function normalizeApiError(error) {
-  if (error?.userMessage) return error;
+  if (normalizedErrors.has(error)) return error;
   const body = error?.response?.data;
   const data = body && typeof body === "object" ? body : {};
-  const specificMessage = userErrorMessage(error, "");
-  const message = specificMessage || defaultErrorMessage;
+  const specificMessage = specificErrorMessage(error);
+  const message = userErrorMessage(error);
   const normalized = new Error(message, { cause: error });
   Object.assign(normalized, {
     name: error?.name || "Error",
-    userMessage: message,
+    userMessage: specificMessage || undefined,
     code: data.code || error?.code || (error?.name === "AbortError" ? "ABORTED" : !error?.response && error?.request ? "NETWORK_ERROR" : "UNKNOWN"),
     transportCode: error?.transportCode || error?.code || null,
     status: error?.response?.status ?? error?.status ?? null,
@@ -54,8 +63,8 @@ export function normalizeApiError(error) {
     request: error?.request,
     config: error?.config,
     isAxiosError: error?.isAxiosError,
-    [fallbackMessage]: !specificMessage,
   });
+  normalizedErrors.add(normalized);
   return normalized;
 }
 

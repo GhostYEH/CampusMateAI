@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
+from starlette.concurrency import run_in_threadpool
 
 from ...repositories.course_content_repository import CourseContentRepository
 from .ChaoxingClient import ChaoxingClient
@@ -188,7 +189,7 @@ class ChaoxingCourseContentSyncService:
     async def sync_course(self, *, user_id: str, course_id: str,
                           depth: str = "fast", force_refresh: bool = False,
                           sections: list[str] | None = None) -> dict:
-        course = self.container.course_repository.get_course(course_id)
+        course = await run_in_threadpool(self.container.course_repository.get_course, course_id)
         if course is None or course.provider != "chaoxing" or course.owner_user_id != user_id:
             raise ValueError("course_not_found")
         if sections:
@@ -205,7 +206,7 @@ class ChaoxingCourseContentSyncService:
         else:
             sections_to_sync = self.FAST_SECTIONS | self.DEEP_SECTIONS
 
-        credentials = self.container.chaoxing_repository.get_credentials(user_id)
+        credentials = await run_in_threadpool(self.container.chaoxing_repository.get_credentials, user_id)
         if not credentials:
             raise ValueError("chaoxing_credentials_not_found")
         client = ChaoxingClient(cookies=credentials)
@@ -224,7 +225,7 @@ class ChaoxingCourseContentSyncService:
 
         unchanged_chapter_ids: set[str] | None = None
         if "materials" in sections_to_sync and not force_refresh:
-            existing_signatures = self._load_existing_chapter_signatures(
+            existing_signatures = await run_in_threadpool(self._load_existing_chapter_signatures,
                 user_id=user_id, course_id=course_id
             )
             chapter_result = await client.get_course_chapters(context)
@@ -267,7 +268,7 @@ class ChaoxingCourseContentSyncService:
                         course_id, section, type(error).__name__,
                     )
                     error_code = f"unexpected_error:{type(error).__name__}"
-                    self.repository.upsert_section_status(
+                    await run_in_threadpool(self.repository.upsert_section_status,
                         user_id=user_id, course_id=course_id, section=section,
                         status="failed", item_count=0, error_code=error_code,
                         error_message="该部分同步异常，已保留上一次的有效数据",
@@ -294,6 +295,14 @@ class ChaoxingCourseContentSyncService:
             kwargs["force_refresh"] = force_refresh
             kwargs["unchanged_chapter_ids"] = unchanged_chapter_ids
         result = await fetcher(context, **kwargs)
+        return await run_in_threadpool(
+            self._persist_section, section=section, result=result, user_id=user_id,
+            course_id=course_id, course=course, unchanged_chapter_ids=unchanged_chapter_ids,
+        )
+
+    def _persist_section(self, *, section: str, result: dict, user_id: str,
+                         course_id: str, course,
+                         unchanged_chapter_ids: set[str] | None) -> dict:
         items = result.get("items") or []
         status = result.get("status") or "failed"
         saved_chapters = []

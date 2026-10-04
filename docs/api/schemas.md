@@ -7558,6 +7558,7 @@ self_report/self_report_tags/expression_signal 任意状态可改。
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | string | 是 | — | 当前资源标识 |
+| `uid` | string | 否 | default="" | 与账号 `id` 相同的唯一标识，用于共同课堂邀请 |
 | `username` | string | 是 | — | 登录用户名 |
 | `role` | string | 是 | — | — |
 | `name` | string | 否 | default="" | 名称 |
@@ -7777,3 +7778,42 @@ POST /notices/{notice_id}/workflow 请求体。
 | `name` | string / null | 否 | string约束: minLength=1; maxLength=120 | 名称 |
 | `description` | string / null | 否 | string约束: maxLength=4000 | 说明 |
 | `folder_id` | string / null | 否 | string约束: minLength=1; maxLength=120 | — |
+
+<a id="schema-body-create-room-api-v1-magicclass-learning-space-rooms-post"></a>
+## Body_create_room_api_v1_magicclass_learning_space_rooms_post
+
+创建共同课堂的 multipart 表单，定义于 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `title` | string | 是 | minLength=1; maxLength=200 | 课堂标题 |
+| `stage_id` | string | 是 | minLength=1; maxLength=128 | 课件标识 |
+| `file` | binary | 是 | `.maic.zip`；上限 64 MB | 完整课堂文件 |
+
+<a id="schema-cursorin"></a>
+## CursorIn
+
+模型定义：[learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `scene_index` | integer | 是 | minimum=0 | 当前场景索引 |
+
+<a id="schema-invitationin"></a>
+## InvitationIn
+
+模型定义：[learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `uid` | string | 是 | minLength=1; maxLength=128 | 受邀同学的账号唯一标识 |
+
+<a id="schema-messagein"></a>
+## MessageIn
+
+模型定义：[learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `content` | string | 是 | minLength=1; maxLength=2000 | 文字消息 |
+| `client_id` | string | 是 | minLength=1; maxLength=128 | 同一成员、同一课堂内去重标识 |

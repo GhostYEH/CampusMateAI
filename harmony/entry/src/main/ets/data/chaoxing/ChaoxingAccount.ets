@@ -25,6 +25,11 @@ export interface ChaoxingAccountStatus {
   summary: string;
 }
 
+export interface ChaoxingFailure {
+  statusCode?: number;
+  backendCode?: string;
+}
+
 export class ChaoxingStatusMapper {
   static fromResponse(response: ChaoxingStatusResponse): ChaoxingAccountStatus {
     const rawStatus: string = response.status || 'unavailable';
@@ -56,5 +61,25 @@ export class ChaoxingStatusMapper {
 
   static unavailable(): ChaoxingAccountStatus {
     return ChaoxingStatusMapper.fromResponse({ status: 'unavailable' });
+  }
+
+  static fromFailure(error: ChaoxingFailure, previous: ChaoxingAccountStatus): ChaoxingAccountStatus {
+    const expired: boolean = error.statusCode === 503 && error.backendCode === 'CHAOXING_CREDENTIALS_UNAVAILABLE';
+    if (!expired && previous.requiresLogin) return previous;
+    return {
+      rawStatus: expired ? 'expired' : 'unavailable',
+      label: expired ? '需重新登录' : '暂不可用',
+      connected: !expired && previous.connected,
+      requiresLogin: expired,
+      canSync: false,
+      lastSyncedAt: previous.lastSyncedAt,
+      source: previous.source,
+      courses: previous.courses,
+      teachers: previous.teachers,
+      pendingAssignments: previous.pendingAssignments,
+      notices: previous.notices,
+      warnings: previous.warnings,
+      summary: previous.summary
+    };
   }
 }

@@ -165,7 +165,8 @@ export function createClient(baseUrl = BASE_URL, storage = globalThis.localStora
       return Promise.reject(refreshError);
     }
   });
-  // Normalize after the authentication interceptor so refresh still sees the original error.
+  // Normalize diagnostics after authentication; generic user-facing defaults
+  // remain in userErrorMessage so each page can supply its own context.
   client.interceptors.response.use((response) => response, (error) => Promise.reject(normalizeApiError(error)));
   return client;
 }

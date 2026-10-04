@@ -1,5 +1,5 @@
 import { http } from '@kit.NetworkKit';
-import { ChaoxingAccountStatus, ChaoxingStatusMapper, ChaoxingStatusResponse } from './ChaoxingAccount';
+import { ChaoxingAccountStatus, ChaoxingFailure, ChaoxingStatusMapper, ChaoxingStatusResponse } from './ChaoxingAccount';
 
 export interface ChaoxingApiClient {
   request<T>(method: http.RequestMethod, path: string, body?: object): Promise<T>;
@@ -14,17 +14,24 @@ export interface ChaoxingLoginRequest {
 
 export class ChaoxingRepository {
   private readonly apiClient: ChaoxingApiClient;
+  private lastStatus: ChaoxingAccountStatus = ChaoxingStatusMapper.unavailable();
 
   constructor(apiClient: ChaoxingApiClient) {
     this.apiClient = apiClient;
   }
 
   async getStatus(): Promise<ChaoxingAccountStatus> {
-    const response: ChaoxingStatusResponse = await this.apiClient.request<ChaoxingStatusResponse>(
-      http.RequestMethod.GET,
-      'chaoxing/status'
-    );
-    return ChaoxingStatusMapper.fromResponse(response);
+    try {
+      const response: ChaoxingStatusResponse = await this.apiClient.request<ChaoxingStatusResponse>(
+        http.RequestMethod.GET,
+        'chaoxing/status'
+      );
+      this.lastStatus = ChaoxingStatusMapper.fromResponse(response);
+    } catch (error) {
+      this.lastStatus = ChaoxingStatusMapper.fromFailure(error as ChaoxingFailure, this.lastStatus);
+      this.lastStatus.warnings = [(error as Error).message];
+    }
+    return this.lastStatus;
   }
 
   async login(username: string, password: string): Promise<void> {
@@ -35,13 +42,27 @@ export class ChaoxingRepository {
       body,
       '学习通账号或密码错误'
     );
+    // A successful login confirms the binding even if its follow-up status
+    // request is temporarily unavailable.
+    this.lastStatus.rawStatus = 'online';
+    this.lastStatus.label = '已连接';
+    this.lastStatus.connected = true;
+    this.lastStatus.requiresLogin = false;
+    this.lastStatus.canSync = true;
+    this.lastStatus.warnings = [];
   }
 
   async sync(): Promise<void> {
-    await this.apiClient.requestVoid(http.RequestMethod.POST, 'chaoxing/sync');
+    try {
+      await this.apiClient.requestVoid(http.RequestMethod.POST, 'chaoxing/sync');
+    } catch (error) {
+      this.lastStatus = ChaoxingStatusMapper.fromFailure(error as ChaoxingFailure, this.lastStatus);
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
     await this.apiClient.requestVoid(http.RequestMethod.POST, 'chaoxing/disconnect');
+    this.lastStatus = ChaoxingStatusMapper.fromResponse({ status: 'offline' });
   }
 }

@@ -4,6 +4,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from ...models.multi_role import UserRow
 from ...schemas.course_content import (
@@ -21,6 +22,9 @@ from ..deps import current_user
 from .courses import _assert_can_view_course
 
 router = APIRouter(prefix="/courses", tags=["course-content"])
+_credentials_unavailable_response = {
+    503: {"description": "CHAOXING_CREDENTIALS_UNAVAILABLE：连接信息无法读取，请重新连接学习通"},
+}
 
 
 def _container() -> ServiceContainer:
@@ -154,7 +158,7 @@ def get_knowledge_graph(course_id: str, user: UserRow = Depends(current_user),
     )
 
 
-@router.post("/{course_id}/sync")
+@router.post("/{course_id}/sync", responses=_credentials_unavailable_response)
 async def sync_course_content(course_id: str, user: UserRow = Depends(current_user),
                               depth: str = Query("fast", pattern="^(fast|deep|full)$"),
                               sections: str | None = Query(
@@ -162,7 +166,7 @@ async def sync_course_content(course_id: str, user: UserRow = Depends(current_us
                               ),
                               force_refresh: bool = Query(False),
                               container: ServiceContainer = Depends(_container)):
-    course = _course(course_id, user, container)
+    course = await run_in_threadpool(_course, course_id, user, container)
     if course.provider != "chaoxing" or course.owner_user_id != user.id:
         raise HTTPException(status_code=400, detail="not_chaoxing_course")
     requested = [part.strip() for part in sections.split(",") if part.strip()] if sections else None
@@ -192,18 +196,18 @@ def open_resource(course_id: str, item_id: str, user: UserRow = Depends(current_
     return {"url": safe_url, "mode": "external"}
 
 
-@router.get("/{course_id}/resources/{item_id}/download")
+@router.get("/{course_id}/resources/{item_id}/download", responses=_credentials_unavailable_response)
 async def download_resource(course_id: str, item_id: str,
                             request: Request,
                             user: UserRow = Depends(current_user),
                             container: ServiceContainer = Depends(_container)):
-    course = _course(course_id, user, container)
-    item = container.course_content_repository.get_item(item_id, user_id=user.id)
+    await run_in_threadpool(_course, course_id, user, container)
+    item = await run_in_threadpool(container.course_content_repository.get_item, item_id, user_id=user.id)
     if item is None or item.course_id != course_id:
         raise HTTPException(status_code=404, detail="resource_not_found")
     if item.kind not in {"document", "video", "audio", "image", "material"}:
         raise HTTPException(status_code=400, detail="resource_not_downloadable")
-    credentials = container.chaoxing_repository.get_credentials(user.id)
+    credentials = await run_in_threadpool(container.chaoxing_repository.get_credentials, user.id)
     if not credentials:
         raise HTTPException(status_code=401, detail="chaoxing_credentials_not_found")
     proxy = ChaoxingResourceProxy(

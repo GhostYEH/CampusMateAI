@@ -82,6 +82,19 @@ test("a failed session request preserves successful checkins", async () => {
   } finally { await view.unmount(); delete globalThis.__profileNoticeApi; delete globalThis.__islandView; delete globalThis.__islandHeatmap; }
 });
 
+test("simultaneous island failures display both errors", async () => {
+  globalThis.__profileNoticeApi = {
+    getStudySessions: async () => { throw new Error("sessions unavailable"); },
+    getStudyCheckins: async () => { throw new Error("checkins unavailable"); },
+  };
+  const { default: IslandPage } = await vite.ssrLoadModule("/src/pages/IslandPage.jsx");
+  const view = await mount(IslandPage);
+  try {
+    assert.match(view.host.querySelector('[role="alert"]').textContent, /学习记录加载失败/);
+    assert.match(view.host.querySelector('[role="alert"]').textContent, /签到数据加载失败/);
+  } finally { await view.unmount(); delete globalThis.__profileNoticeApi; }
+});
+
 test("profile sections only load data needed for their content", async () => {
   let profileRequests = 0;
   globalThis.__profileNoticeApi = {

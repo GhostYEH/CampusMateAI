@@ -66,41 +66,41 @@
 | [webreact/src/data/agentApi.js:16](../../webreact/src/data/agentApi.js) | confirmNotice | POST | `/notice-workflows/{id}/confirm` | 未匹配，见下一节 |
 | [webreact/src/data/agentApi.js:17](../../webreact/src/data/agentApi.js) | executeNotice | POST | `/notice-workflows/{id}/execute` | 未匹配，见下一节 |
 | [webreact/src/data/agentApi.js:20](../../webreact/src/data/agentApi.js) | createAgentEventStream | GET | `/agent-runs/{encodeURIComponent(runId)}/events/stream` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentObservabilityApi.js:26](../../webreact/src/data/agentObservabilityApi.js) | getAgentRuntimeOverview | GET | `/admin/agent-runtime/overview` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentObservabilityApi.js:30](../../webreact/src/data/agentObservabilityApi.js) | getAgentRunTrace | GET | `/admin/agent-runtime/runs/{encodeURIComponent(runId)}/trace` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:46](../../webreact/src/data/agentRuntimeApi.js) | getAgentCapabilities | GET | `/agent-runtime/capabilities` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:50](../../webreact/src/data/agentRuntimeApi.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:54](../../webreact/src/data/agentRuntimeApi.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:58](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobs | GET | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:62](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobRuns | GET | `/agent-jobs/{jobId}/runs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:66](../../webreact/src/data/agentRuntimeApi.js) | getAgentRun | GET | `/agent-runs/{runId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:70](../../webreact/src/data/agentRuntimeApi.js) | cancelAgentRun | POST | `/agent-runs/{runId}/cancel` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:74](../../webreact/src/data/agentRuntimeApi.js) | pauseAgentRun | POST | `/agent-runs/{runId}/pause` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:78](../../webreact/src/data/agentRuntimeApi.js) | resumeAgentRun | POST | `/agent-runs/{runId}/resume` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:82](../../webreact/src/data/agentRuntimeApi.js) | retryAgentRun | POST | `/agent-runs/{runId}/retry` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:86](../../webreact/src/data/agentRuntimeApi.js) | resolveAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:90](../../webreact/src/data/agentRuntimeApi.js) | getAgentArtifact | GET | `/agent-artifacts/{artifactId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:101](../../webreact/src/data/agentRuntimeApi.js) | createFinalReviewCampaign | POST | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:105](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewCampaigns | GET | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:112](../../webreact/src/data/agentRuntimeApi.js) | generateFinalReviewPlan | POST | `/final-review/campaigns/{campaignId}/plans/generate` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:116](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewPlanVersions | GET | `/final-review/campaigns/{campaignId}/plan-versions` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:120](../../webreact/src/data/agentRuntimeApi.js) | activateFinalReviewCampaign | POST | `/final-review/campaigns/{campaignId}/activate` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:124](../../webreact/src/data/agentRuntimeApi.js) | getTodayAgenda | GET | `/final-review/campaigns/{campaignId}/agendas/today` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:128](../../webreact/src/data/agentRuntimeApi.js) | completeFinalReviewItem | POST | `/final-review/daily-items/{itemId}/complete` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:132](../../webreact/src/data/agentRuntimeApi.js) | createDailyCheckin | POST | `/final-review/campaigns/{campaignId}/daily-checkins` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:136](../../webreact/src/data/agentRuntimeApi.js) | analyzeAdjustment | POST | `/final-review/campaigns/{campaignId}/adjustments/analyze` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:140](../../webreact/src/data/agentRuntimeApi.js) | resolveAdjustmentProposal | POST | `/final-review/adjustment-proposals/{proposalId}/decision` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:150](../../webreact/src/data/agentRuntimeApi.js) | getNotificationSources | GET | `/notification-sources` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:154](../../webreact/src/data/agentRuntimeApi.js) | updateNotificationSource | PATCH | `/notification-sources/{sourceId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:158](../../webreact/src/data/agentRuntimeApi.js) | createManualNotice | POST | `/notices/manual` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:162](../../webreact/src/data/agentRuntimeApi.js) | createNoticeWorkflow | POST | `/notices/{noticeId}/workflow` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:166](../../webreact/src/data/agentRuntimeApi.js) | getNoticeWorkflow | GET | `/notice-workflows/{workflowId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:170](../../webreact/src/data/agentRuntimeApi.js) | reanalyzeNoticeWorkflow | POST | `/notice-workflows/{workflowId}/reanalyze` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:174](../../webreact/src/data/agentRuntimeApi.js) | decideNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/decision` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:178](../../webreact/src/data/agentRuntimeApi.js) | executeNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/execute` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:184](../../webreact/src/data/agentRuntimeApi.js) | createCourseResearchRun | POST | `/course-research/runs` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:190](../../webreact/src/data/agentRuntimeApi.js) | cancelCourseResearchRun | POST | `/course-research/runs/{runId}/cancel` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:194](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchArtifacts | GET | `/course-research/runs/{runId}/artifacts` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentObservabilityApi.js:30](../../webreact/src/data/agentObservabilityApi.js) | getAgentRuntimeOverview | GET | `/admin/agent-runtime/overview` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentObservabilityApi.js:34](../../webreact/src/data/agentObservabilityApi.js) | getAgentRunTrace | GET | `/admin/agent-runtime/runs/{encodeURIComponent(runId)}/trace` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:50](../../webreact/src/data/agentRuntimeApi.js) | getAgentCapabilities | GET | `/agent-runtime/capabilities` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:54](../../webreact/src/data/agentRuntimeApi.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:58](../../webreact/src/data/agentRuntimeApi.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:62](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobs | GET | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:66](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobRuns | GET | `/agent-jobs/{jobId}/runs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:70](../../webreact/src/data/agentRuntimeApi.js) | getAgentRun | GET | `/agent-runs/{runId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:74](../../webreact/src/data/agentRuntimeApi.js) | cancelAgentRun | POST | `/agent-runs/{runId}/cancel` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:78](../../webreact/src/data/agentRuntimeApi.js) | pauseAgentRun | POST | `/agent-runs/{runId}/pause` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:82](../../webreact/src/data/agentRuntimeApi.js) | resumeAgentRun | POST | `/agent-runs/{runId}/resume` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:86](../../webreact/src/data/agentRuntimeApi.js) | retryAgentRun | POST | `/agent-runs/{runId}/retry` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:90](../../webreact/src/data/agentRuntimeApi.js) | resolveAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:94](../../webreact/src/data/agentRuntimeApi.js) | getAgentArtifact | GET | `/agent-artifacts/{artifactId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:105](../../webreact/src/data/agentRuntimeApi.js) | createFinalReviewCampaign | POST | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:109](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewCampaigns | GET | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:116](../../webreact/src/data/agentRuntimeApi.js) | generateFinalReviewPlan | POST | `/final-review/campaigns/{campaignId}/plans/generate` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:120](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewPlanVersions | GET | `/final-review/campaigns/{campaignId}/plan-versions` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:124](../../webreact/src/data/agentRuntimeApi.js) | activateFinalReviewCampaign | POST | `/final-review/campaigns/{campaignId}/activate` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:128](../../webreact/src/data/agentRuntimeApi.js) | getTodayAgenda | GET | `/final-review/campaigns/{campaignId}/agendas/today` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:132](../../webreact/src/data/agentRuntimeApi.js) | completeFinalReviewItem | POST | `/final-review/daily-items/{itemId}/complete` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:136](../../webreact/src/data/agentRuntimeApi.js) | createDailyCheckin | POST | `/final-review/campaigns/{campaignId}/daily-checkins` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:140](../../webreact/src/data/agentRuntimeApi.js) | analyzeAdjustment | POST | `/final-review/campaigns/{campaignId}/adjustments/analyze` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:144](../../webreact/src/data/agentRuntimeApi.js) | resolveAdjustmentProposal | POST | `/final-review/adjustment-proposals/{proposalId}/decision` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:154](../../webreact/src/data/agentRuntimeApi.js) | getNotificationSources | GET | `/notification-sources` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:158](../../webreact/src/data/agentRuntimeApi.js) | updateNotificationSource | PATCH | `/notification-sources/{sourceId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:162](../../webreact/src/data/agentRuntimeApi.js) | createManualNotice | POST | `/notices/manual` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:166](../../webreact/src/data/agentRuntimeApi.js) | createNoticeWorkflow | POST | `/notices/{noticeId}/workflow` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:170](../../webreact/src/data/agentRuntimeApi.js) | getNoticeWorkflow | GET | `/notice-workflows/{workflowId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:174](../../webreact/src/data/agentRuntimeApi.js) | reanalyzeNoticeWorkflow | POST | `/notice-workflows/{workflowId}/reanalyze` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:178](../../webreact/src/data/agentRuntimeApi.js) | decideNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/decision` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:182](../../webreact/src/data/agentRuntimeApi.js) | executeNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/execute` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:188](../../webreact/src/data/agentRuntimeApi.js) | createCourseResearchRun | POST | `/course-research/runs` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:194](../../webreact/src/data/agentRuntimeApi.js) | cancelCourseResearchRun | POST | `/course-research/runs/{runId}/cancel` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:198](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchArtifacts | GET | `/course-research/runs/{runId}/artifacts` | [期末复习与课程研究](13-workflows.md) |
 | [webreact/src/data/api.js:11](../../webreact/src/data/api.js) | getDashboard | GET | `/dashboard/student` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/api.js:16](../../webreact/src/data/api.js) | getTodayAgenda | GET | `/agenda/today` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/api.js:17](../../webreact/src/data/api.js) | getCourses | GET | `/courses` | [课程、班级、公告、作业与提交](03-courses.md) |
@@ -253,7 +253,7 @@
 | [webreact/src/data/http/authEndpoints.js:27](../../webreact/src/data/http/authEndpoints.js) | qrExchange | POST | `/auth/qr/exchange` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:28](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:32](../../webreact/src/data/http/authEndpoints.js) | revokeTrustedDevice | POST | `/auth/trusted-device/revoke` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/http/client.js:204](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
+| [webreact/src/data/http/client.js:205](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/learnerStateApi.js:34](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
 | [webreact/src/data/learnerStateApi.js:38](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
 | [webreact/src/data/learnerStateApi.js:49](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |

@@ -14,8 +14,10 @@ test("error adapter falls back to the legacy detail field", () => {
 });
 
 test("error adapter maps transport failures to friendly Chinese messages", () => {
-  assert.equal(userErrorMessage({ request: {}, message: "Network Error" }, "兜底文案"), "无法连接到服务，请确认后端已启动后重试");
-  assert.match(userErrorMessage({ code: "ECONNABORTED" }, "兜底文案"), /超时/);
+  assert.equal(userErrorMessage({ request: {}, message: "Network Error" }), "无法连接到服务，请确认后端已启动后重试");
+  assert.match(userErrorMessage({ code: "ECONNABORTED" }), /超时/);
+  assert.equal(userErrorMessage({ request: {}, message: "Network Error" }, "兜底文案"), "兜底文案");
+  assert.equal(userErrorMessage({ code: "ECONNABORTED" }, "兜底文案"), "兜底文案");
 });
 
 test("error adapter keeps the caller fallback for unknown shapes", () => {

@@ -48,10 +48,25 @@ test("network, timeout and cancellation errors show the same message through eve
   ]) {
     for (const error of await collectErrors(makeError)) {
       assert.equal(error.message, message);
-      assert.equal(error.userMessage, message);
+      assert.equal(error.userMessage, undefined, "transport defaults are resolved by the page");
       assert.equal(userErrorMessage(error), message);
+      assert.equal(userErrorMessage(error, "课程详情加载失败"), "课程详情加载失败");
       assert.equal(error.status, null);
       assert.equal(error.request_id, null);
+    }
+  }
+});
+
+test("empty HTTP bodies and English detail preserve page fallbacks without a baked userMessage", async () => {
+  for (const status of [401, 409, 500]) {
+    for (const data of [null, {}, { detail: "internal_server_error" }]) {
+      for (const error of await collectErrors((config) => ({
+        config: { ...config, _retried: true }, response: { status, data }, message: `Request failed with status code ${status}`,
+      }))) {
+        assert.equal(error.userMessage, undefined);
+        assert.equal(userErrorMessage(error, "资料加载失败"), "资料加载失败");
+        assert.equal(userErrorMessage(error), "操作失败，请稍后重试");
+      }
     }
   }
 });

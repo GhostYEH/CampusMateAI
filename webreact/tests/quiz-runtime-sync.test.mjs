@@ -237,11 +237,11 @@ test("retrying an uncertain new-attempt write adopts the server attempt instead 
   } finally { await view.close(); }
 });
 
-test("a failed initial read keeps start disabled until the server state is recovered", async () => {
-  let reads = 0; const calls = [];
+test("a fresh quiz remains usable offline and preserves the server's finished attempt on recovery", async () => {
+  let offline = true; const calls = [];
   globalThis.__quizApi = {
     get: async () => {
-      if (++reads === 1) throw { request: {}, code: "ERR_NETWORK" };
+      if (offline) throw { request: {}, code: "ERR_NETWORK" };
       return { attempt_id: "root", state: { phase: "reviewed", answers: { q1: "A" }, results: [{ correct: true, analysis: "正确" }] } };
     },
     save: async (...args) => { calls.push(args.at(-1)); return { attempt_id: "root" }; },
@@ -250,10 +250,21 @@ test("a failed initial read keeps start disabled until the server state is recov
   try {
     assert.match(view.host.querySelector('[role="alert"]').textContent, /读取失败/);
     await click(view.host, "开始答题");
-    assert.equal(view.host.querySelector('input[type="radio"]'), null);
+    await choose(view.host, 1);
+    await click(view.host, "提交答案");
+    assert.equal(calls.length, 0);
+    const snapshot = window.localStorage.getItem("campusmate:magicclass:quiz:scene");
+    assert.deepEqual(JSON.parse(snapshot).answers, { q1: "B" });
+    assert.equal(JSON.parse(snapshot).pending_sync, true);
+    await click(view.host, "重新作答");
+    assert.equal(window.localStorage.getItem("campusmate:magicclass:quiz:scene"), snapshot);
+    offline = false;
     await click(view.host, "重试读取");
     assert.match(view.host.textContent, /测验完成/);
     assert.equal(calls.length, 0);
+    await click(view.host, "重试同步");
+    assert.equal(calls[0].start_new_attempt, true);
+    assert.deepEqual(calls.at(-1).answers, { q1: "B" });
     assert.equal(view.host.querySelector('[role="alert"]'), null);
   } finally { await view.close(); }
 });
@@ -285,7 +296,7 @@ test("a cached draft remains usable offline and writes wait for a recovered serv
   } finally { await view.close(); }
 });
 
-test("a cached completed quiz can start a new local attempt while its read is unavailable", async () => {
+test("restarting a cached completed quiz waits for recovery without clearing its snapshot", async () => {
   window.localStorage.setItem("campusmate:magicclass:quiz:scene", JSON.stringify({
     phase: "review", answers: { q1: "A" }, attempt_id: "root", review: { score: 2, total: 2, results: [{ correct: true, analysis: "正确" }] },
   }));
@@ -299,14 +310,39 @@ test("a cached completed quiz can start a new local attempt while its read is un
   };
   const view = await mount();
   try {
+    const snapshot = window.localStorage.getItem("campusmate:magicclass:quiz:scene");
     await click(view.host, "重新作答");
-    await choose(view.host, 1);
+    assert.equal(window.localStorage.getItem("campusmate:magicclass:quiz:scene"), snapshot);
+    assert.match(view.host.textContent, /测验完成/);
     assert.equal(calls.length, 0);
     offline = false;
     await click(view.host, "重试读取");
-    await click(view.host, "重试同步");
+    await click(view.host, "重新作答");
+    await choose(view.host, 1);
     assert.equal(calls[0].start_new_attempt, true);
-    assert.deepEqual(calls[0].answers, { q1: "B" });
+    assert.deepEqual(calls.at(-1).answers, { q1: "B" });
+  } finally { await view.close(); }
+});
+
+test("restarting cannot erase an unsynchronized local result even after a successful read", async () => {
+  const snapshot = JSON.stringify({ phase: "review", answers: { q1: "B" }, attempt_id: "root", pending_sync: true,
+    review: { score: 0, total: 2, results: [{ correct: false, analysis: "正确答案 A" }] } });
+  window.localStorage.setItem("campusmate:magicclass:quiz:scene", snapshot);
+  const calls = [];
+  globalThis.__quizApi = {
+    get: async () => ({ attempt_id: "root", state: { phase: "draft", answers: {} } }),
+    save: async (...args) => { calls.push(args.at(-1)); return { attempt_id: "root" }; },
+  };
+  const view = await mount();
+  try {
+    await click(view.host, "重新作答");
+    assert.equal(window.localStorage.getItem("campusmate:magicclass:quiz:scene"), snapshot);
+    assert.equal(calls.length, 0);
+    await click(view.host, "重试同步");
+    assert.deepEqual(calls.at(-1).answers, { q1: "B" });
+    await click(view.host, "重新作答");
+    assert.deepEqual(calls.at(-1).answers, {});
+    assert.equal(calls.at(-1).start_new_attempt, true);
   } finally { await view.close(); }
 });
 

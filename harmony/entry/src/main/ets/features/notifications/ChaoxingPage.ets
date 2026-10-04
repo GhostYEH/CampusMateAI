@@ -2,6 +2,7 @@ import { promptAction } from '@kit.ArkUI';
 import { CampusPalette, darkPalette, lightPalette } from '../../ui/Theme';
 import { SecondaryHeader } from '../../ui/SecondaryHeader';
 import { ChaoxingAccountStatus, ChaoxingStatusMapper } from '../../data/chaoxing/ChaoxingAccount';
+import { ApiError } from '../../data/ApiClient';
 import { ChaoxingRepository } from '../../data/chaoxing/ChaoxingRepository';
 
 @Component
@@ -30,9 +31,11 @@ export struct ChaoxingPage {
     this.checking = true;
     try {
       this.account = await this.repository.getStatus();
+      this.message = this.account.warnings.join('；');
       this.onStatusChanged(this.account);
     } catch (e) {
-      this.account = ChaoxingStatusMapper.unavailable();
+      this.account = ChaoxingStatusMapper.fromFailure(e as ApiError, this.account);
+      this.onStatusChanged(this.account);
       this.message = (e as Error).message;
     } finally {
       this.checking = false;
@@ -65,6 +68,8 @@ export struct ChaoxingPage {
       await this.refreshStatus();
       this.onSynced();
     } catch (e) {
+      this.account = ChaoxingStatusMapper.fromFailure(e as ApiError, this.account);
+      this.onStatusChanged(this.account);
       this.message = (e as Error).message;
     } finally {
       this.syncing = false;
@@ -117,12 +122,12 @@ export struct ChaoxingPage {
               Text(this.account.lastSyncedAt.length > 0 ? `上次同步：${this.account.lastSyncedAt}` : '尚未完成首次同步')
                 .fontColor(this.palette().muted).fontSize(11).width('100%')
             } else if (!this.checking) {
-              Text(this.account.rawStatus === 'expired' ? '学习通登录已失效，请重新登录后继续同步。' : '连接后可导入课程、作业与课程通知。')
+              Text(this.account.rawStatus === 'expired' ? '学习通登录已失效，请重新登录后继续同步。' : this.account.rawStatus === 'unavailable' ? '暂时无法检查学习通连接，请稍后重试。' : '连接后可导入课程、作业与课程通知。')
                 .fontColor(this.palette().muted).fontSize(12).lineHeight(19).width('100%')
             }
           }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
 
-          if (!this.account.connected && !this.checking) {
+          if (this.account.requiresLogin && !this.checking) {
             Column({ space: 12 }) {
               Text('学习通账号登录').fontColor(this.palette().text).fontSize(16).fontWeight(FontWeight.Bold).width('100%')
               Text('仅用于连接学习通，本地不会保存你的密码。').fontColor(this.palette().muted).fontSize(11).width('100%')
@@ -138,10 +143,17 @@ export struct ChaoxingPage {
             }.width('100%').padding(16).backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).borderRadius(18)
           }
 
-          if (this.account.connected) {
+          if (this.account.rawStatus === 'unavailable' && !this.checking) {
+            Button('重新检查连接').width('100%').height(44).borderRadius(11)
+              .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').onClick(() => this.refreshStatus())
+          }
+
+          if (this.account.connected || this.account.rawStatus === 'expired') {
             Column({ space: 10 }) {
-              Button(this.syncing ? '同步中…' : '立即同步').width('100%').height(44).borderRadius(11)
-                .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').enabled(!this.syncing).onClick(() => this.syncNow())
+              if (this.account.canSync) {
+                Button(this.syncing ? '同步中…' : '立即同步').width('100%').height(44).borderRadius(11)
+                  .backgroundColor(this.palette().primary).fontColor('#FFFFFFFF').enabled(!this.syncing).onClick(() => this.syncNow())
+              }
               Button(this.disconnecting ? '断开中…' : '断开连接').width('100%').height(42).borderRadius(11)
                 .backgroundColor(this.palette().glass.surface).backdropBlur(this.palette().glass.backdropBlur).border({ width: 1, color: this.palette().glass.highlight }).shadow({ radius: 16, color: this.palette().glass.shadow, offsetY: 4 }).fontColor(this.palette().danger).border({ width: 1, color: this.palette().glass.border })
                 .enabled(!this.disconnecting && !this.syncing).onClick(() => this.confirmDisconnect())

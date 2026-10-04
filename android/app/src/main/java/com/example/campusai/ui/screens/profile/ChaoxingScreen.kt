@@ -77,7 +77,10 @@ fun ChaoxingScreen(viewModel: ChaoxingViewModel = viewModel()) {
                 SecondaryActionButton("解除连接", Icons.Default.LinkOff, !uiState.isDisconnecting, viewModel::disconnect)
             }
             "offline" -> ChaoxingLoginForm(viewModel = viewModel)
-            else -> CheckingStatus()
+            else -> {
+                if (uiState.isCheckingStatus) CheckingStatus()
+                else SecondaryActionButton("重新检查连接", Icons.Default.Sync, true, viewModel::checkStatus)
+            }
         }
 
         uiState.syncResult?.let { message ->
@@ -125,7 +128,7 @@ private fun StatusCard(uiState: ChaoxingUiState) {
                     "online" -> if (uiState.isCheckingStatus) "已连接 · 正在验证" else "已连接"
                     "offline" -> "未连接"
                     "expired" -> "登录已失效"
-                    else -> "正在检查连接状态"
+                    else -> if (uiState.isCheckingStatus) "正在检查连接状态" else "暂时无法确认连接"
                 }
                 val color = when (uiState.status) {
                     "online" -> Primary
@@ -157,7 +160,11 @@ private fun StatusCard(uiState: ChaoxingUiState) {
                 Text("连接后可同步课程、作业与课程通知。", color = Muted, fontSize = 12.sp)
                 uiState.statusMessage?.let { Text(it, color = Muted, fontSize = 12.sp) }
             }
-            else -> Text("正在确认学习通连接，请稍候。", color = Muted, fontSize = 12.sp)
+            else -> Text(
+                if (uiState.isCheckingStatus) "正在确认学习通连接，请稍候。"
+                else uiState.statusMessage ?: "连接检查失败，请重试。",
+                color = Muted, fontSize = 12.sp,
+            )
         }
     }
 }

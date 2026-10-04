@@ -99,6 +99,60 @@ def test_last_successful_sync_propagates_database_errors(sync_repositories):
         last_chaoxing_sync_at(container, "u")
 
 
+@pytest.mark.parametrize("operation", ["sync", "download"])
+def test_course_endpoints_declare_credential_failures_and_read_off_event_loop(sync_repositories, monkeypatch, operation):
+    import threading
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.routes import course_content
+    from app.core.exceptions import register_exception_handlers
+    from app.repositories.course_content_repository import CourseContentRepository
+    from app.services.chaoxing import course_content_sync
+
+    repos = sync_repositories
+    course = repos.courses.create_course(name="课程", owner_user_id="u", provider="chaoxing", external_id="11_22")
+    content = CourseContentRepository(repos.db)
+    item = content.upsert_item(user_id="u", course_id=course.id, kind="document", external_id="file", title="讲义")
+    repos.sync.save_credentials("u", {"cookie": "synthetic"})
+    with repos.db.transaction() as conn:
+        conn.execute("UPDATE chaoxing_credentials SET encrypted_cookies='damaged' WHERE user_id='u'")
+    container = SimpleNamespace(course_repository=repos.courses, course_content_repository=content, chaoxing_repository=repos.sync)
+    threads = {}
+    original_read = repos.sync.get_credentials
+
+    def read_credentials(user_id):
+        threads["credentials"] = threading.get_ident()
+        return original_read(user_id)
+
+    def unexpected_provider(*args, **kwargs):
+        pytest.fail("Corrupt credentials must stop resource/sync requests before contacting providers")
+
+    monkeypatch.setattr(repos.sync, "get_credentials", read_credentials)
+    monkeypatch.setattr(course_content_sync, "ChaoxingClient", unexpected_provider)
+    monkeypatch.setattr(course_content, "ChaoxingResourceProxy", unexpected_provider)
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(course_content.router, prefix="/api/v1")
+    app.dependency_overrides[course_content.current_user] = lambda: SimpleNamespace(id="u", role="student")
+    app.dependency_overrides[course_content._container] = lambda: container
+
+    @app.middleware("http")
+    async def capture_event_loop(request, call_next):
+        threads["event_loop"] = threading.get_ident()
+        return await call_next(request)
+
+    suffix = "sync" if operation == "sync" else f"resources/{item.id}/download"
+    method = "post" if operation == "sync" else "get"
+    template = "/api/v1/courses/{course_id}/sync" if operation == "sync" else "/api/v1/courses/{course_id}/resources/{item_id}/download"
+    with TestClient(app) as client:
+        response = getattr(client, method)(f"/api/v1/courses/{course.id}/{suffix}")
+    assert response.status_code == 503
+    assert response.json()["code"] == "CHAOXING_CREDENTIALS_UNAVAILABLE"
+    assert "damaged" not in response.text
+    assert threads["credentials"] != threads["event_loop"]
+    assert "CHAOXING_CREDENTIALS_UNAVAILABLE" in app.openapi()["paths"][template][method]["responses"]["503"]["description"]
+
+
 def test_synced_counts_filter_user_source_and_pending_status(sync_repositories):
     repos = sync_repositories
     for user in ("u", "other"):

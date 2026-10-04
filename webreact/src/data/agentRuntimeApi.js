@@ -18,8 +18,12 @@ function _wrap(promise) {
     (error) => {
       const mapped = normalizeAgentError(error);
       const err = normalizeApiError(error);
-      if (!error?.response) mapped.message = err.userMessage;
-      Object.assign(err, mapped, { userMessage: mapped.message });
+      const { message, ...metadata } = mapped;
+      Object.assign(err, metadata);
+      if (error?.response && mapped.code !== "UNKNOWN" && !err.userMessage) {
+        err.userMessage = message;
+        err.message = message;
+      }
       throw err;
     },
   );
