@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
@@ -31,12 +31,19 @@ _DATE_ONLY_RE = re.compile(r"(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})
 @dataclass(frozen=True)
 class ChaoxingSyncDependencies:
     course_repository: CourseRepository
-    personal_task_repository: PersonalTaskRepository | None
+    personal_task_repository: PersonalTaskRepository
     chaoxing_repository: ChaoxingRepository
-    sync_repository: ChaoxingRepository
-    notice_repository: NoticeRepository | None = None
-    notice_extraction: NoticeExtractionService | None = None
+    notice_repository: NoticeRepository
+    notice_extraction: NoticeExtractionService
     learner_event_service: LearnerEventService | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "course_repository", "personal_task_repository", "chaoxing_repository",
+            "notice_repository", "notice_extraction",
+        ):
+            if getattr(self, name) is None:
+                raise ValueError(f"Chaoxing sync requires {name}")
 
 
 @dataclass
@@ -48,7 +55,7 @@ class _SyncState:
     stats: dict[str, int]
     warnings: list[str]
     sections: dict[str, dict]
-    course_by_remote_id: dict[str, dict] = field(default_factory=dict)
+    course_by_remote_id: dict[str, dict]
 
 
 @dataclass(frozen=True)
@@ -145,8 +152,8 @@ def _extract_assignment_external_id(notice):
     return match.group(1) if match else None
 
 
-def _project_learner_event(container, *, action, subject_type, subject_id, callback):
-    service = getattr(container, "learner_event_service", None)
+def _project_learner_event(dependencies, *, action, subject_type, subject_id, callback):
+    service = dependencies.learner_event_service
     if service is None:
         return None
     return service.project_safely(
@@ -158,13 +165,15 @@ def _project_learner_event(container, *, action, subject_type, subject_id, callb
 
 
 def is_assignment_duplicate(
-    sync_repository, notice_extraction, *, user_id, course_name, course_id, remote_course_id, notice, extracted
+    chaoxing_repository, notice_extraction, *, user_id, course_name, course_id, remote_course_id, notice, extracted
 ):
     work_id = _extract_assignment_external_id(notice)
-    if work_id and sync_repository.assignment_exists(user_id, work_id):
+    if work_id and chaoxing_repository.assignment_exists(user_id=user_id, external_id=work_id):
         return True
     course_ids = [value for value in {course_id, remote_course_id} if value]
-    assignment_tasks = sync_repository.list_assignment_duplicate_candidates(user_id, course_ids)
+    assignment_tasks = chaoxing_repository.list_assignment_duplicate_candidates(
+        user_id=user_id, course_ids=course_ids,
+    )
 
     notice_text = notice.get("content") or notice.get("title") or ""
     normalized_notice = _normalize_compact(notice_text)
@@ -236,7 +245,10 @@ class ChaoxingSyncService:
             "courses": {"status": "complete", "item_count": len(courses),
                         "last_synced_at": now_iso, "error_code": None, "error_message": None},
         }
-        state = _SyncState(user, client, courses, now_iso, stats, warnings, sections)
+        state = _SyncState(
+            user, client, courses, now_iso, stats, warnings, sections,
+            course_by_remote_id={str(course.get("course_id")): course for course in courses},
+        )
         self._save_courses(state)
         await self._sync_assignments(state)
         await self._sync_exams(state)
@@ -294,7 +306,7 @@ class ChaoxingSyncService:
         courses = state.courses
         now_iso = state.now_iso
         stats = state.stats
-        course_repo = self._dependencies.course_repository
+        course_repo = dependencies.course_repository
         # Save courses to DB (Idempotent Sync)
         for course_data in courses:
             external_id = course_data.get("external_id")
@@ -364,8 +376,7 @@ class ChaoxingSyncService:
         courses = state.courses
         warnings = state.warnings
         # Homework sync
-        course_by_remote_id = {str(course.get("course_id")): course for course in courses}
-        state.course_by_remote_id = course_by_remote_id
+        course_by_remote_id = state.course_by_remote_id
         assignment_error: str | None = None
         if hasattr(client, "get_all_assignments"):
             try:
@@ -420,7 +431,7 @@ class ChaoxingSyncService:
         # 单次请求量由 enrich_assignment_scores 的 limit 兜底。
         if hasattr(client, "enrich_assignment_scores"):
             try:
-                already_scored = dependencies.sync_repository.scored_assignment_ids(user.id)
+                already_scored = dependencies.chaoxing_repository.scored_assignment_ids(user_id=user.id)
                 candidates = [
                     assignment
                     for _course, items in assignment_batches
@@ -446,7 +457,9 @@ class ChaoxingSyncService:
             return
 
         # 按用户、来源和远端作业编号匹配已有任务。
-        existing_task = dependencies.sync_repository.get_assignment_snapshot(user.id, external_id)
+        existing_task = dependencies.chaoxing_repository.get_assignment_snapshot(
+            user_id=user.id, external_id=external_id,
+        )
 
         if existing_task:
             # Update existing task
@@ -624,7 +637,7 @@ class ChaoxingSyncService:
         # 考试同步 —— 走低成本路径: 每门课一次章节请求，从章节附件里挑 work/test 入口。
         # 带考试时间的考试由课程详情页显式触发的 deep 同步(章节卡片 + parse_exam_at)补齐；
         # 全局同步不为每门课深抓全部章节卡片。
-        exam_repo = getattr(dependencies, "chaoxing_repository", None)
+        exam_repo = dependencies.chaoxing_repository
         exam_error: str | None = None
         exam_failures = 0
         exam_succeeded = 0
@@ -794,8 +807,8 @@ class ChaoxingSyncService:
         published_at_iso = published_at.isoformat() if published_at else None
 
         # 相同 external_id 更新原通知；已有待办且正文未变时，仅刷新同步信息。
-        existing_notice, existing_notice_task = dependencies.sync_repository.get_notice_sync_snapshot(
-            user.id, external_id,
+        existing_notice, existing_notice_task = dependencies.chaoxing_repository.get_notice_sync_snapshot(
+            user_id=user.id, external_id=external_id,
         )
         if existing_notice:
             stats["notices_updated"] += 1
@@ -877,7 +890,7 @@ class ChaoxingSyncService:
                 return
 
             if is_assignment_duplicate(
-                dependencies.sync_repository, dependencies.notice_extraction,
+                dependencies.chaoxing_repository, dependencies.notice_extraction,
                 user_id=user.id,
                 course_name=course["name"],
                 course_id=course.get("local_course_id"),

@@ -55,12 +55,13 @@ def test_selection_rejects_phone_regression_and_prefers_single_forward_on_tie():
     assert choose_blend(candidates, baseline) == "weights"
 
 
-@pytest.mark.parametrize("change", ["class_mask", "split", "annotation_hash"])
+@pytest.mark.parametrize("change", ["class_mask", "split", "annotation_hash", "label_provenance"])
 def test_saved_sav_labels_are_bound_to_official_source(monkeypatch, tmp_path, change):
     row = {"image_path": str(tmp_path / "frames" / "clip" / "img_000031.jpg"),
            "class_mask": [True, False, False, False], "split": "train"}
     truth = {split: [dict(row, split=split)] for split in ("train", "val", "test")}
-    audit = {"annotation_sha256": {"label.json": "original"}}
+    audit = {"annotation_sha256": {"label.json": "original"},
+             "label_provenance": {"source_sha256": "verified-label-map"}}
     prior = {"plan": {"split_dates": {}, "sav_audit": deepcopy(audit)}}
     monkeypatch.setattr("behavior_recognition.sav_blend_experiment.build_sav_records",
                         lambda *args: (truth, audit))
@@ -68,9 +69,27 @@ def test_saved_sav_labels_are_bound_to_official_source(monkeypatch, tmp_path, ch
     rows = deepcopy(truth)
     if change == "annotation_hash":
         prior["plan"]["sav_audit"]["annotation_sha256"]["label.json"] = "changed"
+    elif change == "label_provenance":
+        prior["plan"]["sav_audit"]["label_provenance"]["source_sha256"] = "changed"
     elif change == "class_mask":
         rows["val"][0]["class_mask"] = [False, True, False, False]
     else:
         rows["val"][0]["split"] = "test"
     with pytest.raises(ValueError, match="fingerprints changed"):
         verify_sav_provenance(rows, prior)
+
+
+def test_legacy_sav_runs_require_exact_rebuilt_labels_and_gain_verified_provenance(monkeypatch, tmp_path):
+    row = {"image_path": str(tmp_path / "frames" / "clip" / "img_000031.jpg"),
+           "class_mask": [True, False, False, False]}
+    truth = {split: [dict(row, split=split)] for split in ("train", "val", "test")}
+    audit = {"annotation_sha256": {"label.json": "original"},
+             "label_provenance": {"source_sha256": "verified-label-map"}}
+    prior = {"plan": {"split_dates": {}, "sav_audit": {"annotation_sha256": {"label.json": "original"}}}}
+    monkeypatch.setattr("behavior_recognition.sav_blend_experiment.build_sav_records",
+                        lambda *args: (truth, audit))
+    assert verify_sav_provenance(truth, prior)["label_provenance"] == audit["label_provenance"]
+    wrong = deepcopy(truth)
+    wrong["val"][0]["class_mask"] = [False, True, False, False]
+    with pytest.raises(ValueError, match="fingerprints changed"):
+        verify_sav_provenance(wrong, prior)

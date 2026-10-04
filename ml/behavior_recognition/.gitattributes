@@ -1,0 +1,2 @@
+# Preserve the fingerprinted public SAV metadata exactly on every checkout.
+src/behavior_recognition/metadata/*.pbtxt -text

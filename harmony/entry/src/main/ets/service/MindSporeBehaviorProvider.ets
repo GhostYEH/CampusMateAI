@@ -179,13 +179,17 @@ export class BehaviorProviderRunToken {
 
 export class BehaviorProviderPresentation {
   static detail(temporalDegraded: boolean, label: BehaviorV34Label,
-    hasTemporalEvidence: boolean = false): string {
+    hasTemporalEvidence: boolean = false,
+    runtimeModel: BehaviorRuntimeModel = BehaviorRuntimeModel.V34): string {
+    if (runtimeModel === BehaviorRuntimeModel.V32) return 'V3.2 正在本地识别可见学习行为';
     if (temporalDegraded) return 'TSM V4 不可用，V3.4 正在本地识别';
     if (label === BehaviorV34Label.CONTINUE_OBSERVING) return '结果不可靠，继续观察';
     return hasTemporalEvidence ? 'V3.4 + TSM V4 正在本地识别' : 'V3.4 正在本地识别';
   }
 
-  static modelVersion(hasTemporalEvidence: boolean): string {
+  static modelVersion(runtimeModel: BehaviorRuntimeModel, hasTemporalEvidence: boolean): string {
+    if (runtimeModel === BehaviorRuntimeModel.V32) return 'V3.2';
+    if (runtimeModel === BehaviorRuntimeModel.UNAVAILABLE) return 'MODEL_NOT_AVAILABLE';
     return hasTemporalEvidence ? 'V3.4+TSM-V4' : 'V3.4';
   }
 
@@ -244,6 +248,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private providerStatus: FocusAssistStatus = FocusAssistStatus.UNAVAILABLE;
   private providerDetail: string = 'V3.4 本地模型尚未加载';
   private signal: FocusAssistSignal | undefined = undefined;
+  private lastModelVersion: string = 'MODEL_NOT_AVAILABLE';
   private readonly reminderTracker: BehaviorReminderTracker = new BehaviorReminderTracker();
   private readonly sessionSummaryTracker: BehaviorSessionSummaryTracker = new BehaviorSessionSummaryTracker();
   private sessionSummaryInitialized: boolean = false;
@@ -275,10 +280,11 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   sessionSummary(): BehaviorSessionSummary | undefined {
     if (!this.sessionSummaryInitialized) return undefined;
     return this.sessionSummaryTracker.summary(
-      Date.now(), BehaviorProviderPresentation.modelVersion(this.cachedTemporal !== undefined));
+      Date.now(), this.lastModelVersion);
   }
   resetSessionSummary(startedAt: number = Date.now()): void {
     this.sessionSummaryTracker.reset(startedAt);
+    this.lastModelVersion = 'MODEL_NOT_AVAILABLE';
     this.sessionSummaryInitialized = true;
   }
   recordAbsence(): void {
@@ -334,7 +340,6 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
     this.runToken.invalidate();
     this.activeRun = 0;
     this.clearProductState();
-    this.temporalSmoother.reset();
     this.signalProcessor.reset();
     this.continuityStateMachine.reset();
     this.presenceStateMachine.reset();
@@ -404,7 +409,9 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         fused = v32Result;
         this.previousSingleTop = this.topSingleLabel(fused);
       }
-      const smoothedFused: BehaviorV34Result = this.temporalSmoother.smoothResult(fused);
+      const modelState: string = selected === BehaviorRuntimeModel.V32 ? BehaviorRuntimeModel.V32 :
+        (hasTemporalEvidence ? BehaviorHybridPolicy.MODEL_STATE : BehaviorV34Decision.MODEL_STATE);
+      const smoothedFused: BehaviorV34Result = this.temporalSmoother.smoothResult(fused, modelState);
       const displayState: BehaviorDisplayState = this.signalProcessor.processDisplayState(
         smoothedFused, frame.timestamp
       );
@@ -423,22 +430,24 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
         confidence: smoothedFused.confidence,
         isStable: smoothedFused.isStable,
         timestamp: frame.timestamp,
-        modelVersion: BehaviorProviderPresentation.modelVersion(hasTemporalEvidence),
+        modelVersion: BehaviorProviderPresentation.modelVersion(selected, hasTemporalEvidence),
         displayStateKind: displayState.kind,
         continuityState: continuityResult.state,
         presenceState: presenceSnapshot.state
       };
       this.signal = next;
+      this.lastModelVersion = next.modelVersion;
       const reminder: string = this.reminderTracker.process(smoothedFused, frame.timestamp);
       this.sessionSummaryTracker.process(smoothedFused, frame.timestamp, reminder);
       this.providerStatus = FocusAssistStatus.RUNNING;
       this.providerDetail = BehaviorProviderPresentation.detail(
-        this.temporalDegraded, smoothedFused.label, hasTemporalEvidence
+        this.temporalDegraded, smoothedFused.label, hasTemporalEvidence, selected
       );
       return next;
     } catch (error) {
       if (!this.runToken.isCurrent(run)) return undefined;
       this.resetTemporalState();
+      this.temporalSmoother.reset();
       this.signal = undefined;
       this.reminderTracker.reset();
       this.providerStatus = FocusAssistStatus.ERROR;
@@ -623,6 +632,7 @@ export class MindSporeBehaviorProvider implements FocusAssistProvider {
   private clearProductState(): void {
     this.signal = undefined;
     this.resetTemporalState();
+    this.temporalSmoother.reset();
     this.reminderTracker.reset();
   }
 }

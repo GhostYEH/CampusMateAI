@@ -129,7 +129,7 @@ Web 封装：`listCampaigns`（[webreact/src/data/agentApi.js](../../webreact/sr
 
 实现：[backend/app/api/routes/final_review.py](../../backend/app/api/routes/final_review.py)，`get_campaign`。
 
-Web 封装：`getFinalReviewCampaign`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -261,7 +261,7 @@ Web 封装：`getFinalReviewPlanVersions`（[webreact/src/data/agentRuntimeApi.j
 
 实现：[backend/app/api/routes/final_review.py](../../backend/app/api/routes/final_review.py)，`get_plan_version`。
 
-Web 封装：`getFinalReviewPlanVersion`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -583,7 +583,7 @@ Analyzer 分析证据,产生 adjustment proposal。不直接改 active plan。
 
 实现：[backend/app/api/routes/final_review.py](../../backend/app/api/routes/final_review.py)，`list_proposals`。
 
-Web 封装：`getAdjustmentProposals`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -741,7 +741,7 @@ Web 封装：`createCourseResearchRun`（[webreact/src/data/agentRuntimeApi.js](
 
 实现：[backend/app/api/routes/course_research.py](../../backend/app/api/routes/course_research.py)，`list_runs`。
 
-Web 封装：`getCourseResearchRuns`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 列出当前用户的课程研究 Run。
 
@@ -771,7 +771,7 @@ Web 封装：`getCourseResearchRuns`（[webreact/src/data/agentRuntimeApi.js](..
 
 实现：[backend/app/api/routes/course_research.py](../../backend/app/api/routes/course_research.py)，`get_run`。
 
-Web 封装：`getCourseResearchRun`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 获取单个课程研究 Run。
 

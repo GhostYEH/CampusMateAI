@@ -1,4 +1,5 @@
 import pytest
+from chaoxing_helpers import wire_sync_service
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
@@ -452,7 +453,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
             self.personal_task_repository = task_repo
             self.db = db
 
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user = UserRow(id="user1", username="test1", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
 
     # 模拟第一次获取课程
@@ -589,7 +590,7 @@ async def test_chaoxing_sync_assignments(db, mock_httpx_client):
             self.personal_task_repository = MagicMock()
             self.personal_task_repository.list_tasks.return_value = ([], 0)
 
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user = UserRow(id="user1", username="test1", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
     
     # 模拟第一次获取课程 (JSON失败，Fallback HTML)
@@ -714,7 +715,7 @@ async def test_chaoxing_sync_courses_isolation(db, mock_httpx_client):
         mock_assignments_response, mock_notices_response_empty
     ]
     
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user1 = UserRow(id="user1", username="test1", password_hash="", role="student", created_at="", updated_at="")
     user2 = UserRow(id="user2", username="test2", password_hash="", role="student", created_at="", updated_at="")
     
@@ -745,7 +746,7 @@ async def test_chaoxing_sync_invalid_session_preserves_courses(db, mock_httpx_cl
     mock_json_response.status_code = 302 # Session invalid
     mock_httpx_client.side_effect = [mock_json_response]
     
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user = UserRow(id="user1", username="test1", password_hash="", role="student", created_at="", updated_at="")
     
     with pytest.raises(fastapi.HTTPException) as exc_info:
@@ -782,7 +783,7 @@ async def test_chaoxing_sync_abnormal_response(db, mock_httpx_client):
     
     mock_httpx_client.side_effect = [mock_json_response, mock_courses_response]
     
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user = UserRow(id="user1", username="test1", password_hash="", role="student", created_at="", updated_at="")
     
     with pytest.raises(fastapi.HTTPException) as exc_info:
@@ -862,7 +863,7 @@ async def test_chaoxing_sync_notices(db, mock_httpx_client):
             self.notice_repository = notice_repo
             self.db = db
 
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user1 = UserRow(id="user1", username="test1", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
     user2 = UserRow(id="user2", username="test2", password_hash="test", role="student", display_name="test", created_at="", updated_at="")
 
@@ -1053,7 +1054,7 @@ async def test_chaoxing_sync_persists_graded_assignment_facts(db, mock_httpx_cli
             self.learner_event_service = event_service
             self.db = db
 
-    container = MockContainer()
+    container = wire_sync_service(MockContainer())
     user = UserRow(id="user1", username="test1", password_hash="test", role="student",
                    display_name="test", created_at="", updated_at="")
 

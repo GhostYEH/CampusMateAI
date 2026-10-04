@@ -1,0 +1,60 @@
+item{
+  name: "sit"
+  id: 1
+}
+item{
+  name: "stand"
+  id: 2
+}
+item{
+  name: "look_forward"
+  id: 3
+}
+item{
+  name: "look_sideways"
+  id: 4
+}
+item{
+  name:"read";
+  id: 5
+}
+item{
+  name: "flip_books"
+  id: 6
+}
+item{
+  name: "touch_sth"
+  id: 7
+}
+item{
+  name: "raise_hand"
+  id: 8
+}
+item{
+  name: "hands_down"
+  id: 9
+}
+item{
+  name: "take_notes"
+  id: 10
+}
+item{
+  name: "applaud"
+  id: 11
+}
+item{
+  name: "bend"
+  id: 12
+}
+item{
+  name: "turn_around"
+  id: 13
+}
+item{
+  name: "talk_with_others"
+  id: 14
+}
+item{
+  name: "answer_questions"
+  id: 15
+}

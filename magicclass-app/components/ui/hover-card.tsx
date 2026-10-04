@@ -17,10 +17,13 @@ function HoverCardContent({
   className,
   align = 'center',
   sideOffset = 4,
+  container,
   ...props
-}: React.ComponentProps<typeof HoverCardPrimitive.Content>) {
+}: React.ComponentProps<typeof HoverCardPrimitive.Content> & {
+  container?: HTMLElement | null;
+}) {
   return (
-    <HoverCardPrimitive.Portal data-slot="hover-card-portal">
+    <HoverCardPrimitive.Portal data-slot="hover-card-portal" container={container}>
       <HoverCardPrimitive.Content
         data-slot="hover-card-content"
         align={align}

@@ -2090,10 +2090,13 @@ class Database:
     def _validate_schema_foreign_keys(conn: sqlite3.Connection, steps: tuple[_SchemaStep, ...]) -> None:
         # 仓储自管表在其构造时另行升级，此处只验证本层负责的表。
         # 否则尚待升级的 notification_sources 等旧表会阻断启动。
-        tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", "\n".join(step.sql for step in steps))
-        for table in tables:
-            if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
-                raise sqlite3.IntegrityError("schema migration foreign-key validation failed")
+        for step in steps:
+            tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", step.sql)
+            for table in tables:
+                if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
+                    raise sqlite3.IntegrityError(
+                        f"schema migration foreign-key validation failed: {step.name} ({table})"
+                    )
 
     def _init_schema(self) -> None:
         with self._lock:
@@ -2107,9 +2110,13 @@ class Database:
                 conn.execute("BEGIN IMMEDIATE")
                 steps = self._schema_steps()
                 for step in steps:
-                    if step.prepare is not None:
-                        step.prepare(conn)
-                    self._execute_schema_script(conn, step.sql)
+                    try:
+                        if step.prepare is not None:
+                            step.prepare(conn)
+                        self._execute_schema_script(conn, step.sql)
+                    except Exception as error:
+                        error.add_note(f"schema migration phase: {step.name}")
+                        raise
                 self._migrate(conn)
                 self._repair_edu_sync_binding_foreign_key(conn)
                 self._validate_schema_foreign_keys(conn, steps)

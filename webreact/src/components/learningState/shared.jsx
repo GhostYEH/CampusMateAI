@@ -37,17 +37,4 @@ function ConfidenceBadge({ confidence }) {
   return <span className="ls-confidence">{CONFIDENCE_LABEL(confidence)}</span>;
 }
 
-function formatTime(iso) {
-  if (!iso) return "未知";
-  try {
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60000) return "刚刚";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    return d.toLocaleDateString("zh-CN");
-  } catch { return "未知"; }
-}
-
-export { DATA_QUALITY_LABEL, Spinner, ErrorBar, EmptyState, QualityBadge, ConfidenceBadge, formatTime };
+export { DATA_QUALITY_LABEL, Spinner, ErrorBar, EmptyState, QualityBadge, ConfidenceBadge };

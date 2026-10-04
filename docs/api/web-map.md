@@ -68,50 +68,39 @@
 | [webreact/src/data/agentApi.js:24](../../webreact/src/data/agentApi.js) | createAgentEventStream | GET | `/agent-runs/{encodeURIComponent(runId)}/events/stream` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
 | [webreact/src/data/agentObservabilityApi.js:27](../../webreact/src/data/agentObservabilityApi.js) | getAgentRuntimeOverview | GET | `/admin/agent-runtime/overview` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
 | [webreact/src/data/agentObservabilityApi.js:31](../../webreact/src/data/agentObservabilityApi.js) | getAgentRunTrace | GET | `/admin/agent-runtime/runs/{encodeURIComponent(runId)}/trace` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:51](../../webreact/src/data/agentRuntimeApi.js) | getAgentCapabilities | GET | `/agent-runtime/capabilities` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:55](../../webreact/src/data/agentRuntimeApi.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:59](../../webreact/src/data/agentRuntimeApi.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:63](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobs | GET | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:67](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobRuns | GET | `/agent-jobs/{jobId}/runs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:71](../../webreact/src/data/agentRuntimeApi.js) | getAgentRun | GET | `/agent-runs/{runId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:75](../../webreact/src/data/agentRuntimeApi.js) | cancelAgentRun | POST | `/agent-runs/{runId}/cancel` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:79](../../webreact/src/data/agentRuntimeApi.js) | pauseAgentRun | POST | `/agent-runs/{runId}/pause` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:83](../../webreact/src/data/agentRuntimeApi.js) | resumeAgentRun | POST | `/agent-runs/{runId}/resume` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:87](../../webreact/src/data/agentRuntimeApi.js) | retryAgentRun | POST | `/agent-runs/{runId}/retry` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:91](../../webreact/src/data/agentRuntimeApi.js) | listAgentRuns | GET | `/agent-runs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:95](../../webreact/src/data/agentRuntimeApi.js) | getAgentSkills | GET | `/agent-runtime/skills` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:99](../../webreact/src/data/agentRuntimeApi.js) | listAgentMemories | GET | `/agent-memories` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:103](../../webreact/src/data/agentRuntimeApi.js) | createAgentMemory | POST | `/agent-memories` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:107](../../webreact/src/data/agentRuntimeApi.js) | withdrawAgentMemory | POST | `/agent-memories/{memoryId}/withdraw` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:111](../../webreact/src/data/agentRuntimeApi.js) | getAgentRunEvents | GET | `/agent-runs/{runId}/events` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:119](../../webreact/src/data/agentRuntimeApi.js) | resolveAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:123](../../webreact/src/data/agentRuntimeApi.js) | getAgentArtifact | GET | `/agent-artifacts/{artifactId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
-| [webreact/src/data/agentRuntimeApi.js:134](../../webreact/src/data/agentRuntimeApi.js) | createFinalReviewCampaign | POST | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:138](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewCampaigns | GET | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:145](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewCampaign | GET | `/final-review/campaigns/{campaignId}` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:149](../../webreact/src/data/agentRuntimeApi.js) | generateFinalReviewPlan | POST | `/final-review/campaigns/{campaignId}/plans/generate` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:153](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewPlanVersions | GET | `/final-review/campaigns/{campaignId}/plan-versions` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:157](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewPlanVersion | GET | `/final-review/campaigns/{campaignId}/plan-versions/{version}` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:161](../../webreact/src/data/agentRuntimeApi.js) | activateFinalReviewCampaign | POST | `/final-review/campaigns/{campaignId}/activate` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:165](../../webreact/src/data/agentRuntimeApi.js) | getTodayAgenda | GET | `/final-review/campaigns/{campaignId}/agendas/today` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:169](../../webreact/src/data/agentRuntimeApi.js) | completeFinalReviewItem | POST | `/final-review/daily-items/{itemId}/complete` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:173](../../webreact/src/data/agentRuntimeApi.js) | createDailyCheckin | POST | `/final-review/campaigns/{campaignId}/daily-checkins` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:177](../../webreact/src/data/agentRuntimeApi.js) | analyzeAdjustment | POST | `/final-review/campaigns/{campaignId}/adjustments/analyze` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:181](../../webreact/src/data/agentRuntimeApi.js) | getAdjustmentProposals | GET | `/final-review/campaigns/{campaignId}/adjustment-proposals` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:185](../../webreact/src/data/agentRuntimeApi.js) | resolveAdjustmentProposal | POST | `/final-review/adjustment-proposals/{proposalId}/decision` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:195](../../webreact/src/data/agentRuntimeApi.js) | getNotificationSources | GET | `/notification-sources` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:199](../../webreact/src/data/agentRuntimeApi.js) | updateNotificationSource | PATCH | `/notification-sources/{sourceId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:203](../../webreact/src/data/agentRuntimeApi.js) | createManualNotice | POST | `/notices/manual` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:207](../../webreact/src/data/agentRuntimeApi.js) | createNoticeWorkflow | POST | `/notices/{noticeId}/workflow` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:211](../../webreact/src/data/agentRuntimeApi.js) | getNoticeWorkflow | GET | `/notice-workflows/{workflowId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:215](../../webreact/src/data/agentRuntimeApi.js) | reanalyzeNoticeWorkflow | POST | `/notice-workflows/{workflowId}/reanalyze` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:219](../../webreact/src/data/agentRuntimeApi.js) | decideNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/decision` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:223](../../webreact/src/data/agentRuntimeApi.js) | executeNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/execute` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/agentRuntimeApi.js:229](../../webreact/src/data/agentRuntimeApi.js) | createCourseResearchRun | POST | `/course-research/runs` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:233](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchRuns | GET | `/course-research/runs` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:240](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchRun | GET | `/course-research/runs/{runId}` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:244](../../webreact/src/data/agentRuntimeApi.js) | cancelCourseResearchRun | POST | `/course-research/runs/{runId}/cancel` | [期末复习与课程研究](13-workflows.md) |
-| [webreact/src/data/agentRuntimeApi.js:248](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchArtifacts | GET | `/course-research/runs/{runId}/artifacts` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:50](../../webreact/src/data/agentRuntimeApi.js) | getAgentCapabilities | GET | `/agent-runtime/capabilities` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:54](../../webreact/src/data/agentRuntimeApi.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:58](../../webreact/src/data/agentRuntimeApi.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:62](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobs | GET | `/agent-jobs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:66](../../webreact/src/data/agentRuntimeApi.js) | listAgentJobRuns | GET | `/agent-jobs/{jobId}/runs` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:70](../../webreact/src/data/agentRuntimeApi.js) | getAgentRun | GET | `/agent-runs/{runId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:74](../../webreact/src/data/agentRuntimeApi.js) | cancelAgentRun | POST | `/agent-runs/{runId}/cancel` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:78](../../webreact/src/data/agentRuntimeApi.js) | pauseAgentRun | POST | `/agent-runs/{runId}/pause` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:82](../../webreact/src/data/agentRuntimeApi.js) | resumeAgentRun | POST | `/agent-runs/{runId}/resume` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:86](../../webreact/src/data/agentRuntimeApi.js) | retryAgentRun | POST | `/agent-runs/{runId}/retry` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:90](../../webreact/src/data/agentRuntimeApi.js) | resolveAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:94](../../webreact/src/data/agentRuntimeApi.js) | getAgentArtifact | GET | `/agent-artifacts/{artifactId}` | [Agent 运行时、审批、记忆、产物与管理观测](12-agents.md) |
+| [webreact/src/data/agentRuntimeApi.js:105](../../webreact/src/data/agentRuntimeApi.js) | createFinalReviewCampaign | POST | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:109](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewCampaigns | GET | `/final-review/campaigns` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:116](../../webreact/src/data/agentRuntimeApi.js) | generateFinalReviewPlan | POST | `/final-review/campaigns/{campaignId}/plans/generate` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:120](../../webreact/src/data/agentRuntimeApi.js) | getFinalReviewPlanVersions | GET | `/final-review/campaigns/{campaignId}/plan-versions` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:124](../../webreact/src/data/agentRuntimeApi.js) | activateFinalReviewCampaign | POST | `/final-review/campaigns/{campaignId}/activate` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:128](../../webreact/src/data/agentRuntimeApi.js) | getTodayAgenda | GET | `/final-review/campaigns/{campaignId}/agendas/today` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:132](../../webreact/src/data/agentRuntimeApi.js) | completeFinalReviewItem | POST | `/final-review/daily-items/{itemId}/complete` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:136](../../webreact/src/data/agentRuntimeApi.js) | createDailyCheckin | POST | `/final-review/campaigns/{campaignId}/daily-checkins` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:140](../../webreact/src/data/agentRuntimeApi.js) | analyzeAdjustment | POST | `/final-review/campaigns/{campaignId}/adjustments/analyze` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:144](../../webreact/src/data/agentRuntimeApi.js) | resolveAdjustmentProposal | POST | `/final-review/adjustment-proposals/{proposalId}/decision` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:154](../../webreact/src/data/agentRuntimeApi.js) | getNotificationSources | GET | `/notification-sources` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:158](../../webreact/src/data/agentRuntimeApi.js) | updateNotificationSource | PATCH | `/notification-sources/{sourceId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:162](../../webreact/src/data/agentRuntimeApi.js) | createManualNotice | POST | `/notices/manual` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:166](../../webreact/src/data/agentRuntimeApi.js) | createNoticeWorkflow | POST | `/notices/{noticeId}/workflow` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:170](../../webreact/src/data/agentRuntimeApi.js) | getNoticeWorkflow | GET | `/notice-workflows/{workflowId}` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:174](../../webreact/src/data/agentRuntimeApi.js) | reanalyzeNoticeWorkflow | POST | `/notice-workflows/{workflowId}/reanalyze` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:178](../../webreact/src/data/agentRuntimeApi.js) | decideNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/decision` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:182](../../webreact/src/data/agentRuntimeApi.js) | executeNoticeWorkflowAction | POST | `/notice-workflow-actions/{actionId}/execute` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/agentRuntimeApi.js:188](../../webreact/src/data/agentRuntimeApi.js) | createCourseResearchRun | POST | `/course-research/runs` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:194](../../webreact/src/data/agentRuntimeApi.js) | cancelCourseResearchRun | POST | `/course-research/runs/{runId}/cancel` | [期末复习与课程研究](13-workflows.md) |
+| [webreact/src/data/agentRuntimeApi.js:198](../../webreact/src/data/agentRuntimeApi.js) | getCourseResearchArtifacts | GET | `/course-research/runs/{runId}/artifacts` | [期末复习与课程研究](13-workflows.md) |
 | [webreact/src/data/api.js:10](../../webreact/src/data/api.js) | getDashboard | GET | `/dashboard/student` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/api.js:15](../../webreact/src/data/api.js) | getTodayAgenda | GET | `/agenda/today` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/api.js:16](../../webreact/src/data/api.js) | getCourses | GET | `/courses` | [课程、班级、公告、作业与提交](03-courses.md) |
@@ -276,39 +265,38 @@
 | [webreact/src/data/http/authEndpoints.js:29](../../webreact/src/data/http/authEndpoints.js) | trustedDeviceAutoLogin | POST | `/auth/trusted-device/auto-login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:32](../../webreact/src/data/http/authEndpoints.js) | revokeTrustedDevice | POST | `/auth/trusted-device/revoke` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/client.js:77](../../webreact/src/data/http/client.js) | refreshAccessToken | POST | `/auth/refresh` | [认证、账号与扫码登录](01-auth.md) |
-| [webreact/src/data/learnerStateApi.js:52](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
-| [webreact/src/data/learnerStateApi.js:56](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
-| [webreact/src/data/learnerStateApi.js:67](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:79](../../webreact/src/data/learnerStateApi.js) | getSnapshotEvidence | GET | `/learner-state/snapshots/{snapshotId}/evidence` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:85](../../webreact/src/data/learnerStateApi.js) | generateLearningPlan | POST | `/learning-plans/generate` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:89](../../webreact/src/data/learnerStateApi.js) | getLearningPlans | GET | `/learning-plans` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:93](../../webreact/src/data/learnerStateApi.js) | getAdaptiveInterventions | GET | `/adaptive-interventions` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:97](../../webreact/src/data/learnerStateApi.js) | getAdaptiveInterventionOutcome | GET | `/adaptive-interventions/{interventionId}/outcome` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:101](../../webreact/src/data/learnerStateApi.js) | getLearningPlan | GET | `/learning-plans/{planId}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:105](../../webreact/src/data/learnerStateApi.js) | decideLearningPlan | POST | `/learning-plans/{planId}/decision` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:109](../../webreact/src/data/learnerStateApi.js) | executeLearningPlan | POST | `/learning-plans/{planId}/execute` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:113](../../webreact/src/data/learnerStateApi.js) | undoLearningPlan | POST | `/learning-plans/{planId}/undo` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:117](../../webreact/src/data/learnerStateApi.js) | replanLearningPlan | POST | `/learning-plans/{planId}/replan` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:121](../../webreact/src/data/learnerStateApi.js) | submitPlanFeedback | POST | `/learning-plans/{planId}/feedback` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:125](../../webreact/src/data/learnerStateApi.js) | getPlanEvaluation | GET | `/learning-plans/{planId}/evaluation` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:129](../../webreact/src/data/learnerStateApi.js) | getPlanSummary | GET | `/learning-plans/{planId}/summary` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:135](../../webreact/src/data/learnerStateApi.js) | createCorrection | POST | `/learner-state/corrections` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:139](../../webreact/src/data/learnerStateApi.js) | getCorrections | GET | `/learner-state/corrections` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:143](../../webreact/src/data/learnerStateApi.js) | revokeCorrection | POST | `/learner-state/corrections/{correctionId}/revoke` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:149](../../webreact/src/data/learnerStateApi.js) | getDataControls | GET | `/learner-state/data-controls` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:153](../../webreact/src/data/learnerStateApi.js) | updateDataControl | PUT | `/learner-state/data-controls/{sourceKey}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:159](../../webreact/src/data/learnerStateApi.js) | requestDeletion | POST | `/learner-state/delete-request` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:163](../../webreact/src/data/learnerStateApi.js) | getDeleteStatus | GET | `/learner-state/delete-status` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:169](../../webreact/src/data/learnerStateApi.js) | getDataSummary | GET | `/learner-state/data-summary` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:175](../../webreact/src/data/learnerStateApi.js) | getModelTransparency | GET | `/learner-state/model-transparency` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:181](../../webreact/src/data/learnerStateApi.js) | getForecasts | GET | `/learner-state/forecasts` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:194](../../webreact/src/data/learnerStateApi.js) | createSimulation | POST | `/learner-state/simulations` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:200](../../webreact/src/data/learnerStateApi.js) | getStudentGoals | GET | `/student-goals` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:209](../../webreact/src/data/learnerStateApi.js) | createStudentGoal | POST | `/student-goals` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:213](../../webreact/src/data/learnerStateApi.js) | getStudentGoal | GET | `/student-goals/{goalId}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:217](../../webreact/src/data/learnerStateApi.js) | updateStudentGoal | PATCH | `/student-goals/{goalId}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:221](../../webreact/src/data/learnerStateApi.js) | recordGoalProgress | POST | `/student-goals/{goalId}/progress` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
-| [webreact/src/data/learnerStateApi.js:225](../../webreact/src/data/learnerStateApi.js) | archiveStudentGoal | POST | `/student-goals/{goalId}/archive` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:51](../../webreact/src/data/learnerStateApi.js) | getLearnerStateRuns | GET | `/learner-state/runs` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
+| [webreact/src/data/learnerStateApi.js:55](../../webreact/src/data/learnerStateApi.js) | getLearnerStateChanges | GET | `/learner-state/changes` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md)；封装尚未透传新增 projection_kind |
+| [webreact/src/data/learnerStateApi.js:66](../../webreact/src/data/learnerStateApi.js) | getLearnerStateSnapshots | GET | `/learner-state/snapshots` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:78](../../webreact/src/data/learnerStateApi.js) | getSnapshotEvidence | GET | `/learner-state/snapshots/{snapshotId}/evidence` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:84](../../webreact/src/data/learnerStateApi.js) | generateLearningPlan | POST | `/learning-plans/generate` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:88](../../webreact/src/data/learnerStateApi.js) | getLearningPlans | GET | `/learning-plans` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:92](../../webreact/src/data/learnerStateApi.js) | getAdaptiveInterventions | GET | `/adaptive-interventions` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:96](../../webreact/src/data/learnerStateApi.js) | getAdaptiveInterventionOutcome | GET | `/adaptive-interventions/{interventionId}/outcome` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:100](../../webreact/src/data/learnerStateApi.js) | getLearningPlan | GET | `/learning-plans/{planId}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:104](../../webreact/src/data/learnerStateApi.js) | decideLearningPlan | POST | `/learning-plans/{planId}/decision` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:108](../../webreact/src/data/learnerStateApi.js) | executeLearningPlan | POST | `/learning-plans/{planId}/execute` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:112](../../webreact/src/data/learnerStateApi.js) | undoLearningPlan | POST | `/learning-plans/{planId}/undo` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:116](../../webreact/src/data/learnerStateApi.js) | replanLearningPlan | POST | `/learning-plans/{planId}/replan` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:120](../../webreact/src/data/learnerStateApi.js) | submitPlanFeedback | POST | `/learning-plans/{planId}/feedback` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:124](../../webreact/src/data/learnerStateApi.js) | getPlanEvaluation | GET | `/learning-plans/{planId}/evaluation` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:128](../../webreact/src/data/learnerStateApi.js) | getPlanSummary | GET | `/learning-plans/{planId}/summary` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:134](../../webreact/src/data/learnerStateApi.js) | createCorrection | POST | `/learner-state/corrections` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:138](../../webreact/src/data/learnerStateApi.js) | getCorrections | GET | `/learner-state/corrections` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:142](../../webreact/src/data/learnerStateApi.js) | revokeCorrection | POST | `/learner-state/corrections/{correctionId}/revoke` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:148](../../webreact/src/data/learnerStateApi.js) | getDataControls | GET | `/learner-state/data-controls` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:152](../../webreact/src/data/learnerStateApi.js) | updateDataControl | PUT | `/learner-state/data-controls/{sourceKey}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:158](../../webreact/src/data/learnerStateApi.js) | requestDeletion | POST | `/learner-state/delete-request` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:162](../../webreact/src/data/learnerStateApi.js) | getDeleteStatus | GET | `/learner-state/delete-status` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:168](../../webreact/src/data/learnerStateApi.js) | getDataSummary | GET | `/learner-state/data-summary` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:174](../../webreact/src/data/learnerStateApi.js) | getModelTransparency | GET | `/learner-state/model-transparency` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:180](../../webreact/src/data/learnerStateApi.js) | getForecasts | GET | `/learner-state/forecasts` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:193](../../webreact/src/data/learnerStateApi.js) | createSimulation | POST | `/learner-state/simulations` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:199](../../webreact/src/data/learnerStateApi.js) | getStudentGoals | GET | `/student-goals` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:208](../../webreact/src/data/learnerStateApi.js) | createStudentGoal | POST | `/student-goals` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:212](../../webreact/src/data/learnerStateApi.js) | updateStudentGoal | PATCH | `/student-goals/{goalId}` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:216](../../webreact/src/data/learnerStateApi.js) | recordGoalProgress | POST | `/student-goals/{goalId}/progress` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
+| [webreact/src/data/learnerStateApi.js:220](../../webreact/src/data/learnerStateApi.js) | archiveStudentGoal | POST | `/student-goals/{goalId}/archive` | [学习状态、预测、模拟、目标与自适应计划](11-learner.md) |
 | [webreact/src/data/learningSpaceApi.js:12](../../webreact/src/data/learningSpaceApi.js) | getLearningSpaceStatus | GET | `/magicclass/learning-space/status` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/maic/scene/quiz-view.jsx:121](../../webreact/src/maic/scene/quiz-view.jsx) | gradeShortAnswerQuestion | POST | `/api/quiz-grade` | 未匹配，见下一节 |
 

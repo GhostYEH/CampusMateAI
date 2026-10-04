@@ -78,7 +78,7 @@ const user = payload.user;
 
 - 普通分页常见 `{items,total,page,page_size,has_more}`，page 从 1 开始；具体上限以接口参数表为准。社区分页没有 has_more，考试列表直接是数组。
 - 受管工作台常用 `{items,next_cursor}` 与 limit/cursor；下一页使用返回的 cursor，不从本地索引构造。
-- Agent 事件 REST 为数组，使用 **after_sequence / limit**。当前 Web getAgentRunEvents 封装传 page/page_size/from_sequence，与后端不同；新前端按手册发送 after_sequence，避免无限读取第一页。
+- Agent 事件 REST 为数组，使用 **after_sequence / limit**。当前 Web 无 REST 事件封装；按手册发送 after_sequence，或复用 agentSseStream.js 的 SSE 订阅。
 - 明确声明的 date-time 使用 ISO 8601 与时区；个人考试 exam_date/start_time/end_time 当前为字符串，建议发送 `YYYY-MM-DD` 与 `HH:mm`；部分舞台时间是毫秒数，按字段契约处理。
 - PATCH 的“省略”和 null 不等价，例如 workspace.folder_id 省略为不修改、null 为取消归档、字符串为移动到文件夹。个人考试 PATCH 使用 ExamIn，必填字段与创建相同。
 - unknown 字段是否拒绝由模型 additionalProperties 决定；Agent 契约普遍 `extra=forbid`，不能随意附带 UI 状态或调试信息。

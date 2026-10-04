@@ -715,6 +715,9 @@
       "title": "AI 同学",
       "style": "同学视角",
       "speaking": "发言中",
+      "previous": "查看前面的同学",
+      "next": "查看后面的同学",
+      "discussionPending": "待发起讨论",
       "loading": "正在准备课堂发言…",
       "idle": "正在跟随课堂学习",
       "error": "同学发言加载失败"

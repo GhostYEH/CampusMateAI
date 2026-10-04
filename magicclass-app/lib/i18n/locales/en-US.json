@@ -715,6 +715,9 @@
       "title": "Classmates",
       "style": "Classmate perspective",
       "speaking": "Speaking",
+      "previous": "Previous classmates",
+      "next": "Next classmates",
+      "discussionPending": "Discussion pending",
       "loading": "Preparing a reaction...",
       "idle": "Following this lesson",
       "error": "Could not load classmate reactions"

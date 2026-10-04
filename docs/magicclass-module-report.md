@@ -153,7 +153,7 @@
 
 后续做安卓原生前端，建议按以下顺序复用现有契约：
 
-1. 先确定页面目标：若是**课程内原生工作台**，以 CampusMate `/api/v1/courses/*` 及 `/api/v1/magicclass/fusion/*` 为唯一业务入口；若是**独立上游学习空间**，它目前是跨源网页产品，需另行设计身份、数据和文件同步，不能假设经典课堂或受管工作台的 ID 能直接打开它。仓库规定 `magicclass-app/` 只保留品牌补丁，新增对接契约应优先放在 CampusMate 后端和受管服务层。
+1. 先确定页面目标：若是**课程内原生工作台**，以 CampusMate `/api/v1/courses/*` 及 `/api/v1/magicclass/fusion/*` 为唯一业务入口；若是**独立上游学习空间**，它目前是跨源网页产品，需另行设计身份、数据和文件同步，不能假设经典课堂或受管工作台的 ID 能直接打开它。仓库要求 `magicclass-app/` 的本地改动进入品牌规则、可逆功能补丁或逐项说明的已声明偏离，并通过 `check` / `verify` 来源校验；新增对接契约应优先放在 CampusMate 后端和受管服务层。
 2. 在 Retrofit/Repository 增加受管状态、课程上下文、最近内容、工作台/舞台/文件夹、资料、生成任务和产物 DTO。先实现只读列表与恢复，再实现带 `Idempotency-Key`、`If-Match` 的写操作。`document` 是版本化 DSL；原生渲染前应按四种场景类型和 widget 分发，对未知类型显示不支持状态。
 3. 播放器依次消费 `GET S/outline`、`GET S/playback`、`GET X`，按播放计划中的渲染决定处理；测验单独持久化 attempt。语音按 scene 查询/发起 narration，再通过 job/artifact 拿音频，不要只依赖一段自由文本 TTS。
 4. 上传与导出按文件流处理，分页按 `next_cursor` 继续；显示提供方不可用、模型缺失、版本冲突、任务失败、公开 URL 不可打开等真实状态。生成是否成功与能否在浏览器打开是两件事。

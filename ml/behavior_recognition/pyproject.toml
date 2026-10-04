@@ -10,3 +10,6 @@ requires-python = ">=3.11,<3.14"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+behavior_recognition = ["metadata/*.pbtxt"]

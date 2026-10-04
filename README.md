@@ -42,7 +42,7 @@ CampusMate AI 面向学生的学习与日常事务管理，围绕“通知整理
 | [`wx/`](wx/README.md) | TypeScript 微信小程序；部分功能为 Mock 演示 |
 | [`ml/`](ml/) | 行为与表情模型训练、评估和导出 |
 | `magicclass-service/` | CampusMate 互动课堂的受管服务 |
-| `magicclass-app/` | 导航栏“学习空间”使用的上游独立应用；仅允许仓库规定的品牌补丁 |
+| `magicclass-app/` | 导航栏“学习空间”使用的上游独立应用；本地改动通过品牌规则、可逆功能补丁和逐项声明的偏离审计 |
 | `render-service/` | 可选的互动课堂 MP4 导出渲染服务；需要单独配置与启动 |
 | `scripts/` | 本地启动、品牌补丁及上游来源审计等工具 |
 | `third_party/magicclass/` | 上游许可证、来源及审计清单 |

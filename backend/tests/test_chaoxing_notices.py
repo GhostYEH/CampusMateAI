@@ -118,8 +118,10 @@ def test_container():
 
 @pytest.fixture
 def mock_container(test_container: ServiceContainer, monkeypatch):
+    from chaoxing_helpers import wire_sync_service
     mock_extractor = MockNoticeExtractionService()
     monkeypatch.setattr(test_container, "notice_extraction", mock_extractor)
+    wire_sync_service(test_container)
     return test_container
 
 @pytest.fixture

@@ -273,6 +273,8 @@ export function Roundtable({
       liveSpeech={classmateLiveSpeech}
       speakingAgentId={speakingAgentId}
       thinkingAgentId={thinkingState?.stage === 'agent_loading' ? thinkingState.agentId : undefined}
+      discussionAgentId={discussionRequest?.agentId}
+      portalContainer={isPresenting ? fullscreenContainerRef?.current : undefined}
       compact={isPresenting}
       onAvatarRef={(id, element) => {
         if (element) studentAvatarRefs.current.set(id, element);

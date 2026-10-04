@@ -299,7 +299,7 @@ def run(args):
     for name in ["original", *plan["arms"]]:
         model = OnnxBehaviorModel(source).to(device)
         if name != "original":
-            checkpoint = torch.load(root / name / "best.pt", map_location="cpu", weights_only=False)
+            checkpoint = torch.load(root / name / "best.pt", map_location="cpu", weights_only=True)
             if checkpoint["source_sha256"] != source_sha:
                 raise ValueError("Checkpoint source graph mismatch")
             model.load_state_dict(checkpoint["model_state"], strict=True)

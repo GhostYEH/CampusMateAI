@@ -1,7 +1,29 @@
 import sqlite3
 import pytest
 
-from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL
+from app.database.sqlite_db import Database, EDU_CONNECTOR_SCHEMA_SQL, _SchemaStep
+
+
+def test_failed_schema_step_preserves_exception_and_names_phase(monkeypatch):
+    monkeypatch.setattr(Database, "_schema_steps", lambda self: (
+        _SchemaStep("broken_phase", "CREATE TABLE broken ("),
+    ))
+    with pytest.raises(sqlite3.OperationalError) as caught:
+        Database(None)
+    assert "schema migration phase: broken_phase" in caught.value.__notes__
+
+
+def test_foreign_key_validation_names_phase_and_table():
+    with sqlite3.connect(":memory:") as conn:
+        conn.executescript(
+            "CREATE TABLE parent (id TEXT PRIMARY KEY);"
+            "CREATE TABLE child (parent_id TEXT REFERENCES parent(id));"
+            "INSERT INTO child VALUES ('missing');"
+        )
+        with pytest.raises(sqlite3.IntegrityError, match=r"child_phase \(child\)"):
+            Database._validate_schema_foreign_keys(conn, (
+                _SchemaStep("child_phase", "CREATE TABLE IF NOT EXISTS child (parent_id TEXT);"),
+            ))
 
 
 @pytest.mark.parametrize("phase", [

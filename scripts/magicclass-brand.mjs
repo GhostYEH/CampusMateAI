@@ -60,7 +60,7 @@ export const I18N_TOKENS = [['OpenMAIC', BRAND], ['MAIC Agent', `${BRAND} Agent`
 /**
  * 参与文本还原的文件类型。
  * 这里漏一种类型不会报错，只会让 verify 对它**跳过还原**再拿原始字节去比哈希，
- * 于是纯改名造成的差异被误报成"品牌补丁之外的改动"。所以宁可宽，不可漏。
+ * 于是纯改名造成的差异被误报成"已记录补丁之外的改动"。所以宁可宽，不可漏。
  */
 const TEXT_EXT = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.css', '.html', '.yaml', '.yml', '.toml',
@@ -648,7 +648,7 @@ function startsWithAny(path, list) {
 
 /**
  * 逆向校验：把树里的内容按补丁规则**反向**还原，再和上游清单比哈希。
- * 通过即说明这份树除了本文件定义的改动，与上游 v1.0.3 逐字节一致。
+ * 通过即说明这份树除了品牌规则、功能补丁及逐项声明的偏离，与上游 v1.0.3 逐字节一致。
  */
 export function verify() {
   if (!existsSync(MANIFEST)) return { problems: ['找不到 third_party/magicclass/source-manifest.sha256'], checked: 0, regenerated: 0, absent: 0 };
@@ -694,7 +694,7 @@ export function verify() {
       ? Buffer.from(restore(entry.path, raw.toString('utf8')).replace(/\r\n/g, '\n'), 'utf8')
       : raw;
     if (createHash('sha256').update(bytes).digest('hex') === entry.sha) checked += 1;
-    else report(entry.path, '还原后仍与上游不符（品牌补丁之外的改动）');
+    else report(entry.path, '还原后仍与上游不符（已记录补丁之外的改动）');
   }
   const upstreamOf = (path) => renameTechnical(path, true);
   const extra = walk(APP)
@@ -750,7 +750,7 @@ function main(argv) {
       console.log('结论：这份树 = 上游 v1.0.3 + 品牌补丁 + 功能补丁 + 上列已声明偏离');
       return 0;
     }
-    console.error(`发现 ${result.problems.length} 处无法用品牌补丁解释的差异：`);
+    console.error(`发现 ${result.problems.length} 处无法用已记录补丁解释的差异：`);
     for (const line of result.problems.slice(0, 30)) console.error(`  - ${line}`);
     return 1;
   }

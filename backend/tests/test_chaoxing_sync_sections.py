@@ -9,6 +9,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from chaoxing_helpers import wire_sync_service
 from fastapi.testclient import TestClient
 
 from app.api.routes.chaoxing import _status_cache, sync_chaoxing
@@ -51,6 +52,7 @@ class MockContainer:
         self.chaoxing_repository = ChaoxingRepository(db)
         self.course_repository = CourseRepository(db)
         self.personal_task_repository = PersonalTaskRepository(db)
+        wire_sync_service(self)
 
 
 def _user() -> UserRow:

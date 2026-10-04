@@ -8,6 +8,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from .sav_labels import verified_action_names
+
 
 def contained_file(root: Path, value: str) -> Path:
     if not isinstance(value, str) or not value or Path(value).is_absolute():
@@ -20,6 +22,7 @@ def contained_file(root: Path, value: str) -> Path:
 
 def build_sav_records(root: Path, split_dates: dict[str, list[str]]) -> tuple[dict, dict]:
     root = root.resolve()
+    action_names, label_provenance = verified_action_names(root)
     if set(split_dates) != {"train", "val", "test"}:
         raise ValueError("Expected train/val/test date groups")
     date_to_split = {}
@@ -59,7 +62,7 @@ def build_sav_records(root: Path, split_dates: dict[str, list[str]]) -> tuple[di
         for person in doc["people"]:
             action_ids = person["action_ids"]
             if (not action_ids or len(action_ids) != len(set(action_ids))
-                    or any(type(i) is not int or i not in range(1, 16) for i in action_ids)):
+                    or any(type(i) is not int or i not in action_names for i in action_ids)):
                 raise ValueError("Invalid SAV action ids")
             box = person["bbox_normalized_xyxy"]
             if (len(box) != 4 or any(not isinstance(x, (int, float)) or not math.isfinite(x) or not 0 <= x <= 1 for x in box)
@@ -78,7 +81,8 @@ def build_sav_records(root: Path, split_dates: dict[str, list[str]]) -> tuple[di
             if sample_id in seen:
                 raise ValueError("Duplicate SAV annotated person")
             seen.add(sample_id)
-            mask = [5 in action_ids, 10 in action_ids, False, False]
+            actions = {action_names[action_id] for action_id in action_ids}
+            mask = ["read" in actions, "take_notes" in actions, False, False]
             if not any(mask):
                 excluded[split] += 1
                 continue
@@ -108,5 +112,6 @@ def build_sav_records(root: Path, split_dates: dict[str, list[str]]) -> tuple[di
     summary["annotation_sha256"] = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
                                       for path in [root / "clips_to_keep.txt", root / "download_status.json",
                                                    *sorted(root.glob("prepared_labels/*.json"))]}
+    summary["label_provenance"] = label_provenance
     summary["limitations"] = "Date/video separation does not prove subject independence; unknown students; no phone labels; set labels preserve READ/WRITE ambiguity."
     return rows, summary

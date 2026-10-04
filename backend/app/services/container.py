@@ -56,6 +56,7 @@ from ..repositories.qr_auth_repository import (
 )
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
+from .chaoxing.sync_service import ChaoxingSyncDependencies, ChaoxingSyncService
 from ..services.learner_state_service import LearnerStateProjectionService
 
 from ..services.forecast_service import ForecastService
@@ -159,6 +160,7 @@ class ServiceContainer:
     student_goal_repository: StudentGoalRepository
     study_checkin_repository: StudyCheckinRepository
     chaoxing_repository: ChaoxingRepository
+    chaoxing_sync_service: ChaoxingSyncService
     notice_repository: NoticeRepository
     university_repository: UniversityRepository
     community_repository: CommunityRepository
@@ -288,6 +290,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     assignment_repo = AssignmentRepository(db)
     course_repo = CourseRepository(db)
     notice_repository = NoticeRepository(db)
+    chaoxing_repository = ChaoxingRepository(db)
     edu_repo = EduRepository(db)
     edu_data_repo = EduDataRepository(db)
     personal_task_repo = PersonalTaskRepository(db)
@@ -539,7 +542,15 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         study_goal_repository=study_goal_repo,
         student_goal_repository=student_goal_repo,
         study_checkin_repository=study_checkin_repo,
-        chaoxing_repository=ChaoxingRepository(db),
+        chaoxing_repository=chaoxing_repository,
+        chaoxing_sync_service=ChaoxingSyncService(ChaoxingSyncDependencies(
+            course_repository=course_repo,
+            personal_task_repository=personal_task_repo,
+            chaoxing_repository=chaoxing_repository,
+            notice_repository=notice_repository,
+            notice_extraction=notice,
+            learner_event_service=learner_event_service,
+        )),
         notice_repository=notice_repository,
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),

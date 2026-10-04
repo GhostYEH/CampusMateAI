@@ -1,7 +1,8 @@
+import { formatRelativeTime } from "../utils/date.js";
 import '../styles/learning-state.css';
 import { Link } from 'react-router-dom';
 import { useLearningState } from '../hooks/useLearningState.js';
-import { ErrorBar, QualityBadge, formatTime } from '../components/learningState/shared.jsx';
+import { ErrorBar, QualityBadge } from '../components/learningState/shared.jsx';
 import { StateOverview, WorldSnapshotSection, StateTimeline, ForecastSection } from '../components/learningState/StateOverview.jsx';
 import { InterventionLoopSummary } from '../components/learningState/InterventionLoopSummary.jsx';
 import { GoalsSection } from '../components/learningState/GoalsSection.jsx';
@@ -57,7 +58,7 @@ export default function LearningStatePage() {
         {snapshots.data?.items?.[0] && (
           <p className="ls-update-time">
             <QualityBadge quality={snapshots.data.items[0].data_quality} />
-            <span> · 更新于 {formatTime(snapshots.data.items[0].computed_at)}</span>
+            <span> · 更新于 {formatRelativeTime(snapshots.data.items[0].computed_at)}</span>
           </p>
         )}
       </header>

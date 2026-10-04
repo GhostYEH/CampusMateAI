@@ -12,7 +12,7 @@ from ..models.study import StudySessionRow
 from ..repositories.course_content_repository import CourseContentItemRow
 from ..repositories.learner_event_repository import LearnerEventRepository
 from ..schemas.learner_event import EvidenceReference, LearnerEventAppendResult, LearnerEventCreate
-from .learner_score import score_band
+from .learner_score import score_band as normalize_score_band
 
 
 class LearnerEventService:
@@ -406,7 +406,7 @@ class LearnerEventService:
 
     @staticmethod
     def _score_band(score: Optional[str]) -> Optional[str]:
-        return score_band(score)
+        return normalize_score_band(score)
 
     @staticmethod
     def _exam_time_bucket(starts_at: Optional[str]) -> Optional[str]:

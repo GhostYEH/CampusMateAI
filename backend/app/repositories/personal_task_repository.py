@@ -429,7 +429,7 @@ class PersonalTaskRepository:
         不允许通过此方法修改 status/completed_at/deleted_at/user_id。
         """
         if not fields:
-            return self._get_task_with_open_conn(task_id, user_id)
+            return self.get_task(task_id, user_id=user_id)
         allowed = {
             "title", "description", "target_students", "deadline",
             "materials", "submission_method", "location", "source_name",
@@ -448,7 +448,7 @@ class PersonalTaskRepository:
             sets.append(f"{key} = ?")
             values.append(value)
         if not sets:
-            return self._get_task_with_open_conn(task_id, user_id)
+            return self.get_task(task_id, user_id=user_id)
         sets.append("updated_at = ?")
         values.append(_now_iso())
         values.append(task_id)
@@ -463,11 +463,6 @@ class PersonalTaskRepository:
                 f"UPDATE personal_tasks SET {', '.join(sets)} WHERE id = ?",
                 values,
             )
-        return self.get_task(task_id, user_id=user_id)
-
-    def _get_task_with_open_conn(
-        self, task_id: str, user_id: str
-    ) -> Optional[PersonalTaskRow]:
         return self.get_task(task_id, user_id=user_id)
 
     # ===== 状态机 =====

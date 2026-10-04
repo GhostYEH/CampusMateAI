@@ -1,4 +1,4 @@
-import { formatTime } from "../components/learningState/shared.jsx";
+import { formatRelativeTime } from "../utils/date.js";
 import { formatForecastValue } from "../components/learningState/StateOverview.jsx";
 import { FORECAST_TYPE_LABEL } from "../features/learnerState/forecastLabels.js";
 import "../styles/prediction.css";
@@ -78,7 +78,7 @@ function ForecastCard({ forecast }) {
       <div className="pred-card__body">
         <div className="pred-metric">
           <span className="pred-metric__label">范围</span>
-          <span className="pred-metric__value">{formatTime(forecast.horizon_start)} 至 {formatTime(forecast.horizon_end)}</span>
+          <span className="pred-metric__value">{formatRelativeTime(forecast.horizon_start)} 至 {formatRelativeTime(forecast.horizon_end)}</span>
         </div>
         <div className="pred-metric">
           <span className="pred-metric__label">估计</span>

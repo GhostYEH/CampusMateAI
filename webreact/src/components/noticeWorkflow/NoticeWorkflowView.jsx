@@ -1,4 +1,4 @@
-import { formatTime } from "../../utils/date.js";
+import { formatTimestamp } from "../../utils/date.js";
 import { itemsOf } from "../../data/contracts.js";
 import {
   noticeWorkflowStatusLabel,
@@ -52,7 +52,7 @@ export default function NoticeWorkflowView({
         {workflow.created_at && (
           <>
             <dt>创建时间</dt>
-            <dd>{formatTime(workflow.created_at)}</dd>
+            <dd>{formatTimestamp(workflow.created_at)}</dd>
           </>
         )}
       </dl>

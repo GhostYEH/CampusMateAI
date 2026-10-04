@@ -41,6 +41,10 @@ class BehaviorPredictionTemporalSmoother(
             BehaviorHybridPolicy.MODEL_STATE -> BehaviorHybridPolicy.MINIMUM_CONFIDENCE
             else -> return raw.copy(probabilities = next)
         }
+        val minimumMargin = when (raw.modelState) {
+            BehaviorHybridPolicy.MODEL_STATE -> BehaviorHybridPolicy.MINIMUM_MARGIN
+            else -> BehaviorV34Contract.MINIMUM_MARGIN
+        }
         val ranked = next.entries.sortedByDescending { it.value }
         val top = ranked.first()
         val margin = top.value - (ranked.getOrNull(1)?.value ?: 0f)
@@ -48,7 +52,7 @@ class BehaviorPredictionTemporalSmoother(
         // hybrid restrictions such as writing eligibility and computer confirmation.
         val accepted = raw.stableBehavior != StudyBehavior.UNCERTAIN &&
             top.key == raw.stableBehavior &&
-            top.value >= minimumConfidence && margin >= BehaviorV34Contract.MINIMUM_MARGIN
+            top.value >= minimumConfidence && margin >= minimumMargin
         return raw.copy(
             probabilities = next,
             stableBehavior = if (accepted) top.key else StudyBehavior.UNCERTAIN,

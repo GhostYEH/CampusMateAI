@@ -115,6 +115,34 @@ describe('classmate participation', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a large multibyte page within the server byte limit for all seven classmates', async () => {
+    const roster = Array.from({ length: 7 }, (_, i) => ({
+      ...agents[0],
+      id: `peer-${i}`,
+      persona: '中文人设'.repeat(3000),
+    }));
+    const largeScene = {
+      ...scene,
+      content: {
+        type: 'slide',
+        elements: Array.from({ length: 3000 }, () => ({ content: '中文课文'.repeat(3000) })),
+      },
+      actions: Array.from({ length: 300 }, () => ({
+        type: 'speech',
+        text: '中文讲解'.repeat(3000),
+      })),
+    } as unknown as Scene;
+    const body = classmateRequestBody(largeScene, roster);
+    const request = JSON.parse(body);
+    expect(request.agents).toHaveLength(7);
+    expect(request.scene.content.type).toBe('slide');
+    expect(body).toContain('中文课文');
+    const { MAX_CLASSMATE_BODY_BYTES, validateClassmateRequest } =
+      await import('@/lib/server/classmate-participation');
+    expect(new TextEncoder().encode(body).byteLength).toBeLessThan(MAX_CLASSMATE_BODY_BYTES);
+    expect(validateClassmateRequest(request).agents).toHaveLength(7);
+  });
+
   it('aborts a previous page and discards its late result after switching pages', async () => {
     let finishOld!: (response: Response) => void;
     fetchMock.mockImplementationOnce(

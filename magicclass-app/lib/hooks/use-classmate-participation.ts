@@ -12,7 +12,60 @@ export interface ClassmateParticipationState {
 }
 
 const IDLE: ClassmateParticipationState = { messages: {}, status: 'idle', error: null };
-const MEDIA_FIELDS = new Set(['src', 'url', 'audio', 'audioUrl', 'audioData', 'imageBase64']);
+const MEDIA_FIELDS = new Set([
+  'src',
+  'url',
+  'audio',
+  'audioUrl',
+  'audioData',
+  'imageBase64',
+  'svg',
+  'style',
+  'theme',
+  'fontName',
+  'fontFamily',
+  'color',
+  'fill',
+  'outline',
+  'shadow',
+  'thumbnail',
+  'path',
+]);
+
+/** Bound both text and structure so a large page still leaves room for every persona. */
+function boundedContext(
+  value: unknown,
+  budget: { characters: number; nodes: number },
+  depth = 0,
+): unknown {
+  if (depth > 16 || budget.nodes-- <= 0 || budget.characters <= 0) return undefined;
+  if (typeof value === 'string') {
+    const text = value.slice(0, Math.min(12_000, budget.characters));
+    budget.characters -= text.length;
+    return text;
+  }
+  if (Array.isArray(value)) {
+    const children: unknown[] = [];
+    for (const child of value) {
+      if (budget.nodes <= 0 || budget.characters <= 0) break;
+      const projected = boundedContext(child, budget, depth + 1);
+      if (projected !== undefined) children.push(projected);
+    }
+    return children;
+  }
+  if (value && typeof value === 'object') {
+    const entries: [string, unknown][] = [];
+    for (const [key, child] of Object.entries(value)) {
+      if (MEDIA_FIELDS.has(key) || key.length > 128) continue;
+      if (budget.characters < key.length || budget.nodes <= 0) break;
+      budget.characters -= key.length;
+      const projected = boundedContext(child, budget, depth + 1);
+      if (projected !== undefined) entries.push([key, projected]);
+    }
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
 
 /** Send lesson text, not the lesson's potentially large media assets. */
 export function classmateRequestBody(
@@ -24,17 +77,30 @@ export function classmateRequestBody(
     {
       scene: {
         id: scene.id,
-        stageId: scene.stageId,
-        title: scene.title,
+        title: scene.title.slice(0, 1000),
         type: scene.type,
-        content: scene.content,
-        actions: (scene.actions || [])
-          .filter((action) => action.type === 'speech')
-          .map((action) => ({ type: action.type, text: action.text })),
+        content: {
+          ...(boundedContext(scene.content, { characters: 16_000, nodes: 512 }) as Record<
+            string,
+            unknown
+          >),
+          type: scene.type,
+        },
+        actions: boundedContext(
+          (scene.actions || [])
+            .filter((action) => action.type === 'speech')
+            .map((action) => ({ type: action.type, text: action.text })),
+          { characters: 8000, nodes: 128 },
+        ),
       },
       agents: agents
         .filter((agent) => agent.role !== 'teacher' && agent.role !== 'user')
-        .map(({ id, name, role, persona }) => ({ id, name, role, persona })),
+        .map(({ id, name, role, persona }) => ({
+          id,
+          name,
+          role,
+          persona: persona.slice(0, 2000),
+        })),
       language,
     },
     (key, value: unknown) => {

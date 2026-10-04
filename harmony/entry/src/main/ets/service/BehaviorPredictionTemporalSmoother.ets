@@ -8,6 +8,7 @@ import { BehaviorHybridPolicy } from './BehaviorHybridPolicy';
 export class BehaviorPredictionTemporalSmoother {
   private readonly alpha: number;
   private smoothed: number[] = [];
+  private previousModelState: string | undefined = undefined;
 
   constructor(alpha: number = 0.35) {
     this.alpha = Math.min(1, Math.max(0, alpha));
@@ -30,9 +31,17 @@ export class BehaviorPredictionTemporalSmoother {
     return next.slice();
   }
 
-  smoothResult(raw: BehaviorV34Result): BehaviorV34Result {
+  smoothResult(raw: BehaviorV34Result, modelState: string): BehaviorV34Result {
+    if (raw.probabilities.length === 0) {
+      this.reset();
+      return raw;
+    }
+    if (this.previousModelState !== modelState) this.reset();
     const probabilities: number[] = this.smooth(raw.probabilities);
-    const labels: BehaviorV34Label[] = probabilities.length === 5 ? [
+    this.previousModelState = modelState;
+    const isHybrid: boolean = modelState === BehaviorHybridPolicy.MODEL_STATE;
+    const isCalibrated: boolean = isHybrid || modelState === BehaviorV34Decision.MODEL_STATE;
+    const labels: BehaviorV34Label[] = isHybrid ? [
       BehaviorV34Label.READ, BehaviorV34Label.WRITE, BehaviorV34Label.PHONE_INTERACTION,
       BehaviorV34Label.COMPUTER, BehaviorV34Label.NO_VISIBLE_STUDY
     ] : [
@@ -51,13 +60,27 @@ export class BehaviorPredictionTemporalSmoother {
         second = Math.max(second, probabilities[index]);
       }
     }
-    const minimumConfidence: number = probabilities.length === 5 ?
+    const minimumConfidence: number = isHybrid ?
       BehaviorHybridPolicy.MINIMUM_CONFIDENCE : BehaviorV34Decision.MIN_CONFIDENCE;
+    const minimumMargin: number = isHybrid ?
+      BehaviorHybridPolicy.MINIMUM_MARGIN : BehaviorV34Decision.MIN_MARGIN;
     const margin: number = best - second;
+    const hasAcceptedDecision: boolean = raw.isStable && raw.label !== BehaviorV34Label.CONTINUE_OBSERVING;
+    if (!isCalibrated) {
+      // Legacy V3.2 follows the smoothed argmax, like Android's legacy signal
+      // processor; its label is not gated by calibrated V3.4/hybrid agreement.
+      return {
+        label: hasAcceptedDecision ? labels[bestIndex] : BehaviorV34Label.CONTINUE_OBSERVING,
+        confidence: best,
+        margin: margin,
+        isStable: hasAcceptedDecision,
+        probabilities: probabilities
+      };
+    }
     // Do not revive rejected labels or bypass the hybrid eligibility checks.
-    const accepted: boolean = raw.isStable && raw.label !== BehaviorV34Label.CONTINUE_OBSERVING &&
+    const accepted: boolean = hasAcceptedDecision &&
       raw.label === labels[bestIndex] && best >= minimumConfidence &&
-      margin >= BehaviorV34Decision.MIN_MARGIN;
+      margin >= minimumMargin;
     return {
       label: accepted ? labels[bestIndex] : BehaviorV34Label.CONTINUE_OBSERVING,
       confidence: best,
@@ -69,5 +92,6 @@ export class BehaviorPredictionTemporalSmoother {
 
   reset(): void {
     this.smoothed = [];
+    this.previousModelState = undefined;
   }
 }

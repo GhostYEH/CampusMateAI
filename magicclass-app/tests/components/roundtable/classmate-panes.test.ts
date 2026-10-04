@@ -18,6 +18,9 @@ vi.mock('@/lib/hooks/use-i18n', () => ({
         'roundtable.classmates.idle': 'Following this lesson',
         'roundtable.classmates.loading': 'Preparing a reaction...',
         'common.retry': 'Retry',
+        'roundtable.classmates.previous': 'Previous classmates',
+        'roundtable.classmates.next': 'Next classmates',
+        'roundtable.classmates.discussionPending': 'Discussion pending',
         'settings.agentDescriptions.curious': 'Asks why and how',
       })[key] || key,
   }),
@@ -54,12 +57,14 @@ function Classroom({
   participation = ready,
   speakingAgentId,
   currentSpeech,
+  discussionAgentId,
 }: {
   sceneKey?: string;
   selected?: Participant[];
   participation?: ClassmateParticipation;
   speakingAgentId?: string | null;
   currentSpeech?: string | null;
+  discussionAgentId?: string;
 }) {
   const liveSpeech = useClassmateLiveSpeech({
     sceneKey,
@@ -73,6 +78,7 @@ function Classroom({
     participation,
     liveSpeech,
     speakingAgentId,
+    discussionAgentId,
   });
 }
 
@@ -127,6 +133,23 @@ describe('independent classmate panes', () => {
     );
     expect(container.textContent).not.toContain('Lecture');
     expect(pane('curious')?.textContent).toContain('Live why?');
+  });
+
+  it('marks the pending discussion classmate and lets buttons browse the overflowing rail', () => {
+    act(() => root.render(createElement(Classroom, { discussionAgentId: 'practical' })));
+    expect(pane('practical')?.querySelector('[data-discussion-pending]')).not.toBeNull();
+    expect(pane('curious')?.querySelector('[data-discussion-pending]')).toBeNull();
+    const rail = container.querySelector<HTMLDivElement>('[tabindex="0"]')!;
+    const scrollBy = vi.fn();
+    rail.scrollBy = scrollBy;
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Next classmates"]')!.click(),
+    );
+    expect(scrollBy).toHaveBeenLastCalledWith(expect.objectContaining({ left: 180 }));
+    act(() =>
+      container.querySelector<HTMLButtonElement>('[aria-label="Previous classmates"]')!.click(),
+    );
+    expect(scrollBy).toHaveBeenLastCalledWith(expect.objectContaining({ left: -180 }));
   });
 
   it('clears every previous live turn when the scene key changes', () => {

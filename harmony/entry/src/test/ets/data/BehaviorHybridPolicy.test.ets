@@ -11,6 +11,7 @@ import {
   BehaviorV34OutputContract
 } from '../../../main/ets/service/MindSporeBehaviorProvider';
 import { BehaviorV34Label, BehaviorV34Result } from '../../../main/ets/service/BehaviorV34Decision';
+import { BehaviorRuntimeModel } from '../../../main/ets/service/BehaviorModelSelection';
 
 function singleResult(probabilities: number[]): BehaviorV34Result {
   const ranked: number[] = probabilities
@@ -129,8 +130,9 @@ export default function behaviorHybridPolicyTest(): void {
         .assertEqual('TSM V4 不可用，V3.4 正在本地识别');
       expect(BehaviorProviderPresentation.detail(false, BehaviorV34Label.CONTINUE_OBSERVING))
         .assertEqual('结果不可靠，继续观察');
-      expect(BehaviorProviderPresentation.modelVersion(false)).assertEqual('V3.4');
-      expect(BehaviorProviderPresentation.modelVersion(true)).assertEqual('V3.4+TSM-V4');
+      expect(BehaviorProviderPresentation.modelVersion(BehaviorRuntimeModel.V34, false)).assertEqual('V3.4');
+      expect(BehaviorProviderPresentation.modelVersion(BehaviorRuntimeModel.V34, true)).assertEqual('V3.4+TSM-V4');
+      expect(BehaviorProviderPresentation.modelVersion(BehaviorRuntimeModel.V32, false)).assertEqual('V3.2');
       expect(BehaviorProviderPresentation.readyDetail(true))
         .assertEqual('V3.4 模型已就绪；TSM V4 不可用，使用降级行为识别');
       expect(BehaviorProviderPresentation.readyDetail(false))

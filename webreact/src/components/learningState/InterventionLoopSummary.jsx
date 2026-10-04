@@ -1,5 +1,5 @@
+import { formatRelativeTime } from "../../utils/date.js";
 import { describeInterventionDecision, describeAdoption, describeObservedOutcome, describeInterventionScope, DECISION_STATE } from '../../data/interventionDecisionView.js';
-import { formatTime } from './shared.jsx';
 
 function InterventionLoopSummary({ intervention, outcome, loading, error, onRetry }) {
   if (!intervention) return null;
@@ -27,7 +27,7 @@ function InterventionLoopSummary({ intervention, outcome, loading, error, onRetr
           {decision.label}
         </span>
         {decision.state === DECISION_STATE.PENDING && decision.detail ? `（${decision.detail}）` : ""}
-        {intervention.observation_due_at ? `（观测截至 ${formatTime(intervention.observation_due_at)}）` : ""}
+        {intervention.observation_due_at ? `（观测截至 ${formatRelativeTime(intervention.observation_due_at)}）` : ""}
       </p>
       {decision.state === DECISION_STATE.DECIDED && decision.detail && <p className="ls-hint">
         {decision.detail}

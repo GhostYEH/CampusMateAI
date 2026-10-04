@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from chaoxing_helpers import wire_sync_service
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -320,7 +321,7 @@ def _sync_container(db: Database, client: _FakeChaoxingClient):
         notice_extraction=extraction,
         db=db,
     )
-    return container
+    return wire_sync_service(container)
 
 
 @pytest.mark.asyncio
@@ -537,7 +538,7 @@ async def test_notice_extraction_failure_log_does_not_include_notice_text(caplog
         user = UserRow(
             id="user1", username="user1", password_hash="hash", role="student"
         )
-        with caplog.at_level("WARNING", logger="app.api.routes.chaoxing"):
+        with caplog.at_level("WARNING", logger="app.services.chaoxing.sync_service"):
             with patch("app.api.routes.chaoxing.ChaoxingClient", return_value=client):
                 result = await _perform_sync_chaoxing(user, container)
         assert result["status"] == "sync completed"

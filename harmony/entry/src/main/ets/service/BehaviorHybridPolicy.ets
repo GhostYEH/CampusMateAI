@@ -82,7 +82,7 @@ export class BehaviorHybridPolicy {
   private static readonly LOW_CONFIDENCE: number = 0.45;
   private static readonly NARROW_MARGIN: number = 0.10;
   static readonly MINIMUM_CONFIDENCE: number = 0.35;
-  private static readonly MINIMUM_MARGIN: number = 0.05;
+  static readonly MINIMUM_MARGIN: number = 0.05;
   private static readonly SINGLE_LABELS: BehaviorV34Label[] = [
     BehaviorV34Label.READ,
     BehaviorV34Label.WRITE,

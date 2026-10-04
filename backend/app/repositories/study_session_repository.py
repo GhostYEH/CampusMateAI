@@ -21,8 +21,7 @@ pause_seconds 由每次 resume 时累加该次休息时长。
 from __future__ import annotations
 
 import json
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, List, Optional
 
 from ..core.exceptions import (
@@ -32,14 +31,7 @@ from ..core.exceptions import (
 )
 from ..database.sqlite_db import Database
 from ..models.study import StudyBreakRow, StudySessionRow
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:16]}"
+from ._multi_role_common import _new_id, _now_iso
 
 
 def _seconds_between(start_iso: str, end_iso: str) -> int:

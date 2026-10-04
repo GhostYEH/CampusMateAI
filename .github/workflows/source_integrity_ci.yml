@@ -1,0 +1,85 @@
+name: Source Integrity CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  source-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify replayable magic class patches
+        run: |
+          node scripts/magicclass-brand.mjs check
+          node scripts/magicclass-brand.mjs verify
+          node --test scripts/tests/magicclass-*.test.mjs
+      - name: Verify documented Web adapters
+        run: node --test scripts/tests/web-api-docs.test.mjs
+      - name: Verify Harmony behavior fallback on the host
+        run: node --test harmony/test-host/*.test.mjs
+
+  classmate-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.28.0'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: magicclass-app/pnpm-lock.yaml
+      - name: Install learning space dependencies
+        working-directory: magicclass-app
+        run: pnpm install --frozen-lockfile
+      - name: Verify classmate API, context and panes
+        working-directory: magicclass-app
+        run: >-
+          pnpm exec vitest run
+          tests/server/classmate-participation.test.ts
+          tests/lib/hooks/classmate-participation.test.ts
+          tests/components/roundtable/classmate-panes.test.ts
+
+  ml-cpu-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ml/behavior_recognition/requirements.txt
+      - name: Install the pinned ML packages with CPU PyTorch
+        working-directory: ml/behavior_recognition
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+          requirements = Path('requirements.txt').read_text().splitlines()
+          torch = [line for line in requirements if line.startswith(('torch==', 'torchvision=='))]
+          subprocess.run([sys.executable, '-m', 'pip', 'install', '--index-url',
+                          'https://download.pytorch.org/whl/cpu', *torch], check=True)
+          PY
+          python -m pip install -r requirements.txt
+      - name: Verify label provenance and experiment math without training
+        working-directory: ml/behavior_recognition
+        run: >-
+          python -m pytest -q
+          tests/test_sav_data.py
+          tests/test_sav_replay_experiment.py
+          tests/test_sav_blend_experiment.py
+          tests/test_l2sp_experiment.py
+          tests/test_finetune_regularization.py
+          tests/test_onnx_finetune.py

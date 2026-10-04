@@ -128,6 +128,7 @@ export class BehaviorSessionSummaryTracker {
 }
 
 export class BehaviorV34Decision {
+  static readonly MODEL_STATE: string = 'READY_BEHAVIOR_V34';
   static readonly TEMPERATURE: number = 4.841172366232762;
   static readonly MIN_CONFIDENCE: number = 0.30;
   static readonly MIN_MARGIN: number = 0.05;

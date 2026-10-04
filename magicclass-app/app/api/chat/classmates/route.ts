@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { callLLM } from '@/lib/ai/llm';
 import { isProviderKeyRequired } from '@/lib/ai/providers';
+import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
   buildClassmatePrompt,
@@ -12,6 +13,7 @@ import {
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 
 export const maxDuration = 60;
+const log = createLogger('Classmate Chat API');
 
 export async function POST(req: NextRequest) {
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof ClassmateRequestError) {
       return apiError('INVALID_REQUEST', error.status, error.message);
     }
+    log.error('Classmate generation failed:', error);
     return apiError(
       'GENERATION_FAILED',
       502,

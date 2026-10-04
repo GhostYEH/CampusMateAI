@@ -101,9 +101,16 @@ def verify_sav_provenance(rows: dict, prior: dict) -> dict:
     # Saved paths have the verified structure root/frames/clip/img_000031.jpg.
     first_image = Path(rows["train"][0]["image_path"])
     rebuilt, audit = build_sav_records(first_image.parents[2], prior["plan"]["split_dates"])
-    if audit != prior["plan"]["sav_audit"] or rebuilt != rows:
+    saved_audit = prior["plan"]["sav_audit"]
+    # Legacy runs can be reverified without training: exact rebuilt rows prove
+    # that their saved masks agree with the now-fingerprinted official map.
+    comparable_audit = audit if "label_provenance" in saved_audit else {
+        key: value for key, value in audit.items() if key != "label_provenance"
+    }
+    if comparable_audit != saved_audit or rebuilt != rows:
         raise ValueError("Prior SAV rows or annotation fingerprints changed")
     return {"samples": sum(map(len, rows.values())),
+            "label_provenance": audit["label_provenance"],
             "method": "exact rebuilt rows and original annotation SHA256 audit"}
 
 

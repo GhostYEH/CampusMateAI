@@ -341,7 +341,7 @@ def run_experiment(args) -> dict:
     test_original = evaluate(original, eval_loaders["test"], device)
     del original
     for arm in arms:
-        checkpoint = torch.load(root / arm["name"] / "best.pt", map_location="cpu", weights_only=False)
+        checkpoint = torch.load(root / arm["name"] / "best.pt", map_location="cpu", weights_only=True)
         if checkpoint["source_sha256"] != source_sha:
             raise ValueError("Checkpoint source mismatch")
         model = OnnxBehaviorModel(source).to(device)

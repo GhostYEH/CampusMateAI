@@ -35,7 +35,7 @@ object BehaviorHybridPolicy {
     private const val LOW_CONFIDENCE = 0.45f
     private const val NARROW_MARGIN = 0.10f
     const val MINIMUM_CONFIDENCE = 0.35f
-    private const val MINIMUM_MARGIN = 0.05f
+    const val MINIMUM_MARGIN = 0.05f
 
     fun shouldRunTemporal(
         single: BehaviorPrediction,

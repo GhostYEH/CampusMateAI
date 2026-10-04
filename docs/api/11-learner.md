@@ -147,7 +147,7 @@ Web 封装：`getStudentGoals`（[webreact/src/data/learnerStateApi.js](../../we
 
 实现：[backend/app/api/routes/student_goals.py](../../backend/app/api/routes/student_goals.py)，`get_goal`。
 
-Web 封装：`getStudentGoal`（[webreact/src/data/learnerStateApi.js](../../webreact/src/data/learnerStateApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 

@@ -12,13 +12,14 @@
 | `harmony/` | ArkTS / ArkUI HarmonyOS 客户端 |
 | `wx/` | TypeScript 微信小程序 |
 | `ml/` | 模型训练、评估、导出与可复现性材料 |
-| `magicclass-app/` | 上游 magic class v1.0.3 入库源码，供导航栏「学习空间」独立进程运行；允许的偏离只有 `scripts/magicclass-brand.mjs` 定义的品牌补丁，其余改动都会破坏 provenance（用 `node scripts/magicclass-brand.mjs verify` 逆向校验） |
+| `magicclass-app/` | 上游 magic class v1.0.3 入库源码，供导航栏「学习空间」独立进程运行；本地改动必须由 `scripts/magicclass-brand.mjs` 的品牌规则、`scripts/magicclass-feature.edits.json` 的可逆功能补丁或脚本中逐项说明的已声明偏离覆盖，并通过 `node scripts/magicclass-brand.mjs check` 与 `verify` 校验 |
 | `ios/` | iOS 客户端预留目录；当前不存在时不要自行创建 |
 | `.github/workflows/` | GitHub Actions；除 CI 专项任务外不要改动 |
 
 - 当前 Web 客户端唯一入口是 `webreact/`；旧的 `web/` Vue 客户端已移除。涉及 Web 代码时不要按 `web/` 查找或新建目录。
 - 不要随意删除任何端已有功能。修改跨端能力时，先检查后端契约和各客户端实现，明确需要同步的平台。
 - 优先复用现有 repository、service、组件、主题和模型转换流程，避免平行实现。
+- 修改 `magicclass-app/` 的功能时，现有上游文件的精确文本替换及新增文件内容必须同步到功能补丁清单；不得只修改入库源码或扩大已声明偏离来绕过校验。CI 的来源完整性门禁验证补丁状态和逆向还原。
 - 未经明确要求，不修改数据库结构、公开 API、模型格式或部署流程。
 
 ## 安全与仓库卫生

@@ -75,7 +75,7 @@ Web 封装：`getAgentCapabilities`（[webreact/src/data/agentRuntimeApi.js](../
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`get_skills`。
 
-Web 封装：`getAgentSkills`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 返回可发现的 Skill/MCP 元数据；执行仍必须经过 Runtime 治理。
 
@@ -274,7 +274,7 @@ Web 封装：`getAgentJob`（[webreact/src/data/agentRuntimeApi.js](../../webrea
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`list_runs`。
 
-Web 封装：`listAgentRuns`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -598,7 +598,7 @@ Web 封装：`retryAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../webr
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`list_events`。
 
-Web 封装：`getAgentRunEvents`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 
@@ -821,7 +821,7 @@ Web 封装：`getAgentArtifact`（[webreact/src/data/agentRuntimeApi.js](../../w
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`list_memories`。
 
-Web 封装：`listAgentMemories`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
@@ -843,7 +843,7 @@ Web 封装：`listAgentMemories`（[webreact/src/data/agentRuntimeApi.js](../../
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`create_memory`。
 
-Web 封装：`createAgentMemory`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
 
@@ -903,7 +903,7 @@ Web 封装：`createAgentMemory`（[webreact/src/data/agentRuntimeApi.js](../../
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`withdraw_memory`。
 
-Web 封装：`withdrawAgentMemory`（[webreact/src/data/agentRuntimeApi.js](../../webreact/src/data/agentRuntimeApi.js)）
+Web 封装：当前无封装；按本节后端契约调用。
 
 参数：
 

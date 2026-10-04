@@ -1,4 +1,4 @@
-import { formatTime } from "../../utils/date.js";
+import { formatTimestamp } from "../../utils/date.js";
 import {
   approvalStatusLabel,
   riskLevelLabel,
@@ -53,7 +53,7 @@ export default function ApprovalPanel({
         {approval.expires_at && (
           <>
             <dt>有效期至</dt>
-            <dd>{formatTime(approval.expires_at)}</dd>
+            <dd>{formatTimestamp(approval.expires_at)}</dd>
           </>
         )}
       </dl>

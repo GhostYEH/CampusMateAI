@@ -1,7 +1,8 @@
+import { formatRelativeTime } from "../../utils/date.js";
 import { useState, useEffect, useCallback } from 'react';
 import { useAsyncResource as useAsync } from '../../hooks/useAsyncResource.js';
 import * as api from '../../data/learnerStateApi.js';
-import { Spinner, ErrorBar, EmptyState, formatTime } from './shared.jsx';
+import { Spinner, ErrorBar, EmptyState } from './shared.jsx';
 
 function EvidenceDrawer({ snapshot, onClose, onCorrection }) {
   const [page, setPage] = useState(1);
@@ -59,7 +60,7 @@ function EvidenceDrawer({ snapshot, onClose, onCorrection }) {
               <p className="ls-evidence-item__kind">{EVIDENCE_KIND_LABEL[ev.evidence_kind] || ev.evidence_kind}</p>
               <p className="ls-evidence-item__source">{ev.source_category}</p>
               {ev.event_type && <p className="ls-evidence-item__type">{ev.event_type}</p>}
-              <p className="ls-evidence-item__time">{formatTime(ev.occurred_at)}</p>
+              <p className="ls-evidence-item__time">{formatRelativeTime(ev.occurred_at)}</p>
               <p className="ls-evidence-item__role">{ev.role === "SUPPORTS" ? "支持" : ev.role === "INVALIDATES" ? "否定" : "限制"}</p>
             </div>
           ))}

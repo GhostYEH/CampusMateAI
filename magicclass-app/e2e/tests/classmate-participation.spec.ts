@@ -176,6 +176,14 @@ test('playing each page generates distinct panes for selected classmates', async
   );
   expect(requests[0].agents.map((agent) => agent.id)).toEqual(['default-3', 'default-4']);
   expect(requests[0].agents.every((agent) => agent.persona.length > 0)).toBe(true);
+  const firstAvatar = panes.first().locator('[data-agent-id]');
+  const description = await panes.first().locator('header p[title]').last().getAttribute('title');
+  await firstAvatar.hover();
+  const personaCard = page.locator('[data-slot="hover-card-content"]');
+  await expect(personaCard).toBeVisible();
+  await expect(personaCard).toContainText(description!);
+  await page.mouse.move(500, 50);
+  await expect(personaCard).toBeHidden();
   await screenshot('classmates-light.png');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveClass(/dark/);
@@ -192,6 +200,13 @@ test('playing each page generates distinct panes for selected classmates', async
   expect(classmatesBox).not.toBeNull();
   expect(teacherBox!.y + teacherBox!.height).toBeLessThanOrEqual(classmatesBox!.y);
   await screenshot('classmates-presentation.png');
+  await firstAvatar.hover();
+  await expect(personaCard).toBeVisible();
+  expect(
+    await personaCard.evaluate((element) => document.fullscreenElement?.contains(element)),
+  ).toBe(true);
+  await page.mouse.move(500, 50);
+  await expect(personaCard).toBeHidden();
   await page.mouse.move(500, 700);
   await page.getByRole('button', { name: /exit fullscreen/i }).click();
   await expect(page.getByTestId('presentation-classmates')).toHaveCount(0);

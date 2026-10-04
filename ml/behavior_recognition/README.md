@@ -129,6 +129,18 @@ and simultaneous read/take_notes permits their probability sum. This preserves
 ambiguity in a mutually exclusive head; it does not learn simultaneous labels.
 Other SAV actions produce no negative or NO_VISIBLE_STUDY labels.
 
+Action IDs are resolved from the authors' [official label metadata](https://drive.google.com/file/d/1bRS5ia_9UUlBTRNuGvc8jBFv3lHLSseg/view),
+linked by [the SAV repository, step 5.4](https://github.com/Ritatanz/SAV#step-5-download-the-annotations-files-and-put-them-in-the-annotations-folder).
+The original file is bundled as `metadata/sav_action_labels.pbtxt`; its SHA256
+is `02210b6cbebbd0ab5119af5c1adc29cd6fd132f24676107f15bb493e44d7ade2`
+(retrieved 2026-10-04). It identifies action 5 as `read` and action 10 as
+`take_notes`. The reader checks this fingerprint before resolving names and
+records the source, full label table and target mapping in `plan.json`'s
+`sav_audit.label_provenance`. If the dataset also contains
+`annotations/education_first_label.pbtxt`, it must have the same ID/name table;
+its local hash is recorded too. A missing or modified packaged table, or a
+conflicting local table, stops the experiment before training.
+
 The selected ten videos must have completed downloads and verified
 `prepared_labels` JSON with timestamp 1 / frame 31, normalized boxes, and
 original action IDs. Whole source videos from the same date stay together:
@@ -168,6 +180,9 @@ fusion. It reuses the preceding SAV run's validation-selected `replay_plus_sav`
 checkpoint and verified ROI caches, without further training.
 Saved SAV labels and split rows must exactly match a fresh reconstruction from
 the preceding run's fingerprinted official annotations.
+This audit includes label metadata provenance. Legacy runs without it are
+accepted only when their saved labels exactly match reconstruction using the
+verified official map; the new blend plan records that map's provenance.
 
 ```powershell
 python -m behavior_recognition.sav_blend_experiment `

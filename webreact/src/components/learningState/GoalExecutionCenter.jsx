@@ -1,5 +1,6 @@
+import { formatRelativeTime } from "../../utils/date.js";
 import { useState, useEffect } from 'react';
-import { formatTime, EmptyState } from './shared.jsx';
+import { EmptyState } from './shared.jsx';
 
 const CANDIDATE_CLAIM_LABEL = {
   PRIORITIZE_NEAR_DEADLINE: "优先处理临近截止",
@@ -90,7 +91,7 @@ function GoalExecutionCenter({ goals, plans, jobs, summary, activeRun, onGenerat
           return (
             <article key={job.job_id} className="ls-goal-execution__run">
               <div><strong>{job.input_ref?.plan_id ? "学习计划" : "目标计划"}</strong><span aria-live="polite">{status}</span></div>
-              <small>{job.updated_at ? formatTime(job.updated_at) : ""}</small>
+              <small>{job.updated_at ? formatRelativeTime(job.updated_at) : ""}</small>
               {activeRun?.run_id === runId && activeRun.error?.message && <small>{activeRun.error.message}</small>}
               {runId && <div className="ls-goal-execution__actions">
                 {(status === "RUNNING" || status === "QUEUED") && <button className="ls-btn ls-btn--sm" onClick={() => onControl("pause", runId)} disabled={busy}>暂停</button>}

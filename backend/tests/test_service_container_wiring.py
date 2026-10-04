@@ -35,5 +35,11 @@ def test_learning_services_receive_shared_dependencies_at_construction(monkeypat
         assert snapshots["LearningPlannerService"]["notice_repository"] is services.notice_repository
         for name in ("LearningPlannerService", "AdaptiveInterventionService"):
             assert snapshots[name]["forecast_service"] is services.forecast_service
+        sync_dependencies = services.chaoxing_sync_service._dependencies
+        for name in (
+            "course_repository", "personal_task_repository", "chaoxing_repository",
+            "notice_repository", "notice_extraction", "learner_event_service",
+        ):
+            assert getattr(sync_dependencies, name) is getattr(services, name)
     finally:
         database.dispose()

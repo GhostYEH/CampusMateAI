@@ -114,9 +114,11 @@ class PersonAnalyzer(
     override fun analyze(frame: CameraFrame) {
         val currentDetector = detector ?: return
         val timestampMs = frame.timestampMs
+        // Camera frames use wall time; a backward clock adjustment starts a new interval.
         if (
             !running ||
             (lastInferenceAtMs != Long.MIN_VALUE &&
+                timestampMs >= lastInferenceAtMs &&
                 timestampMs - lastInferenceAtMs < config.inferenceIntervalMs) ||
             !inferenceInFlight.compareAndSet(false, true)
         ) {

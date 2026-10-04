@@ -1,6 +1,7 @@
+import { formatRelativeTime } from "../../utils/date.js";
 import { FORECAST_TYPE_LABEL, RISK_BAND_LABEL, PRESSURE_BAND_LABEL, OUTLOOK_BAND_LABEL, CONTINUITY_BAND_LABEL } from "../../features/learnerState/forecastLabels.js";
 import { useMemo } from 'react';
-import { EmptyState, QualityBadge, ConfidenceBadge, formatTime, DATA_QUALITY_LABEL } from './shared.jsx';
+import { EmptyState, QualityBadge, ConfidenceBadge, DATA_QUALITY_LABEL } from './shared.jsx';
 
 const CHANGE_LABEL = {
   ADDED: "新增",
@@ -44,7 +45,7 @@ function StateOverview({ snapshots, onViewEvidence, onMarkInaccurate }) {
               <QualityBadge quality={snap.data_quality} />
               <ConfidenceBadge confidence={snap.confidence} />
             </div>
-            <p className="ls-state-card__time">更新于 {formatTime(snap.computed_at)}</p>
+            <p className="ls-state-card__time">更新于 {formatRelativeTime(snap.computed_at)}</p>
             <div className="ls-state-card__actions">
               <button className="ls-link-btn" onClick={() => onViewEvidence(snap)}>查看依据</button>
               <button className="ls-link-btn ls-link-btn--warn" onClick={() => onMarkInaccurate(snap)}>这不准确</button>
@@ -68,7 +69,7 @@ function WorldSnapshotSection({ snapshots, onViewEvidence }) {
             <h3 className="ls-state-card__title">{STATE_TYPE_LABEL[snap.state_type] || snap.state_type}</h3>
             <p className="ls-state-card__value">{formatWorldValue(snap)}</p>
             <div className="ls-state-card__meta"><QualityBadge quality={snap.data_quality} /><ConfidenceBadge confidence={snap.confidence} /><span>{snap.evidence_count || 0} 条依据</span></div>
-            <p className="ls-state-card__time">更新于 {formatTime(snap.as_of || snap.computed_at)}</p>
+            <p className="ls-state-card__time">更新于 {formatRelativeTime(snap.as_of || snap.computed_at)}</p>
             <button className="ls-link-btn" onClick={() => onViewEvidence(snap)}>查看依据</button>
           </article>
         ))}
@@ -149,7 +150,7 @@ function ForecastSection({ forecasts }) {
             {list.map((f) => (
               <article key={f.forecast_id} className="ls-forecast-card">
                 <p className="ls-forecast-card__horizon">
-                  {formatTime(f.horizon_start)} 至 {formatTime(f.horizon_end)}
+                  {formatRelativeTime(f.horizon_start)} 至 {formatRelativeTime(f.horizon_end)}
                 </p>
                 <p className="ls-forecast-card__value">{formatForecastValue(f)}</p>
                 <div className="ls-forecast-card__meta">

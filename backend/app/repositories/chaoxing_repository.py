@@ -20,10 +20,15 @@ def _same_score(left, right) -> bool:
 
 
 class ChaoxingRepository:
+    """学习通凭据、平台事实及同步专用读模型。
+
+    同步快照包含跨领域的既有通知和待办；普通写入仍由各领域仓储负责。
+    """
+
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    def count_synced_items(self, user_id: str, kind: str) -> int:
+    def count_synced_items(self, *, user_id: str, kind: str) -> int:
         """读取当前用户已持久化的同步统计，不触发远端请求。"""
         queries = {
             "courses": "SELECT COUNT(*) AS n FROM courses WHERE owner_user_id = ? AND provider = 'chaoxing'",
@@ -37,10 +42,14 @@ class ChaoxingRepository:
             ),
             "notices": "SELECT COUNT(*) AS n FROM notices WHERE user_id = ? AND source = 'chaoxing'",
         }
+        try:
+            query = queries[kind]
+        except KeyError as error:
+            raise ValueError(f"Unsupported Chaoxing sync count: {kind}") from error
         with self._db.query() as conn:
-            return int(conn.execute(queries[kind], (user_id,)).fetchone()["n"])
+            return int(conn.execute(query, (user_id,)).fetchone()["n"])
 
-    def get_assignment_snapshot(self, user_id: str, external_id: str) -> dict | None:
+    def get_assignment_snapshot(self, *, user_id: str, external_id: str) -> dict | None:
         with self._db.query() as conn:
             row = conn.execute(
                 "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
@@ -48,7 +57,7 @@ class ChaoxingRepository:
             ).fetchone()
         return dict(row) if row is not None else None
 
-    def assignment_exists(self, user_id: str, external_id: str) -> bool:
+    def assignment_exists(self, *, user_id: str, external_id: str) -> bool:
         with self._db.query() as conn:
             row = conn.execute(
                 "SELECT id FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND external_id = ?",
@@ -56,7 +65,7 @@ class ChaoxingRepository:
             ).fetchone()
         return row is not None
 
-    def list_assignment_duplicate_candidates(self, user_id: str, course_ids: list[str]) -> list[dict]:
+    def list_assignment_duplicate_candidates(self, *, user_id: str, course_ids: list[str]) -> list[dict]:
         sql = "SELECT * FROM personal_tasks WHERE user_id = ? AND source = 'chaoxing' AND status != 'deleted'"
         params = [user_id]
         if course_ids:
@@ -67,7 +76,7 @@ class ChaoxingRepository:
             rows = conn.execute(sql, tuple(params)).fetchall()
         return [dict(row) for row in rows]
 
-    def scored_assignment_ids(self, user_id: str) -> set[str | None]:
+    def scored_assignment_ids(self, *, user_id: str) -> set[str | None]:
         with self._db.query() as conn:
             return {
                 row["external_id"]
@@ -78,7 +87,7 @@ class ChaoxingRepository:
                 ).fetchall()
             }
 
-    def get_notice_sync_snapshot(self, user_id: str, external_id: str) -> tuple[dict | None, dict | None]:
+    def get_notice_sync_snapshot(self, *, user_id: str, external_id: str) -> tuple[dict | None, dict | None]:
         """在同一查询上下文读取通知正文及其待办，保留空正文与无记录的区别。"""
         with self._db.query() as conn:
             notice = conn.execute(

@@ -1,4 +1,4 @@
-import { formatTime } from "../../utils/date.js";
+import { formatTimestamp } from "../../utils/date.js";
 import { artifactTypeLabel } from "../../data/agentContracts.js";
 
 /**
@@ -57,7 +57,7 @@ export default function ArtifactViewer({ artifact, onDownload, loading = false }
         {artifact.created_at && (
           <>
             <dt>生成时间</dt>
-            <dd>{formatTime(artifact.created_at)}</dd>
+            <dd>{formatTimestamp(artifact.created_at)}</dd>
           </>
         )}
       </dl>
