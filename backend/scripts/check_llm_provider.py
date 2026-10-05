@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import ssl
 import sys
 import time
 from dataclasses import dataclass
