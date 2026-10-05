@@ -86,7 +86,8 @@ docker compose -f deploy/docker/docker-compose.yml up --build
 ```
 
 - **配置优先级**：`backend` 依次加载 `backend/.env` 与 `deploy/docker/.env`，后者覆盖前者。注意 Compose 的 `env_file` 是**无条件覆盖**：某个键只要出现在 `deploy/docker/.env`（哪怕写成空的 `KEY=`）就会覆盖 `backend/.env` 的同名值。因此不想覆盖的键要保持注释或删除，不要写成 `KEY=`；`.env.example` 里的后端密钥默认已注释，直接复制不会抹掉 `backend/.env` 的有效配置。真实密钥只写进这两个 `.env`（均被 Git 忽略），禁止提交。
-- **可信反向代理**：`backend` 只信任 `webreact`(Nginx) 的固定容器地址（`FORWARDED_ALLOW_IPS`，默认 `172.28.0.2`）。因此二维码创建、每日壁纸等按客户端地址的限流经代理后仍按真实来源分离，客户端伪造 `X-Forwarded-For` 无效；宿主直连后端发布端口也不在信任范围内。若改动 `webreact` 的静态地址或子网，需同步该值；不要设成 `*`。
+- **可信反向代理**：`backend` 只信任 `webreact`(Nginx) 的固定容器地址（`FORWARDED_ALLOW_IPS`，默认 `172.28.0.2`）。动态服务仅从 `172.28.0.128/25` 分配地址，避开 Nginx `.2` 和后端 `.3`，完整四服务或视频导出五服务首次启动均不会抢占静态地址。客户端伪造 `X-Forwarded-For` 无效；宿主直连后端发布端口也不在信任范围内。若网段冲突，需同步修改 Compose 的 `subnet/ip_range/gateway`、两个静态地址及 `FORWARDED_ALLOW_IPS`，保持动态池与静态地址分离；不要设成 `*`。
+- **已有网络升级**：旧编排已创建的网络需要重建才能应用新的 IPAM 分配池。先执行 `docker compose -f deploy/docker/docker-compose.yml down`，再按上面的命令启动；不加 `-v`，保留已有数据卷。请在允许短暂停机时执行。
 - **首次初始化与已有卷**：有状态数据都落在具名卷。`magicclass-app` 以非 root 的 `nextjs` 运行，容器启动时先把 `/app/data` 属主修正为 `nextjs` 再降权运行，因此全新卷与旧的 root 所有卷都可写；重建容器数据保留，初始化不会覆盖已有数据。
 - **可选课堂 MP4 导出**：默认不启动渲染服务。需要时在 `deploy/docker/.env` 设 `NEXT_PUBLIC_ENABLE_VIDEO_EXPORT=true` 并用 `--profile video-export` 启动；渲染服务在容器网络内以 `http://render-service:9000` 暴露（编排已固定），`magicclass-app` 会探测其 `/health`，未启动则自动降级为仅下载 ZIP。渲染服务需要 `NET_ADMIN` 安装出网封锁（编排已配置），请勿改为 `privileged` 或关闭封锁。
 

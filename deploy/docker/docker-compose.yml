@@ -102,7 +102,7 @@ services:
         condition: service_healthy
     networks:
       campusmate:
-        # 固定地址，避免动态分配抢占 webreact 的静态地址 172.28.0.2。
+        # 静态地址位于动态分配池之外，保持代理信任边界稳定。
         ipv4_address: 172.28.0.3
     restart: unless-stopped
 
@@ -208,10 +208,14 @@ networks:
     # 精确配置成该地址（见 backend 的 FORWARDED_ALLOW_IPS），而不是信任整个
     # 私有网段 —— 否则宿主直连 backend 发布端口时也会被当成可信代理，
     # 客户端就能用伪造的 X-Forwarded-For 绕过按 peer 的限流。
-    # 若该网段与既有网络冲突，改这里的 subnet 并同步 backend 的 FORWARDED_ALLOW_IPS。
+    # 动态服务只使用后半个子网，避免先启动的服务占用静态地址 .2 / .3。
+    # 若网段冲突，需同步修改 subnet、ip_range、gateway、两个 ipv4_address
+    # 以及 backend 的 FORWARDED_ALLOW_IPS；动态池必须避开静态地址。
     ipam:
       config:
         - subnet: 172.28.0.0/24
+          ip_range: 172.28.0.128/25
+          gateway: 172.28.0.1
 
 volumes:
   backend-data:
