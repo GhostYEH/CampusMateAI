@@ -48,6 +48,7 @@ import com.example.campusai.ui.screens.shell.AppShell
 import com.example.campusai.ui.screens.tasks.isCurrentSemesterAssignment
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
+import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.glass.CampusGlassScene
 
 import kotlinx.coroutines.async
@@ -114,6 +115,7 @@ fun CampusAIApp(
     notificationInboxRepository: com.example.campusai.data.repository.NotificationInboxRepository,
 ) {
     val session by repository.session.collectAsStateWithLifecycle()
+    val reduceMotion = LocalReduceMotion.current
     val navController = rememberNavController()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
