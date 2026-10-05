@@ -1,0 +1,22 @@
+# 依赖与构建产物
+node_modules/
+*.tsbuildinfo
+
+# 服务自有数据库与本地数据
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 本地密钥
+.env
+.env.*
+!.env.example
+
+# 测试与版本控制
+tests/
+.git/
+.gitignore
+.idea/
+.vscode/

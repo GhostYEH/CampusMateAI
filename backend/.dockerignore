@@ -1,0 +1,35 @@
+# 本地虚拟环境
+.venv/
+.venv_check/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.pytest_tmp/
+
+# 本地密钥：绝不进镜像
+.env
+.env.*
+!.env.example
+
+# 本地运行期数据（SQLite / 上传 / 缓存 / 知识库）
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+roll.sqlite3
+wal.sqlite3
+
+# 测试与工具产物
+.pytest_cache/
+pytest-full.log
+openapi.json
+backend.txt
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.idea/
+.vscode/

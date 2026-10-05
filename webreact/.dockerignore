@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.vite/
+
+# 本地密钥
+.env
+.env.*
+!.env.example
+
+# 测试产物
+tests/
+playwright-report/
+test-results/
+
+# 版本控制与 IDE
+.git/
+.gitignore
+.idea/
+.vscode/

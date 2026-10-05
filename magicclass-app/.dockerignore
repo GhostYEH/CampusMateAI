@@ -1,12 +1,16 @@
 # dependencies
-node_modules
-.pnpm-store
+# 注意：必须用 **/ 递归匹配。无斜杠的 `node_modules` 只匹配根目录，
+# pnpm workspace 的嵌套依赖（packages/@magicclass/*/node_modules）会被漏掉，
+# 而它们是 Windows junction 软链接，拷进 Linux 镜像后失效，
+# 会遮蔽容器内 pnpm 正确安装的包，导致 next build 报 "Module not found"。
+**/node_modules
+**/.pnpm-store
 
-# build output
-.next
-out
-build
-dist
+# build output（同样递归：packages/*/dist 都是构建产物，由 postinstall 重新生成）
+**/.next
+**/out
+**/build
+**/dist
 
 # git
 .git

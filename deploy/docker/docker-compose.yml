@@ -1,0 +1,172 @@
+# CampusMate AI —— 四服务一键编排
+#
+# 用法（在仓库根目录）：
+#   cp deploy/docker/.env.example deploy/docker/.env   # 首次：填密钥
+#   docker compose -f deploy/docker/docker-compose.yml up --build
+#
+# 服务拓扑（与本地 start_all.bat 一致）：
+#   webreact(5174, Nginx)  --/api-->  backend(8000)
+#                                        |
+#                                        +--> magicclass-service(4010)   自研受管服务
+#                                        +--> magicclass-app(3000)       上游「学习空间」
+#
+# 说明：
+# - 只有 webreact(5174)、backend(8000)、magicclass-app(3000) 发布到宿主机，
+#   因为它们是浏览器要直接访问的入口；magicclass-service 只在容器网络内可见。
+# - 所有有状态数据（SQLite / 上传 / 缓存 / 知识库）都落在具名卷里，
+#   `docker compose down` 不会删数据；要清空用 `down -v`。
+
+name: campusmate
+
+services:
+  # ---------- 自研受管 magic class 服务（融合链路） ----------
+  magicclass-service:
+    build:
+      context: ../../magicclass-service
+    environment:
+      # 容器内必须监听 0.0.0.0，否则只绑 loopback，backend 连不上。
+      MAGICCLASS_HOST: 0.0.0.0
+      MAGICCLASS_PORT: "4010"
+      MAGICCLASS_DATABASE_URL: ./data/magicclass-service.db
+      # 与 backend 共享的断言密钥，缺了服务会拒绝启动（fail-closed）。
+      MAGICCLASS_INTERNAL_SECRET: ${MAGICCLASS_INTERNAL_SECRET:?请在 deploy/docker/.env 设置 MAGICCLASS_INTERNAL_SECRET}
+      # 可选：内容生成 / 多智能体讨论走 OpenAI 兼容端点（不配则降级到本地模板）。
+      MAGICCLASS_PROVIDER_BASE_URL: ${MAGICCLASS_PROVIDER_BASE_URL:-}
+      MAGICCLASS_PROVIDER_API_KEY: ${MAGICCLASS_PROVIDER_API_KEY:-}
+      MAGICCLASS_PROVIDER_MODEL: ${MAGICCLASS_PROVIDER_MODEL:-}
+      # 可选：课堂语音合成（MiMo TTS）。
+      MAGICCLASS_TTS_BASE_URL: ${MAGICCLASS_TTS_BASE_URL:-}
+      MAGICCLASS_TTS_API_KEY: ${MAGICCLASS_TTS_API_KEY:-}
+    volumes:
+      - magicclass-service-data:/app/data
+    networks:
+      - campusmate
+    restart: unless-stopped
+
+  # ---------- FastAPI 后端 ----------
+  backend:
+    build:
+      context: ../../backend
+    # 复用本机已有的 backend/.env（LLM / 火山 / MiMo / UAPI 等密钥都在这里）。
+    # 不存在时不报错——密钥也可以直接写进 deploy/docker/.env。
+    env_file:
+      - path: ../../backend/.env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_HOST: 0.0.0.0
+      APP_PORT: "8000"
+      DATABASE_URL: sqlite:///./data/app.db
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:*,http://127.0.0.1:*}
+      # 本地起开发栈时默认准备演示账号（与 start_all.bat 行为一致）。
+      AUTO_SEED_DEMO_USERS: ${AUTO_SEED_DEMO_USERS:-true}
+
+      # ---- magic class 融合链路（三个键缺一个，workspaces 路由就回 503）----
+      MAGICCLASS_FUSION_ENABLED: "true"
+      MAGICCLASS_SERVICE_URL: http://magicclass-service:4010
+      MAGICCLASS_INTERNAL_SECRET: ${MAGICCLASS_INTERNAL_SECRET:?请在 deploy/docker/.env 设置 MAGICCLASS_INTERNAL_SECRET}
+
+      # ---- 导航栏「学习空间」（三个键缺一个，入口只显示"尚未启用"）----
+      MAGICCLASS_ENABLED: "true"
+      # 内部地址：只有服务端可见，走容器网络。
+      MAGICCLASS_BASE_URL: http://magicclass-app:3000
+      # 浏览器公开地址：必须是浏览器真正能打开的地址（这里=宿主机映射后的 3000）。
+      MAGICCLASS_EMBED_ORIGIN: ${MAGICCLASS_EMBED_ORIGIN:-http://localhost:3000}
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      magicclass-service:
+        condition: service_healthy
+    networks:
+      - campusmate
+    restart: unless-stopped
+
+  # ---------- 上游「学习空间」应用（Next.js standalone） ----------
+  magicclass-app:
+    build:
+      context: ../../magicclass-app
+      args:
+        # 构建期变量：放行本站 Origin 内嵌课堂。改了要重新 build。
+        ALLOWED_FRAME_ANCESTORS: ${ALLOWED_FRAME_ANCESTORS:-http://localhost:5174 http://127.0.0.1:5174}
+        # 构建期网络：国内镜像源 / 宿主机代理（见 deploy/docker/.env）。
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTPS_PROXY:-}
+        NO_PROXY: ${BUILD_NO_PROXY:-}
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      # standalone 用 `node server.js` 启动，不经过 npm，因此 npm_package_version
+      # 取不到，/api/health 会回落成硬编码 0.1.0。这里显式补上真实版本。
+      npm_package_version: "1.0.3"
+      # 服务端默认模型（不配时服务端 stage 会因解析不到模型而失败）。
+      DEFAULT_MODEL: ${MAGICCLASS_APP_DEFAULT_MODEL:-}
+      # 可选：上游自己的 LLM / TTS / ASR Provider 密钥（按需填，不填则对应能力不可用）。
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      XIAOMI_API_KEY: ${XIAOMI_API_KEY:-}
+      XIAOMI_BASE_URL: ${XIAOMI_BASE_URL:-}
+      TTS_MIMO_API_KEY: ${TTS_MIMO_API_KEY:-}
+      TTS_MIMO_BASE_URL: ${TTS_MIMO_BASE_URL:-}
+    volumes:
+      - magicclass-app-data:/app/data
+    ports:
+      - "${MAGICCLASS_APP_PORT:-3000}:3000"
+    networks:
+      - campusmate
+    restart: unless-stopped
+
+  # ---------- Web 前端（React + Vite 静态产物，Nginx 托管） ----------
+  webreact:
+    build:
+      context: ../../webreact
+      args:
+        # 构建期网络：国内镜像源 / 宿主机代理（见 deploy/docker/.env）。
+        NPM_REGISTRY: ${NPM_REGISTRY:-}
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTPS_PROXY:-}
+        NO_PROXY: ${BUILD_NO_PROXY:-}
+    ports:
+      - "${WEB_PORT:-5174}:5174"
+    depends_on:
+      - backend
+    networks:
+      - campusmate
+    restart: unless-stopped
+
+  # ---------- 可选：隔离的 MP4 导出服务（重，默认不启动） ----------
+  #   docker compose -f deploy/docker/docker-compose.yml --profile video-export up --build
+  render-service:
+    profiles:
+      - video-export
+    build:
+      context: ../../magicclass-app/render-service
+      args:
+        HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+        HTTPS_PROXY: ${BUILD_HTTPS_PROXY:-}
+        NO_PROXY: ${BUILD_NO_PROXY:-}
+    expose:
+      - "9000"
+    environment:
+      PORT: "9000"
+      RENDER_RESOURCE_PROFILE: ${RENDER_RESOURCE_PROFILE:-standard}
+      PRODUCER_HEADLESS_SHELL_PATH: /usr/bin/chromium-headless-shell
+    mem_limit: ${RENDER_SERVICE_MEMORY_LIMIT:-8g}
+    shm_size: 2gb
+    networks:
+      - campusmate
+    restart: unless-stopped
+
+networks:
+  campusmate:
+    driver: bridge
+
+volumes:
+  backend-data:
+  magicclass-service-data:
+  magicclass-app-data:
