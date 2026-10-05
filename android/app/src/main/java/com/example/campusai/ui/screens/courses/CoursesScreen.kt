@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -575,7 +576,7 @@ internal fun CourseDetailSheet(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp))
                         .background(Brush.horizontalGradient(listOf(Color(0xFF132F2A), Color(0xFF315243), Color(0xFF6B6044))))
                         .border(1.dp, Color(0xFFC2A878), RoundedCornerShape(5.dp))
-                        .height(150.dp),
+                        .height(128.dp),
                 ) {
                     Box(Modifier.width(15.dp).fillMaxHeight().background(Color(0xFF102721))
                         .border(1.dp, Color(0x77E1C891)))
@@ -596,7 +597,7 @@ internal fun CourseDetailSheet(
                 Row(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF214A3A))
                     .border(1.dp, Color(0xFFB69B68), RoundedCornerShape(8.dp))
-                    .campusClickable { onOpenClassroom(course.id) }.padding(horizontal = 18.dp),
+                    .clickable { onOpenClassroom(course.id) }.padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFFF1DDB1))
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
@@ -610,14 +611,14 @@ internal fun CourseDetailSheet(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("课程内容来自学习通", color = Muted, fontSize = 12.sp)
                     Text("带着课程去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.campusClickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
+                        modifier = Modifier.clickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("课程目录", color = DetailForest, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("${content.size} 项", color = Muted, fontSize = 12.sp)
-                    Box(Modifier.size(42.dp).clip(CircleShape).campusClickable(enabled = !syncing) {
+                    Box(Modifier.size(42.dp).clip(CircleShape).clickable(enabled = !syncing) {
                         syncing = true
                         error = null
                         scope.launch {
@@ -655,7 +656,7 @@ internal fun CourseDetailSheet(
                                 Modifier.clip(CircleShape)
                                     .background(if (selected) DetailForest else Color.White.copy(alpha = .55f))
                                     .border(1.dp, if (selected) DetailGold else DetailForest.copy(alpha = .18f), CircleShape)
-                                    .campusClickable { filter = item }
+                                    .clickable { filter = item }
                                     .padding(horizontal = 17.dp, vertical = 9.dp),
                                 contentAlignment = Alignment.Center,
                             ) { Text("$item $count", color = if (selected) Color.White else DetailForest, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
@@ -680,10 +681,10 @@ internal fun CourseDetailSheet(
                         modifier = Modifier.fillMaxWidth()
                             .background(Color(0x77FFFDF5))
                             .border(1.dp, DetailGold.copy(alpha = .26f))
-                            .campusClickable {
+                            .clickable {
                                 if (item.kind == "notice") {
                                     selectedNotice = item
-                                    return@campusClickable
+                                    return@clickable
                                 }
                                 scope.launch {
                                     try {

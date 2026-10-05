@@ -420,15 +420,15 @@ fun InteractiveClassroomSection(
 
     Column(
         Modifier.fillMaxWidth().padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF193E35), Color(0xFF4F6A4A), Color(0xFF8B7650))), RoundedCornerShape(22.dp)).padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("为这门课定制课堂", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("选学习方式，再决定使用哪些资料", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
+                Text("备课台", color = Color(0xFF1B3B32), fontWeight = FontWeight.Bold, fontSize = 21.sp)
+                Text("选讲法 · 定目标 · 挑资料", color = Color(0xFF61746A), fontSize = 12.sp)
             }
             Text(if (state.loading) "检测中" else state.serviceState.label,
-                color = Color(0xFFF0DDAE),
+                color = Color(0xFF7D6135),
                 fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         val serviceReady = state.serviceState == InteractiveClassroomServiceState.AVAILABLE ||
@@ -454,14 +454,17 @@ fun InteractiveClassroomSection(
         }
         if (canCreateClassroom) state.plan?.let { plan ->
             if (state.progress.sessionId == null) {
-                Column(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFFF7F2E5), Color(0xFFE6EFE6))), RoundedCornerShape(20.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.fillMaxWidth().background(Color(0xFFF8F3E7), RoundedCornerShape(6.dp))
+                    .border(1.dp, Color(0xFFCDBD9E), RoundedCornerShape(6.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     IntentChooser(state.selectedMode, state.serviceState, viewModel::selectMode)
                     StudentBrief(state, viewModel)
-                    Row(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFFDCEAE0), Color(0xFFEADFC8))), RoundedCornerShape(16.dp))
-                        .clickable { showMaterials = true }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().background(Color(0xFFE8DFC9), RoundedCornerShape(5.dp))
+                        .border(1.dp, Color(0xFFCDBD9E), RoundedCornerShape(5.dp))
+                        .clickable { showMaterials = true }.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("选择课程资料", color = Color(0xFF1D493B), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("已选 ${state.selectedMaterialIds.size} / ${plan.materials.size} 项 · 进入资料库", color = Muted, fontSize = 11.sp)
+                            Text("03  挑选课程资料", color = Color(0xFF1D493B), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("已选 ${state.selectedMaterialIds.size} / ${plan.materials.size} 项", color = Muted, fontSize = 11.sp)
                         }
                         Text("›", color = Color(0xFF1D493B), fontSize = 24.sp)
                     }
@@ -547,29 +550,39 @@ fun InteractiveClassroomSection(
 
 @Composable
 private fun IntentChooser(mode: String, serviceState: InteractiveClassroomServiceState, onSelect: (String) -> Unit) {
-    Text("学习方式", color = Color(0xFF1C493A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        com.example.campusai.data.classroom.ClassroomIntentCatalog.all.forEach { intent ->
-            val selected = mode == intent.wire
-            Text(intent.label, modifier = Modifier.background(
-                if (selected) Brush.horizontalGradient(listOf(Color(0xFF1B493A), Color(0xFF51704F)))
-                else Brush.horizontalGradient(listOf(Color(0xFFE0EBE3), Color(0xFFF0EEE1))), CircleShape)
-                .border(1.dp, if (selected) Color(0xFFC3AA72) else Color(0x553B6956), CircleShape)
-                .clickable { onSelect(intent.wire) }.padding(horizontal = 14.dp, vertical = 10.dp),
-                color = if (selected) Color.White else Color(0xFF285141), fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1)
+    Text("01  选择讲法", color = Color(0xFF1C493A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    com.example.campusai.data.classroom.ClassroomIntentCatalog.all.chunked(3).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            row.forEach { intent ->
+                val selected = mode == intent.wire
+                Text(intent.label, modifier = Modifier.weight(1f)
+                    .background(if (selected) Color(0xFF214B3B) else Color(0xFFF7F3E8), RoundedCornerShape(5.dp))
+                    .border(1.dp, if (selected) Color(0xFFAA8856) else Color(0xFFCDBD9E), RoundedCornerShape(5.dp))
+                    .clickable { onSelect(intent.wire) }.padding(vertical = 10.dp),
+                    color = if (selected) Color.White else Color(0xFF285141), fontSize = 11.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1)
+            }
         }
     }
+    Text(com.example.campusai.data.classroom.ClassroomIntentCatalog.normalize(mode).description,
+        color = Muted, fontSize = 11.sp)
     if (serviceState == InteractiveClassroomServiceState.DEGRADED) Text("当前为降级服务，生成结果可能缺少部分能力。", color = ColorWarning, fontSize = 11.sp)
 }
 
 @Composable
 private fun StudentBrief(state: InteractiveClassroomUiState, viewModel: InteractiveClassroomViewModel) {
-    OutlinedTextField(state.learningObjective, viewModel::updateLearningObjective, Modifier.fillMaxWidth(), label = { Text("学习目标（可选）") }, placeholder = { Text("例如：掌握链表插入与删除") }, singleLine = false, minLines = 2)
+    Text("02  学习目标与时长", color = Color(0xFF1C493A), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    OutlinedTextField(state.learningObjective, viewModel::updateLearningObjective, Modifier.fillMaxWidth(), label = { Text("这节课想弄懂什么？（可选）") }, placeholder = { Text("例如：掌握链表插入与删除") }, singleLine = true)
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-        Text("时长", color = Muted, fontSize = 11.sp)
         listOf(15, 30, 45, 60).forEach { minutes ->
-            OutlinedButton(onClick = { viewModel.updateDuration(minutes) }, contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp), border = BorderStroke(1.dp, if (state.desiredDurationMinutes == minutes) Primary else Line)) { Text("${minutes}分", fontSize = 11.sp) }
+            val selected = state.desiredDurationMinutes == minutes
+            Text("${minutes} 分", modifier = Modifier.weight(1f)
+                .background(if (selected) Color(0xFF214B3B) else Color(0xFFF7F3E8), RoundedCornerShape(5.dp))
+                .border(1.dp, if (selected) Color(0xFFAA8856) else Color(0xFFCDBD9E), RoundedCornerShape(5.dp))
+                .clickable { viewModel.updateDuration(minutes) }.padding(vertical = 11.dp),
+                color = if (selected) Color.White else Color(0xFF285141), fontSize = 11.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -646,8 +659,15 @@ private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: Intera
         items.forEach { item ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(item.mode ?: "互动课堂", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text(item.createdAt ?: "历史记录", color = Muted, fontSize = 10.sp)
+                    Text(com.example.campusai.data.classroom.ClassroomIntentCatalog.labelOf(item.mode),
+                        fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    val createdAt = item.createdAt?.let { raw ->
+                        runCatching {
+                            java.time.OffsetDateTime.parse(raw).atZoneSameInstant(java.time.ZoneId.systemDefault())
+                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                        }.getOrDefault(raw.take(16).replace('T', ' '))
+                    } ?: "历史记录"
+                    Text(createdAt, color = Muted, fontSize = 11.sp)
                 }
                 val safe = if (status?.browserEmbedAvailable == true) {
                     ClassroomUrlPolicy.sanitize(item.url, listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
