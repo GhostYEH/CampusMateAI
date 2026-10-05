@@ -561,32 +561,41 @@ internal fun CourseDetailSheet(
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFFE8EBDF),
-        shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+        containerColor = Color(0xFFF0E9D8),
+        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f)
-                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF0EBDD), Color(0xFFE4EBDD), Color(0xFFDCE8E2)))),
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF5EFDF), Color(0xFFEDE4D0)))),
             contentPadding = PaddingValues(start = 22.dp, end = 22.dp, bottom = 34.dp),
-            verticalArrangement = Arrangement.spacedBy(15.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item { Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFF12372F), Color(0xFF416148), Color(0xFF7E6946))))
-                .border(1.dp, Color(0x77E9D4A5), RoundedCornerShape(20.dp))
-                .padding(20.dp), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("课程藏书  /  ${course.type}", color = Color(0xFFF0D9A6), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    Text(course.name, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(listOf(summary?.teacher_name ?: course.teacher, summary?.class_name ?: course.code)
-                        .filter(String::isNotBlank).joinToString(" · "),
-                        color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
-                }
-                Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFF0D9A6), modifier = Modifier.size(28.dp))
-            } }
             item {
-                Row(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Brush.horizontalGradient(listOf(Color(0xFF173D33), Color(0xFF315E46), Color(0xFF6D6743))))
-                    .border(1.dp, Color(0xCCBDAA75), RoundedCornerShape(16.dp))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF132F2A), Color(0xFF315243), Color(0xFF6B6044))))
+                        .border(1.dp, Color(0xFFC2A878), RoundedCornerShape(5.dp))
+                        .height(150.dp),
+                ) {
+                    Box(Modifier.width(15.dp).fillMaxHeight().background(Color(0xFF102721))
+                        .border(1.dp, Color(0x77E1C891)))
+                    Column(Modifier.weight(1f).padding(17.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("课程藏书  /  ${course.type}", color = Color(0xFFF0D9A6), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(course.name, color = Color.White, fontSize = 22.sp, lineHeight = 26.sp,
+                            fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(listOf(summary?.teacher_name ?: course.teacher, summary?.class_name ?: course.code)
+                            .filter(String::isNotBlank).joinToString(" · "),
+                            color = Color.White.copy(alpha = .84f), fontSize = 12.sp,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFF0D9A6),
+                        modifier = Modifier.padding(top = 19.dp, end = 15.dp).size(25.dp))
+                }
+            }
+            item {
+                Row(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF214A3A))
+                    .border(1.dp, Color(0xFFB69B68), RoundedCornerShape(8.dp))
                     .campusClickable { onOpenClassroom(course.id) }.padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFFF1DDB1))
@@ -599,14 +608,14 @@ internal fun CourseDetailSheet(
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("课程资料来自学习通", color = Muted, fontSize = 12.sp)
+                    Text("课程内容来自学习通", color = Muted, fontSize = 12.sp)
                     Text("带着课程去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.campusClickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("课程内容", color = DetailForest, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("课程目录", color = DetailForest, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("${content.size} 项", color = Muted, fontSize = 12.sp)
                     Box(Modifier.size(42.dp).clip(CircleShape).campusClickable(enabled = !syncing) {
                         syncing = true
@@ -621,10 +630,11 @@ internal fun CourseDetailSheet(
                         }
                     }, contentAlignment = Alignment.Center) {
                         if (syncing) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Refresh, contentDescription = "更新课程内容", tint = DetailForest)
+                        else Icon(Icons.Default.Refresh, contentDescription = "更新这门课的目录", tint = DetailForest)
                     }
                 }
             }
+            item { Text("右侧按钮只更新这门课的章节、资料与通知", color = Muted, fontSize = 11.sp) }
             if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
             summary?.sections?.let { sections ->
@@ -667,9 +677,9 @@ internal fun CourseDetailSheet(
                 itemsIndexed(visible, key = { _, item -> item.id }) { _, item ->
                     val icon = when (item.kind) { "notice" -> Icons.Default.Notifications; "assignment" -> Icons.Default.TaskAlt; "document" -> Icons.Default.Description; else -> Icons.Default.FolderOpen }
                     Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                            .background(Brush.horizontalGradient(listOf(Color(0xFFFAF8EF), Color(0xFFE8EFE5))))
-                            .border(1.dp, DetailGold.copy(alpha = .25f), RoundedCornerShape(18.dp))
+                        modifier = Modifier.fillMaxWidth()
+                            .background(Color(0x77FFFDF5))
+                            .border(1.dp, DetailGold.copy(alpha = .26f))
                             .campusClickable {
                                 if (item.kind == "notice") {
                                     selectedNotice = item
@@ -704,11 +714,11 @@ internal fun CourseDetailSheet(
                                         downloadFailure = item to "network_error"
                                     }
                                 }
-                            }.padding(15.dp),
+                            }.padding(horizontal = 12.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(DetailForest.copy(alpha = .1f)), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(34.dp).background(DetailForest.copy(alpha = .09f)), contentAlignment = Alignment.Center) {
                             Icon(icon, null, tint = DetailForest, modifier = Modifier.size(19.dp))
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
