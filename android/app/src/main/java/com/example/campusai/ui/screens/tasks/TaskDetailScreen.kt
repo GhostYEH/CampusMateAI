@@ -25,8 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -91,10 +89,10 @@ fun TaskDetailScreen(
     var showSource by remember { mutableStateOf(false) }
     var stampVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val pageAngle = remember(taskId) { Animatable(if (reduceMotion) 0f else -72f) }
+    val pageTurnProgress = remember(taskId) { Animatable(if (reduceMotion) 1f else 0f) }
     LaunchedEffect(taskId, reduceMotion) {
-        if (reduceMotion) pageAngle.snapTo(0f)
-        else if (pageAngle.value != 0f) pageAngle.animateTo(0f, tween(durationMillis = 480, easing = FastOutSlowInEasing))
+        if (reduceMotion) pageTurnProgress.snapTo(1f)
+        else if (pageTurnProgress.value != 1f) pageTurnProgress.animateTo(1f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
     }
     DisposableEffect(taskId) {
         val pageSound = runCatching { MediaPlayer.create(context, R.raw.task_page_turn) }.getOrNull()
@@ -124,13 +122,9 @@ fun TaskDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         JournalBackdrop(Modifier.fillMaxSize())
-        Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp)
-            .graphicsLayer {
-                rotationY = pageAngle.value
-                transformOrigin = TransformOrigin(0f, .5f)
-                cameraDistance = 1000.dp.toPx()
-            }
-            .journalBookPage().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 5.dp, top = 9.dp)) {
+        Box(Modifier.fillMaxSize().statusBarsPadding().padding(start = 12.dp, end = 31.dp, top = 8.dp)) {
+        Column(Modifier.fillMaxSize().journalBookPage().verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 5.dp, top = 9.dp)) {
             Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 JournalBackButton(onClick = ::handleBack, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回待办", tint = JournalNight)
@@ -426,6 +420,10 @@ fun TaskDetailScreen(
 
             // Bottom spacing for dock
             Spacer(Modifier.height(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 28.dp))
+        }
+        if (!reduceMotion && pageTurnProgress.value < 1f) {
+            JournalCornerPageTurn(pageTurnProgress.value, Modifier.matchParentSize())
+        }
         }
     }
 

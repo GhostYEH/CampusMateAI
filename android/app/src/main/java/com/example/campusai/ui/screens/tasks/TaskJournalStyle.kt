@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.graphicsLayer
@@ -32,10 +33,11 @@ internal val JournalAmber = Color(0xFFC58B55)
 internal val JournalNight = Color(0xFF263B50)
 internal val JournalClay = Color(0xFFAA684D)
 internal val JournalBlue = Color(0xFF6D8B9B)
+private val JournalBookShape = RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomEnd = 4.dp, bottomStart = 4.dp)
 
 /** One continuous open page: a narrow visible spine, warm paper and quiet ruled lines. */
 internal fun Modifier.journalBookPage(): Modifier = this
-    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
+    .clip(JournalBookShape)
     .background(Brush.horizontalGradient(listOf(Color(0xFFD1C2A7), Color(0xFFF3EBDD), Color(0xFFFFFAEF), Color(0xFFF0E8DA))))
     .drawBehind {
         val spine = 12.dp.toPx()
@@ -49,7 +51,57 @@ internal fun Modifier.journalBookPage(): Modifier = this
             drawCircle(Color(0x0FA88460), .55.dp.toPx(), Offset(size.width * (column + .4f) / 12f, size.height * (row + .3f) / 36f))
         }
     }
-    .border(1.dp, Color(0x88C7B798), RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
+    .border(1.dp, Color(0x88C7B798), JournalBookShape)
+
+/** Reveals the next page along a crease that travels from the lower-right corner upward. */
+@Composable
+internal fun JournalCornerPageTurn(progress: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier.clip(JournalBookShape)) {
+        val turn = progress.coerceIn(0f, 1f) * 2f
+        val width = size.width
+        val height = size.height
+        val cover = Path()
+        val creaseStart: Offset
+        val creaseEnd: Offset
+        if (turn <= 1f) {
+            creaseStart = Offset(width * (1f - turn), height)
+            creaseEnd = Offset(width, height * (1f - turn))
+            cover.moveTo(0f, 0f)
+            cover.lineTo(width, 0f)
+            cover.lineTo(creaseEnd.x, creaseEnd.y)
+            cover.lineTo(creaseStart.x, creaseStart.y)
+            cover.lineTo(0f, height)
+        } else {
+            val remaining = 2f - turn
+            creaseStart = Offset(0f, height * remaining)
+            creaseEnd = Offset(width * remaining, 0f)
+            cover.moveTo(0f, 0f)
+            cover.lineTo(creaseEnd.x, creaseEnd.y)
+            cover.lineTo(creaseStart.x, creaseStart.y)
+        }
+        cover.close()
+        drawPath(cover, Brush.horizontalGradient(listOf(Color(0xFFD8C8AC), Color(0xFFF8F0E2), Color(0xFFF1E7D6))))
+        clipPath(cover) {
+            for (row in 0..70) {
+                val y = row * 22.dp.toPx()
+                drawLine(Color(0x18A78968), Offset(14.dp.toPx(), y), Offset(width, y), .6.dp.toPx())
+            }
+        }
+        if (turn > 0.01f && turn < 1.99f) {
+            val foldSize = if (turn <= 1f) 1f - .3f * turn else .7f * (2f - turn)
+            val flap = Path().apply {
+                moveTo(creaseStart.x, creaseStart.y)
+                lineTo(creaseEnd.x, creaseEnd.y)
+                lineTo(width * foldSize, height * foldSize)
+                close()
+            }
+            drawPath(flap, Brush.linearGradient(listOf(Color(0xFFD4BFA0), Color(0xFFF8F0E2))))
+            val shadow = kotlin.math.sin(Math.PI * progress.toDouble()).toFloat().coerceAtLeast(0f)
+            drawLine(Color(0x66735D4B).copy(alpha = .34f * shadow), creaseStart, creaseEnd, 10.dp.toPx())
+            drawLine(Color(0xFFCCBA9F).copy(alpha = .9f * shadow), creaseStart, creaseEnd, 1.5.dp.toPx())
+        }
+    }
+}
 
 internal fun Modifier.journalPaper(shape: Shape = RoundedCornerShape(24.dp)): Modifier =
     this.clip(shape)
