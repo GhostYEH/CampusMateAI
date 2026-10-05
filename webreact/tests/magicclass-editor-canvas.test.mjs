@@ -9,7 +9,7 @@ const read = (relative) => readFileSync(
 );
 
 const editorSource = read("src/components/magicclass/StageEditorPanel.jsx");
-const canvasSource = read("src/maic/edit/StageCanvasPreview.jsx");
+const canvasSource = read("src/magicclass/edit/StageCanvasPreview.jsx");
 
 test("the workbench editor reads a full stage document for its selected canvas", () => {
   assert.match(editorSource, /api\.getMagicClassStage\(courseId, workspaceId, stageId\)/);
@@ -30,7 +30,7 @@ test("loading a full stage keeps action definitions instead of replacing them wi
 });
 
 test("the editor preview reuses the playback slide surface", () => {
-  assert.match(canvasSource, /<MaicSlideSurface canvas=\{canvas\}/);
+  assert.match(canvasSource, /<MagicClassSlideSurface canvas=\{canvas\}/);
   assert.match(canvasSource, /data-maic-edit-canvas="true"/);
   assert.match(canvasSource, /flex flex-col h-full/);
 });

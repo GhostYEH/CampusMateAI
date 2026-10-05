@@ -162,27 +162,27 @@
 .magicclass-stage-editor__workspace > .magicclass-scene-list { min-height: 0; }
 .magicclass-scene-item__select { display: block; flex: 1 1 120px; min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .magicclass-scene-item__select:focus-visible { outline: 2px solid #b9c7f0; outline-offset: 2px; border-radius: 5px; }
-.maic-edit-canvas { min-width: 0; min-height: 0; overflow: hidden; border-radius: 12px; background: #f8fafc; box-shadow: inset 0 0 0 1px var(--line); }
-.maic-edit-canvas__surface { background: #f8fafc; }
-.maic-edit-canvas__selection { position: absolute; z-index: 20; pointer-events: none; border: 2px solid #722ed1; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.9), 0 0 0 4px rgba(114,46,209,.14); }
-.maic-edit-canvas__resize-handle, .maic-edit-canvas__rotate-handle { position: absolute; z-index: 2; pointer-events: auto; display: block; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #722ed1; box-shadow: 0 1px 4px rgba(45,37,96,.3); }
-.maic-edit-canvas__resize-handle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
-.maic-edit-canvas__resize-handle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
-.maic-edit-canvas__resize-handle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
-.maic-edit-canvas__resize-handle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
-.maic-edit-canvas__rotate-handle { left: 50%; top: -25px; transform: translateX(-50%); cursor: grab; background: #1677ff; }
-.maic-edit-canvas__rotate-handle::after { content: ''; position: absolute; left: 50%; top: 7px; width: 1px; height: 16px; background: #1677ff; }
-.maic-edit-canvas__ruler { position: absolute; z-index: 21; pointer-events: none; color: #7b88a0; font-size: 9px; }
-.maic-edit-canvas__ruler--x { left: 0; right: 0; top: 4px; height: 14px; border-top: 1px solid rgba(114,46,209,.25); }
-.maic-edit-canvas__ruler--y { top: 0; bottom: 0; left: 4px; width: 20px; border-left: 1px solid rgba(114,46,209,.25); }
-.maic-edit-canvas__ruler span { position: absolute; }
-.maic-edit-canvas__ruler--y span { transform: rotate(-90deg); transform-origin: left top; }
-.maic-edit-canvas__alignment-guide { position: absolute; z-index: 19; pointer-events: none; display: block; background: rgba(22,119,255,.55); }
-.maic-edit-canvas__alignment-guide--x { left: 0; right: 0; top: 50%; height: 1px; }
-.maic-edit-canvas__alignment-guide--y { top: 0; bottom: 0; left: 50%; width: 1px; }
-.maic-edit-canvas__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; height: 100%; padding: 20px; color: var(--muted); text-align: center; }
-.maic-edit-canvas__empty strong { color: var(--ink); font-size: 13px; }
-.maic-edit-canvas__empty p { margin: 0; font-size: 12px; }
+.magicclass-edit-canvas { min-width: 0; min-height: 0; overflow: hidden; border-radius: 12px; background: #f8fafc; box-shadow: inset 0 0 0 1px var(--line); }
+.magicclass-edit-canvas__surface { background: #f8fafc; }
+.magicclass-edit-canvas__selection { position: absolute; z-index: 20; pointer-events: none; border: 2px solid #722ed1; border-radius: 3px; box-shadow: 0 0 0 1px rgba(255,255,255,.9), 0 0 0 4px rgba(114,46,209,.14); }
+.magicclass-edit-canvas__resize-handle, .magicclass-edit-canvas__rotate-handle { position: absolute; z-index: 2; pointer-events: auto; display: block; width: 9px; height: 9px; border: 2px solid #fff; border-radius: 50%; background: #722ed1; box-shadow: 0 1px 4px rgba(45,37,96,.3); }
+.magicclass-edit-canvas__resize-handle--nw { left: -6px; top: -6px; cursor: nwse-resize; }
+.magicclass-edit-canvas__resize-handle--ne { right: -6px; top: -6px; cursor: nesw-resize; }
+.magicclass-edit-canvas__resize-handle--sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+.magicclass-edit-canvas__resize-handle--se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.magicclass-edit-canvas__rotate-handle { left: 50%; top: -25px; transform: translateX(-50%); cursor: grab; background: #1677ff; }
+.magicclass-edit-canvas__rotate-handle::after { content: ''; position: absolute; left: 50%; top: 7px; width: 1px; height: 16px; background: #1677ff; }
+.magicclass-edit-canvas__ruler { position: absolute; z-index: 21; pointer-events: none; color: #7b88a0; font-size: 9px; }
+.magicclass-edit-canvas__ruler--x { left: 0; right: 0; top: 4px; height: 14px; border-top: 1px solid rgba(114,46,209,.25); }
+.magicclass-edit-canvas__ruler--y { top: 0; bottom: 0; left: 4px; width: 20px; border-left: 1px solid rgba(114,46,209,.25); }
+.magicclass-edit-canvas__ruler span { position: absolute; }
+.magicclass-edit-canvas__ruler--y span { transform: rotate(-90deg); transform-origin: left top; }
+.magicclass-edit-canvas__alignment-guide { position: absolute; z-index: 19; pointer-events: none; display: block; background: rgba(22,119,255,.55); }
+.magicclass-edit-canvas__alignment-guide--x { left: 0; right: 0; top: 50%; height: 1px; }
+.magicclass-edit-canvas__alignment-guide--y { top: 0; bottom: 0; left: 50%; width: 1px; }
+.magicclass-edit-canvas__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; height: 100%; padding: 20px; color: var(--muted); text-align: center; }
+.magicclass-edit-canvas__empty strong { color: var(--ink); font-size: 13px; }
+.magicclass-edit-canvas__empty p { margin: 0; font-size: 12px; }
 
 /* 工作台窄于 700px 时，横向场景栏会把 16:9 画布压到不可读的宽度。
    课程页本身已在此断点改为单栏，因此编辑器也把场景切换收为上方短列表，

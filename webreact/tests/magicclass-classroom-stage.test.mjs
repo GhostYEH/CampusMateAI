@@ -10,7 +10,7 @@
  * 3. **迟到的响应不得写进新上下文。** 换舞台用 epoch 挡、换场景用 cancelled 挡。
  * 4. **不编造内容。** 正文读不到就说读不到，不用占位内容冒充。
  *
- * 另外钉住移植层的两条结构性事实：令牌作用域必须由承载方提供（`.maic-root`），
+ * 另外钉住移植层的两条结构性事实：令牌作用域必须由承载方提供（`.magicclass-root`），
  * 以及移植代码不得直连受管服务（浏览器只调 CampusMate API）。
  */
 import test from "node:test";
@@ -24,12 +24,12 @@ import { sandboxPolicyFor } from "../src/features/magicclass/playerModel.js";
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
 
 const stageSource = read("src/components/magicclass/magicclassClassroomStage.jsx");
-const shellSource = read("src/maic/classroom/shell.jsx");
+const shellSource = read("src/magicclass/classroom/shell.jsx");
 const workbenchSource = read("src/pages/magicclassWorkbenchPage.jsx");
-const cssSource = read("src/styles/maic.css");
+const cssSource = read("src/styles/magicclass.css");
 const workbenchCss = read("src/styles/magicclass-workbench.css");
 
-/** 列出 `src/maic` 下所有文件（相对 `webreact/` 的路径），用于"不得越界"类断言。 */
+/** 列出 `src/magicclass` 下所有文件（相对 `webreact/` 的路径），用于"不得越界"类断言。 */
 function walk(relDir, out = []) {
   const dir = fileURLToPath(new URL(`../${relDir}`, import.meta.url));
   for (const name of readdirSync(dir)) {
@@ -39,7 +39,7 @@ function walk(relDir, out = []) {
   }
   return out;
 }
-const maicFiles = walk("src/maic");
+const magicclassFiles = walk("src/magicclass");
 
 // ===== 1. 渲染决定来自服务端 =====
 
@@ -61,7 +61,7 @@ test("the classroom shows real slide thumbnails from the same document", () => {
   assert.match(stageSource, /content: contentByScene\[entry\.id\]\?\.content/, "正文必须按场景并入侧栏列表");
   assert.match(stageSource, /renderSlideThumbnail/, "必须把 slide 缩略图渲染器交给侧栏");
   // 缩略图复用播放画布，因此缩略图与实际内容不可能不一致。
-  assert.match(stageSource, /<MaicSlideSurface canvas=\{canvas\}/, "缩略图必须复用同一套画布渲染");
+  assert.match(stageSource, /<MagicClassSlideSurface canvas=\{canvas\}/, "缩略图必须复用同一套画布渲染");
   assert.match(stageSource, /elements\.length === 0\) return null/, "没有元素的旧画布必须交回占位分支，而不是画空白");
 });
 
@@ -115,7 +115,7 @@ test("an unreadable scene says so instead of faking content", () => {
 
 test("the ported layer cannot reach the managed service directly", () => {
   // 浏览器只调 CampusMate API；移植代码里出现受管服务地址/内部密钥就是越界。
-  for (const file of maicFiles) {
+  for (const file of magicclassFiles) {
     const source = read(file);
     assert.doesNotMatch(source, /MAGICCLASS_INTERNAL_SECRET/, `${file} 不得出现内部密钥`);
     assert.doesNotMatch(source, /127\.0\.0\.1:4010|localhost:4010/, `${file} 不得直连受管服务`);
@@ -125,14 +125,14 @@ test("the ported layer cannot reach the managed service directly", () => {
 });
 
 test("the tailwind token layer stays scoped and cannot restyle the rest of the app", () => {
-  // 令牌只在 .maic-root 内定义，且**不引入 preflight** —— 否则会重排既有页面。
-  assert.match(cssSource, /\.maic-root\s*\{/, "令牌必须限定在 .maic-root 作用域内");
+  // 令牌只在 .magicclass-root 内定义，且**不引入 preflight** —— 否则会重排既有页面。
+  assert.match(cssSource, /\.magicclass-root\s*\{/, "令牌必须限定在 .magicclass-root 作用域内");
   assert.doesNotMatch(cssSource, /@import\s+["']tailwindcss["']\s*;/, "不得整体引入 tailwindcss（会带进 preflight）");
   assert.match(cssSource, /@import\s+["']tailwindcss\/theme\.css["']/, "只引入 theme 层");
   assert.match(cssSource, /@import\s+["']tailwindcss\/utilities\.css["']/, "只引入 utilities 层");
   assert.doesNotMatch(cssSource, /@import\s+["']tailwindcss\/preflight\.css["']/, "不得引入 preflight");
-  // 承载方必须提供作用域：课堂外壳按契约不带 .maic-root，所以集成组件要自己带。
-  assert.match(stageSource, /className="maic-root/, "集成组件必须自己提供 .maic-root 作用域");
+  // 承载方必须提供作用域：课堂外壳按契约不带 .magicclass-root，所以集成组件要自己带。
+  assert.match(stageSource, /className="magicclass-root/, "集成组件必须自己提供 .magicclass-root 作用域");
 });
 
 test("playback hands the whole content area to the classroom", () => {
@@ -148,7 +148,7 @@ test("playback hands the whole content area to the classroom", () => {
 });
 
 test("the canvas toolbar matches the reference and the canvas is not wrapped in dark", () => {
-  const shellSource = read("src/maic/classroom/shell.jsx");
+  const shellSource = read("src/magicclass/classroom/shell.jsx");
   // 参考项目的工具栏是**文档流内**的一条 36px 控件条，不是浮层，也不是深色底条。
   assert.match(stageSource, /shrink-0 h-9 px-2 flex items-center gap-2/, "工具栏必须是 h-9 的文档流控件条");
   assert.match(stageSource, /bg-white\/80 dark:bg-gray-800\/80 backdrop-blur-xl/, "工具栏底色必须与参考一致");
@@ -163,7 +163,7 @@ test("the canvas toolbar matches the reference and the canvas is not wrapped in 
 });
 
 test("the toolbar is merged into the roundtable, not stacked below it", () => {
-  const roundtableSource = read("src/maic/roundtable/index.jsx");
+  const roundtableSource = read("src/magicclass/roundtable/index.jsx");
   // 参考项目 `canvas-area.tsx` 在播放态传 hideToolbar，圆桌源码里写明是
   // "Toolbar strip — merged from CanvasArea"：工具栏被**并进**圆桌，不是被丢弃。
   // 播放态的底部因此是「工具栏条 36px + 三栏交互区 156px」共 192px。
@@ -173,7 +173,7 @@ test("the toolbar is merged into the roundtable, not stacked below it", () => {
   assert.match(roundtableSource, /w-\[140px\] shrink-0/, "右栏宽度必须与参考一致");
   assert.match(roundtableSource, /bg-white\/60 dark:bg-gray-800\/60 backdrop-blur-md/, "毛玻璃底色必须与参考一致");
   // 集成侧必须把工具栏**传进**圆桌，而不是各画一条。
-  assert.match(stageSource, /<MaicRoundtable[\s\S]{0,220}toolbar=\{<SceneToolbar/, "工具栏必须作为圆桌的顶部条传入");
+  assert.match(stageSource, /<MagicClassRoundtable[\s\S]{0,220}toolbar=\{<SceneToolbar/, "工具栏必须作为圆桌的顶部条传入");
 });
 
 test("the roundtable is driven by the real discussion pipeline", () => {
@@ -205,7 +205,7 @@ test("the roundtable is driven by the real discussion pipeline", () => {
 });
 
 test("the roundtable never fakes capability it does not have", () => {
-  const roundtableSource = read("src/maic/roundtable/index.jsx");
+  const roundtableSource = read("src/magicclass/roundtable/index.jsx");
   // 没有逐智能体 TTS 就不放喇叭按钮，没有 ASR 就不放麦克风：点了没反应比没有更糟。
   assert.doesNotMatch(roundtableSource, /<Mic\b/, "不得渲染麦克风按钮（本仓库没有 ASR）");
   assert.doesNotMatch(roundtableSource, /Volume2|VolumeX/, "不得渲染音量按钮（本仓库没有逐智能体 TTS）");
@@ -215,7 +215,7 @@ test("the roundtable never fakes capability it does not have", () => {
 });
 
 test("the classroom header survives a 320px viewport", () => {
-  const headerSource = read("src/maic/classroom/classroom-header.jsx");
+  const headerSource = read("src/magicclass/classroom/classroom-header.jsx");
   // 320px 下固定 px-8 会把标题块挤成 0 宽，右侧控制簇随即盖住返回按钮并吃掉点击。
   assert.match(headerSource, /px-4 sm:px-8/, "头栏内边距必须窄屏收窄");
   assert.match(headerSource, /gap-2 sm:gap-4/, "头栏间距必须窄屏收窄");
@@ -247,7 +247,7 @@ test("presentation mode hides classroom chrome and gives the stage all available
     "舞台必须收到演示状态");
   assert.match(stageSource, /data-presentation-mode=\{isPresenting \? "true" : "false"\}/,
     "演示状态必须在 DOM 中可观察");
-  assert.match(stageSource, /isPresenting \? null : <MaicRoundtable/,
+  assert.match(stageSource, /isPresenting \? null : <MagicClassRoundtable/,
     "演示模式必须隐藏底部工具栏与课堂交互条");
   assert.match(shellSource, /const headerVisible = !hideHeader && !isPresenting/,
     "演示模式必须隐藏课堂头部");

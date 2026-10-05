@@ -245,7 +245,7 @@ pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运�
 <a id="local-features"></a>
 ## 当前仅在 Web 本地实现的功能
 
-主题、动效、导航布局、背景图、白噪声播放、静音、数字人重播、课堂面板尺寸、播放偏好、倒计时显示，以及部分助手会话/草稿偏好由当前 Web 的 localStorage、组件状态、静态文件或浏览器播放器管理。对应源码在 pages、features、maic 与 app；它们没有统一的服务端设置 CRUD API。
+主题、动效、导航布局、背景图、白噪声播放、静音、数字人重播、课堂面板尺寸、播放偏好、倒计时显示，以及部分助手会话/草稿偏好由当前 Web 的 localStorage、组件状态、静态文件或浏览器播放器管理。对应源码在 pages、features、magicclass 与 app；它们没有统一的服务端设置 CRUD API。
 
 `/profile/:section`、`/study/plans`、`/study/docs`、`/study/statistics` 等页面会复用现有接口和前端聚合，不意味着后台有同名路由。社区分类中的 activity 是帖子分类，已移除的 `/activities/*` 业务接口没有注册。页面和全部封装的实际路径见 [Web 对照](web-map.md)，不要按页面名称臆造新接口。
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const screenCanvasSource = readFileSync(
-  new URL("../src/maic/slide/Editor/ScreenCanvas.jsx", import.meta.url),
+  new URL("../src/magicclass/slide/Editor/ScreenCanvas.jsx", import.meta.url),
   "utf8",
 );
 
@@ -19,5 +19,5 @@ test("playback canvas subscribes to and renders timeline spotlight state", () =>
     new URL("../src/components/magicclass/magicclassClassroomStage.jsx", import.meta.url),
     "utf8",
   );
-  assert.match(classroomSource, /<MaicSlideSurface canvas=\{canvas\} effectsEnabled=\{false\} \/>/);
+  assert.match(classroomSource, /<MagicClassSlideSurface canvas=\{canvas\} effectsEnabled=\{false\} \/>/);
 });

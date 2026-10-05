@@ -21,7 +21,7 @@
  *
  * ## 画布契约
  *
- * 输出形状与前端移植层 `MaicSlideSurface` 的输入一致：
+ * 输出形状与前端移植层 `MagicClassSlideSurface` 的输入一致：
  * `{ width, height, theme, background, elements }`，`elements` 里每一项都是
  * 参考项目 `PPTBaseElement`（`id/left/top/width/height/rotate`）+ 具体类型的
  * 必填字段。字号、行高、边距一律写成**元素正文的内联样式**，不依赖宿主页面

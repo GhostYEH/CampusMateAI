@@ -3,7 +3,7 @@
  *
  * 与 `slide-canvas.test.mjs` 同一思路：**不调用模型**，把"渲染器到底认不认这份内容"
  * 变成可读可断言的规则。判定条件同步自前端移植层的 `isRunnablePBLProjectV2`
- * （`webreact/src/maic/scene/lib/pbl-types-guards.js`）——它是渲染器决定"显示项目"
+ * （`webreact/src/magicclass/scene/lib/pbl-types-guards.js`）——它是渲染器决定"显示项目"
  * 还是"显示占位面板"的唯一依据。
  */
 import assert from 'node:assert/strict';

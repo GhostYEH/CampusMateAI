@@ -1,16 +1,16 @@
-import "../../styles/maic.css";
+import "../../styles/magicclass.css";
 import React from "react";
 import { ChevronLeft, ChevronRight, LayoutList, Pause, Play } from "lucide-react";
 import { Button } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
-import { MaicClassroomShell } from "../../maic/classroom/index.js";
-import { ctrlBtn } from "../../maic/classroom/classroom-header.jsx";
-import { MaicSceneRenderer } from "../../maic/scene/index.js";
-import { MaicSlideSurface } from "../../maic/slide/index.js";
-import { MaicRoundtable } from "../../maic/roundtable/index.jsx";
+import { MagicClassClassroomShell } from "../../magicclass/classroom/index.js";
+import { ctrlBtn } from "../../magicclass/classroom/classroom-header.jsx";
+import { MagicClassSceneRenderer } from "../../magicclass/scene/index.js";
+import { MagicClassSlideSurface } from "../../magicclass/slide/index.js";
+import { MagicClassRoundtable } from "../../magicclass/roundtable/index.jsx";
 import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
-import { cn } from "../../maic/utils/cn.js";
+import { cn } from "../../magicclass/utils/cn.js";
 import {
   degradeNotice,
   describePlaybackError,
@@ -32,7 +32,7 @@ import {
   isPlaybackShortcutTarget,
   startActionTimeline,
 } from "../../features/magicclass/playbackTimeline.js";
-import { useCanvasStore } from "../../maic/slide/index.js";
+import { useCanvasStore } from "../../magicclass/slide/index.js";
 
 /**
  * 学习态课堂：把参考项目（清华大学学习平台 / magic class）的播放态界面接到
@@ -304,7 +304,7 @@ export default function MagicClassClassroomStage({
   const sidebarProps = React.useMemo(() => ({ headerSlot: sidebarHeader, renderSlideThumbnail }), [renderSlideThumbnail, sidebarHeader]);
 
   if (loading) {
-    return <div className="maic-root flex-1 flex items-center justify-center bg-gray-50" aria-busy="true">
+    return <div className="magicclass-root flex-1 flex items-center justify-center bg-gray-50" aria-busy="true">
       <div className="flex flex-col items-center gap-3 text-muted-foreground">
         <span className="loading-orb" />
         <p>{fallbackTitle || "正在打开课堂…"}</p>
@@ -313,7 +313,7 @@ export default function MagicClassClassroomStage({
   }
 
   if (error) {
-    return <div className="maic-root flex-1 flex items-center justify-center bg-gray-50" role="alert">
+    return <div className="magicclass-root flex-1 flex items-center justify-center bg-gray-50" role="alert">
       <div className="flex flex-col items-center gap-3 text-center max-w-md px-6">
         <Icon name="PhWarningCircle" size={34} />
         <strong>{error}</strong>
@@ -327,7 +327,7 @@ export default function MagicClassClassroomStage({
   }
 
   if (!scenes.length) {
-    return <div className="maic-root flex-1 flex items-center justify-center bg-gray-50">
+    return <div className="magicclass-root flex-1 flex items-center justify-center bg-gray-50">
       <div className="flex flex-col items-center gap-3 text-center max-w-md px-6">
         <Icon name="PhLayout" size={30} />
         <strong>这个课堂还没有内容</strong>
@@ -338,10 +338,10 @@ export default function MagicClassClassroomStage({
   }
 
   return <div
-    className="maic-root flex-1 min-h-0 min-w-0 flex"
+    className="magicclass-root flex-1 min-h-0 min-w-0 flex"
     data-presentation-mode={isPresenting ? "true" : "false"}
   >
-    <MaicClassroomShell
+    <MagicClassClassroomShell
       title={plan?.title || fallbackTitle}
       scenes={sidebarScenes}
       currentSceneId={currentId}
@@ -392,7 +392,7 @@ export default function MagicClassClassroomStage({
         playbackNotice={playbackNotice}
         onToggleActionTimeline={toggleActionTimeline}
       />
-    </MaicClassroomShell>
+    </MagicClassClassroomShell>
   </div>;
 }
 
@@ -452,7 +452,7 @@ function SceneStage({
   } else if (outline?.render?.kind === "unsupported") {
     body = <Fallback title={title} type={type} text={degradeNotice(outline)} />;
   } else if (scene) {
-    body = <MaicSceneRenderer scene={scene} mode="playback" />;
+    body = <MagicClassSceneRenderer scene={scene} mode="playback" />;
   } else {
     body = <Fallback title={title} type={type} text="只显示标题，不用占位内容冒充正文。" />;
   }
@@ -466,7 +466,7 @@ function SceneStage({
     <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
       {body}
     </div>
-    {isPresenting ? null : <MaicRoundtable
+    {isPresenting ? null : <MagicClassRoundtable
       toolbar={<SceneToolbar
         index={index}
         total={total}
@@ -502,7 +502,7 @@ function SceneStage({
  * `hideToolbar={mode === 'playback'}`，一开始看像是"播放时没有工具栏"；但圆桌源码里
  * 有一行注释写明了原因——"Toolbar strip — merged from CanvasArea"。工具栏是被
  * **并进圆桌**，不是被丢弃：播放态的底部是「工具栏条（36px）+ 三栏交互区（156px）」
- * 共 192px。所以这里由 `MaicRoundtable` 的 `toolbar` 属性接住它。
+ * 共 192px。所以这里由 `MagicClassRoundtable` 的 `toolbar` 属性接住它。
  *
  * 参考工具栏还有白板、元素拾取、演示、停止讨论等控件，它们依赖圆桌流式 /
  * 画布 store，本仓库没有对应运行时，因此不渲染（不占位、也不放点了没反应的
@@ -708,6 +708,6 @@ const SlideThumbnail = React.memo(function SlideThumbnail({ canvas }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
   if (!elements || elements.length === 0) return null;
   return <div className="h-full w-full">
-    <MaicSlideSurface canvas={canvas} effectsEnabled={false} />
+    <MagicClassSlideSurface canvas={canvas} effectsEnabled={false} />
   </div>;
 });

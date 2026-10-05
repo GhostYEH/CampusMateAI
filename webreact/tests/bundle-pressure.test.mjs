@@ -27,7 +27,7 @@ function dependencies(root) {
 test("startup excludes login effects, route engines and classroom styles", () => {
   const startup = dependencies(entry);
   const modules = startup.flatMap((chunk) => Object.keys(chunk.modules));
-  for (const fragment of ["node_modules/three/", "node_modules/@react-three/", "node_modules/ogl/", "node_modules/qrcode/", "node_modules/prosemirror-", "/pages/LoginPage.jsx", "/components/AppShell.jsx", "/styles/maic.css"]) {
+  for (const fragment of ["node_modules/three/", "node_modules/@react-three/", "node_modules/ogl/", "node_modules/qrcode/", "node_modules/prosemirror-", "/pages/LoginPage.jsx", "/components/AppShell.jsx", "/styles/magicclass.css"]) {
     assert.ok(!modules.some((id) => id.includes(fragment)), `startup unexpectedly loads ${fragment}`);
   }
 });

@@ -32,7 +32,7 @@ npm run build
 python tests/e2e/route-smoke.py
 ```
 
-`lint` 检查自研 JS/JSX/TS/TSX 源码的基础错误、未使用符号及 Hook 调用与依赖规则；上游入库副本 `src/maic/` 按现有配置排除。`typecheck` 只对 TS/TSX 源码执行严格类型检查，目前主要覆盖 `LearningIsland.tsx`；JS/JSX 由 lint 与测试覆盖，不能将 typecheck 通过等同于全站类型检查通过。测试还会检查实际生产分包，防止路由专属引擎和样式进入首屏。
+`lint` 检查自研 JS/JSX/TS/TSX 源码的基础错误、未使用符号及 Hook 调用与依赖规则；上游入库副本 `src/magicclass/` 按现有配置排除。`typecheck` 只对 TS/TSX 源码执行严格类型检查，目前主要覆盖 `LearningIsland.tsx`；JS/JSX 由 lint 与测试覆盖，不能将 typecheck 通过等同于全站类型检查通过。测试还会检查实际生产分包，防止路由专属引擎和样式进入首屏。
 
 学习状态页由 `pages/LearningStatePage.jsx` 编排，数据与操作在 `hooks/useLearningState.js`，展示组件在 `components/learningState/`。学习状态页与趋势页共用 `useAsyncResource`，避免刷新或切换条件时旧响应覆盖新结果。
 

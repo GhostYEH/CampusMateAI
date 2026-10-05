@@ -8,7 +8,7 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 const unused = { args: "none", caughtErrors: "none", varsIgnorePattern: "^_" };
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", "src/maic/**"] },
+  { ignores: ["dist/**", "node_modules/**", "src/magicclass/**"] },
   {
     files: ["src/**/*.{js,jsx,ts,tsx}"],
     languageOptions: {

@@ -398,7 +398,7 @@ test("editor exposes a bounded scene document editor backed by scene.update", ()
 });
 
 test("editor canvas exposes single selection, blank cancellation, and pointerup-only move wiring", () => {
-  const canvasSource = read("src/maic/edit/StageCanvasPreview.jsx");
+  const canvasSource = read("src/magicclass/edit/StageCanvasPreview.jsx");
   assert.match(canvasSource, /data-maic-element-id/);
   assert.match(canvasSource, /onPointerDown/);
   assert.match(canvasSource, /setPointerCapture/);
@@ -424,10 +424,10 @@ test("the editor surface is reachable from the workspace panel (not dead code)",
   assert.match(workspaceSource, /listMagicClassStages/);
 assert.match(editorSource, /applyMagicClassStageCommands/);
 assert.match(editorSource, /slideElementUpdateCommand/);
-assert.match(read("src\/maic\/edit\/StageCanvasPreview.jsx"), /ProseMirrorTextEditor/);
-assert.match(read("src\/maic\/edit\/ProseMirrorTextEditor.jsx"), /EditorView/);
-assert.match(read("src\/maic\/edit\/ProseMirrorTextEditor.jsx"), /onPointerDown/);
-assert.doesNotMatch(read("src\/maic\/edit\/StageCanvasPreview.jsx"), /dangerouslySetInnerHTML/);
+assert.match(read("src\/magicclass\/edit\/StageCanvasPreview.jsx"), /ProseMirrorTextEditor/);
+assert.match(read("src\/magicclass\/edit\/ProseMirrorTextEditor.jsx"), /EditorView/);
+assert.match(read("src\/magicclass\/edit\/ProseMirrorTextEditor.jsx"), /onPointerDown/);
+assert.doesNotMatch(read("src\/magicclass\/edit\/StageCanvasPreview.jsx"), /dangerouslySetInnerHTML/);
   assert.match(editorSource, /createCommandBuffer/);
 });
 

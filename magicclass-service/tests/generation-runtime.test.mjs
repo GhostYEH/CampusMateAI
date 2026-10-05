@@ -18,7 +18,7 @@ test("PBL generation produces a runnable project, not an unreadable phase list",
   // 此前这里产出的是 `{ phases: [...] }`，两者都不是，于是每个 PBL 场景在课堂里
   // 都是一个"项目尚未生成"的占位面板。所以这条测试断言的不是"有没有阶段"，而是
   // **渲染器的可运行判定能不能过**——判定规则同步自
-  // `webreact/src/maic/scene/lib/pbl-types-guards.js` 的 `isRunnablePBLProjectV2`。
+  // `webreact/src/magicclass/scene/lib/pbl-types-guards.js` 的 `isRunnablePBLProjectV2`。
   const document = buildGeneratedStage("pbl", "设计一个校园节能方案");
   const content = document.scenes[0].content;
   assert.equal(content.type, "pbl");

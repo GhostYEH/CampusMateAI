@@ -122,7 +122,7 @@ export function readPblOutline(content: unknown): PblOutline {
  * 合成 `projectV2`。
  *
  * 结构上满足渲染器的 `isRunnablePBLProjectV2` 判定（同步自
- * `webreact/src/maic/scene/lib/pbl-types-guards.js`）：
+ * `webreact/src/magicclass/scene/lib/pbl-types-guards.js`）：
  * 六个容器数组齐全、每个 milestone 至少一个 microtask、microtask 有非空 id 与
  * 字符串 title、至少一个 `type: 'instructor'` 且 id 非空的角色。
  *

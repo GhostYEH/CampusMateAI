@@ -4,7 +4,7 @@ import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
 import StagePlayerPanel from "./StagePlayerPanel.jsx";
-import StageCanvasPreview from "../../maic/edit/StageCanvasPreview.jsx";
+import StageCanvasPreview from "../../magicclass/edit/StageCanvasPreview.jsx";
 import {
   MAX_COMMANDS_PER_REQUEST,
   SCENE_TYPE_LABELS,
