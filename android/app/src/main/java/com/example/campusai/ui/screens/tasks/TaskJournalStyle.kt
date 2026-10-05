@@ -25,10 +25,31 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
-internal val JournalInk = Color(0xFF183F39)
+internal val JournalInk = Color(0xFF263B50)
 internal val JournalPaper = Color(0xFFF7F2E8)
-internal val JournalMuted = Color(0xFF64746E)
+internal val JournalMuted = Color(0xFF596B72)
 internal val JournalAmber = Color(0xFFC58B55)
+internal val JournalNight = Color(0xFF263B50)
+internal val JournalClay = Color(0xFFAA684D)
+internal val JournalBlue = Color(0xFF6D8B9B)
+
+/** One continuous open page: a narrow visible spine, warm paper and quiet ruled lines. */
+internal fun Modifier.journalBookPage(): Modifier = this
+    .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
+    .background(Brush.horizontalGradient(listOf(Color(0xFFD1C2A7), Color(0xFFF3EBDD), Color(0xFFFFFAEF), Color(0xFFF0E8DA))))
+    .drawBehind {
+        val spine = 12.dp.toPx()
+        drawLine(Color(0x77978069), Offset(spine, 0f), Offset(spine, size.height), 1.dp.toPx())
+        drawLine(Color(0x66FFFFFF), Offset(spine + 3.dp.toPx(), 0f), Offset(spine + 3.dp.toPx(), size.height), 1.dp.toPx())
+        for (row in 0..70) {
+            val y = row * 22.dp.toPx()
+            drawLine(Color(0x13A78968), Offset(spine + 12.dp.toPx(), y), Offset(size.width - 12.dp.toPx(), y), .6.dp.toPx())
+        }
+        for (row in 0..35) for (column in 0..11) {
+            drawCircle(Color(0x0FA88460), .55.dp.toPx(), Offset(size.width * (column + .4f) / 12f, size.height * (row + .3f) / 36f))
+        }
+    }
+    .border(1.dp, Color(0x88C7B798), RoundedCornerShape(topStart = 5.dp, topEnd = 22.dp, bottomEnd = 4.dp, bottomStart = 4.dp))
 
 internal fun Modifier.journalPaper(shape: Shape = RoundedCornerShape(24.dp)): Modifier =
     this.clip(shape)
@@ -43,7 +64,7 @@ internal fun Modifier.journalPaper(shape: Shape = RoundedCornerShape(24.dp)): Mo
 /** A quiet desk-light backdrop, drawn locally so the task pages have their own scene. */
 @Composable
 internal fun JournalBackdrop(modifier: Modifier = Modifier) {
-    Box(modifier.background(Brush.verticalGradient(listOf(Color(0xFF12283D), Color(0xFF24443D), Color(0xFF423C37))))) {
+    Box(modifier.background(Brush.verticalGradient(listOf(Color(0xFF11253B), Color(0xFF2E3957), Color(0xFF584440))))) {
         Canvas(Modifier.matchParentSize()) {
             drawCircle(
                 brush = Brush.radialGradient(

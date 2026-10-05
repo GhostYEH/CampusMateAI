@@ -1,10 +1,5 @@
 package com.example.campusai.ui.screens.tasks
 
-import com.example.campusai.ui.components.GlassButton as Button
-import com.example.campusai.ui.components.GlassIconButton as IconButton
-import com.example.campusai.ui.components.GlassOutlinedButton as OutlinedButton
-import com.example.campusai.ui.components.GlassTextButton as TextButton
-
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.*
@@ -60,7 +55,7 @@ fun TaskDetailScreen(
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Default.Warning, null, tint = Muted, modifier = Modifier.size(48.dp))
                 Text("任务不存在或已被删除", color = Muted, fontSize = 15.sp)
-                TextButton(onClick = onBack) { Text("返回待办列表") }
+                TextButton(onClick = onBack) { Text("返回待办列表", color = JournalNight) }
             }
         }
         return
@@ -96,16 +91,17 @@ fun TaskDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         JournalBackdrop(Modifier.fillMaxSize())
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp, top = 7.dp)
+            .journalBookPage().verticalScroll(rememberScrollState()).padding(start = 15.dp, end = 5.dp, top = 12.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("任务档案", color = Color(0xFFF6E9D4), fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("TASK JOURNAL  /  任务档案", color = JournalClay, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.weight(1f))
                 if (isEditing) TextButton(onClick = {
                     editTitle = task.title; editDue = task.due; editCourse = task.course
                     editDescription = task.description; isEditing = false
-                }) { Text("取消", color = Color(0xFFF6E9D4)) }
+                }) { Text("取消", color = JournalNight) }
                 if (!courseSynced) IconButton(onClick = { deleting = true }) {
-                    Icon(Icons.Default.DeleteOutline, "删除", tint = Color(0xFFF6E9D4))
+                    Icon(Icons.Default.DeleteOutline, "删除", tint = JournalNight)
                 }
             }
 
@@ -113,13 +109,7 @@ fun TaskDetailScreen(
             Row(
                 Modifier
                     .padding(horizontal = 16.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (task.done) Success.copy(alpha = .1f) else TaskOrange.copy(alpha = .1f))
-                    .border(
-                        1.dp,
-                        if (task.done) Success.copy(alpha = .3f) else TaskOrange.copy(alpha = .3f),
-                        RoundedCornerShape(12.dp),
-                    )
+                    .border(1.dp, if (task.done) JournalBlue else JournalClay, RoundedCornerShape(3.dp))
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -127,7 +117,7 @@ fun TaskDetailScreen(
                 Icon(
                     if (task.done) Icons.Default.CheckCircle else Icons.Default.PendingActions,
                     null,
-                    tint = if (task.done) Success else TaskOrange,
+                    tint = if (task.done) JournalBlue else JournalClay,
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
@@ -137,7 +127,7 @@ fun TaskDetailScreen(
                     else "待完成",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (task.done) Success else TaskOrange,
+                    color = if (task.done) JournalBlue else JournalClay,
                 )
                 Spacer(Modifier.weight(1f))
                 if (!isEditing && !courseSynced) {
@@ -174,7 +164,7 @@ fun TaskDetailScreen(
                         .enterAnimation(enabled = !reduceMotion, delayMs = 40),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFFFFF4E3),
+                    color = JournalNight,
                     textDecoration = if (task.done) TextDecoration.LineThrough else null,
                 )
             }
@@ -191,7 +181,8 @@ fun TaskDetailScreen(
                         .enterAnimation(enabled = !reduceMotion, delayMs = 80),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    OutlinedButton(onClick = { pickTaskDeadline(editDue.takeIf { it != "待设置" }, { editDue = it }, context) }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { pickTaskDeadline(editDue.takeIf { it != "待设置" }, { editDue = it }, context) },
+                        modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = JournalNight)) {
                         Icon(Icons.Default.Schedule, null, tint = TaskOrange)
                         Spacer(Modifier.width(8.dp))
                         Text("截止时间：${displayTaskDeadline(editDue.takeIf { it != "待设置" })}")
@@ -212,15 +203,15 @@ fun TaskDetailScreen(
                     )
                 }
             } else {
-                JournalSheet(Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .enterAnimation(enabled = !reduceMotion, delayMs = 80)) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(task.course, color = JournalInk, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    .enterAnimation(enabled = !reduceMotion, delayMs = 80), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        HorizontalDivider(color = JournalBlue.copy(alpha = .5f))
+                        Text(task.course, color = JournalClay, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         task.startAt?.let { startsAt ->
                             DetailLine("开放时间", startsAt.replace('T', ' ').take(16))
                         }
                         DetailLine("截止时间", task.due.replace('T', ' ').take(16))
-                    }
+                        HorizontalDivider(color = JournalBlue.copy(alpha = .5f))
                 }
             }
 
@@ -237,7 +228,7 @@ fun TaskDetailScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Default.Description, null, tint = Muted, modifier = Modifier.size(20.dp))
-                        Text("任务说明", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFF6E9D4))
+                        Text("任务说明", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = JournalNight)
                     }
                     Spacer(Modifier.height(10.dp))
 
@@ -254,9 +245,8 @@ fun TaskDetailScreen(
                             ),
                         )
                     } else {
-                        JournalSheet(Modifier.fillMaxWidth()) {
-                            Text(task.description, modifier = Modifier.padding(16.dp), color = JournalInk, fontSize = 14.sp, lineHeight = 22.sp)
-                        }
+                        Text(task.description, modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 4.dp),
+                            color = JournalNight, fontSize = 14.sp, lineHeight = 23.sp)
                     }
                 }
             }
@@ -264,12 +254,14 @@ fun TaskDetailScreen(
             if (!isEditing && !task.sourceText.isNullOrBlank()) {
                 Spacer(Modifier.height(10.dp))
                 TextButton(onClick = { showSource = !showSource }, modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Icon(Icons.Default.Description, null, tint = Color(0xFFE6C89B), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Description, null, tint = JournalClay, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (showSource) "收起原始消息" else "查看原始消息", color = Color(0xFFF4E6CF))
+                    Text(if (showSource) "收起通知原文" else "查看通知原文", color = JournalNight)
                 }
-                if (showSource) JournalSheet(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                    Text(task.sourceText.orEmpty(), Modifier.padding(16.dp), color = JournalInk, fontSize = 12.sp, lineHeight = 20.sp)
+                if (showSource) Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    HorizontalDivider(color = JournalClay.copy(alpha = .5f))
+                    Text(task.sourceText.orEmpty(), Modifier.padding(vertical = 12.dp), color = JournalNight, fontSize = 12.sp, lineHeight = 20.sp)
+                    HorizontalDivider(color = JournalClay.copy(alpha = .5f))
                 }
             }
 
@@ -285,7 +277,7 @@ fun TaskDetailScreen(
             ) {
                 if (isEditing) {
                     // Save button in edit mode
-                    Button(
+                    androidx.compose.material3.Button(
                         onClick = {
                             scope.launch {
                                 repository.updateTask(task.id, editTitle, editDue, editCourse, editDescription)
@@ -294,8 +286,8 @@ fun TaskDetailScreen(
                         },
                         enabled = editTitle.isNotBlank() && hasChanges,
                         modifier = Modifier.fillMaxWidth().height(50.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Primary, disabledContainerColor = Primary.copy(alpha = .4f)),
+                        shape = RoundedCornerShape(5.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = JournalClay, disabledContainerColor = JournalClay.copy(alpha = .4f)),
                     ) {
                         Icon(Icons.Default.Save, null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
@@ -303,17 +295,19 @@ fun TaskDetailScreen(
                     }
                 } else if (courseSynced) {
                     Text(when {
-                        task.source == "chaoxing" -> "提交状态由课程同步更新"
-                        task.done -> "已由你确认提交"
+                        task.source == "chaoxing" || task.submittedAt != null -> "提交状态由课程平台同步更新"
+                        task.done -> "已由你标记为已提交"
                         else -> "提交状态待确认，请到课程内核对"
-                    }, color = Muted, fontSize = 13.sp)
+                    }, color = JournalMuted, fontSize = 13.sp)
                     task.courseId?.let { courseId ->
-                        Button(onClick = { onOpenCourse(courseId) }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                        androidx.compose.material3.Button(onClick = { onOpenCourse(courseId) },
+                            modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = JournalBlue)) {
                             Text("打开原课程作业", fontWeight = FontWeight.Bold)
                         }
                     }
                     if (!task.done && task.source != "chaoxing") {
-                        OutlinedButton(onClick = {
+                        androidx.compose.material3.OutlinedButton(onClick = {
                             scope.launch {
                                 val result = if (task.source == "course_notice")
                                     repository.confirmCourseNoticeSubmitted(task.id)
@@ -325,33 +319,49 @@ fun TaskDetailScreen(
                                     stampVisible = false
                                 }
                             }
-                        }, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                        }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = JournalClay)) {
                             Text("我已在课程中提交", fontWeight = FontWeight.Bold)
+                        }
+                    } else if (task.done && task.source != "chaoxing" && task.submittedAt == null) {
+                        androidx.compose.material3.OutlinedButton(onClick = {
+                            scope.launch {
+                                val result = if (task.source == "course_notice")
+                                    repository.undoCourseNoticeSubmitted(task.id)
+                                else repository.restoreTaskStrict(task.id)
+                                confirmationError = result.exceptionOrNull()?.message
+                            }
+                        }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = JournalClay)) {
+                            Icon(Icons.Default.Undo, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("撤销我的提交确认", fontWeight = FontWeight.Bold)
                         }
                     }
                     confirmationError?.let { Text(it, color = Color(0xFF974D42), fontSize = 13.sp) }
                 } else {
-                    if (task.done) OutlinedButton(onClick = { scope.launch { repository.toggleTask(task.id) } },
-                        modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp)) {
-                        Icon(Icons.Default.Undo, null, tint = JournalAmber, modifier = Modifier.size(20.dp))
+                    if (task.done) androidx.compose.material3.OutlinedButton(onClick = { scope.launch { repository.toggleTask(task.id) } },
+                        modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = JournalClay)) {
+                        Icon(Icons.Default.Undo, null, tint = JournalClay, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("标记为未完成", color = Color(0xFFF4E6CF), fontWeight = FontWeight.Bold)
+                        Text("标记为未完成", color = JournalClay, fontWeight = FontWeight.Bold)
                     } else androidx.compose.material3.Button(onClick = {
                         scope.launch {
                             if (!reduceMotion) { stampVisible = true; delay(560) }
                             repository.toggleTask(task.id)
                             stampVisible = false
                         }
-                    }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = JournalInk)) {
+                    }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = JournalClay)) {
                         Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("盖章完成", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                 }
-                if (stampVisible) Text("已完成", color = Color(0xFFE8D4B4), fontSize = 19.sp,
+                if (stampVisible) Text("已完成", color = JournalClay, fontSize = 19.sp,
                     fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.End)
-                        .border(2.dp, Color(0xFFE8D4B4), RoundedCornerShape(5.dp))
+                        .border(2.dp, JournalClay, RoundedCornerShape(5.dp))
                         .padding(horizontal = 12.dp, vertical = 5.dp))
 
                 // Delete button at bottom
@@ -387,7 +397,8 @@ fun TaskDetailScreen(
                 }) { Text("删除", color = Danger) }
             },
             dismissButton = { TextButton(onClick = { deleting = false }) { Text("取消") } },
-            containerColor = Surface,
+            containerColor = JournalPaper,
+            shape = RoundedCornerShape(6.dp),
         )
     }
 }

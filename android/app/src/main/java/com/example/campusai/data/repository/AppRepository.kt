@@ -924,6 +924,46 @@ class AppRepository(
         }
     }
 
+    /** Revoke this device's acknowledgement of a provisional course notice. */
+    suspend fun undoCourseNoticeSubmitted(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val user = checkNotNull(_session.value) { "请先登录" }
+            val task = _tasks.value.firstOrNull { it.id == id && it.source == "course_notice" }
+                ?: error("课程通知待办不存在")
+            val key = "course_notice_ack_${accountStorageKey(user)}"
+            val saved = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+            val ids = (0 until saved.length()).map { saved.getString(it) }.toMutableSet()
+            ids -= task.id
+            dataStore.saveRaw(key, JSONArray(ids.toList()).toString())
+            _tasks.value = _tasks.value.map { current ->
+                if (current.id == id) current.copy(done = false, completedAt = null) else current
+            }
+        }
+    }
+
+    /** Restore a user-confirmed server task and surface failures to the detail page. */
+    suspend fun restoreTaskStrict(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val list = _tasks.value.toMutableList()
+            val idx = list.indexOfFirst { it.id == id }
+            check(idx >= 0) { "待办不存在" }
+            val current = list[idx]
+            if (!current.done) return@runCatching
+            check(current.source != "chaoxing" && current.submittedAt == null) { "平台提交状态无法在待办中撤销" }
+            if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+                val response = ApiClient.api.restoreTask(id)
+                check(response.isSuccessful) { "撤销确认失败 (${response.code()})" }
+                val dto = checkNotNull(response.body()) { "待办同步响应为空" }
+                check(dto.status != "completed") { "服务端未确认撤销" }
+                list[idx] = current.copy(done = false, completedAt = null)
+            } else {
+                check(id.startsWith("local_") || _mockMode.value) { "当前离线，无法撤销云端确认" }
+                list[idx] = current.copy(done = false, completedAt = null)
+            }
+            _tasks.value = list
+        }
+    }
+
     suspend fun addTask(title: String, due: String = "待设置", course: String = "个人待办", description: String = "") = taskMutex.withLock {
         if (_backendOnline.value && !_mockMode.value) {
             try {
