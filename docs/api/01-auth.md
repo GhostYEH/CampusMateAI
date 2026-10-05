@@ -340,7 +340,12 @@ Web 创建 QR Login Session(无需鉴权)。
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | [QrCreateResponse](schemas.md#schema-qrcreateresponse) |
+| 429 | application/json | 运行时为 [统一错误结构](integration.md#errors)，`code=QR_RATE_LIMITED`；带 `Retry-After` |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+
+防刷：在清理会话、生成凭据和写库之前，无条件按 ASGI peer（`request.client.host`，不自行读取 `X-Forwarded-For`）限流，额度复用二维码配置（默认 5 次 / 10 秒，见 `QR_CREATE_RATE_MAX`、`QR_CREATE_RATE_WINDOW_SECONDS`）。`device_id` 可选；原有按 `device_id` 的窗口限制作为额外保护保留。超限返回 429 + `QR_RATE_LIMITED`，`Retry-After` 为等待秒数，且不会创建会话。该额度是**单进程内**计数，不是跨实例全局配额；多实例部署仍需在代理层限流。
+
+各端兼容性：Web 已有 `qrCreate` 封装，新增的 429 会进入其既有错误分支（登录页显示"生成二维码失败"并可重试），无需改调用方式，但未做浏览器端限流提示的专项验收；Android、HarmonyOS、微信小程序源码中未发现调用 `/auth/qr/create`。新增 429 不改变成功响应结构与其它错误码，属于向后兼容的新增状态。
 
 200 响应顶层字段：
 
@@ -357,7 +362,7 @@ Web 创建 QR Login Session(无需鉴权)。
 
 | HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
 | --- | --- | --- |
-| 429 | QR_RATE_LIMITED | 创建二维码过于频繁，请稍后再试。 |
+| 429 | QR_RATE_LIMITED | 创建二维码过于频繁，请稍后再试。（peer 额度超限时带 `Retry-After`；同一 `device_id` 窗口超限时无该头） |
 
 ### `POST /api/v1/auth/qr/scan`
 

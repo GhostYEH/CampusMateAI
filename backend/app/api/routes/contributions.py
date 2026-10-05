@@ -122,11 +122,11 @@ async def upload_expression_sample(
     "/contributions/expression-samples/{sample_id}",
     response_model=ExpressionContributionResponse,
 )
-async def delete_expression_sample(
+def delete_expression_sample(
     sample_id: str,
     user: UserRow = Depends(current_user),
 ) -> ExpressionContributionResponse:
-    """允许贡献者删除自己上传的样本及其元数据。"""
+    """允许贡献者删除自己上传的样本及其元数据（同步文件 I/O，用 def 走线程池）。"""
     if not sample_id.isalnum() or len(sample_id) != 32:
         raise AppException("样本编号无效", code="EXPRESSION_SAMPLE_ID_INVALID", http_status=422)
     metadata_path = _metadata_path(sample_id)

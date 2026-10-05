@@ -9,6 +9,7 @@ import json
 import re
 
 from fastapi import APIRouter, Depends, Header, Query
+from starlette.concurrency import run_in_threadpool
 
 from ...models.multi_role import UserRow
 from ...schemas.multi_role import Page
@@ -121,38 +122,111 @@ async def _ingest_batch(
 ) -> NoticeBatchIngestResponse:
     automation_repo = container.notice_automation_repository
     results_by_id: dict[str, NoticeBatchItemResult] = {}
-    pending: list[NoticeBatchItem] = []
-    contested: list[NoticeBatchItem] = []
     stats = {
         "received_count": len(req.items), "duplicate_count": 0,
         "rule_chat_count": 0, "rule_notice_count": 0, "rule_task_count": 0,
         "ai_candidate_count": 0, "ai_batch_count": 0, "ai_cache_hit": 0,
     }
 
-    for item in req.items:
-        stored = automation_repo.get_ingest_result(user.id, item.client_fingerprint)
+    # 阶段 1：去重读取 + 认领（同步 SQLite）。整个阶段一次性下放到线程池，
+    # 避免在事件循环里逐条阻塞，也不为每个条目单独创建线程任务。
+    replay_results, pending, contested, duplicate_count = await run_in_threadpool(
+        _claim_ingest_batch, automation_repo, user.id, req.items
+    )
+    results_by_id.update(replay_results)
+    stats["duplicate_count"] = duplicate_count
+
+    # 阶段 2：规则优先分类 + AI 缓存命中（同步 SQLite 读取，同样整阶段下放）。
+    decisions, ai_misses, counters = await run_in_threadpool(
+        _classify_pending_batch, automation_repo, container, pending
+    )
+    stats.update(counters)
+
+    if ai_misses:
+        stats["ai_batch_count"] = 1
+        resolved = await container.notice_extraction.extract_ambiguous_batch([
+            {"id": item.client_id, "content": item.content, "source_name": item.source_name, "published_at": item.published_at}
+            for item, _ in ai_misses
+        ])
+        # 阶段 3：把 AI 结果写回缓存（同步 SQLite 写入）。
+        await run_in_threadpool(
+            _record_ai_batch_results, automation_repo, decisions, ai_misses, resolved
+        )
+
+    # 阶段 4：落库 / 释放认领（同步 SQLite 写入）。
+    results_by_id.update(await run_in_threadpool(
+        _persist_pending_batch, automation_repo, user, container, pending, decisions
+    ))
+
+    for item in contested:
+        stored = None
+        # 轮询上限固定 50 次；每次读取都是单条主键查询，整体有界。
+        for _ in range(50):
+            stored = await run_in_threadpool(
+                automation_repo.get_ingest_result, user.id, item.client_fingerprint
+            )
+            if stored:
+                break
+            await asyncio.sleep(0.02)
+        if stored:
+            results_by_id[item.client_id] = NoticeBatchItemResult.model_validate_json(stored).model_copy(
+                update={"client_id": item.client_id, "duplicate": True}
+            )
+            stats["duplicate_count"] += 1
+        else:
+            results_by_id[item.client_id] = NoticeBatchItemResult(
+                client_id=item.client_id,
+                client_fingerprint=item.client_fingerprint,
+                status="retryable",
+                semantic_type=NoticeSemanticType.AMBIGUOUS,
+                reason="ingest_in_progress",
+            )
+
+    return NoticeBatchIngestResponse(items=[results_by_id[item.client_id] for item in req.items], stats=stats)
+
+
+def _claim_ingest_batch(
+    automation_repo, user_id: str, items: list[NoticeBatchItem]
+) -> tuple[dict[str, NoticeBatchItemResult], list[NoticeBatchItem], list[NoticeBatchItem], int]:
+    """阶段 1：读取已有结果做重放，否则认领；认领失败进入 contested。"""
+    replay_results: dict[str, NoticeBatchItemResult] = {}
+    pending: list[NoticeBatchItem] = []
+    contested: list[NoticeBatchItem] = []
+    duplicate_count = 0
+    for item in items:
+        stored = automation_repo.get_ingest_result(user_id, item.client_fingerprint)
         if stored:
             replay = NoticeBatchItemResult.model_validate_json(stored).model_copy(update={"duplicate": True})
-            results_by_id[item.client_id] = replay
-            stats["duplicate_count"] += 1
-        elif automation_repo.try_claim_ingest(user.id, item.client_fingerprint):
+            replay_results[item.client_id] = replay
+            duplicate_count += 1
+        elif automation_repo.try_claim_ingest(user_id, item.client_fingerprint):
             pending.append(item)
         else:
             contested.append(item)
+    return replay_results, pending, contested, duplicate_count
 
+
+def _classify_pending_batch(
+    automation_repo, container: ServiceContainer, pending: list[NoticeBatchItem]
+) -> tuple[dict[str, SemanticDecision], list[tuple[NoticeBatchItem, Optional[str]]], dict[str, int]]:
+    """阶段 2：规则优先分类；模糊内容查 AI 缓存，未命中留给批量 AI。"""
     decisions: dict[str, SemanticDecision] = {}
     ai_misses: list[tuple[NoticeBatchItem, Optional[str]]] = []
+    counters = {
+        "rule_chat_count": 0, "rule_notice_count": 0, "rule_task_count": 0,
+        "ai_candidate_count": 0, "ai_cache_hit": 0,
+    }
     for item in pending:
         semantic = container.notice_extraction.classify_semantics(item.content)
         if semantic is not NoticeSemanticType.AMBIGUOUS:
             decisions[item.client_id] = SemanticDecision(item.client_id, semantic, reason="rule_first")
-            stats[{
+            counters[{
                 NoticeSemanticType.CHAT: "rule_chat_count",
                 NoticeSemanticType.NOTICE: "rule_notice_count",
                 NoticeSemanticType.ACTIONABLE_NOTICE: "rule_task_count",
             }[semantic]] += 1
             continue
-        stats["ai_candidate_count"] += 1
+        counters["ai_candidate_count"] += 1
         cache_key = _ai_cache_key(item, container)
         cached = automation_repo.get_ai_cache(cache_key) if cache_key else None
         if cached:
@@ -161,27 +235,40 @@ async def _ingest_batch(
                 NoticeExtractResponse.model_validate(task) for task in cached_data.get("tasks", [])
             ]
             decisions[item.client_id] = SemanticDecision(**cached_data)
-            stats["ai_cache_hit"] += 1
+            counters["ai_cache_hit"] += 1
         else:
             ai_misses.append((item, cache_key))
+    return decisions, ai_misses, counters
 
-    if ai_misses:
-        stats["ai_batch_count"] = 1
-        resolved = await container.notice_extraction.extract_ambiguous_batch([
-            {"id": item.client_id, "content": item.content, "source_name": item.source_name, "published_at": item.published_at}
-            for item, _ in ai_misses
-        ])
-        for decision, (_, cache_key) in zip(resolved, ai_misses):
-            decisions[decision.id] = decision
-            if decision.type is not NoticeSemanticType.AMBIGUOUS and cache_key:
-                automation_repo.save_ai_cache(cache_key, json.dumps({
-                    "id": decision.id,
-                    "type": decision.type.value,
-                    "tasks": [task.model_dump(mode="json") for task in decision.tasks],
-                    "needs_confirmation": decision.needs_confirmation,
-                    "reason": decision.reason,
-                }, ensure_ascii=False))
 
+def _record_ai_batch_results(
+    automation_repo,
+    decisions: dict[str, SemanticDecision],
+    ai_misses: list[tuple[NoticeBatchItem, Optional[str]]],
+    resolved: list[SemanticDecision],
+) -> None:
+    """阶段 3：合并批量 AI 结果并写入缓存。"""
+    for decision, (_, cache_key) in zip(resolved, ai_misses):
+        decisions[decision.id] = decision
+        if decision.type is not NoticeSemanticType.AMBIGUOUS and cache_key:
+            automation_repo.save_ai_cache(cache_key, json.dumps({
+                "id": decision.id,
+                "type": decision.type.value,
+                "tasks": [task.model_dump(mode="json") for task in decision.tasks],
+                "needs_confirmation": decision.needs_confirmation,
+                "reason": decision.reason,
+            }, ensure_ascii=False))
+
+
+def _persist_pending_batch(
+    automation_repo,
+    user: UserRow,
+    container: ServiceContainer,
+    pending: list[NoticeBatchItem],
+    decisions: dict[str, SemanticDecision],
+) -> dict[str, NoticeBatchItemResult]:
+    """阶段 4：按决策落库或释放认领。"""
+    results: dict[str, NoticeBatchItemResult] = {}
     for item in pending:
         decision = decisions[item.client_id]
         if decision.type is NoticeSemanticType.AMBIGUOUS:
@@ -203,34 +290,12 @@ async def _ingest_batch(
             extraction=extraction,
             reason=reason,
         )
-        results_by_id[item.client_id] = result
+        results[item.client_id] = result
         if status in ("completed", "ignored", "failed"):
             automation_repo.save_ingest_result(user.id, item.client_fingerprint, result.model_dump_json())
         else:
             automation_repo.release_ingest_claim(user.id, item.client_fingerprint)
-
-    for item in contested:
-        stored = None
-        for _ in range(50):
-            stored = automation_repo.get_ingest_result(user.id, item.client_fingerprint)
-            if stored:
-                break
-            await asyncio.sleep(0.02)
-        if stored:
-            results_by_id[item.client_id] = NoticeBatchItemResult.model_validate_json(stored).model_copy(
-                update={"client_id": item.client_id, "duplicate": True}
-            )
-            stats["duplicate_count"] += 1
-        else:
-            results_by_id[item.client_id] = NoticeBatchItemResult(
-                client_id=item.client_id,
-                client_fingerprint=item.client_fingerprint,
-                status="retryable",
-                semantic_type=NoticeSemanticType.AMBIGUOUS,
-                reason="ingest_in_progress",
-            )
-
-    return NoticeBatchIngestResponse(items=[results_by_id[item.client_id] for item in req.items], stats=stats)
+    return results
 
 
 def _container() -> ServiceContainer:
@@ -292,7 +357,7 @@ async def extract_notice_multi(
 
 
 @router.post("/notices/check-duplicate", response_model=DuplicateNoticeCheckResponse)
-async def check_duplicate(
+def check_duplicate(
     req: DuplicateNoticeCheckRequest,
     _user: UserRow = Depends(current_user),
 ) -> DuplicateNoticeCheckResponse:

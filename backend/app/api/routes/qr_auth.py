@@ -45,6 +45,7 @@ from ...core.exceptions import (
     Unauthorized,
 )
 from ...core.qr_payload import build_qr_payload
+from ...core.rate_limit import RateLimited, check_request_rate
 from ...core.security import hash_token
 from ..deps import current_user, get_settings_dep
 from .auth import _issue_tokens
@@ -152,7 +153,11 @@ def _clear_trusted_device_cookie(response: Response, cookie_name: str) -> None:
 # ===== QR Create =====
 
 
-@router.post("/qr/create", response_model=QrCreateResponse)
+@router.post(
+    "/qr/create",
+    response_model=QrCreateResponse,
+    responses={429: {"description": "创建过于频繁（QR_RATE_LIMITED）；Retry-After 表示等待秒数"}},
+)
 def qr_create(
     req: QrCreateRequest,
     request: Request,
@@ -162,6 +167,19 @@ def qr_create(
     """Web 创建 QR Login Session(无需鉴权)。"""
     qr_repo = container.qr_login_session_repository
     now = _now()
+    # 无条件按 ASGI peer 限流：清理会话、生成凭据和写库之前先拒绝。
+    # 身份取自 request.client.host，不自行解析 X-Forwarded-For（转发头只有
+    # 可信代理处理后才会反映到 ASGI 地址）。device_id 保持可选，下面的设备
+    # 限制只是额外保护。进程内计数是单实例额度，不是跨实例全局配额。
+    try:
+        check_request_rate(
+            request,
+            "qr_create",
+            limit=settings.qr_create_rate_max,
+            window=settings.qr_create_rate_window_seconds,
+        )
+    except RateLimited as exc:
+        raise QrRateLimited(exc.retry_after) from exc
     # 简单防刷：同一 device_id 在窗口期内限制创建次数
     if req.device_id:
         window_start = (now - timedelta(seconds=settings.qr_create_rate_window_seconds)).isoformat()

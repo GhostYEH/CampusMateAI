@@ -647,6 +647,25 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 | `requires_user_action` | string / null | 否 | — | — |
 | `protocol_source` | string / null | 否 | — | — |
 
+未绑定教务账号时**不返回 404**：接口仍是 HTTP 200，`status="failed"`、`error_message="未绑定教务账号"`，其余字段为默认值。客户端必须检查业务 `status`，不能只看 HTTP 状态码。
+
+```json
+{
+  "sync_type": "profile",
+  "status": "failed",
+  "items_count": 0,
+  "error_message": "未绑定教务账号",
+  "inserted": 0,
+  "updated": 0,
+  "unchanged": 0,
+  "removed": 0,
+  "failed": 0,
+  "persisted": false
+}
+```
+
+契约未变更：这里刻意保持 HTTP 200 + `status=failed`，**没有**为匹配错误字典改成 404；客户端不能只按 HTTP 状态码判断成功。四个 sync 接口的实际调用方为 Web（`syncEdu`）、Android（`ApiService` 的 `edu/sync/*`）、HarmonyOS（`ApiClient` 的 `eduSync`）和微信小程序（`repository.ts`），本轮仅核对了源码调用点与既有 `status` 分支，未做四端运行时验收。
+
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
 ### `POST /api/v1/edu/sync/schedule`
@@ -698,6 +717,23 @@ Web 封装：`syncEdu`（[webreact/src/data/api.js](../../webreact/src/data/api.
 | `previous_schedule_preserved` | boolean / null | 否 | — | — |
 | `requires_user_action` | string / null | 否 | — | — |
 | `protocol_source` | string / null | 否 | — | — |
+
+未绑定教务账号时**不返回 404**：接口仍是 HTTP 200，`status="failed"`、`error_message="未绑定教务账号"`，其余字段为默认值。客户端必须检查业务 `status`，不能只看 HTTP 状态码。
+
+```json
+{
+  "sync_type": "schedule",
+  "status": "failed",
+  "items_count": 0,
+  "error_message": "未绑定教务账号",
+  "inserted": 0,
+  "updated": 0,
+  "unchanged": 0,
+  "removed": 0,
+  "failed": 0,
+  "persisted": false
+}
+```
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
@@ -751,6 +787,23 @@ Web 封装：`syncEdu`（[webreact/src/data/api.js](../../webreact/src/data/api.
 | `requires_user_action` | string / null | 否 | — | — |
 | `protocol_source` | string / null | 否 | — | — |
 
+未绑定教务账号时**不返回 404**：接口仍是 HTTP 200，`status="failed"`、`error_message="未绑定教务账号"`，其余字段为默认值。客户端必须检查业务 `status`，不能只看 HTTP 状态码。
+
+```json
+{
+  "sync_type": "grade",
+  "status": "failed",
+  "items_count": 0,
+  "error_message": "未绑定教务账号",
+  "inserted": 0,
+  "updated": 0,
+  "unchanged": 0,
+  "removed": 0,
+  "failed": 0,
+  "persisted": false
+}
+```
+
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
 ### `POST /api/v1/edu/sync/exam`
@@ -802,6 +855,23 @@ Web 封装：`syncEdu`（[webreact/src/data/api.js](../../webreact/src/data/api.
 | `previous_schedule_preserved` | boolean / null | 否 | — | — |
 | `requires_user_action` | string / null | 否 | — | — |
 | `protocol_source` | string / null | 否 | — | — |
+
+未绑定教务账号时**不返回 404**：接口仍是 HTTP 200，`status="failed"`、`error_message="未绑定教务账号"`，其余字段为默认值。客户端必须检查业务 `status`，不能只看 HTTP 状态码。
+
+```json
+{
+  "sync_type": "exam",
+  "status": "failed",
+  "items_count": 0,
+  "error_message": "未绑定教务账号",
+  "inserted": 0,
+  "updated": 0,
+  "unchanged": 0,
+  "removed": 0,
+  "failed": 0,
+  "persisted": false
+}
+```
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 

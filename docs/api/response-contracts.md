@@ -167,7 +167,7 @@ stats 的整数计数：courses_fetched/courses_created/courses_updated/teachers
 
 history 返回 `{items:object[],pagination:object,...}`，常见 pagination 为 page/page_size/total；上游额外字段保留。date 不空时查询指定日期，上游不再接收 page/page_size。参数 date 与 random 同时指定每日接口会拒绝；resolution 仅 4k/1080，format 仅 image/json/redirect。运行时强制校验日期，不能只满足字符串格式。
 
-失败 code 包括 UAPI_BAD_REQUEST/UAPI_NOT_FOUND/UAPI_RATE_LIMITED/UAPI_SERVER_ERROR/UAPI_UPSTREAM_ERROR/UAPI_TIMEOUT/UAPI_NETWORK_ERROR/UAPI_INVALID_RESPONSE，以及缺少配置的错误；429 时可能有 Retry-After。参见 [代理实现](../../backend/app/api/routes/bing_daily_wallpaper.py)、[契约测试](../../backend/tests/test_bing_daily_wallpaper.py)。
+失败 code 包括 UAPI_BAD_REQUEST/UAPI_NOT_FOUND/UAPI_RATE_LIMITED/UAPI_SERVER_ERROR/UAPI_UPSTREAM_ERROR/UAPI_TIMEOUT/UAPI_NETWORK_ERROR/UAPI_INVALID_RESPONSE，以及缺少配置的错误；上游 429 时可能有 Retry-After。两个端点另有**本地**防刷：共用同一 ASGI peer 额度（默认 30 次 / 60 秒），超限在上游调用前返回 429 `RATE_LIMITED` + `Retry-After`，不消耗上游额度；本地额度是单进程计数，不是跨实例全局配额。参见 [代理实现](../../backend/app/api/routes/bing_daily_wallpaper.py)、[契约测试](../../backend/tests/test_bing_daily_wallpaper.py)、[限流测试](../../backend/tests/test_wallpaper_rate_limit.py)。
 
 ## 文件、文本及异步视频返回
 

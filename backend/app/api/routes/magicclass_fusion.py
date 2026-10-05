@@ -66,7 +66,7 @@ async def fusion_status(
 
 
 @router.get("/recent", response_model=FusionRecentOut)
-async def fusion_recent(
+def fusion_recent(
     limit: int = Query(RECENT_DEFAULT_LIMIT, ge=1, le=RECENT_MAX_LIMIT),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -76,6 +76,8 @@ async def fusion_recent(
 
     课程可见性走与课程详情/互动课堂完全相同的策略（`can_view_course`），
     因此这里不会出现别的用户的记录，也不会出现该用户已失去访问权的课程。
+
+    全部是同步 SQLite 读取；用 def 让 FastAPI 在线程池执行，避免阻塞事件循环。
     """
     course_names = _course_name_resolver(container, user)
     rows = service.list_recent(

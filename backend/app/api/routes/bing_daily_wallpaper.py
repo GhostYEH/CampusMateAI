@@ -10,12 +10,13 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from ...core.config import Settings
 from ...core.exceptions import AppException
 from ...core.logging import logger
+from ...core.rate_limit import check_request_rate
 from ..deps import get_settings_dep
 
 
@@ -124,8 +125,27 @@ def _uapi_headers(key: str | None) -> dict[str, str]:
     return {"Authorization": f"Bearer {key}"} if key else {}
 
 
-@router.get("/bing-daily")
+# 两个壁纸端点共用同一限流 scope：交替请求两个接口也无法绕过共同额度。
+# 额度是单进程内的 ASGI peer 计数，不是跨实例全局配额。
+WALLPAPER_RATE_SCOPE = "wallpaper_bing_daily"
+
+
+def _enforce_peer_rate_limit(request: Request, settings: Settings) -> None:
+    """匿名可用，但仍按 ASGI peer 防刷；超限抛 RATE_LIMITED/429 + Retry-After。"""
+    check_request_rate(
+        request,
+        WALLPAPER_RATE_SCOPE,
+        limit=settings.wallpaper_rate_max,
+        window=settings.wallpaper_rate_window_seconds,
+    )
+
+
+@router.get(
+    "/bing-daily",
+    responses={429: {"description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"}},
+)
 async def get_bing_daily_wallpaper(
+    request: Request,
     date: str | None = Query(default=None),
     random: bool = Query(default=False),
     resolution: str = Query(default="4k"),
@@ -133,6 +153,7 @@ async def get_bing_daily_wallpaper(
     settings: Settings = Depends(get_settings_dep),
 ) -> Response:
     """代理 UAPI 必应每日壁纸的 image/json/redirect 三种响应格式。"""
+    _enforce_peer_rate_limit(request, settings)
     _validate_query(date, resolution, format, random)
     key = _require_key(settings)
     params = _request_params(date, random, resolution, format)
@@ -177,8 +198,12 @@ async def get_bing_daily_wallpaper(
     return _error_response(502, "UAPI_INVALID_RESPONSE", "必应壁纸服务未返回有效跳转地址")
 
 
-@router.get("/bing-daily/history")
+@router.get(
+    "/bing-daily/history",
+    responses={429: {"description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"}},
+)
 async def get_bing_daily_wallpaper_history(
+    request: Request,
     date: str | None = Query(default=None),
     resolution: str = Query(default="4k"),
     page: int = Query(default=1),
@@ -186,6 +211,7 @@ async def get_bing_daily_wallpaper_history(
     settings: Settings = Depends(get_settings_dep),
 ) -> JSONResponse:
     """代理 UAPI 必应壁纸历史列表，支持按日期精确查询。"""
+    _enforce_peer_rate_limit(request, settings)
     _validate_date(date)
     _validate_resolution(resolution)
     if page < 1:

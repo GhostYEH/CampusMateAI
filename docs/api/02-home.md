@@ -186,7 +186,12 @@ format=image 是图片，format=json 是元数据，format=redirect 是重定向
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | image/* / application/json / 重定向 | 由 format 决定；元数据至少有 image_url |
+| 429 | application/json | 本地防刷超限：[统一错误结构](integration.md#errors)，`code=RATE_LIMITED`；带 `Retry-After` |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+
+本地防刷：两个壁纸端点匿名可用，但共用同一个 ASGI peer 限流 scope（默认 30 次 / 60 秒，见 `WALLPAPER_RATE_MAX`、`WALLPAPER_RATE_WINDOW_SECONDS`），交替请求每日与历史端点无法绕过共同额度。超限在调用上游之前就返回 429 + `RATE_LIMITED` + `Retry-After`。该额度是**单进程内**计数，不是跨实例全局配额。上游自身的 429 仍然是 `UAPI_RATE_LIMITED`，与本地额度是两回事。
+
+各端兼容性：Web 源码中未发现调用后端壁纸代理；Android 的 `BingDailyWallpaperApi` 请求 `api/v1/image/bing-daily`、HarmonyOS 的 `BingDailyWallpaperClient` 直连 `https://uapis.cn/api/v1/image/bing-daily`，都**不经过**本代理，因此本次本地限流不影响它们（也意味着它们的出网不受后端保护，属既有实现）。微信小程序未发现调用。新增 429 只影响后续接入本代理的客户端，不改变 200/图片/JSON/redirect 契约。
 
 实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
 
@@ -275,7 +280,10 @@ format=image 是图片，format=json 是元数据，format=redirect 是重定向
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | 动态响应；见下方补充与 response-contracts.md |
+| 429 | application/json | 本地防刷超限：[统一错误结构](integration.md#errors)，`code=RATE_LIMITED`；带 `Retry-After` |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+
+本地防刷与每日端点共用同一 peer 额度（默认 30 次 / 60 秒），说明见 `GET /api/v1/wallpaper/bing-daily` 一节。
 
 实际响应补充：动态对象、透传、文件和流式返回不能由默认 OpenAPI 完整表达；业务字段说明在 [响应补充](response-contracts.md)。下面列出实现中的返回构造式，变量代表运行时值，并非 JSON 示例。
 

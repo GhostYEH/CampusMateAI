@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 
 from ...core.config import get_settings
 from ...core.exceptions import (
@@ -279,6 +280,33 @@ async def upload_attachment(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> AttachmentOut:
+    # 同步 SQLite 读取（所有权 / 提交状态 / 作业状态）下放到线程池。
+    await run_in_threadpool(_authorize_attachment_upload, container, submission_id, user)
+    # 文件名安全校验
+    try:
+        safe_name = sanitize_filename(file.filename or "")
+    except ValueError as e:
+        raise FileNameUnsafe(str(e)) from e
+    # 扩展名白名单
+    ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if ext not in _ALLOWED_EXT:
+        raise AttachmentTypeNotAllowed(f"不支持的文件类型: .{ext}")
+    # 大小校验（读取阶段仍是异步的）
+    content = await file.read(_MAX_SIZE_BYTES + 1)
+    size = len(content)
+    if size > _MAX_SIZE_BYTES:
+        raise AttachmentTooLarge("附件不能超过 10MB")
+    if size == 0:
+        raise FileNameUnsafe("文件为空")
+    # 落盘 + 写库：同步文件 I/O 与同步 SQLite 写入整体下放到线程池；
+    # 失败时清理已写入的文件（与原有语义一致）。
+    return await run_in_threadpool(
+        _persist_attachment, container, submission_id, user, safe_name, ext, content, size, file.content_type
+    )
+
+
+def _authorize_attachment_upload(container: ServiceContainer, submission_id: str, user: UserRow):
+    """同步阶段：所有权、提交状态与作业状态校验。"""
     sub = container.submission_repository.get_submission(submission_id)
     if sub is None:
         raise SubmissionNotFound()
@@ -294,22 +322,19 @@ async def upload_attachment(
             raise ResubmitNotAllowed()
     else:
         raise Forbidden("仅可为本人的提交上传附件")
-    # 文件名安全校验
-    try:
-        safe_name = sanitize_filename(file.filename or "")
-    except ValueError as e:
-        raise FileNameUnsafe(str(e)) from e
-    # 扩展名白名单
-    ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
-    if ext not in _ALLOWED_EXT:
-        raise AttachmentTypeNotAllowed(f"不支持的文件类型: .{ext}")
-    # 大小校验
-    content = await file.read(_MAX_SIZE_BYTES + 1)
-    size = len(content)
-    if size > _MAX_SIZE_BYTES:
-        raise AttachmentTooLarge("附件不能超过 10MB")
-    if size == 0:
-        raise FileNameUnsafe("文件为空")
+
+
+def _persist_attachment(
+    container: ServiceContainer,
+    submission_id: str,
+    user: UserRow,
+    safe_name: str,
+    ext: str,
+    content: bytes,
+    size: int,
+    content_type: Optional[str],
+) -> AttachmentOut:
+    """同步阶段：写文件并登记附件记录，失败时删除已写入的文件。"""
     # 存储路径: ./data/submission_attachments/<submission_id>/<uuid>_<safe_name>
     settings = get_settings()
     base_dir = settings.knowledge_base_dir.parent / "submission_attachments" / submission_id
@@ -321,7 +346,7 @@ async def upload_attachment(
     if is_path_traversal(storage_path, base_dir):
         raise FileNameUnsafe("存储路径非法")
     storage_path.write_bytes(content)
-    mime = file.content_type or _guess_mime(ext)
+    mime = content_type or _guess_mime(ext)
     try:
         att = container.submission_repository.add_attachment(
             submission_id=submission_id,

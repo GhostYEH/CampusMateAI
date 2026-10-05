@@ -13,6 +13,14 @@ import httpx
 from .ssrf_guard import SSRFBlockedError, check_url_safety
 
 
+class ResponseTooLargeError(Exception):
+    """Upstream body exceeded the caller's hard byte budget.
+
+    Raised while the body is still being accumulated, so a caller with a size
+    limit never has to download a whole oversized response first.
+    """
+
+
 class PinnedNetworkBackend(httpcore.AnyIOBackend):
     def __init__(self, *, allow_private: bool = False) -> None:
         self._allow_private = allow_private
@@ -70,19 +78,45 @@ def _map_errors():
 
 
 class SSRFSafeTransport(httpx.AsyncBaseTransport):
-    """Direct, pooled transport for buffered school HTTP requests; no proxies."""
+    """Direct, pooled transport for buffered school HTTP requests; no proxies.
 
-    def __init__(self, *, allow_private: bool = False, verify: bool | ssl.SSLContext = True) -> None:
+    ``max_response_bytes`` is opt-in. When set, the body is read incrementally
+    and the request is aborted as soon as the running total exceeds the budget,
+    instead of buffering everything and rejecting it afterwards.
+    """
+
+    def __init__(
+        self,
+        *,
+        allow_private: bool = False,
+        verify: bool | ssl.SSLContext = True,
+        max_response_bytes: int | None = None,
+    ) -> None:
         context = verify if isinstance(verify, ssl.SSLContext) else httpcore.default_ssl_context()
         if verify is False:
             # Only callers with the existing non-production opt-in use this.
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+        self._max_response_bytes = max_response_bytes
         self._pool = httpcore.AsyncConnectionPool(
             ssl_context=context,
             max_connections=100, max_keepalive_connections=20, keepalive_expiry=5,
             network_backend=PinnedNetworkBackend(allow_private=allow_private),
         )
+
+    async def _read_body(self, response: httpcore.Response) -> bytes:
+        if self._max_response_bytes is None:
+            return await response.aread()
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in response.aiter_stream():
+            total += len(chunk)
+            if total > self._max_response_bytes:
+                raise ResponseTooLargeError(
+                    f"upstream body exceeded {self._max_response_bytes} bytes"
+                )
+            chunks.append(chunk)
+        return b"".join(chunks)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         core_request = httpcore.Request(
@@ -96,7 +130,7 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
         with _map_errors():
             response = await self._pool.handle_async_request(core_request)
             try:
-                content = await response.aread()
+                content = await self._read_body(response)
             finally:
                 await response.aclose()
         return httpx.Response(

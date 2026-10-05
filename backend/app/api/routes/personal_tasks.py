@@ -24,6 +24,7 @@ import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
+from starlette.concurrency import run_in_threadpool
 
 from ...core.exceptions import (
     PersonalTaskConflict,
@@ -440,17 +441,14 @@ async def rank_importance(
     - 不传 task_ids 时，评定当前用户所有 pending 任务(最多 50 条)
     - 传 task_ids 时，评定指定任务(跨用户或不存在的自动跳过)
     - 评定结果写回任务的 importance 字段
+
+    保留 async（含真实 AI 调用）；同步 SQLite 读取/写回两个阶段分别整体
+    下放到线程池，不在事件循环里逐条阻塞，也不为每个任务单独建线程任务。
     """
     repo = container.personal_task_repository
-    if req.task_ids:
-        tasks: List[PersonalTaskRow] = []
-        for tid in req.task_ids:
-            row = repo.get_task(tid, user_id=user.id)
-            if row is not None:
-                tasks.append(row)
-    else:
-        rows, _ = repo.list_tasks(user.id, status="pending", page=1, page_size=50)
-        tasks = list(rows)
+    tasks: List[PersonalTaskRow] = await run_in_threadpool(
+        _load_tasks_for_ranking, repo, user.id, req.task_ids
+    )
 
     if not tasks:
         return ImportanceRankResponse(updated=[], skipped=[], mode="rules", total=0)
@@ -467,12 +465,39 @@ async def rank_importance(
     ]
     results, mode = await container.notice_extraction.rank_importance_batch(payload)
 
+    updated_items, skipped = await run_in_threadpool(
+        _apply_importance_results, repo, user.id, results, mode
+    )
+    return ImportanceRankResponse(
+        updated=updated_items, skipped=skipped, mode=mode, total=len(updated_items)
+    )
+
+
+def _load_tasks_for_ranking(
+    repo, user_id: str, task_ids: List[str]
+) -> List[PersonalTaskRow]:
+    """同步阶段：按显式 id 或 pending 列表读取待评定任务。"""
+    if task_ids:
+        tasks: List[PersonalTaskRow] = []
+        for tid in task_ids:
+            row = repo.get_task(tid, user_id=user_id)
+            if row is not None:
+                tasks.append(row)
+        return tasks
+    rows, _ = repo.list_tasks(user_id, status="pending", page=1, page_size=50)
+    return list(rows)
+
+
+def _apply_importance_results(
+    repo, user_id: str, results: List[dict], mode: str
+) -> tuple[List[ImportanceRankItem], List[str]]:
+    """同步阶段：把评定结果写回任务。"""
     updated_items: List[ImportanceRankItem] = []
     skipped: List[str] = []
     for r in results:
         tid = r["id"]
         imp = r["importance"]
-        row = repo.update_task(tid, user_id=user.id, fields={"importance": imp})
+        row = repo.update_task(tid, user_id=user_id, fields={"importance": imp})
         if row is None:
             skipped.append(tid)
         else:
@@ -482,9 +507,7 @@ async def rank_importance(
                 reason=r.get("reason"),
                 mode=mode,
             ))
-    return ImportanceRankResponse(
-        updated=updated_items, skipped=skipped, mode=mode, total=len(updated_items)
-    )
+    return updated_items, skipped
 
 
 __all__ = ["router"]

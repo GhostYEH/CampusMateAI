@@ -202,6 +202,10 @@ class Settings(BaseSettings):
     # 仅后端读取；不要把 UAPI Key 下发到 Web/移动端。
     uapi_api_key: str = ""
     uapi_timeout_seconds: float = 8.0
+    # 本地防刷：同一 ASGI peer 在窗口期内最多请求两个壁纸端点的次数（共享额度）。
+    # 这是单进程额度，不是跨实例全局配额；跨实例部署仍需在代理层限流。
+    wallpaper_rate_window_seconds: int = 60
+    wallpaper_rate_max: int = 30
 
     # ===== Focus Realtime Voice（所有值仅后端环境变量） =====
     # AppId 可以下发给客户端；AppKey、AK/SK 和 VoiceChat 配置绝不能离开后端。

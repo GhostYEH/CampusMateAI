@@ -462,6 +462,15 @@ class QrRateLimited(AppException):
     http_status = 429
     message = "创建二维码过于频繁，请稍后再试。"
 
+    def __init__(self, retry_after: Optional[int] = None) -> None:
+        # 通用限流器抛出的 RateLimited 会带 retry_after；转成二维码业务异常时
+        # 必须继续下发 Retry-After，客户端才能正确退避。
+        if retry_after is not None:
+            self.retry_after = int(retry_after)
+        super().__init__(
+            details={"retry_after_seconds": int(retry_after)} if retry_after is not None else None
+        )
+
 
 # ===== Trusted Device（可信设备）=====
 

@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS documents (
 
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_title ON documents(title);
+-- 文档列表按 imported_at DESC 排序；补索引避免全表排序。不新增
+-- (is_official, is_expired) 索引：这两个字段没有等值过滤查询支撑。
+CREATE INDEX IF NOT EXISTS idx_documents_imported_at ON documents(imported_at DESC);
 -- idx_documents_is_demo 在 _migrate() 中创建:旧库可能缺 is_demo 列,
 -- 在 ALTER TABLE 之前创建索引会触发 "no such column: is_demo"。
 
@@ -1317,6 +1320,11 @@ CREATE TABLE IF NOT EXISTS learning_plan_evidence (
 );
 CREATE INDEX IF NOT EXISTS idx_learning_plan_evidence_item
     ON learning_plan_evidence(item_id, evidence_id);
+-- 批量加载按 `WHERE plan_id IN (...) ORDER BY evidence_id` 读取证据；只建
+-- (plan_id) 需要为排序另建临时结构，(plan_id, evidence_id) 同时覆盖过滤和
+-- 排序。旧的 item_id 索引保留，供按条目查询使用。
+CREATE INDEX IF NOT EXISTS idx_learning_plan_evidence_plan
+    ON learning_plan_evidence(plan_id, evidence_id);
 
 CREATE TABLE IF NOT EXISTS learning_plan_decisions (
     decision_id TEXT PRIMARY KEY,

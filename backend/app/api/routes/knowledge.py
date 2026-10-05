@@ -38,7 +38,8 @@ def _determine_qa_mode(
 
 
 @router.get("/knowledge/status", response_model=KnowledgeStatus)
-async def knowledge_status() -> KnowledgeStatus:
+def knowledge_status() -> KnowledgeStatus:
+    """只读状态查询，全部是同步 SQLite 读取；用 def 让 FastAPI 放到线程池执行。"""
     container = get_container()
     last_imported = container.document_repository.latest_imported_at()
     chunk_count = container.retrieval.chunk_count
@@ -69,7 +70,8 @@ async def knowledge_status() -> KnowledgeStatus:
 
 
 @router.get("/knowledge/documents", response_model=List[DocumentSummary])
-async def list_documents(_user: UserRow = Depends(current_user)) -> List[DocumentSummary]:
+def list_documents(_user: UserRow = Depends(current_user)) -> List[DocumentSummary]:
+    """只读文档元数据列表；用 def 避免在事件循环里执行同步 SQLite 读取。"""
     container = get_container()
     docs = container.document_repository.list_documents()
     return [

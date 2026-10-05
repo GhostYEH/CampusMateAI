@@ -44,15 +44,22 @@ class RequestRateLimiter:
             requests.append(now)
 
 
-def check_request_rate(request: Request, scope: str, *, limit: int) -> None:
+def check_request_rate(
+    request: Request, scope: str, *, limit: int, window: float = 60
+) -> None:
+    """按 ASGI peer 限流。
+
+    ``window`` 默认 60 秒，调用方可以传入自己的窗口（例如二维码创建使用
+    5 次 / 10 秒）。默认值保持不变，以免改变既有调用方的行为。
+    """
     # Forwarded headers are user input unless validated by the trusted proxy
     # configuration; use the ASGI peer address supplied by the server.
     identity = request.client.host if request.client else "unknown"
-    request.app.state.request_rate_limiter.check(scope, identity, limit=limit)
+    request.app.state.request_rate_limiter.check(scope, identity, limit=limit, window=window)
 
 
-def request_rate_limit(scope: str, *, limit: int):
+def request_rate_limit(scope: str, *, limit: int, window: float = 60):
     def dependency(request: Request) -> None:
-        check_request_rate(request, scope, limit=limit)
+        check_request_rate(request, scope, limit=limit, window=window)
 
     return dependency

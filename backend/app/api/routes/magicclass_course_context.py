@@ -31,12 +31,15 @@ def _container() -> ServiceContainer:
 
 
 @router.get("/{course_id}/magicclass-context", response_model=CourseContextOut)
-async def get_course_context(
+def get_course_context(
     course_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> CourseContextOut:
-    """这门课已同步的知识点、章节与可用资料（脱敏，只含标题）。"""
+    """这门课已同步的知识点、章节与可用资料（脱敏，只含标题）。
+
+    全部是同步 SQLite 读取；用 def 让 FastAPI 在线程池执行，避免阻塞事件循环。
+    """
     course = assert_course_access(container, user, course_id)
     facts = build_course_facts(container, user, course)
     return CourseContextOut(

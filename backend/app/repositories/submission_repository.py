@@ -38,11 +38,10 @@ class SubmissionRepository:
         """新建或更新提交(UNIQUE(assignment_id, student_id) 保证幂等)。"""
         now = _now_iso()
         submitted_at = now if status in ("submitted", "resubmitted", "late") else None
-        with self._db.transaction() as conn:
-            if student_write:
-                # Serialize the policy check and write, including other DB
-                # connections, so a concurrent submit cannot bypass the gate.
-                conn.execute("BEGIN IMMEDIATE")
+        # 学生写入需要在读改写前预占写锁，包括其他 Database 连接/进程，
+        # 否则并发提交可以绕过截止校验。用 transaction(immediate=True)
+        # 让最外层事务负责预占，不再在事务内手动 BEGIN。
+        with self._db.transaction(immediate=student_write) as conn:
             cur = conn.execute(
                 "SELECT id, status FROM submissions WHERE assignment_id = ? AND student_id = ?",
                 (assignment_id, student_id),
@@ -215,11 +214,11 @@ class SubmissionRepository:
     ) -> SubmissionAttachmentRow:
         aid = _new_id("att")
         now = _now_iso()
-        with self._db.transaction() as conn:
+        # 学生写入沿用与 upsert_submission 相同的 student_write 条件预占写锁。
+        with self._db.transaction(immediate=student_write) as conn:
             if student_write:
                 from ..core.exceptions import SubmissionNotFound
 
-                conn.execute("BEGIN IMMEDIATE")
                 submission = conn.execute(
                     "SELECT assignment_id, status FROM submissions WHERE id = ?", (submission_id,),
                 ).fetchone()

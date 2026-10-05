@@ -421,8 +421,8 @@ class NoticeWorkflowRepository:
             updates.append("automation_enabled=excluded.automation_enabled")
         if display_name is not None:
             updates.append("display_name=excluded.display_name")
-        with self._db.transaction() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        # 读改写前预占写锁：并发请求可能只提交部分字段，不能在读之后被覆盖。
+        with self._db.transaction(immediate=True) as conn:
             if conn.execute(
                 "SELECT 1 FROM notification_sources WHERE source_id = ?", (source_id,)
             ).fetchone() is None:
@@ -597,9 +597,8 @@ class NoticeWorkflowRepository:
 
     def mark_step_done(self, workflow_id: str, step_index: int) -> None:
         """标记步骤完成(不覆盖已完成步骤)。"""
-        with self._db.transaction() as conn:
-            # 在读取 JSON 前获取写锁；不同 Database 实例/进程也不能覆盖彼此的步骤。
-            conn.execute("BEGIN IMMEDIATE")
+        # 在读取 JSON 前获取写锁；不同 Database 实例/进程也不能覆盖彼此的步骤。
+        with self._db.transaction(immediate=True) as conn:
             row = conn.execute(
                 "SELECT steps_json FROM notice_workflows WHERE workflow_id=?", (workflow_id,)
             ).fetchone()

@@ -3,8 +3,9 @@
 公共 Web 访问必须走本模块,执行 SSRF 防护:
 - 私网/本地/loopback/link-local 拒绝
 - 协议/主机检查(仅 HTTP/HTTPS)
-- 超时和内容大小限制
-- 重定向逃逸检查
+- 实际 TCP 连接只连到校验过的 IP,Host / TLS SNI / 证书校验仍用原域名
+- 每个重定向跳都重新校验
+- 超时和内容大小限制(大小上限在正文累积过程中执行)
 """
 from __future__ import annotations
 
@@ -130,8 +131,10 @@ class ControlledSourceFetcher:
         """受控 fetch。
 
         - allow_web=False 时直接拒绝(硬约束)
-        - SSRF 校验
-        - 超时、大小、重定向限制
+        - SSRF 校验(每个重定向跳都要重新校验)
+        - 实际 TCP 连接只允许连到校验过的 IP；Host / TLS SNI / 证书校验
+          仍使用原域名(复用已有安全连接后端 PinnedNetworkBackend)
+        - 超时、大小、重定向限制；大小上限在正文累积过程中执行
         """
         if not allow_web:
             raise AgentSourcePolicyViolation(
@@ -139,23 +142,32 @@ class ControlledSourceFetcher:
                 code="AGENT_SOURCE_POLICY_VIOLATION",
                 http_status=403,
             )
-        validated = validate_url(url)
-        # 延迟导入 httpx,避免在纯单元测试中强制依赖网络
+        # 延迟导入 httpx / 安全传输,避免在纯单元测试中强制依赖网络栈。
         import httpx
         from datetime import datetime, timezone
+        from starlette.concurrency import run_in_threadpool
+        from ..edu.adapters.ssrf_guard import SSRFBlockedError
+        from ..edu.adapters.ssrf_transport import ResponseTooLargeError, SSRFSafeTransport
+
+        # 默认使用"只连校验过的 IP"的传输后端。校验通过后如果 HTTP 客户端
+        # 再自行解析一次域名,就会出现 DNS 重绑定窗口(公网 -> 私网)。
+        transport = self._transport
+        if transport is None:
+            transport = SSRFSafeTransport(max_response_bytes=self._max_bytes)
 
         async with httpx.AsyncClient(
             timeout=self._timeout,
             follow_redirects=False,
-            transport=self._transport,
+            transport=transport,
         ) as client:
             try:
-                current_url = validated
+                current_url = url
                 for redirect_count in range(self._max_redirects + 1):
                     # Validate every hop before sending it. Validating only resp.url
                     # after automatic redirects is too late: the private request has
-                    # already happened at that point.
-                    validate_url(current_url)
+                    # already happened at that point. DNS is resolved off the event
+                    # loop so a slow resolver cannot stall other requests.
+                    await run_in_threadpool(validate_url, current_url)
                     resp = await client.get(current_url)
                     if resp.status_code not in (301, 302, 303, 307, 308):
                         break
@@ -167,13 +179,21 @@ class ControlledSourceFetcher:
                     current_url = urljoin(current_url, location)
                 else:  # pragma: no cover - loop always exits or raises
                     raise SSRFViolation("重定向次数过多")
+            except SSRFViolation:
+                raise
+            except ResponseTooLargeError as e:
+                raise SSRFViolation("响应过大") from e
+            except SSRFBlockedError as e:
+                # 连接层再次校验:无法取得安全地址时禁止连接。
+                raise SSRFViolation(f"目标地址被拒绝: {e}") from e
             except httpx.TimeoutException as e:
                 raise SSRFViolation(f"请求超时: {e}") from e
             except (httpx.HTTPError, OSError) as e:
                 raise SSRFViolation(f"请求失败: {type(e).__name__}") from e
             final_url = str(resp.url)
-            validate_url(final_url)
-            # 大小限制
+            await run_in_threadpool(validate_url, final_url)
+            # 大小限制：先看 Content-Length 快速拒绝；真正的上限由传输后端在
+            # 正文累积过程中执行(无 Content-Length 的响应同样受限)。
             content_length = int(resp.headers.get("content-length", 0))
             if content_length and content_length > self._max_bytes:
                 raise SSRFViolation("响应过大")

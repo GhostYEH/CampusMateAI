@@ -30,9 +30,10 @@ def _synchronize_transactions(databases, monkeypatch):
         original = db.transaction
 
         @contextmanager
-        def synchronized(original=original):
+        def synchronized(original=original, **kwargs):
+            # Forward keywords so callers can request an immediate transaction.
             barrier.wait(timeout=10)
-            with original() as conn:
+            with original(**kwargs) as conn:
                 yield conn
 
         monkeypatch.setattr(db, "transaction", synchronized)

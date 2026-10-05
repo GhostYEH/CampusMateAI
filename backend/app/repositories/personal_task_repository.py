@@ -145,8 +145,8 @@ class PersonalTaskRepository:
         created: List[PersonalTaskRow] = []
         skipped: List[PersonalTaskRow] = []
         now = _now_iso()
-        with self._db.transaction() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        # 标题/来源去重需要在读之前预占写锁，包括其他 Database 连接/进程。
+        with self._db.transaction(immediate=True) as conn:
             active_rows = [
                 PersonalTaskRow.from_row(row)
                 for row in conn.execute(

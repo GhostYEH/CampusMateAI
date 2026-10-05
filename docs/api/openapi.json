@@ -866,7 +866,8 @@
               }
             }
           }
-        }
+        },
+        "description": "只读状态查询，全部是同步 SQLite 读取；用 def 让 FastAPI 放到线程池执行。"
       }
     },
     "/api/v1/knowledge/documents": {
@@ -896,7 +897,8 @@
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "description": "只读文档元数据列表；用 def 避免在事件循环里执行同步 SQLite 读取。"
       }
     },
     "/api/v1/assistant/chat": {
@@ -1090,7 +1092,7 @@
           "contributions"
         ],
         "summary": "Delete Expression Sample",
-        "description": "允许贡献者删除自己上传的样本及其元数据。",
+        "description": "允许贡献者删除自己上传的样本及其元数据（同步文件 I/O，用 def 走线程池）。",
         "operationId": "delete_expression_sample_api_v1_contributions_expression_samples__sample_id__delete",
         "security": [
           {
@@ -1426,6 +1428,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "创建过于频繁（QR_RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         }
       }
@@ -4435,7 +4440,7 @@
           "personal-tasks"
         ],
         "summary": "Rank Importance",
-        "description": "批量评定任务重要程度(AI 优先 + 规则降级)。\n\n- 不传 task_ids 时，评定当前用户所有 pending 任务(最多 50 条)\n- 传 task_ids 时，评定指定任务(跨用户或不存在的自动跳过)\n- 评定结果写回任务的 importance 字段",
+        "description": "批量评定任务重要程度(AI 优先 + 规则降级)。\n\n- 不传 task_ids 时，评定当前用户所有 pending 任务(最多 50 条)\n- 传 task_ids 时，评定指定任务(跨用户或不存在的自动跳过)\n- 评定结果写回任务的 importance 字段\n\n保留 async（含真实 AI 调用）；同步 SQLite 读取/写回两个阶段分别整体\n下放到线程池，不在事件循环里逐条阻塞，也不为每个任务单独建线程任务。",
         "operationId": "rank_importance_api_v1_tasks_rank_importance_post",
         "requestBody": {
           "content": {
@@ -6957,6 +6962,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         }
       }
@@ -7035,6 +7043,9 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"
           }
         }
       }
@@ -12559,7 +12570,7 @@
           "magicclass-fusion"
         ],
         "summary": "Fusion Recent",
-        "description": "当前用户**所有可见课程**的最近学习内容（一次请求替代按课程轮询）。\n\n课程可见性走与课程详情/互动课堂完全相同的策略（`can_view_course`），\n因此这里不会出现别的用户的记录，也不会出现该用户已失去访问权的课程。",
+        "description": "当前用户**所有可见课程**的最近学习内容（一次请求替代按课程轮询）。\n\n课程可见性走与课程详情/互动课堂完全相同的策略（`can_view_course`），\n因此这里不会出现别的用户的记录，也不会出现该用户已失去访问权的课程。\n\n全部是同步 SQLite 读取；用 def 让 FastAPI 在线程池执行，避免阻塞事件循环。",
         "operationId": "fusion_recent_api_v1_magicclass_fusion_recent_get",
         "security": [
           {
@@ -15745,7 +15756,7 @@
           "magicclass-course-context"
         ],
         "summary": "Get Course Context",
-        "description": "这门课已同步的知识点、章节与可用资料（脱敏，只含标题）。",
+        "description": "这门课已同步的知识点、章节与可用资料（脱敏，只含标题）。\n\n全部是同步 SQLite 读取；用 def 让 FastAPI 在线程池执行，避免阻塞事件循环。",
         "operationId": "get_course_context_api_v1_courses__course_id__magicclass_context_get",
         "security": [
           {
