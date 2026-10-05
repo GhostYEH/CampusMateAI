@@ -163,7 +163,8 @@ fun FocusScreen(
     var planLoading by remember { mutableStateOf(false) }
     var planError by remember { mutableStateOf<String?>(null) }
     var planReloadToken by remember { mutableIntStateOf(0) }
-    var sessionReady by remember { mutableStateOf(!backendOnline) }
+    var sessionReady by remember { mutableStateOf(false) }
+    var sessionChecking by remember { mutableStateOf(backendOnline) }
     val currentPlan = effectiveTaskId?.let(plans::get)
     val currentStep = currentPlan?.currentStep
 
@@ -174,16 +175,18 @@ fun FocusScreen(
         backendOnline,
         planReloadToken,
     ) {
-        sessionReady = !backendOnline
-        var activeSessionResolved = !backendOnline
+        sessionReady = false
+        sessionChecking = backendOnline
         planLoading = effectiveTaskId != null
         planError = null
         planRepository.load()
+        val activeRefreshResult = if (backendOnline) repository.refreshActiveSession() else null
+        // Starting only depends on resolving the active session. History and plans can load later.
+        sessionReady = activeRefreshResult?.isSuccess == true
+        sessionChecking = false
         if (backendOnline) {
-            val activeRefreshResult = repository.refreshActiveSession()
-            activeSessionResolved = activeRefreshResult.isSuccess
             repository.refreshHistoryAndGoal()
-            if (activeRefreshResult.isSuccess) {
+            if (activeRefreshResult?.isSuccess == true) {
                 planRepository.recoverPreparedCompletions(
                     repository.records.value.mapNotNull { it.sourceId }.toSet(),
                 )
@@ -204,7 +207,6 @@ fun FocusScreen(
                 }
             }
         }
-        sessionReady = activeSessionResolved
         planLoading = false
     }
     val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
@@ -296,6 +298,8 @@ fun FocusScreen(
                     selectedMinutes = selectedDurationMinutes,
                     selectedMode = sessionMode,
                     canStart = backendOnline && sessionReady,
+                    preparing = backendOnline && sessionChecking,
+                    unavailable = !backendOnline,
                     onSelectMinutes = { minutes -> selectedDurationMinutes = minutes },
                     onCustom = {
                         customDurationInput = selectedDurationMinutes.toString()
@@ -375,6 +379,8 @@ private fun QuickFocusCard(
     selectedMinutes: Int,
     selectedMode: FocusSessionMode,
     canStart: Boolean,
+    preparing: Boolean,
+    unavailable: Boolean,
     onSelectMinutes: (Int) -> Unit,
     onCustom: () -> Unit,
     onSelectMode: (FocusSessionMode) -> Unit,
@@ -481,11 +487,32 @@ private fun QuickFocusCard(
             enabled = canStart,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(15.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = wood, contentColor = Color.White),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = wood,
+                contentColor = Color.White,
+                disabledContainerColor = Color(0xFFE1D1B7),
+                disabledContentColor = wood,
+            ),
         ) {
-            Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+            if (preparing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(17.dp),
+                    strokeWidth = 2.dp,
+                    color = wood,
+                )
+            } else {
+                Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
+            }
             Spacer(Modifier.width(6.dp))
-            Text("开始专注", fontWeight = FontWeight.Bold)
+            Text(
+                when {
+                    preparing -> "正在恢复专注状态"
+                    unavailable -> "连接后可开始"
+                    !canStart -> "暂时无法开始，请重试"
+                    else -> "开始专注"
+                },
+                fontWeight = FontWeight.Bold,
+            )
         }
         }
     }
