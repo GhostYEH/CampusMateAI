@@ -6,6 +6,7 @@
 - 实际 TCP 连接只连到校验过的 IP,Host / TLS SNI / 证书校验仍用原域名
 - 每个重定向跳都重新校验
 - 超时和内容大小限制(大小上限在正文累积过程中执行)
+- 要求 identity 编码,拒绝上游忽略该要求而返回的压缩正文
 """
 from __future__ import annotations
 
@@ -135,6 +136,8 @@ class ControlledSourceFetcher:
         - 实际 TCP 连接只允许连到校验过的 IP；Host / TLS SNI / 证书校验
           仍使用原域名(复用已有安全连接后端 PinnedNetworkBackend)
         - 超时、大小、重定向限制；大小上限在正文累积过程中执行
+        - 显式要求 identity 编码：字节预算只对传输层看到的原始字节有意义，
+          压缩正文会在 httpx 侧解压后膨胀，绕开预算
         """
         if not allow_web:
             raise AgentSourcePolicyViolation(
@@ -147,7 +150,11 @@ class ControlledSourceFetcher:
         from datetime import datetime, timezone
         from starlette.concurrency import run_in_threadpool
         from ..edu.adapters.ssrf_guard import SSRFBlockedError
-        from ..edu.adapters.ssrf_transport import ResponseTooLargeError, SSRFSafeTransport
+        from ..edu.adapters.ssrf_transport import (
+            CompressedResponseError,
+            ResponseTooLargeError,
+            SSRFSafeTransport,
+        )
 
         # 默认使用"只连校验过的 IP"的传输后端。校验通过后如果 HTTP 客户端
         # 再自行解析一次域名,就会出现 DNS 重绑定窗口(公网 -> 私网)。
@@ -159,6 +166,9 @@ class ControlledSourceFetcher:
             timeout=self._timeout,
             follow_redirects=False,
             transport=transport,
+            # 不要压缩正文：压缩字节数不等于解压后的内存占用。传输层还会在
+            # 有预算时拒绝上游忽略该请求头而返回的编码正文。
+            headers={"Accept-Encoding": "identity"},
         ) as client:
             try:
                 current_url = url
@@ -183,6 +193,9 @@ class ControlledSourceFetcher:
                 raise
             except ResponseTooLargeError as e:
                 raise SSRFViolation("响应过大") from e
+            except CompressedResponseError as e:
+                # 上游无视 identity：拒绝而不是先解压再判断，避免解压放大内存。
+                raise SSRFViolation(f"响应使用了未允许的内容编码: {e}") from e
             except SSRFBlockedError as e:
                 # 连接层再次校验:无法取得安全地址时禁止连接。
                 raise SSRFViolation(f"目标地址被拒绝: {e}") from e

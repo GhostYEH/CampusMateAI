@@ -21,6 +21,46 @@ class ResponseTooLargeError(Exception):
     """
 
 
+class CompressedResponseError(Exception):
+    """Upstream used a content encoding although the caller asked for identity.
+
+    httpx decompresses ``Content-Encoding`` *after* the transport returns, so a
+    body that fits the byte budget while compressed can expand far past it while
+    being decoded. Callers that configure a budget must reject such bodies
+    before an ``httpx.Response`` is built, otherwise the budget only bounds the
+    compressed size and the decompression happens unbounded.
+    """
+
+
+def _declared_content_encodings(headers) -> list[str]:
+    """Every content coding declared by the upstream response, lower-cased.
+
+    Accepts both httpcore's ``list[tuple[bytes, bytes]]`` header form and a
+    mapping, so a httpcore upgrade cannot silently turn the check into a no-op.
+    """
+    pairs = headers.items() if hasattr(headers, "items") else headers
+    encodings: list[str] = []
+    for name, value in pairs:
+        if isinstance(name, bytes):
+            name = name.decode("latin-1")
+        if name.lower() != "content-encoding":
+            continue
+        if isinstance(value, bytes):
+            value = value.decode("latin-1")
+        encodings.extend(part.strip().lower() for part in value.split(",") if part.strip())
+    return encodings
+
+
+def _reject_encoded_body(headers) -> None:
+    unsupported = [
+        encoding for encoding in _declared_content_encodings(headers) if encoding != "identity"
+    ]
+    if unsupported:
+        raise CompressedResponseError(
+            "upstream sent a content-encoded body: " + ", ".join(unsupported)
+        )
+
+
 class PinnedNetworkBackend(httpcore.AnyIOBackend):
     def __init__(self, *, allow_private: bool = False) -> None:
         self._allow_private = allow_private
@@ -83,6 +123,12 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
     ``max_response_bytes`` is opt-in. When set, the body is read incrementally
     and the request is aborted as soon as the running total exceeds the budget,
     instead of buffering everything and rejecting it afterwards.
+
+    A budget only means anything for the bytes the transport actually sees, so
+    an encoded body is refused outright: httpx would decode it after the
+    transport returns, which would let a small compressed body expand past the
+    budget unnoticed. Callers should therefore send ``Accept-Encoding: identity``
+    (the check does not trust the upstream to honour it).
     """
 
     def __init__(
@@ -130,6 +176,10 @@ class SSRFSafeTransport(httpx.AsyncBaseTransport):
         with _map_errors():
             response = await self._pool.handle_async_request(core_request)
             try:
+                # Check the declared encoding before reading (and before httpx
+                # could decode) so an encoded body can never bypass the budget.
+                if self._max_response_bytes is not None:
+                    _reject_encoded_body(response.headers)
                 content = await self._read_body(response)
             finally:
                 await response.aclose()

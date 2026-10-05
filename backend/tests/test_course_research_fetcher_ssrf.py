@@ -7,11 +7,13 @@
 - 无法取得可用解析结果时禁止连接
 - 实际 TCP 连接使用校验过的 IP，Host / TLS SNI 仍用原域名
 - 无 Content-Length 的超大响应在正文累积过程中被中止
+- 压缩正文小于预算、解压后远超预算时，在自动解压之前拒绝
 
 全部使用模拟 DNS 与内存网络流，不请求真实私网或公网服务。
 """
 from __future__ import annotations
 
+import gzip
 import socket
 
 import httpcore
@@ -188,7 +190,10 @@ async def test_connection_pins_validated_ip_and_preserves_host_and_sni(monkeypat
     # TCP 只连到校验过的 IP；Host 与 TLS SNI 仍是原域名。
     assert connected == [(SECOND_PUBLIC_IP, 443)]
     assert stream.tls_hosts == ["example.com"]
-    assert b"host: example.com" in b"".join(stream.writes).lower()
+    wire = b"".join(stream.writes).lower()
+    assert b"host: example.com" in wire
+    # 普通未压缩响应仍然正常，且请求显式要求 identity 编码。
+    assert b"accept-encoding: identity" in wire
 
 
 @pytest.mark.asyncio
@@ -227,3 +232,124 @@ async def test_allow_web_false_never_touches_dns_or_network(monkeypatch):
 
     assert calls == []
     assert connected == []
+
+
+def _gzip(payload: bytes) -> bytes:
+    return gzip.compress(payload, 9)
+
+
+def _count_httpx_decompression(monkeypatch) -> list[int]:
+    """记录 httpx gzip 解码器被调用的次数，用于证明"解压前就拒绝了"。"""
+    from httpx import _decoders
+
+    calls: list[int] = []
+    original = _decoders.GZipDecoder.decode
+
+    def decode(self, data: bytes) -> bytes:
+        calls.append(len(data))
+        return original(self, data)
+
+    monkeypatch.setattr(_decoders.GZipDecoder, "decode", decode)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_compressed_body_is_rejected_before_httpx_decompresses(monkeypatch):
+    """压缩正文远小于预算、解压后远超预算时，必须在自动解压之前拒绝。
+
+    否则预算只约束了压缩字节数：543 字节的 gzip 可以膨胀成 524288 字节正文，
+    内存放大发生在 httpx 解码阶段，最后的长度检查已经太晚。
+    """
+    _patch_dns(monkeypatch, lambda *a, **k: _dns([PUBLIC_IP]))
+    decompressed = b"x" * (512 * 1024)
+    compressed = _gzip(decompressed)
+    assert len(compressed) < 1024 < len(decompressed)
+
+    stream = ByteStream(_http_response(
+        "200 OK",
+        compressed,
+        {
+            "Content-Type": "text/html",
+            "Content-Encoding": "gzip",
+            "Content-Length": str(len(compressed)),
+        },
+    ))
+    connected: list = []
+    _patch_connect(monkeypatch, lambda: stream, connected)
+    decode_calls = _count_httpx_decompression(monkeypatch)
+
+    fetcher = ControlledSourceFetcher(max_bytes=1024)
+    with pytest.raises(SSRFViolation, match="内容编码"):
+        await fetcher.fetch("https://example.com/compressed")
+
+    assert connected == [(PUBLIC_IP, 443)]
+    # 关键断言：httpx 的解码器从未被调用，说明拒绝发生在自动解压之前。
+    assert decode_calls == []
+
+
+@pytest.mark.asyncio
+async def test_upstream_ignoring_identity_header_still_cannot_bypass(monkeypatch):
+    """上游无视 Accept-Encoding: identity 时仍不能绕过预算。"""
+    _patch_dns(monkeypatch, lambda *a, **k: _dns([PUBLIC_IP]))
+    decompressed = b"y" * (256 * 1024)
+    compressed = _gzip(decompressed)
+
+    stream = ByteStream(_http_response(
+        "200 OK",
+        compressed,
+        {
+            "Content-Type": "text/html",
+            "Content-Encoding": "gzip",
+            "Content-Length": str(len(compressed)),
+        },
+    ))
+    connected: list = []
+    _patch_connect(monkeypatch, lambda: stream, connected)
+    decode_calls = _count_httpx_decompression(monkeypatch)
+
+    fetcher = ControlledSourceFetcher(max_bytes=1024)
+    with pytest.raises(SSRFViolation, match="内容编码"):
+        await fetcher.fetch("https://example.com/ignores-identity")
+
+    # 请求确实带上了 identity，上游仍然返回 gzip；两者都不能让正文进入解压。
+    wire = b"".join(stream.writes).lower()
+    assert b"accept-encoding: identity" in wire
+    assert decode_calls == []
+
+
+@pytest.mark.asyncio
+async def test_multiple_content_codings_are_also_rejected(monkeypatch):
+    """逗号分隔的多种编码同样拒绝，不能只匹配单个 gzip。"""
+    _patch_dns(monkeypatch, lambda *a, **k: _dns([PUBLIC_IP]))
+    stream = ByteStream(_http_response(
+        "200 OK",
+        b"z" * 64,
+        {"Content-Type": "text/html", "Content-Encoding": "br, gzip", "Content-Length": "64"},
+    ))
+    connected: list = []
+    _patch_connect(monkeypatch, lambda: stream, connected)
+
+    fetcher = ControlledSourceFetcher(max_bytes=1024)
+    with pytest.raises(SSRFViolation, match="内容编码"):
+        await fetcher.fetch("https://example.com/multi-encoding")
+
+    assert connected == [(PUBLIC_IP, 443)]
+
+
+@pytest.mark.asyncio
+async def test_explicit_identity_encoding_is_accepted(monkeypatch):
+    """显式声明 identity 的响应不算编码正文，仍按正常路径处理。"""
+    _patch_dns(monkeypatch, lambda *a, **k: _dns([PUBLIC_IP]))
+    stream = ByteStream(_http_response(
+        "200 OK",
+        b"<html><title>Plain</title></html>",
+        {"Content-Type": "text/html", "Content-Encoding": "identity", "Content-Length": "32"},
+    ))
+    connected: list = []
+    _patch_connect(monkeypatch, lambda: stream, connected)
+
+    fetcher = ControlledSourceFetcher(max_bytes=1024)
+    result = await fetcher.fetch("https://example.com/plain")
+
+    assert result.title == "Plain"
+    assert connected == [(PUBLIC_IP, 443)]
