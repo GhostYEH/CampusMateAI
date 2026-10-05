@@ -10,6 +10,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -232,7 +234,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
         onDismissRequest = { showCourseFilter = false },
         title = { Text("按课程筛选") },
         text = {
-            Column(Modifier.heightIn(max = 380.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
                 (listOf<String?>(null) + courseFilters).forEach { course ->
                     TextButton(onClick = { selectedCourse = course; showCourseFilter = false }, modifier = Modifier.fillMaxWidth()) {
                         Text(course ?: "所有课程", modifier = Modifier.fillMaxWidth(), color = JournalInk)
