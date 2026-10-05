@@ -67,7 +67,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.R
-import com.example.campusai.BuildConfig
 import com.example.campusai.data.behavior.BehaviorDatasetCaptureState
 import com.example.campusai.data.behavior.BehaviorDatasetLabel
 import com.example.campusai.data.behavior.BehaviorDisplayState
@@ -98,9 +97,7 @@ import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ClassroomStudyVisit
 import com.example.campusai.data.remote.InteractiveClassroomItemDto
-import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.ui.screens.courses.ClassroomViewer
-import com.example.campusai.ui.screens.courses.formatClassroomStudyDuration
 import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.ui.glass.CampusGlassRole
@@ -896,14 +893,14 @@ private fun HallDialogueChoice(
     }
 }
 
-private data class ClassroomFootprint(
+internal data class ClassroomFootprint(
     val courseName: String,
     val item: InteractiveClassroomItemDto,
     val enteredAt: String?,
     val visits: List<ClassroomStudyVisit>,
 )
 
-private fun String?.classroomTimeLabel(): String {
+internal fun String?.classroomTimeLabel(): String {
     val source = this?.trim().orEmpty()
     val instant = runCatching { Instant.parse(source) }.getOrNull()
         ?: runCatching { OffsetDateTime.parse(source).toInstant() }.getOrNull()
@@ -921,8 +918,6 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
     var trustedOrigin by remember { mutableStateOf<String?>(null) }
     var viewerUrl by remember { mutableStateOf<String?>(null) }
     var historyRefresh by remember { mutableIntStateOf(0) }
-    val selectedRecord = records.firstOrNull { "focus:${it.sourceId}" == selectedRecordId }
-    val selectedClassroom = classrooms.firstOrNull { "classroom:${it.item.sessionId ?: it.item.url}" == selectedRecordId }
     BackHandler(enabled = selectedRecordId != null) { selectedRecordId = null }
     LaunchedEffect(historyRefresh) {
         historyLoading = true
@@ -938,102 +933,17 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
         classrooms = appRepository.allClassroomHistory().map { footprint(it.courseName, it.classroom) }
         historyLoading = false
     }
-    val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
     Box(Modifier.fillMaxSize()) {
-        Image(
-            painter = painterResource(R.drawable.campus_twilight_original),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+        LearningFootprintContent(
+            records = records,
+            classrooms = classrooms,
+            historyLoading = historyLoading,
+            selectedRecordId = selectedRecordId,
+            trustedOrigin = trustedOrigin,
+            onSelect = { selectedRecordId = it },
+            onBack = onBack,
+            onOpenClassroom = { viewerUrl = it },
         )
-        Box(Modifier.fillMaxSize().background(Color(0xB4172747)))
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
-            contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, bottomContentPadding),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { if (selectedRecordId != null) selectedRecordId = null else onBack() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回", tint = Color.White)
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text(if (selectedRecordId == null) "学习足迹" else "本次学习", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                }
-            }
-            if (selectedRecordId != null) {
-                item {
-                    Surface(shape = RoundedCornerShape(24.dp), color = Color(0xF5FBF8EF)) {
-                        Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (selectedClassroom != null) {
-                                Text("互动课堂 · ${selectedClassroom.courseName}", color = Color(0xFF295643), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Text("${if (selectedClassroom.enteredAt != null) "进入时间" else "创建时间"}：${(selectedClassroom.enteredAt ?: selectedClassroom.item.createdAt).classroomTimeLabel()}",
-                                    color = Color(0xFF203B32), fontSize = 15.sp)
-                                if (selectedClassroom.visits.isNotEmpty()) {
-                                    Text("累计学习 ${formatClassroomStudyDuration(selectedClassroom.visits.sumOf { it.activeSeconds })}",
-                                        color = Color(0xFF203B32), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text("进入记录", color = Color(0xFF295643), fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    selectedClassroom.visits.sortedByDescending { it.enteredAt }.forEach { visit ->
-                                        Text("${visit.enteredAt.classroomTimeLabel()} · ${formatClassroomStudyDuration(visit.activeSeconds)} · ${if (visit.completed) "已结束" else "暂时离开"}",
-                                            color = Color(0xFF63796E), fontSize = 13.sp)
-                                    }
-                                }
-                                val safe = ClassroomUrlPolicy.sanitize(selectedClassroom.item.url,
-                                    listOf(trustedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
-                                if (safe != null) Button(onClick = { viewerUrl = safe }) { Text("继续上课") }
-                            } else if (selectedRecord == null) {
-                                Text("这条记录暂时无法加载，请返回列表重试。", color = Color(0xFF203B32))
-                            } else {
-                                Text("${selectedRecord.date}  ${selectedRecord.endedAt}", color = Color(0xFF63796E), fontSize = 14.sp)
-                                Text(if (selectedRecord.actualMinutes > 0) "专注了 ${selectedRecord.actualMinutes} 分钟" else "专注不足 1 分钟", color = Color(0xFF203B32), fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                                selectedRecord.goal?.takeIf { it.isNotBlank() }?.let { goal ->
-                                    Text("本次目标", color = Color(0xFF295643), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(goal, color = Color(0xFF203B32), fontSize = 16.sp, lineHeight = 24.sp)
-                                }
-                                Text("我的学习收获", color = Color(0xFF295643), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                Text(selectedRecord.selfReport?.takeIf { it.isNotBlank() } ?: "这次没有填写学习收获。", color = Color(0xFF203B32), fontSize = 16.sp, lineHeight = 24.sp)
-                            }
-                        }
-                    }
-                }
-            } else if (historyLoading) item {
-                Text("正在汇总专注与互动课堂记录…", color = Color.White, fontSize = 14.sp)
-            } else if (records.isEmpty() && classrooms.isEmpty()) item {
-                Text("还没有学习足迹，专注或进入互动课堂后会显示在这里。", color = Color.White, fontSize = 14.sp)
-            }
-            if (selectedRecordId == null && !historyLoading && classrooms.isNotEmpty()) {
-                item { Text("互动课堂", color = Color(0xFFFFECD0), fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                items(classrooms.sortedByDescending { it.enteredAt ?: it.item.createdAt.orEmpty() }, key = { "classroom:${it.item.sessionId ?: it.item.url}" }) { entry ->
-                    Surface(onClick = { selectedRecordId = "classroom:${entry.item.sessionId ?: entry.item.url}" },
-                        shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
-                        Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                            Text("互动课堂 · ${entry.courseName}", color = Color(0xFF203B32),
-                                fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Text("${if (entry.enteredAt != null) "进入时间" else "创建时间"} ${(entry.enteredAt ?: entry.item.createdAt).classroomTimeLabel()}",
-                                color = Color(0xFF63796E), fontSize = 13.sp)
-                            if (entry.visits.isNotEmpty()) Text("累计学习 ${formatClassroomStudyDuration(entry.visits.sumOf { it.activeSeconds })}",
-                                color = Color(0xFF63796E), fontSize = 13.sp)
-                        }
-                    }
-                }
-            }
-            if (selectedRecordId == null && !historyLoading && records.isNotEmpty()) {
-                item { Text("专注记录", color = Color(0xFFFFECD0), fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                items(records, key = { "focus:${it.sourceId}" }) { record ->
-                Surface(onClick = { selectedRecordId = "focus:${record.sourceId}" }, shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = Color(0xFFDDEBDF)) { Icon(Icons.Default.Check, null, tint = Color(0xFF295643), modifier = Modifier.padding(9.dp)) }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("${FocusMode.byName(record.mode).label} · ${if (record.actualMinutes > 0) "${record.actualMinutes} 分钟" else "不足 1 分钟"}", color = Color(0xFF203B32), fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                            Text("${record.date}  ${record.endedAt}", color = Color(0xFF63796E), fontSize = 13.sp)
-                        }
-                        Icon(Icons.Default.ChevronRight, contentDescription = "查看本次学习", tint = Color(0xFF327054))
-                    }
-                }
-            }
-            }
-        }
         viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null; historyRefresh++ }, appRepository) }
     }
 }
