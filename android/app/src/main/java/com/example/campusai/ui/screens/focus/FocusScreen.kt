@@ -297,7 +297,10 @@ fun FocusScreen(
                     selectedMode = sessionMode,
                     canStart = backendOnline && sessionReady,
                     onSelectMinutes = { minutes -> selectedDurationMinutes = minutes },
-                    onCustom = { showCustomDurationDialog = true },
+                    onCustom = {
+                        customDurationInput = selectedDurationMinutes.toString()
+                        showCustomDurationDialog = true
+                    },
                     onSelectMode = { sessionMode = it },
                     onStart = startFocus,
                 )
@@ -313,18 +316,17 @@ fun FocusScreen(
                 }
             }
             item {
-                Surface(shape = RoundedCornerShape(24.dp), color = FocusStudyPalette.Pine,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = .16f))) {
-                    Column(Modifier.padding(19.dp)) {
-                        Text("今日学习", color = Color(0xFFFFE5B9), fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Spacer(Modifier.height(15.dp))
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            FocusStat(Modifier.weight(1f), stats.todayMinutes.toString(), "分钟", "今日专注")
-                            Box(Modifier.width(1.dp).height(42.dp).background(Color.White.copy(alpha = .22f)))
-                            FocusStat(Modifier.weight(1f), stats.streakDays.toString(), "天", "连续天数")
-                            Box(Modifier.width(1.dp).height(42.dp).background(Color.White.copy(alpha = .22f)))
-                            FocusStat(Modifier.weight(1f), stats.todayCount.toString(), "次", "完成次数")
-                        }
+                Surface(shape = RoundedCornerShape(topStart = 5.dp, topEnd = 17.dp, bottomStart = 5.dp, bottomEnd = 5.dp),
+                    color = Color(0xFFF0E2CA), border = BorderStroke(1.dp, Color(0xFFBD9B72))) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("今日\n学习", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp, lineHeight = 17.sp)
+                        Spacer(Modifier.width(9.dp))
+                        Box(Modifier.width(1.dp).height(35.dp).background(Color(0x66AA7548)))
+                        FocusStat(Modifier.weight(1f), stats.todayMinutes.toString(), "分钟", "专注")
+                        FocusStat(Modifier.weight(1f), stats.streakDays.toString(), "天", "连续")
+                        FocusStat(Modifier.weight(1f), stats.todayCount.toString(), "次", "完成")
                     }
                 }
             }
@@ -343,7 +345,7 @@ fun FocusScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = FocusStudyPalette.Pine,
+                            focusedBorderColor = FocusStudyPalette.Copper,
                             unfocusedBorderColor = FocusStudyPalette.Line,
                             focusedTextColor = FocusStudyPalette.Ink,
                             unfocusedTextColor = FocusStudyPalette.Ink,
@@ -356,10 +358,10 @@ fun FocusScreen(
                     selectedDurationMinutes = customDurationInput.toInt()
                     showCustomDurationDialog = false
                 }, enabled = customDurationInput.toIntOrNull()?.let { it in 5..240 } == true,
-                    colors = ButtonDefaults.buttonColors(containerColor = FocusStudyPalette.Pine),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C633E)),
                     shape = RoundedCornerShape(14.dp)) { Text("确定") }
             },
-            dismissButton = { PlainTextButton(onClick = { showCustomDurationDialog = false }) { Text("取消", color = FocusStudyPalette.Pine) } },
+            dismissButton = { PlainTextButton(onClick = { showCustomDurationDialog = false }) { Text("取消", color = FocusStudyPalette.Ink) } },
         )
     }
 }
@@ -380,7 +382,9 @@ private fun QuickFocusCard(
 ) {
     val ink = FocusStudyPalette.Ink
     val quiet = FocusStudyPalette.Muted
-    val green = FocusStudyPalette.Pine
+    val copper = FocusStudyPalette.Copper
+    val selectedPaper = Color(0xFFF0DFC1)
+    val wood = Color(0xFF9C633E)
     val paperShape = RoundedCornerShape(26.dp)
     Box(Modifier.fillMaxWidth().shadow(14.dp, paperShape).clip(paperShape)
         .background(FocusStudyPalette.Paper).border(1.dp, Color(0xFFC7B79A), paperShape)) {
@@ -389,7 +393,7 @@ private fun QuickFocusCard(
         Column(Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically) {
-            Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 10.sp,
+            Text("CAMPUSMATE  /  STUDY ROOM", color = ink, fontSize = 10.sp,
                 fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             Text("✦  01", color = FocusStudyPalette.Copper, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
@@ -403,7 +407,7 @@ private fun QuickFocusCard(
         Text("这次准备完成什么？", color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         if (fixedGoal != null) {
-            Text(fixedGoal, color = green, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(fixedGoal, color = copper, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         } else {
             OutlinedTextField(
                 value = focusGoal,
@@ -413,7 +417,7 @@ private fun QuickFocusCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = green, unfocusedBorderColor = FocusStudyPalette.Line,
+                    focusedBorderColor = copper, unfocusedBorderColor = FocusStudyPalette.Line,
                     focusedTextColor = ink, unfocusedTextColor = ink,
                 ),
             )
@@ -421,79 +425,63 @@ private fun QuickFocusCard(
         Spacer(Modifier.height(19.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(FocusStudyPalette.Line))
         Spacer(Modifier.height(16.dp))
-        Text("01  专注时长", color = green, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("01  专注时长", color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(25, 45, 60).forEach { minutes ->
                 val selected = selectedMinutes == minutes
                 Box(
                     Modifier.weight(1f).clip(CircleShape)
-                        .background(if (selected) green else FocusStudyPalette.PaperSoft)
-                        .border(1.dp, if (selected) FocusStudyPalette.Copper else FocusStudyPalette.Line, CircleShape)
+                        .background(if (selected) selectedPaper else FocusStudyPalette.PaperSoft)
+                        .border(1.dp, if (selected) copper else FocusStudyPalette.Line, CircleShape)
                         .clickable { onSelectMinutes(minutes) }
-                        .padding(vertical = 9.dp),
+                        .padding(vertical = 11.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("$minutes 分钟", color = if (selected) Color.White else ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("$minutes 分钟", color = ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1)
                 }
             }
-        }
-        Spacer(Modifier.height(10.dp))
-        Surface(
-            onClick = onCustom,
-            shape = RoundedCornerShape(14.dp),
-            color = if (selectedMinutes !in listOf(25, 45, 60)) green else FocusStudyPalette.PaperSoft,
-            border = BorderStroke(1.dp,
-                if (selectedMinutes !in listOf(25, 45, 60)) FocusStudyPalette.Copper else FocusStudyPalette.Line),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                if (selectedMinutes !in listOf(25, 45, 60)) "自定义 $selectedMinutes 分钟" else "自定义时长",
-                modifier = Modifier.padding(vertical = 11.dp),
-                color = if (selectedMinutes !in listOf(25, 45, 60)) Color.White else green,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
+            val customSelected = selectedMinutes !in listOf(25, 45, 60)
+            Box(Modifier.weight(1f).clip(CircleShape)
+                .background(if (customSelected) selectedPaper else FocusStudyPalette.PaperSoft)
+                .border(1.dp, if (customSelected) copper else FocusStudyPalette.Line, CircleShape)
+                .clickable(onClick = onCustom).padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
+                Text(if (customSelected) "$selectedMinutes 分" else "自定义", color = ink,
+                    fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
         }
         Spacer(Modifier.height(15.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(FocusStudyPalette.Line))
         Spacer(Modifier.height(16.dp))
-        Text("02  专注方式", color = green, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Text("02  专注方式", color = ink, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         listOf(FocusSessionMode.QUIET, FocusSessionMode.AI_COMPANION, FocusSessionMode.SMART_GUARD).forEach { option ->
             val selected = selectedMode == option
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
-                    .background(if (selected) Color(0xFFE3E9DC) else Color(0xFFFFFCF4))
-                    .border(1.dp, if (selected) green else FocusStudyPalette.Line, RoundedCornerShape(13.dp))
+                    .background(if (selected) selectedPaper else Color(0xFFFFFCF4))
+                    .border(1.dp, if (selected) copper else FocusStudyPalette.Line, RoundedCornerShape(13.dp))
                     .clickable { onSelectMode(option) }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(8.dp).background(if (selected) green else Color(0xFFAEBBB0), CircleShape))
+                Box(Modifier.size(8.dp).background(if (selected) copper else Color(0xFFAEBBB0), CircleShape))
                 Spacer(Modifier.width(9.dp))
-                Text(option.title, color = ink, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
-                Spacer(Modifier.width(9.dp))
-                Text(
-                    option.description,
-                    modifier = Modifier.weight(1f),
-                    color = quiet,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                )
+                Text(option.title, Modifier.weight(1f), color = ink, fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+                if (selected) Text("✓", color = copper, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
         }
-        Spacer(Modifier.height(9.dp))
+        Text(selectedMode.description, color = quiet, fontSize = 12.sp, lineHeight = 18.sp,
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 3.dp, bottom = 15.dp))
         SolidButton(
             onClick = onStart,
             enabled = canStart,
             modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(18.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = green, contentColor = Color.White),
+            shape = RoundedCornerShape(15.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = wood, contentColor = Color.White),
         ) {
             Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
@@ -1248,13 +1236,13 @@ private fun DebugBehaviorDatasetControls(
 @Composable
 private fun FocusStat(modifier: Modifier, value: String, unit: String, label: String) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        verticalArrangement = Arrangement.spacedBy(1.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+            Text(value, color = FocusStudyPalette.Ink, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.width(2.dp))
-            Text(unit, color = Color(0xFFFFE5B9), fontSize = 11.sp)
+            Text(unit, color = FocusStudyPalette.Copper, fontSize = 10.sp)
         }
-        Text(label, color = Color.White.copy(alpha = .8f), fontSize = 11.sp)
+        Text(label, color = FocusStudyPalette.Muted, fontSize = 10.sp)
     }
 }
 
