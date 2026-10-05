@@ -341,7 +341,7 @@ private fun CourseSpine(course: Course, index: Int, opening: Boolean, onOpen: (C
         modifier = Modifier.fillMaxWidth(.87f).height((128 + index % 3 * 5).dp)
             .graphicsLayer {
                 rotationZ = listOf(-3f, 2f, 0f)[index % 3]
-                transformOrigin = TransformOrigin.BottomCenter
+                transformOrigin = TransformOrigin(0.5f, 1f)
                 translationY = -lift.dp.toPx()
             }
             .shadow(7.dp, RoundedCornerShape(4.dp))
