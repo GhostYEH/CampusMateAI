@@ -156,7 +156,7 @@ fun AppNavHost(
                 startDestination = "home",
                 modifier = Modifier.fillMaxSize(),
         enterTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
             } else {
                 val motion = forwardNavigationMotion(
@@ -175,7 +175,7 @@ fun AppNavHost(
             }
         },
         exitTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
             } else {
                 val motion = forwardNavigationMotion(
@@ -194,7 +194,7 @@ fun AppNavHost(
             }
         },
         popEnterTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
             } else {
                 slideInHorizontally(
@@ -209,7 +209,7 @@ fun AppNavHost(
             }
         },
         popExitTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
             } else {
                 slideOutHorizontally(

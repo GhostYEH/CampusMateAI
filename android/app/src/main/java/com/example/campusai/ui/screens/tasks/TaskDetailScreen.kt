@@ -1,8 +1,11 @@
 package com.example.campusai.ui.screens.tasks
 
+import android.media.MediaPlayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -22,13 +25,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Task
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.enterAnimation
+import com.example.campusai.ui.components.GlassIconButton as JournalBackButton
+import com.example.campusai.R
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -85,6 +91,19 @@ fun TaskDetailScreen(
     var showSource by remember { mutableStateOf(false) }
     var stampVisible by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val pageAngle = remember(taskId) { Animatable(if (reduceMotion) 0f else -72f) }
+    LaunchedEffect(taskId, reduceMotion) {
+        if (reduceMotion) pageAngle.snapTo(0f)
+        else if (pageAngle.value != 0f) pageAngle.animateTo(0f, tween(durationMillis = 480, easing = FastOutSlowInEasing))
+    }
+    DisposableEffect(taskId) {
+        val pageSound = runCatching { MediaPlayer.create(context, R.raw.task_page_turn) }.getOrNull()
+        runCatching {
+            pageSound?.setVolume(.28f, .28f)
+            pageSound?.start()
+        }
+        onDispose { pageSound?.release() }
+    }
 
     val hasChanges = isEditing && (
         editTitle != task.title ||
@@ -106,13 +125,18 @@ fun TaskDetailScreen(
     Box(Modifier.fillMaxSize()) {
         JournalBackdrop(Modifier.fillMaxSize())
         Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp)
-            .journalBookPage().verticalScroll(rememberScrollState()).padding(start = 15.dp, end = 5.dp, top = 12.dp)) {
-            Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = ::handleBack, modifier = Modifier.size(42.dp)) {
+            .graphicsLayer {
+                rotationY = pageAngle.value
+                transformOrigin = TransformOrigin(0f, .5f)
+                cameraDistance = 1000.dp.toPx()
+            }
+            .journalBookPage().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 5.dp, top = 9.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                JournalBackButton(onClick = ::handleBack, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回待办", tint = JournalNight)
                 }
-                Spacer(Modifier.width(7.dp))
-                Text("待办详情", color = JournalNight, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                Text("待办详情", color = JournalNight, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
             }
             HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = JournalBlue.copy(alpha = .45f))
             Spacer(Modifier.height(9.dp))
@@ -169,8 +193,7 @@ fun TaskDetailScreen(
                     onValueChange = { editTitle = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .enterAnimation(enabled = !reduceMotion),
+                        .padding(horizontal = 20.dp),
                     label = { Text("任务名称") },
                     singleLine = true,
                     shape = RoundedCornerShape(14.dp),
@@ -183,8 +206,7 @@ fun TaskDetailScreen(
                 Text(
                     task.title,
                     modifier = Modifier
-                        .padding(horizontal = 16.dp)
-                        .enterAnimation(enabled = !reduceMotion, delayMs = 40),
+                        .padding(horizontal = 16.dp),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = JournalNight,
@@ -200,8 +222,7 @@ fun TaskDetailScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .enterAnimation(enabled = !reduceMotion, delayMs = 80),
+                        .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     OutlinedButton(onClick = { pickTaskDeadline(editDue.takeIf { it != "待设置" }, { editDue = it }, context) },
@@ -226,8 +247,8 @@ fun TaskDetailScreen(
                     )
                 }
             } else {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)
-                    .enterAnimation(enabled = !reduceMotion, delayMs = 80), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         HorizontalDivider(color = JournalBlue.copy(alpha = .5f))
                         Text(task.course, color = JournalClay, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         task.startAt?.let { startsAt ->
@@ -246,8 +267,7 @@ fun TaskDetailScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .enterAnimation(enabled = !reduceMotion, delayMs = 120),
+                        .padding(horizontal = 16.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Default.Description, null, tint = Muted, modifier = Modifier.size(20.dp))
@@ -294,8 +314,7 @@ fun TaskDetailScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .enterAnimation(enabled = !reduceMotion, delayMs = 160),
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (isEditing) {

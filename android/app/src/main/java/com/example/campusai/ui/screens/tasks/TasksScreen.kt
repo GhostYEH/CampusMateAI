@@ -116,7 +116,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     Box(Modifier.fillMaxSize()) {
         JournalBackdrop(Modifier.fillMaxSize())
         LazyColumn(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = 12.dp, end = 31.dp, top = 8.dp).journalBookPage(),
+            modifier = Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp).journalBookPage(),
             state = listState,
             contentPadding = PaddingValues(
                 start = 26.dp,
