@@ -1,7 +1,6 @@
 package com.example.campusai.ui.screens.tasks
 
 import com.example.campusai.ui.components.GlassButton as Button
-import com.example.campusai.ui.components.GlassExtendedFloatingActionButton as ExtendedFloatingActionButton
 import com.example.campusai.ui.components.GlassIconButton as IconButton
 import com.example.campusai.ui.components.GlassTextButton as TextButton
 
@@ -64,8 +63,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     var filter by remember { mutableStateOf("全部") }
     var selectedCourse by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
-    var showAddSheet by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
+    var showTaskEditor by remember { mutableStateOf(false) }
     var deletingTask by remember { mutableStateOf<Task?>(null) }
     val importSnackbar = remember { SnackbarHostState() }
 
@@ -134,8 +132,9 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                         Text("${pending.size} 项待完成 · 课程作业与个人事务", color = Color.White.copy(alpha = .86f), fontSize = 14.sp)
                     }
                     }
-                    IconButton(onClick = { showImportDialog = true }) {
-                        Icon(Icons.Default.UploadFile, "导入个人事项", tint = Color.White)
+                    TextButton(onClick = { showTaskEditor = true }) {
+                        Icon(Icons.Default.Add, null, tint = Color.White)
+                        Text("个人待办", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -228,18 +227,6 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             }
         }
 
-        ExtendedFloatingActionButton(
-            onClick = { showAddSheet = true },
-            icon = { Icon(Icons.Default.Add, null) },
-            text = { Text("个人待办", fontWeight = FontWeight.Bold) },
-            containerColor = TaskBlue,
-            contentColor = Color.White,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(
-                end = 20.dp,
-                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 14.dp,
-            ),
-        )
         SnackbarHost(
             importSnackbar,
             Modifier.align(Alignment.BottomCenter).padding(
@@ -250,15 +237,11 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
         )
     }
 
-    if (showAddSheet) AddTaskSheet(
-        onDismiss = { showAddSheet = false },
-        onAdd = { title, due -> scope.launch { repository.addTask(title, due); showAddSheet = false } },
-    )
-    if (showImportDialog) TaskImportDialog(
+    if (showTaskEditor) TaskImportDialog(
         repository = repository,
-        onDismiss = { showImportDialog = false },
+        onDismiss = { showTaskEditor = false },
         onImported = { createdCount, skippedExistingCount ->
-            showImportDialog = false
+            showTaskEditor = false
             val message = buildString {
                 append("已创建 $createdCount 项")
                 if (skippedExistingCount > 0) append("，保留已有 $skippedExistingCount 项")
@@ -428,18 +411,3 @@ private fun EmptyTasks(online: Boolean, filter: String, onRetry: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddTaskSheet(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var due by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 34.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("新建待办", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-            Text("保存后会直接写入你的后端任务库。", color = Muted, fontSize = 13.sp)
-            OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("任务名称") }, leadingIcon = { Icon(Icons.Default.EditNote, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(value = due, onValueChange = { due = it }, modifier = Modifier.fillMaxWidth(), label = { Text("截止时间") }, placeholder = { Text("例如：今天 23:59") }, leadingIcon = { Icon(Icons.Default.CalendarMonth, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
-            Button(onClick = { onAdd(title.trim(), due.ifBlank { "待设置" }) }, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = TaskBlue)) { Text("保存到待办", fontWeight = FontWeight.Bold) }
-        }
-    }
-}

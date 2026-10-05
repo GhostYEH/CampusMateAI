@@ -179,6 +179,22 @@ _STRUCTURED_TASK_LINE = re.compile(
 _MAX_IMPORTED_TASKS = 50
 
 
+def _submission_time_pending(text: str) -> bool:
+    return bool(re.search(r"(?:上交|提交|截止|收取)(?:的|具体)?时间.{0,16}(?:等通知|另行通知|待通知|未定|待定)", text))
+
+
+def _notice_notes(text: str, materials: list[str]) -> str | None:
+    """Keep the actionable conditions in the editable note, not just the raw source."""
+    parts = []
+    if materials:
+        parts.append("所需材料：" + "、".join(materials))
+    for clause in re.split(r"[。；\n]+", text):
+        clause = re.sub(r"^[\s❶-❿⚠️]+", "", clause).strip()
+        if clause and any(word in clause for word in ("有意向", "有意愿", "年满", "之前出生", "亲笔", "禁止抄袭", "落款时间", "上交时间", "提交时间", "地点", "方式")):
+            parts.append(clause[:300])
+    return "\n".join(dict.fromkeys(parts))[:4000] or None
+
+
 def _normalized_title(title: str) -> str:
     return " ".join(title.strip().casefold().split())
 
@@ -222,7 +238,7 @@ async def analyze_task_import(
     ]
     existing = _existing_by_title(container.personal_task_repository, user.id)
 
-    if len(explicit_titles) >= 2:
+    if len(explicit_titles) >= 2 and not re.search(r"通知|通告|各班|落款|出生|年龄要求", source_text):
         drafts: list[TaskImportDraft] = []
         for raw_title in explicit_titles[:_MAX_IMPORTED_TASKS]:
             title, warnings, needs_confirmation = _editable_import_title(raw_title)
@@ -254,13 +270,22 @@ async def analyze_task_import(
     extracted = await container.notice_extraction.extract_multi(
         source_text,
         source_name=req.source_name,
-        allow_multi_task=True,
+        allow_multi_task=not _submission_time_pending(source_text),
     )
     drafts = []
     for item in extracted.tasks:
+        if not item.actionable:
+            continue
         title, title_warnings, title_needs_confirmation = _editable_import_title(
             item.task or item.title
         )
+        if title == "校园通知待办":
+            subject = re.search(r"(?:有意向|有意愿).{0,30}?(?:提交|申请)([\u4e00-\u9fff]{2,16}?)的同学", source_text)
+            if subject:
+                title = f"准备{subject.group(1)}材料"
+            else:
+                title_warnings.append("任务名称未能准确识别，请修改")
+                title_needs_confirmation = True
         if not title:
             continue
         match = existing.get(_normalized_title(title))
@@ -268,10 +293,18 @@ async def analyze_task_import(
         priority = "high" if importance in {"urgent", "high"} else (
             "low" if importance == "low" else "medium"
         )
+        materials = [material.name for material in item.materials]
+        if "个人自传" in source_text and "个人自传" not in materials:
+            materials.append("个人自传")
+        pending_submission = _submission_time_pending(source_text)
+        warnings = [*item.warnings, *title_warnings]
+        if pending_submission:
+            warnings.append("具体上交时间待通知；落款或资格日期不是截止时间")
         drafts.append(TaskImportDraft(
             title=title,
-            deadline=item.deadline.isoformat() if item.deadline else None,
-            materials=[material.name for material in item.materials],
+            description=_notice_notes(source_text, materials),
+            deadline=item.deadline.isoformat() if item.deadline and not pending_submission else None,
+            materials=materials,
             submission_method=item.submission_method,
             location=item.location,
             source_name=item.source_name or req.source_name,
@@ -279,8 +312,8 @@ async def analyze_task_import(
             priority=priority,
             importance=importance,
             confidence=item.confidence,
-            needs_confirmation=item.needs_confirmation or title_needs_confirmation,
-            warnings=[*item.warnings, *title_warnings],
+            needs_confirmation=item.needs_confirmation or title_needs_confirmation or pending_submission,
+            warnings=warnings,
             selected=match is None,
             existing_task_id=match.id if match else None,
             existing_status=match.status if match else None,
@@ -293,7 +326,7 @@ async def analyze_task_import(
             f"{extracted.split_reason}；最多保留 50 项"
             if truncated else extracted.split_reason
         ),
-        needs_user_confirmation=extracted.needs_user_confirmation or truncated,
+        needs_user_confirmation=extracted.needs_user_confirmation or truncated or any(draft.needs_confirmation for draft in drafts),
         tasks=drafts[:_MAX_IMPORTED_TASKS],
     )
 
