@@ -26,7 +26,7 @@ _DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ALLOWED_RESOLUTIONS = {"4k", "1080"}
 _ALLOWED_FORMATS = {"image", "json", "redirect"}
 
-router = APIRouter(prefix="/wallpaper", tags=["wallpaper"])
+router = APIRouter(prefix="/wallpaper", tags=["每日壁纸"])
 
 
 def _error_response(
@@ -142,6 +142,7 @@ def _enforce_peer_rate_limit(request: Request, settings: Settings) -> None:
 
 @router.get(
     "/bing-daily",
+    summary="代理必应每日壁纸",
     responses={429: {"description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"}},
 )
 async def get_bing_daily_wallpaper(
@@ -200,7 +201,35 @@ async def get_bing_daily_wallpaper(
 
 @router.get(
     "/bing-daily/history",
-    responses={429: {"description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"}},
+    summary="代理必应壁纸历史列表",
+    responses={
+        429: {"description": "本地防刷超限（RATE_LIMITED）；Retry-After 表示等待秒数"},
+        200: {
+            "description": "返回必应壁纸历史列表与分页信息（元数据透传上游）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "壁纸历史列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "date": "2026-10-05",
+                                        "title": "秋日的湖畔森林",
+                                        "copyright": "© Bing",
+                                        "image_url": "https://www.bing.com/th?id=OHR.LakeForest_2026.jpg",
+                                        "image_url_4k": "https://www.bing.com/th?id=OHR.LakeForest_2026_4k.jpg",
+                                        "image_url_1080": "https://www.bing.com/th?id=OHR.LakeForest_2026_1080.jpg",
+                                    }
+                                ],
+                                "pagination": {"page": 1, "page_size": 30, "total": 1},
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 async def get_bing_daily_wallpaper_history(
     request: Request,

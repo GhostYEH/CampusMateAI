@@ -23,14 +23,50 @@ from ...services.container import ServiceContainer, get_container
 from ...services.magicclass.course_context import assert_course_access, build_course_facts
 from ..deps import current_user
 
-router = APIRouter(prefix="/courses", tags=["magicclass-course-context"])
+router = APIRouter(prefix="/courses", tags=["课堂上下文"])
 
 
 def _container() -> ServiceContainer:
     return get_container()
 
 
-@router.get("/{course_id}/magicclass-context", response_model=CourseContextOut)
+@router.get(
+    "/{course_id}/magicclass-context",
+    response_model=CourseContextOut,
+    summary="读取课堂课程上下文",
+    responses={
+        200: {
+            "description": "这门课已同步的知识点、章节与可用资料（脱敏，只含标题）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取课程上下文",
+                            "value": {
+                                "course_id": "course_db_2025",
+                                "name": "数据库系统原理",
+                                "code": "CS301",
+                                "semester": "2025-2026-1",
+                                "knowledge_points": [
+                                    {"name": "关系模型"},
+                                    {"name": "函数依赖与范式"},
+                                ],
+                                "chapters": ["第 1 章 绪论", "第 3 章 关系数据库设计"],
+                                "materials": [
+                                    {"id": "mat_1001", "title": "第 3 章 关系数据库设计.pdf", "kind": "资料"}
+                                ],
+                                "sources": {"knowledge_graph": "synced"},
+                                "warnings": [],
+                                "synced": True,
+                                "updated_at": "2026-10-05T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_course_context(
     course_id: str,
     user: UserRow = Depends(current_user),

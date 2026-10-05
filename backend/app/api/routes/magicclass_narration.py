@@ -14,9 +14,9 @@ The teacher's voice for one slide. Two properties matter and are enforced here:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Body, Depends, Header
 from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
@@ -27,7 +27,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUna
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client
 
-router = APIRouter(prefix="/courses", tags=["magicclass-narration"])
+router = APIRouter(prefix="/courses", tags=["课堂讲解"])
 
 
 class NarrationIn(BaseModel):
@@ -58,7 +58,32 @@ def _key(value: Optional[str]) -> str:
 
 
 @router.get(
-    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/narration"
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/narration",
+    summary="读取场景讲解",
+    responses={
+        200: {
+            "description": "该场景是否已有讲解音频，以及所属任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取场景讲解状态",
+                            "value": {
+                                "scene_id": "scene-a",
+                                "stage_id": "stage_1",
+                                "available": True,
+                                "has_script": True,
+                                "script_chars": 128,
+                                "truncated": False,
+                                "stale": False,
+                                "job": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def get_scene_narration(
     course_id: str,
@@ -69,7 +94,12 @@ async def get_scene_narration(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
-    """Report whether this scene already has narration, and which job owns it."""
+    """读取该场景是否已有讲解音频，以及所属任务。
+
+    - 场景按 id 寻址，音频始终绑定到这一页，切换或刷新不会挂错页。
+    - 讲稿变化会让已有音频失效（stale=true）。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.get_scene_narration(
@@ -81,23 +111,67 @@ async def get_scene_narration(
 @router.post(
     "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/narration",
     status_code=202,
+    summary="合成场景讲解",
+    responses={
+        202: {
+            "description": "已受理，返回可轮询的讲解合成任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "为这一页排入讲解合成",
+                            "value": {
+                                "scene_id": "scene-a",
+                                "has_script": True,
+                                "reuse": False,
+                                "job": {
+                                    "id": "job_narr_1",
+                                    "course_id": "course_db_2025",
+                                    "kind": "tts",
+                                    "mode": "mimo-v2.5-tts",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "attempts": 0,
+                                    "error_code": None,
+                                    "artifact_id": None,
+                                    "scene_id": "scene-a",
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:00+00:00",
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def synthesize_scene_narration(
     course_id: str,
     workspace_id: str,
     stage_id: str,
     scene_id: str,
-    body: NarrationIn,
+    body: Annotated[
+        NarrationIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "为 scene-a 合成讲解",
+                    "value": {"scene_id": "scene-a", "stage_id": "stage_1"},
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
-    """Enqueue narration for one scene; the audio arrives as an artifact.
+    """为一个场景排入讲解合成任务；音频稍后以产物形式取回。
 
-    Answers 202 with a job reference because synthesis is queued, not inline.
-    Repeated calls for the same scene reuse the existing job rather than paying
-    for a second synthesis.
+    合成是排队的，因此返回 202 与任务引用；同一场景重复调用复用已有任务，
+    不会重复计费。请求体只带场景标识，讲稿由服务端派生；路径与请求体不一致
+    返回 400（MAGICCLASS_INVALID_REQUEST）。
     """
     _require(container)
     assert_course_access(container, user, course_id)

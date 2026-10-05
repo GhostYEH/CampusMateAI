@@ -11,9 +11,9 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, Query, Request
 
 from ...core.exceptions import AgentIdempotencyConflict, AgentRuntimeError, AgentRunNotFound
 from ...core.logging import logger
@@ -42,7 +42,7 @@ from ...services.course_research.policy import SourcePolicy, build_effective_pol
 from ...services.course_research.source_fetcher import ControlledSourceFetcher
 from ..deps import ServiceContainer, current_user, get_container, student_only
 
-router = APIRouter(prefix="/course-research", tags=["course-research"])
+router = APIRouter(prefix="/course-research", tags=["课程研究"])
 
 
 def _repo(container: ServiceContainer) -> CourseResearchRepository:
@@ -130,16 +130,80 @@ def _session_to_out(
     )
 
 
-@router.post("/runs")
+@router.post(
+    "/runs",
+    response_model=CourseResearchRunOut,
+    summary="创建课程研究",
+    responses={
+        200: {
+            "description": "已创建 Run 并受理研究流水线；首次返回 QUEUED 与空 artifact_ids",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建课程研究 Run",
+                            "value": {
+                                "run_id": "run_2026w40_0001",
+                                "session_id": "sess_cr_0001",
+                                "user_id": "u_demo",
+                                "course_id": "course_db_2025",
+                                "question": "关系数据库的范式与反范式如何取舍？",
+                                "assistance_mode": "EXPLAIN",
+                                "academic_policy": "UNKNOWN",
+                                "effective_assistance_mode": "EXPLAIN",
+                                "source_policy": {
+                                    "course_material_priority": True,
+                                    "allow_web": True,
+                                    "allow_user_upload": True,
+                                },
+                                "status": "QUEUED",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:00+00:00",
+                                "finished_at": None,
+                                "error_code": None,
+                                "artifact_ids": [],
+                                "fallback_used": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def create_run(
-    body: CourseResearchRunCreateIn,
+    body: Annotated[
+        CourseResearchRunCreateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "创建课程研究请求",
+                    "value": {
+                        "course_id": "course_db_2025",
+                        "question": "关系数据库的范式与反范式如何取舍？",
+                        "assistance_mode": "EXPLAIN",
+                        "academic_policy": "UNKNOWN",
+                        "source_policy": {
+                            "course_material_priority": True,
+                            "allow_web": True,
+                            "allow_user_upload": True,
+                        },
+                    },
+                }
+            }
+        ),
+    ],
     request: Request,
     background_tasks: BackgroundTasks,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> CourseResearchRunOut:
-    """创建课程研究 Run；响应后执行研究流水线。"""
+    """创建课程研究 Run；响应后执行研究流水线。
+
+    - 首次创建返回 QUEUED 与空 artifact_ids，客户端可用 run_id 订阅 SSE 或轮询。
+    - 相同幂等键重放返回已持久化的当前状态；同键不同请求体返回 409（AGENT_IDEMPOTENCY_CONFLICT）。
+    """
     repo = _repo(container)
     runtime_repo = _runtime_repo(container)
     effective_key = body.idempotency_key or idempotency_key
@@ -227,14 +291,58 @@ def create_run(
     )
 
 
-@router.get("/runs")
+@router.get(
+    "/runs",
+    summary="列出课程研究",
+    responses={
+        200: {
+            "description": "返回当前用户的课程研究 Run 列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出课程研究 Run",
+                            "value": [
+                                {
+                                    "run_id": "run_2026w40_0001",
+                                    "session_id": "sess_cr_0001",
+                                    "user_id": "u_demo",
+                                    "course_id": "course_db_2025",
+                                    "question": "关系数据库的范式与反范式如何取舍？",
+                                    "assistance_mode": "EXPLAIN",
+                                    "academic_policy": "UNKNOWN",
+                                    "effective_assistance_mode": "EXPLAIN",
+                                    "source_policy": {
+                                        "course_material_priority": True,
+                                        "allow_web": True,
+                                        "allow_user_upload": True,
+                                    },
+                                    "status": "SUCCEEDED",
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:05:00+00:00",
+                                    "finished_at": "2026-10-06T08:05:00+00:00",
+                                    "error_code": None,
+                                    "artifact_ids": ["art_cr_0001"],
+                                    "fallback_used": False,
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_runs(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> list[CourseResearchRunOut]:
-    """列出当前用户的课程研究 Run。"""
+    """列出当前用户的课程研究 Run。
+
+    - limit 取值 1–200，offset 从 0 开始；始终只返回本人数据。
+    """
     repo = _repo(container)
     sessions = repo.list_sessions_by_user(user.id, limit=limit, offset=offset)
     out: list[CourseResearchRunOut] = []
@@ -246,13 +354,55 @@ def list_runs(
     return out
 
 
-@router.get("/runs/{run_id}")
+@router.get(
+    "/runs/{run_id}",
+    summary="读取课程研究",
+    responses={
+        200: {
+            "description": "返回指定课程研究 Run 的概览",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取课程研究 Run",
+                            "value": {
+                                "run_id": "run_2026w40_0001",
+                                "session_id": "sess_cr_0001",
+                                "user_id": "u_demo",
+                                "course_id": "course_db_2025",
+                                "question": "关系数据库的范式与反范式如何取舍？",
+                                "assistance_mode": "EXPLAIN",
+                                "academic_policy": "UNKNOWN",
+                                "effective_assistance_mode": "EXPLAIN",
+                                "source_policy": {
+                                    "course_material_priority": True,
+                                    "allow_web": True,
+                                    "allow_user_upload": True,
+                                },
+                                "status": "SUCCEEDED",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:05:00+00:00",
+                                "finished_at": "2026-10-06T08:05:00+00:00",
+                                "error_code": None,
+                                "artifact_ids": ["art_cr_0001"],
+                                "fallback_used": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_run(
     run_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> CourseResearchRunOut:
-    """获取单个课程研究 Run。"""
+    """获取单个课程研究 Run。
+
+    - Run 不存在或不属于当前用户时返回 404（AGENT_RUN_NOT_FOUND）。
+    """
     repo = _repo(container)
     session = repo.get_session_by_run(run_id)
     if not session:
@@ -265,14 +415,66 @@ def get_run(
     )
 
 
-@router.post("/runs/{run_id}/cancel")
+@router.post(
+    "/runs/{run_id}/cancel",
+    summary="取消课程研究",
+    responses={
+        200: {
+            "description": "取消成功，返回状态为 CANCELLED 的 Run",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "取消课程研究 Run",
+                            "value": {
+                                "run_id": "run_2026w40_0001",
+                                "session_id": "sess_cr_0001",
+                                "user_id": "u_demo",
+                                "course_id": "course_db_2025",
+                                "question": "关系数据库的范式与反范式如何取舍？",
+                                "assistance_mode": "EXPLAIN",
+                                "academic_policy": "UNKNOWN",
+                                "effective_assistance_mode": "EXPLAIN",
+                                "source_policy": {
+                                    "course_material_priority": True,
+                                    "allow_web": True,
+                                    "allow_user_upload": True,
+                                },
+                                "status": "CANCELLED",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:02:00+00:00",
+                                "finished_at": None,
+                                "error_code": None,
+                                "artifact_ids": [],
+                                "fallback_used": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def cancel_run(
     run_id: str,
-    body: CourseResearchRunCancelIn,
+    body: Annotated[
+        CourseResearchRunCancelIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "取消并说明原因",
+                    "value": {"reason": "问题已解决，无需继续研究"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> CourseResearchRunOut:
-    """取消课程研究 Run。"""
+    """取消课程研究 Run。
+
+    - Run 不存在返回 404（AGENT_RUN_NOT_FOUND）；无权取消返回 403（AGENT_PERMISSION_DENIED）。
+    """
     repo = _repo(container)
     runtime_repo = _runtime_repo(container)
     session = repo.get_session_by_run(run_id)
@@ -299,13 +501,62 @@ def cancel_run(
     return get_run(run_id, user, container)
 
 
-@router.get("/runs/{run_id}/artifacts")
+@router.get(
+    "/runs/{run_id}/artifacts",
+    summary="列出研究产物",
+    responses={
+        200: {
+            "description": "返回 Run 的产物与来源清单",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出研究产物与来源",
+                            "value": {
+                                "run_id": "run_2026w40_0001",
+                                "artifacts": [
+                                    {
+                                        "artifact_id": "art_cr_0001",
+                                        "run_id": "run_2026w40_0001",
+                                        "user_id": "u_demo",
+                                        "artifact_type": "COURSE_RESEARCH_REPORT",
+                                        "version": 1,
+                                        "mime_type": "text/markdown",
+                                        "size_bytes": 4096,
+                                        "content_hash": "9f2c1a7b4d",
+                                        "download_url": None,
+                                        "created_at": "2026-10-06T08:05:00+00:00",
+                                    }
+                                ],
+                                "sources": [
+                                    {
+                                        "source_id": "src_0001",
+                                        "source_type": "course_material",
+                                        "title": "第 3 章 关系数据库设计.pdf",
+                                        "url": None,
+                                        "snippet": "第三范式要求消除非主属性对码的传递依赖。",
+                                        "accessed_at": "2026-10-06T08:04:00+00:00",
+                                        "is_verified": True,
+                                        "is_fabricated": False,
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_artifacts(
     run_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> CourseResearchArtifactListOut:
-    """列出 Run 的产物与来源。"""
+    """列出 Run 的产物与来源。
+
+    - Run 不存在或不属于当前用户时返回 404（AGENT_RUN_NOT_FOUND）。
+    """
     repo = _repo(container)
     session = repo.get_session_by_run(run_id)
     if not session:

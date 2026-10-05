@@ -9,9 +9,9 @@ and the audio is fetched afterwards through the artifact download route.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Body, Depends, Header
 from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
@@ -22,7 +22,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUna
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client
 
-router = APIRouter(prefix="/courses", tags=["magicclass-tts"])
+router = APIRouter(prefix="/courses", tags=["课堂语音"])
 
 
 class TtsIn(BaseModel):
@@ -51,15 +51,71 @@ def _key(value: Optional[str]) -> str:
     return text
 
 
-@router.post("/{course_id}/tts", status_code=202)
+@router.post(
+    "/{course_id}/tts",
+    status_code=202,
+    summary="合成课堂语音",
+    responses={
+        202: {
+            "description": "已受理，返回可轮询的语音合成任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "排队合成一段课堂语音",
+                            "value": {
+                                "job_id": "job_1",
+                                "job": {
+                                    "id": "job_1",
+                                    "course_id": "course_db_2025",
+                                    "kind": "tts",
+                                    "mode": "mimo-v2.5-tts",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "attempts": 0,
+                                    "error_code": None,
+                                    "artifact_id": None,
+                                    "scene_id": None,
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:00+00:00",
+                                },
+                                "voice": "苏打",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def synthesize_speech(
     course_id: str,
-    body: TtsIn,
+    body: Annotated[
+        TtsIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "合成一段课堂讲解语音",
+                    "value": {
+                        "text": "同学们好，今天我们讲函数极限。",
+                        "instruction": "用沉稳清晰的教学语气朗读",
+                        "voice": "苏打",
+                    },
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """把一段文本合成为课堂语音，返回 202 与可轮询任务。
+
+    上游调用不在请求路径里执行：受管服务用排队任务跑提供方，音频随后经产物
+    下载路由取回。必须携带有效 Idempotency-Key；需要已登录且对该课程有访问
+    权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.synthesize_speech(

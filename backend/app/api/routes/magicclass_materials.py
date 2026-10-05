@@ -26,9 +26,9 @@ then.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, Header, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Header, Query, UploadFile, status
 
 from ...core.config import Settings
 from ...models.multi_role import UserRow
@@ -52,7 +52,7 @@ from ...services.magicclass.material_extraction import (
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client, require_idempotency_key, require_revision
 
-router = APIRouter(prefix="/courses", tags=["magicclass-materials"])
+router = APIRouter(prefix="/courses", tags=["课堂资料"])
 
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 50
@@ -105,7 +105,44 @@ def _reference_out(payload: Dict[str, Any]) -> MaterialReferenceOut:
     )
 
 
-@router.get("/{course_id}/materials", response_model=MaterialListOut)
+@router.get(
+    "/{course_id}/materials",
+    response_model=MaterialListOut,
+    summary="列出资料",
+    responses={
+        200: {
+            "description": "资料列表（仅元数据，不含正文）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出资料",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "mat_001",
+                                        "course_id": "course_001",
+                                        "filename": "第三讲-操作系统.pdf",
+                                        "media_type": "application/pdf",
+                                        "byte_size": 1048576,
+                                        "sha256": "3f786850e387550fdab836ed7e6dc881de23001b",
+                                        "extraction_status": "extracted",
+                                        "text_chars": 8421,
+                                        "revision": 1,
+                                        "created_at": "2026-09-20T08:00:00+00:00",
+                                        "updated_at": "2026-09-20T08:00:00+00:00",
+                                        "deduplicated": False,
+                                    }
+                                ],
+                                "next_cursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_materials(
     course_id: str,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
@@ -114,6 +151,12 @@ async def list_materials(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> MaterialListOut:
+    """列出本课程中调用者可见的资料元数据（不含正文）。
+
+    - 需要已登录且对该课程有访问权限。
+    - 分页用 limit（默认 20，最大 50）与 cursor；next_cursor 为空表示没有下一页。
+    - 受管服务未启用时返回 503，而不是空列表。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.list_materials(
@@ -125,7 +168,40 @@ async def list_materials(
     )
 
 
-@router.post("/{course_id}/materials", response_model=MaterialOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{course_id}/materials",
+    response_model=MaterialOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="上传资料",
+    responses={
+        201: {
+            "description": "上传成功，返回资料元数据（正文不回传）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "上传资料",
+                            "value": {
+                                "id": "mat_001",
+                                "course_id": "course_001",
+                                "filename": "第三讲-操作系统.pdf",
+                                "media_type": "application/pdf",
+                                "byte_size": 1048576,
+                                "sha256": "3f786850e387550fdab836ed7e6dc881de23001b",
+                                "extraction_status": "extracted",
+                                "text_chars": 8421,
+                                "revision": 1,
+                                "created_at": "2026-09-20T08:00:00+00:00",
+                                "updated_at": "2026-09-20T08:00:00+00:00",
+                                "deduplicated": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def upload_material(
     course_id: str,
     file: UploadFile = File(...),
@@ -134,6 +210,12 @@ async def upload_material(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> MaterialOut:
+    """上传一份课程资料，服务端在此提取文本并返回元数据。
+
+    - multipart/form-data，字段为 `file`；必须携带 Idempotency-Key，重试不会创建副本。
+    - 文件名仅按名称校验，媒体类型由扩展名推导；超限文件在此直接拒绝。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     key = _require_idempotency_key(idempotency_key)
@@ -157,14 +239,61 @@ async def upload_material(
     return _material_out(created)
 
 
-@router.post("/{course_id}/materials/resolve", response_model=MaterialResolveOut)
+@router.post(
+    "/{course_id}/materials/resolve",
+    response_model=MaterialResolveOut,
+    summary="解析资料引用",
+    responses={
+        200: {
+            "description": "解析结果：可引用的资料与未解析到的 id",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "解析资料引用",
+                            "value": {
+                                "resolved": [
+                                    {
+                                        "id": "mat_001",
+                                        "filename": "第三讲-操作系统.pdf",
+                                        "media_type": "application/pdf",
+                                        "extraction_status": "extracted",
+                                        "text_chars": 8421,
+                                        "updated_at": "2026-09-20T08:00:00+00:00",
+                                    }
+                                ],
+                                "unresolved": ["mat_missing"],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def resolve_materials(
     course_id: str,
-    body: MaterialResolveIn,
+    body: Annotated[
+        MaterialResolveIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "解析两份资料引用",
+                    "value": {"material_ids": ["mat_001", "mat_missing"]},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> MaterialResolveOut:
+    """批量解析资料引用，返回可被舞台引用的资料列表。
+
+    - material_ids 最多 50 项，且只能包含非空字符串。
+    - unresolved 只表示未解析到（异用户、异课程、已删除、不存在同义），不说明原因。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     ids = [str(item).strip() for item in body.material_ids]
@@ -181,7 +310,40 @@ async def resolve_materials(
     )
 
 
-@router.get("/{course_id}/materials/{material_id}", response_model=MaterialDetailOut)
+@router.get(
+    "/{course_id}/materials/{material_id}",
+    response_model=MaterialDetailOut,
+    summary="读取资料",
+    responses={
+        200: {
+            "description": "单份资料，含提取出的正文文本",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取资料",
+                            "value": {
+                                "id": "mat_001",
+                                "course_id": "course_001",
+                                "filename": "第三讲-操作系统.pdf",
+                                "media_type": "application/pdf",
+                                "byte_size": 1048576,
+                                "sha256": "3f786850e387550fdab836ed7e6dc881de23001b",
+                                "extraction_status": "extracted",
+                                "text_chars": 8421,
+                                "revision": 1,
+                                "created_at": "2026-09-20T08:00:00+00:00",
+                                "updated_at": "2026-09-20T08:00:00+00:00",
+                                "deduplicated": False,
+                                "text": "操作系统是管理计算机硬件与软件资源的系统软件……",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_material(
     course_id: str,
     material_id: str,
@@ -189,7 +351,11 @@ async def get_material(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> MaterialDetailOut:
-    """The one material route that returns the extracted text."""
+    """读取单份资料，包含提取出的正文文本。
+
+    - 这是唯一会返回正文的资料接口，列表接口只返回元数据。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     return _material_detail(
@@ -199,7 +365,25 @@ async def get_material(
     )
 
 
-@router.delete("/{course_id}/materials/{material_id}")
+@router.delete(
+    "/{course_id}/materials/{material_id}",
+    summary="删除资料",
+    responses={
+        200: {
+            "description": "删除成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "删除资料",
+                            "value": {"deleted": True},
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def delete_material(
     course_id: str,
     material_id: str,
@@ -208,6 +392,11 @@ async def delete_material(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """删除指定资料。
+
+    - 必须携带 If-Match（当前 revision），不接受 `*`。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     await client.delete_material(

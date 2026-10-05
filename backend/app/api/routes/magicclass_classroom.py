@@ -12,7 +12,7 @@ from __future__ import annotations
 from starlette.concurrency import run_in_threadpool
 
 from dataclasses import replace
-from typing import Any, Dict, Optional, Sequence
+from typing import Annotated, Any, Dict, Optional, Sequence
 
 from fastapi import APIRouter, Body, Depends, Query
 
@@ -46,7 +46,7 @@ from ...services.magicclass.requirement_builder import (
 )
 from ..deps import current_user
 
-router = APIRouter(prefix="/courses", tags=["interactive-classroom"])
+router = APIRouter(prefix="/courses", tags=["互动课堂"])
 
 
 def _container() -> ServiceContainer:
@@ -134,6 +134,38 @@ def _resolve_retry_snapshot(
 @router.get(
     "/{course_id}/interactive-classroom/status",
     response_model=MagicClassStatusOut,
+    summary="读取互动课堂状态",
+    responses={
+        200: {
+            "description": "互动课堂服务状态；未启用或不可用时 reason 给出说明",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "服务已启用",
+                            "value": {
+                                "enabled": True,
+                                "configured": True,
+                                "available": True,
+                                "degraded": False,
+                                "compatibility": "compatible",
+                                "service": "magicclass",
+                                "version": "1.0.3",
+                                "capabilities": {"generate": True, "tts": True},
+                                "unavailable_capabilities": [],
+                                "unavailable": False,
+                                "embed_origin": "https://classroom.example.edu",
+                                "browser_embed_available": True,
+                                "external_3d_available": True,
+                                "poll_interval_ms": 5000,
+                                "reason": None,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 async def get_status(
     course_id: str,
@@ -141,6 +173,10 @@ async def get_status(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassStatusOut:
+    """读取互动课堂服务的启用与可用状态。
+
+    未启用或不可用时 reason 给出说明；客户端据此决定是否展示生成入口。
+    """
     # 先校验权限（即使服务未启用，也只在有权限时暴露状态）
     await run_in_threadpool(assert_course_access, container, user, course_id)
     payload: Dict[str, Any] = await service.status()
@@ -152,6 +188,43 @@ async def get_status(
 @router.get(
     "/{course_id}/interactive-classroom/plan",
     response_model=MagicClassPlanOut,
+    summary="读取生成前课堂方案",
+    responses={
+        200: {
+            "description": "生成前给学生的课程、可选资料、推荐形态与理由",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "推荐概念讲解",
+                            "value": {
+                                "course_id": "course_db_2025",
+                                "course_name": "数据库系统原理",
+                                "mode": "explain",
+                                "mode_label": "概念讲解",
+                                "requested_mode": "adaptive",
+                                "adaptive_reason": "课程包含较多文字资料，优先采用概念讲解。",
+                                "intent_note": "内容形态只是生成意图，最终包含哪些形式由生成器根据课程内容决定。",
+                                "materials": [
+                                    {
+                                        "id": "mat_1001",
+                                        "title": "第 3 章 关系数据库设计.pdf",
+                                        "kind": "资料",
+                                    }
+                                ],
+                                "selected_material_ids": ["mat_1001"],
+                                "context_truncated": False,
+                                "capabilities": {"generate": True},
+                                "external_3d_available": True,
+                                "can_generate": True,
+                                "reason": None,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 async def get_plan(
     course_id: str,
@@ -208,14 +281,74 @@ async def get_plan(
     "/{course_id}/interactive-classroom/generate",
     response_model=MagicClassGenerateOut,
     status_code=202,
+    summary="生成互动课堂",
+    responses={
+        202: {
+            "description": "已受理，返回可轮询的课堂生成会话",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已受理，排队生成",
+                            "value": {
+                                "accepted": True,
+                                "session": {
+                                    "session_id": "sess_9f2c1a",
+                                    "course_id": "course_db_2025",
+                                    "mode": "explain",
+                                    "requested_mode": "adaptive",
+                                    "job_id": "job_5b7e21",
+                                    "status": "queued",
+                                    "step": "queued",
+                                    "progress": 0,
+                                    "message": "已提交生成，请稍候。",
+                                    "terminal": False,
+                                    "retryable": False,
+                                    "partial": False,
+                                },
+                                "poll_interval_ms": 5000,
+                                "mode": "explain",
+                                "requested_mode": "adaptive",
+                                "request_source": "request",
+                                "materials_unresolved": [],
+                                "materials_warning": None,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 async def generate_classroom(
     course_id: str,
-    req: MagicClassGenerateRequest,
+    req: Annotated[
+        MagicClassGenerateRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "生成概念讲解课堂",
+                    "value": {
+                        "mode": "explain",
+                        "learning_objective": "掌握关系模型的三大要素",
+                        "current_difficulty": "分不清主键与外键",
+                        "desired_duration_minutes": 30,
+                        "difficulty_level": "standard",
+                        "wants_more_practice": True,
+                        "selected_material_ids": ["mat_1001"],
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassGenerateOut:
+    """提交一次互动课堂生成，返回 202 与可轮询的会话。
+
+    课程上下文与资料正文一律由服务端按 course_id 重新读取，客户端提交的正文不被信任。
+    """
     course = await run_in_threadpool(assert_course_access, container, user, course_id)
     context = await run_in_threadpool(build_learning_context,
         container,
@@ -254,6 +387,38 @@ async def generate_classroom(
 @router.get(
     "/{course_id}/interactive-classroom/jobs/{session_id}",
     response_model=MagicClassSessionOut,
+    summary="读取课堂生成进度",
+    responses={
+        200: {
+            "description": "返回课堂生成任务的最新进度与会话状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取生成进度",
+                            "value": {
+                                "session_id": "sess_9f2c1a",
+                                "course_id": "course_db_2025",
+                                "mode": "explain",
+                                "requested_mode": "adaptive",
+                                "job_id": "job_5b7e21",
+                                "status": "succeeded",
+                                "step": "completed",
+                                "progress": 100,
+                                "message": "生成完成。",
+                                "classroom_id": "cls_88aa12",
+                                "url": "https://classroom.example.edu/classroom?id=cls_88aa12",
+                                "scenes_count": 12,
+                                "terminal": True,
+                                "retryable": True,
+                                "partial": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def get_progress(
     course_id: str,
@@ -262,6 +427,11 @@ async def get_progress(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassSessionOut:
+    """读取课堂生成任务的最新进度。
+
+    轮询并在必要时回读上游，用于展示生成状态、进度与终态。
+    课堂生成任务不存在返回 404（NOT_FOUND）。
+    """
     await run_in_threadpool(assert_course_access, container, user, course_id)
     session = await run_in_threadpool(service.get_session, user_id=user.id, course_id=course_id, session_id=session_id)
     if session is None:
@@ -273,6 +443,44 @@ async def get_progress(
 @router.get(
     "/{course_id}/interactive-classroom/{session_id}/composition",
     response_model=MagicClassCompositionOut,
+    summary="回读课堂实际组成",
+    responses={
+        200: {
+            "description": "返回这节课真实包含的场景与 widget 分布",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "回读课堂实际组成",
+                            "value": {
+                                "classroom_id": "cls_88aa12",
+                                "scene_total": 12,
+                                "scenes": [
+                                    {"type": "slide", "count": 6},
+                                    {"type": "interactive", "count": 3},
+                                    {"type": "quiz", "count": 2},
+                                ],
+                                "widget_types": [
+                                    {"widget_type": "drag_drop", "count": 2},
+                                    {"widget_type": "simulation", "count": 1},
+                                ],
+                                "has_whiteboard": True,
+                                "has_tts": True,
+                                "has_multi_agent": False,
+                                "has_unknown_scene_type": False,
+                                "has_unknown_widget_type": False,
+                                "requires_external_3d": False,
+                                "external_3d_available": True,
+                                "degraded": False,
+                                "read_at": "2026-10-06T08:06:00+00:00",
+                                "error": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def get_composition(
     course_id: str,
@@ -297,6 +505,36 @@ async def get_composition(
 @router.get(
     "/{course_id}/interactive-classroom",
     response_model=MagicClassClassroomsOut,
+    summary="列出课程课堂",
+    responses={
+        200: {
+            "description": "返回该课程已生成课堂列表与启用状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出课程课堂",
+                            "value": {
+                                "enabled": True,
+                                "items": [
+                                    {
+                                        "session_id": "sess_9f2c1a",
+                                        "classroom_id": "cls_88aa12",
+                                        "url": "https://classroom.example.edu/classroom?id=cls_88aa12",
+                                        "url_unavailable_reason": None,
+                                        "mode": "explain",
+                                        "scenes_count": 12,
+                                        "created_at": "2026-10-06T08:00:00+00:00",
+                                        "composition": None,
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def list_classrooms(
     course_id: str,
@@ -304,6 +542,10 @@ async def list_classrooms(
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassClassroomsOut:
+    """列出该课程已生成的课堂。
+
+    enabled 表示互动课堂服务是否启用；items 只包含当前用户在该课程下的课堂。
+    """
     await run_in_threadpool(assert_course_access, container, user, course_id)
     status = await service.status()
     items = await run_in_threadpool(service.list_classrooms, user_id=user.id, course_id=course_id)
@@ -314,11 +556,66 @@ async def list_classrooms(
     "/{course_id}/interactive-classroom/{session_id}/retry",
     response_model=MagicClassGenerateOut,
     status_code=202,
+    summary="重试生成课堂",
+    responses={
+        202: {
+            "description": "已受理，以原任务的学生输入重新提交生成，返回新的可轮询会话",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "重新提交生成",
+                            "value": {
+                                "accepted": True,
+                                "session": {
+                                    "session_id": "sess_7d3b02",
+                                    "course_id": "course_db_2025",
+                                    "mode": "explain",
+                                    "requested_mode": "explain",
+                                    "job_id": "job_2c9f44",
+                                    "status": "queued",
+                                    "step": "queued",
+                                    "progress": 0,
+                                    "message": "已提交生成，请稍候。",
+                                    "terminal": False,
+                                    "retryable": False,
+                                    "partial": False,
+                                },
+                                "poll_interval_ms": 5000,
+                                "mode": "explain",
+                                "requested_mode": "explain",
+                                "request_source": "snapshot",
+                                "request_source_note": "已按原任务的个性化设置重试。",
+                                "materials_unresolved": [],
+                                "materials_warning": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def retry_session(
     course_id: str,
     session_id: str,
-    body: Optional[MagicClassGenerateRequest] = Body(default=None),
+    body: Optional[MagicClassGenerateRequest] = Body(
+        default=None,
+        openapi_examples={
+            "成功": {
+                "summary": "以原任务设置重试生成",
+                "value": {
+                    "mode": "explain",
+                    "learning_objective": "掌握关系模型的三大要素",
+                    "current_difficulty": "分不清主键与外键",
+                    "desired_duration_minutes": 30,
+                    "difficulty_level": "standard",
+                    "wants_more_practice": True,
+                    "selected_material_ids": ["mat_1001"],
+                },
+            }
+        },
+    ),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     service: MagicClassClassroomService = Depends(_service),

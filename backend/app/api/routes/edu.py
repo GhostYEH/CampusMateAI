@@ -20,9 +20,9 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Body, Depends, Query, Response
 
 from ...core.exceptions import AppException, Forbidden
 from ...models.edu import (
@@ -53,7 +53,7 @@ from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
 
 
-router = APIRouter(prefix="/edu", tags=["edu"])
+router = APIRouter(prefix="/edu", tags=["教务"])
 
 
 class UniversityRequired(AppException):
@@ -171,7 +171,41 @@ def _sync_record_to_out(record) -> EduSyncRecordOut:
 # ===== 探测 =====
 
 
-@router.get("/detect", response_model=EduDetectResult)
+@router.get(
+    "/detect",
+    response_model=EduDetectResult,
+    summary="探测学校教务厂商",
+    responses={
+        200: {
+            "description": "教务厂商与系统类型探测结果（不编造 URL）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "命中已配置教务系统",
+                            "value": {
+                                "university_id": "uni_4111010001",
+                                "provider": "zhengfang",
+                                "system_type": "undergrad",
+                                "detected": True,
+                                "confidence": 0.86,
+                                "evidence": [
+                                    {
+                                        "source": "CONFIG",
+                                        "detail": "edu_systems 命中已配置系统",
+                                        "weight": 0.6,
+                                    }
+                                ],
+                                "detection_source": "CONFIG",
+                                "reason": "命中已配置的教务系统",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def detect_university(
     university_id: str = Query(..., min_length=1, max_length=128),
     user: UserRow = Depends(current_user),
@@ -194,7 +228,42 @@ def detect_university(
 # ===== 配置 =====
 
 
-@router.get("/config/{university_id}", response_model=EduSystemConfigOut)
+@router.get(
+    "/config/{university_id}",
+    response_model=EduSystemConfigOut,
+    summary="获取教务系统配置",
+    responses={
+        200: {
+            "description": "学校教务系统配置；不存在时自动创建默认配置",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已发现部分 URL 的配置",
+                            "value": {
+                                "id": "cfg_uni_4111010001",
+                                "university_id": "uni_4111010001",
+                                "provider": "zhengfang",
+                                "system_type": "undergrad",
+                                "academic_system_url": "https://dean.pku.edu.cn/",
+                                "academic_system_url_status": "verified",
+                                "sso_url": "https://portal.pku.edu.cn/",
+                                "sso_url_status": "verified",
+                                "login_method": "sso",
+                                "captcha_type": "none",
+                                "supported_features": ["schedule", "grade", "exam"],
+                                "school_code": "4111010001",
+                                "data_source": "curated",
+                                "created_at": "2026-09-01T08:00:00+00:00",
+                                "updated_at": "2026-10-01T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_config(
     university_id: str,
     user: UserRow = Depends(current_user),
@@ -211,7 +280,42 @@ def get_config(
 # ===== 绑定 =====
 
 
-@router.get("/binding", response_model=Optional[EduBindingOut])
+@router.get(
+    "/binding",
+    response_model=Optional[EduBindingOut],
+    summary="获取教务绑定",
+    responses={
+        200: {
+            "description": "当前用户教务绑定；未绑定时为 null",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已绑定教务账号",
+                            "value": {
+                                "id": "bind_0001",
+                                "user_id": "u_demo",
+                                "university_id": "uni_4111010001",
+                                "provider": "zhengfang",
+                                "supported_features": ["schedule", "grade", "exam"],
+                                "system_type": "undergrad",
+                                "external_student_id": "20240001",
+                                "external_student_name": "演示学生",
+                                "connection_status": "active",
+                                "session_type": "backend_cookie",
+                                "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                "last_sync_status": "success",
+                                "last_error": None,
+                                "created_at": "2026-09-01T08:00:00+00:00",
+                                "updated_at": "2026-10-06T09:30:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_binding(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -228,9 +332,58 @@ def get_binding(
     )
 
 
-@router.post("/bind", response_model=EduBindingOut)
+@router.post(
+    "/bind",
+    response_model=EduBindingOut,
+    summary="兼容旧版绑定接口",
+    responses={
+        200: {
+            "description": "教务账号绑定成功（不含凭证）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "绑定成功",
+                            "value": {
+                                "id": "bind_0001",
+                                "user_id": "u_demo",
+                                "university_id": "uni_4111010001",
+                                "provider": "zhengfang",
+                                "supported_features": ["schedule", "grade", "exam"],
+                                "system_type": "undergrad",
+                                "external_student_id": "20240001",
+                                "external_student_name": "演示学生",
+                                "connection_status": "active",
+                                "session_type": "backend_cookie",
+                                "last_synced_at": None,
+                                "last_sync_status": None,
+                                "last_error": None,
+                                "created_at": "2026-10-06T09:40:00+00:00",
+                                "updated_at": "2026-10-06T09:40:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def bind(
-    request: EduBindRequest,
+    request: Annotated[
+        EduBindRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "使用学号绑定本科教务",
+                    "value": {
+                        "username": "20240001",
+                        "password": "EduDemo123456",
+                        "system_type": "undergrad",
+                    },
+                }
+            }
+        ),
+    ],
     response: Response,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -272,7 +425,20 @@ async def bind(
     return binding
 
 
-@router.delete("/binding")
+@router.delete(
+    "/binding",
+    summary="解绑教务账号",
+    responses={
+        200: {
+            "description": "已解除当前用户的教务绑定",
+            "content": {
+                "application/json": {
+                    "examples": {"成功": {"summary": "解绑成功", "value": {"ok": True}}}
+                }
+            },
+        }
+    },
+)
 def unbind(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -344,22 +510,106 @@ def _project_sync_events_safely(
         )
 
 
-@router.post("/sync/profile", response_model=EduSyncResult)
+@router.post(
+    "/sync/profile",
+    response_model=EduSyncResult,
+    summary="同步学生基本信息",
+    responses={
+        200: {
+            "description": "同步学生基本信息结果；未绑定时 status=failed（仍为 HTTP 200）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "同步成功",
+                            "value": {
+                                "sync_type": "profile",
+                                "status": "success",
+                                "items_count": 1,
+                                "error_message": None,
+                                "profile": {
+                                    "external_student_id": "20240001",
+                                    "name": "演示学生",
+                                    "college": "信息科学技术学院",
+                                    "major": "计算机科学与技术",
+                                    "grade": "2024",
+                                    "class_name": "计算机 2024 级 1 班",
+                                },
+                                "inserted": 0,
+                                "updated": 1,
+                                "unchanged": 0,
+                                "removed": 0,
+                                "failed": 0,
+                                "sync_batch_id": "sync_20261006_093000",
+                                "semester": None,
+                                "persisted": True,
+                                "stage": "completed",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def sync_profile(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
+    """同步学生基本信息。
+
+    - 未绑定教务账号时不返回 404：仍是 HTTP 200，status=failed，客户端须检查业务 status。
+    """
     if _require_binding_or_failed(user, container) is None:
         return EduSyncResult(sync_type="profile", status="failed", error_message="未绑定教务账号")
     return await container.edu_connector.sync_profile(user.id)
 
 
-@router.post("/sync/schedule", response_model=EduSyncResult)
+@router.post(
+    "/sync/schedule",
+    response_model=EduSyncResult,
+    summary="同步教务课表",
+    responses={
+        200: {
+            "description": "课表同步结果；未绑定时 status=failed（仍为 HTTP 200）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "同步成功",
+                            "value": {
+                                "sync_type": "schedule",
+                                "status": "success",
+                                "items_count": 12,
+                                "error_message": None,
+                                "inserted": 10,
+                                "updated": 2,
+                                "unchanged": 0,
+                                "removed": 0,
+                                "failed": 0,
+                                "sync_batch_id": "sync_20261006_093100",
+                                "semester": "2025-2026-1",
+                                "persisted": True,
+                                "stage": "completed",
+                                "previous_schedule_preserved": False,
+                                "protocol_source": "zhengfang_jwgl2",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def sync_schedule(
     semester: Optional[str] = Query(None, max_length=64),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
+    """同步课表，可按学期过滤。
+
+    - 未绑定教务账号时不返回 404：仍是 HTTP 200，status=failed。
+    """
     binding = _require_binding_or_failed(user, container)
     if binding is None:
         return EduSyncResult(sync_type="schedule", status="failed", error_message="未绑定教务账号")
@@ -368,12 +618,50 @@ async def sync_schedule(
     return result
 
 
-@router.post("/sync/grade", response_model=EduSyncResult)
+@router.post(
+    "/sync/grade",
+    response_model=EduSyncResult,
+    summary="同步教务成绩",
+    responses={
+        200: {
+            "description": "成绩同步结果；未绑定时 status=failed（仍为 HTTP 200）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "同步成功",
+                            "value": {
+                                "sync_type": "grade",
+                                "status": "success",
+                                "items_count": 24,
+                                "error_message": None,
+                                "inserted": 8,
+                                "updated": 16,
+                                "unchanged": 0,
+                                "removed": 0,
+                                "failed": 0,
+                                "sync_batch_id": "sync_20261006_093200",
+                                "semester": "2025-2026-1",
+                                "persisted": True,
+                                "stage": "completed",
+                                "protocol_source": "zhengfang_jwgl2",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def sync_grade(
     semester: Optional[str] = Query(None, max_length=64),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
+    """同步成绩，可按学期过滤。
+
+    - 未绑定教务账号时不返回 404：仍是 HTTP 200，status=failed。
+    """
     binding = _require_binding_or_failed(user, container)
     if binding is None:
         return EduSyncResult(sync_type="grade", status="failed", error_message="未绑定教务账号")
@@ -382,12 +670,50 @@ async def sync_grade(
     return result
 
 
-@router.post("/sync/exam", response_model=EduSyncResult)
+@router.post(
+    "/sync/exam",
+    response_model=EduSyncResult,
+    summary="同步考试安排",
+    responses={
+        200: {
+            "description": "考试安排同步结果；未绑定时 status=failed（仍为 HTTP 200）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "同步成功",
+                            "value": {
+                                "sync_type": "exam",
+                                "status": "success",
+                                "items_count": 2,
+                                "error_message": None,
+                                "inserted": 2,
+                                "updated": 0,
+                                "unchanged": 0,
+                                "removed": 0,
+                                "failed": 0,
+                                "sync_batch_id": "sync_20261006_093300",
+                                "semester": "2025-2026-1",
+                                "persisted": True,
+                                "stage": "completed",
+                                "protocol_source": "zhengfang_jwgl2",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def sync_exam(
     semester: Optional[str] = Query(None, max_length=64),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduSyncResult:
+    """同步考试安排，可按学期过滤。
+
+    - 未绑定教务账号时不返回 404：仍是 HTTP 200，status=failed。
+    """
     binding = _require_binding_or_failed(user, container)
     if binding is None:
         return EduSyncResult(sync_type="exam", status="failed", error_message="未绑定教务账号")
@@ -396,12 +722,43 @@ async def sync_exam(
     return result
 
 
-@router.get("/sync/records", response_model=list[EduSyncRecordOut])
+@router.get(
+    "/sync/records",
+    response_model=list[EduSyncRecordOut],
+    summary="列出同步记录",
+    responses={
+        200: {
+            "description": "当前用户的教务同步记录列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回最近一次课表同步记录",
+                            "value": [
+                                {
+                                    "id": "rec_0001",
+                                    "binding_id": "bind_0001",
+                                    "sync_type": "schedule",
+                                    "status": "success",
+                                    "items_count": 12,
+                                    "error_message": None,
+                                    "started_at": "2026-10-06T09:31:00+00:00",
+                                    "finished_at": "2026-10-06T09:31:05+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_sync_records(
     limit: int = Query(20, ge=1, le=100),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> list[EduSyncRecordOut]:
+    """列出当前用户的教务同步记录，limit 控制返回条数。"""
     records = container.edu_connector.list_sync_records(user.id, limit=limit)
     return [_sync_record_to_out(r) for r in records]
 
@@ -409,7 +766,26 @@ def list_sync_records(
 # ===== 持久化教务数据读取（供三端展示真实课表/成绩）=====
 
 
-@router.get("/schedule/semesters", response_model=list[str])
+@router.get(
+    "/schedule/semesters",
+    response_model=list[str],
+    summary="列出课表学期",
+    responses={
+        200: {
+            "description": "已同步课表的学期列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回两个学期",
+                            "value": ["2025-2026-1", "2024-2025-2"],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_schedule_semesters(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -418,7 +794,47 @@ def list_schedule_semesters(
     return container.edu_connector.list_schedule_semesters(user.id)
 
 
-@router.get("/schedule/items")
+@router.get(
+    "/schedule/items",
+    summary="读取课表条目",
+    responses={
+        200: {
+            "description": "已持久化的课表条目",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一条课表条目",
+                            "value": {
+                                "semester": "2025-2026-1",
+                                "items_count": 1,
+                                "items": [
+                                    {
+                                        "id": "sched_0001",
+                                        "semester": "2025-2026-1",
+                                        "course_code": "04830100",
+                                        "course_name": "数据结构与算法",
+                                        "teacher": "王老师",
+                                        "location": "理科教学楼 305",
+                                        "weekday": 1,
+                                        "start_section": 1,
+                                        "end_section": 2,
+                                        "start_time": "08:00",
+                                        "end_time": "09:40",
+                                        "weeks": "1-16",
+                                        "credit": 3.0,
+                                        "is_stale": False,
+                                        "last_seen_at": "2026-10-06T09:31:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_schedule_items(
     semester: Optional[str] = Query(None),
     include_stale: bool = Query(False),
@@ -476,7 +892,26 @@ def list_schedule_items(
     }
 
 
-@router.get("/grade/semesters", response_model=list[str])
+@router.get(
+    "/grade/semesters",
+    response_model=list[str],
+    summary="列出成绩学期",
+    responses={
+        200: {
+            "description": "已同步成绩的学期列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一个学期",
+                            "value": ["2025-2026-1"],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_grade_semesters(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -485,7 +920,43 @@ def list_grade_semesters(
     return container.edu_connector.list_grade_semesters(user.id)
 
 
-@router.get("/grade/items")
+@router.get(
+    "/grade/items",
+    summary="读取成绩条目",
+    responses={
+        200: {
+            "description": "已持久化的成绩条目",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一条成绩条目",
+                            "value": {
+                                "semester": "2025-2026-1",
+                                "items_count": 1,
+                                "items": [
+                                    {
+                                        "id": "grade_0001",
+                                        "semester": "2025-2026-1",
+                                        "course_code": "04830100",
+                                        "course_name": "数据结构与算法",
+                                        "credit": 3.0,
+                                        "score": "92",
+                                        "grade_point": 4.0,
+                                        "category": "专业课",
+                                        "status": "normal",
+                                        "is_stale": False,
+                                        "last_seen_at": "2026-10-06T09:32:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_grade_items(
     semester: Optional[str] = Query(None),
     include_stale: bool = Query(False),
@@ -518,7 +989,26 @@ def list_grade_items(
     }
 
 
-@router.get("/exam/semesters", response_model=list[str])
+@router.get(
+    "/exam/semesters",
+    response_model=list[str],
+    summary="列出考试学期",
+    responses={
+        200: {
+            "description": "已同步考试安排的学期列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一个学期",
+                            "value": ["2025-2026-1"],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_exam_semesters(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
@@ -527,7 +1017,44 @@ def list_exam_semesters(
     return container.edu_connector.list_exam_semesters(user.id)
 
 
-@router.get("/exam/items")
+@router.get(
+    "/exam/items",
+    summary="读取考试安排",
+    responses={
+        200: {
+            "description": "已持久化的考试安排，补考通过 exam_type 区分",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一条考试安排",
+                            "value": {
+                                "semester": "2025-2026-1",
+                                "items_count": 1,
+                                "items": [
+                                    {
+                                        "id": "exam_0001",
+                                        "semester": "2025-2026-1",
+                                        "course_code": "04830100",
+                                        "course_name": "数据结构与算法",
+                                        "exam_type": "final",
+                                        "location": "理科教学楼 305",
+                                        "seat": "12",
+                                        "starts_at": "2026-01-10T09:00:00+08:00",
+                                        "ends_at": "2026-01-10T11:00:00+08:00",
+                                        "notes": None,
+                                        "is_stale": False,
+                                        "last_seen_at": "2026-10-06T09:33:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_exam_items(
     semester: Optional[str] = Query(None),
     include_stale: bool = Query(False),
@@ -599,7 +1126,44 @@ def _system_to_out(row) -> EduSystemOut:
     )
 
 
-@router.get("/systems/{university_id}", response_model=list[EduSystemOut])
+@router.get(
+    "/systems/{university_id}",
+    response_model=list[EduSystemOut],
+    summary="列出学校教务系统",
+    responses={
+        200: {
+            "description": "学校的教务系统列表（1:N）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一个已核验系统",
+                            "value": [
+                                {
+                                    "id": "sys_0001",
+                                    "university_id": "uni_4111010001",
+                                    "system_key": "undergraduate-main",
+                                    "name": "北京大学本科教务系统",
+                                    "system_type": "undergrad",
+                                    "provider": "zhengfang",
+                                    "login_url": "https://dean.pku.edu.cn/login",
+                                    "auth_type": "sso",
+                                    "login_execution_mode": "backend_http",
+                                    "captcha_type": "none",
+                                    "status": "active",
+                                    "verification_status": "verified",
+                                    "supported_features": ["schedule", "grade", "exam"],
+                                    "source": "curated",
+                                    "updated_at": "2026-10-01T08:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_systems(
     university_id: str,
     user: UserRow = Depends(current_user),
@@ -613,9 +1177,54 @@ def list_systems(
 # ===== edu_connections (状态机) =====
 
 
-@router.post("/connections", response_model=EduConnectionOut)
+@router.post(
+    "/connections",
+    response_model=EduConnectionOut,
+    summary="创建教务连接",
+    responses={
+        200: {
+            "description": "已创建连接，返回 connection_id 与初始状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建后处于 idle 状态",
+                            "value": {
+                                "id": "conn_0001",
+                                "user_id": "u_demo",
+                                "edu_system_id": "sys_0001",
+                                "university_id": "uni_4111010001",
+                                "state": "idle",
+                                "provider": "zhengfang",
+                                "login_execution_mode": "backend_http",
+                                "portal_url": "https://dean.pku.edu.cn/",
+                                "allowed_origins": ["https://dean.pku.edu.cn"],
+                                "external_student_id": None,
+                                "external_student_name": None,
+                                "error_code": None,
+                                "error_message": None,
+                                "created_at": "2026-10-06T09:40:00+00:00",
+                                "updated_at": "2026-10-06T09:40:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def create_connection(
-    request: EduConnectionCreate,
+    request: Annotated[
+        EduConnectionCreate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "按教务系统 ID 创建连接",
+                    "value": {"edu_system_id": "sys_0001"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduConnectionOut:
@@ -645,12 +1254,48 @@ def create_connection(
     return _connection_to_out(conn, container)
 
 
-@router.get("/connections/{connection_id}", response_model=EduConnectionOut)
+@router.get(
+    "/connections/{connection_id}",
+    response_model=EduConnectionOut,
+    summary="读取教务连接",
+    responses={
+        200: {
+            "description": "教务连接的当前状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已连接并识别到学生",
+                            "value": {
+                                "id": "conn_0001",
+                                "user_id": "u_demo",
+                                "edu_system_id": "sys_0001",
+                                "university_id": "uni_4111010001",
+                                "state": "connected",
+                                "provider": "zhengfang",
+                                "login_execution_mode": "backend_http",
+                                "portal_url": "https://dean.pku.edu.cn/",
+                                "allowed_origins": ["https://dean.pku.edu.cn"],
+                                "external_student_id": "20240001",
+                                "external_student_name": "演示学生",
+                                "error_code": None,
+                                "error_message": None,
+                                "created_at": "2026-10-06T09:40:00+00:00",
+                                "updated_at": "2026-10-06T09:41:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_connection(
     connection_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduConnectionOut:
+    """读取指定教务连接的当前状态；不存在返回 404，非本人返回 403。"""
     conn = container.edu_connector.get_connection(connection_id)
     if conn is None:
         raise AppException(
@@ -663,7 +1308,11 @@ def get_connection(
     return _connection_to_out(conn, container)
 
 
-@router.post("/connections/{connection_id}/pre-login", response_model=EduPreLoginResult)
+@router.post(
+    "/connections/{connection_id}/pre-login",
+    response_model=EduPreLoginResult,
+    summary="获取预登录验证码",
+)
 async def pre_login(
     connection_id: str,
     user: UserRow = Depends(current_user),
@@ -700,10 +1349,61 @@ async def pre_login(
     )
 
 
-@router.post("/connections/{connection_id}/continue", response_model=EduConnectionOut)
+@router.post(
+    "/connections/{connection_id}/continue",
+    response_model=EduConnectionOut,
+    summary="推进连接状态",
+    responses={
+        200: {
+            "description": "推进后的教务连接状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "验证码提交后认证成功",
+                            "value": {
+                                "id": "conn_0001",
+                                "user_id": "u_demo",
+                                "edu_system_id": "sys_0001",
+                                "university_id": "uni_4111010001",
+                                "state": "authenticated",
+                                "provider": "zhengfang",
+                                "login_execution_mode": "backend_http",
+                                "portal_url": "https://dean.pku.edu.cn/",
+                                "allowed_origins": ["https://dean.pku.edu.cn"],
+                                "external_student_id": "20240001",
+                                "external_student_name": "演示学生",
+                                "error_code": None,
+                                "error_message": None,
+                                "created_at": "2026-10-06T09:40:00+00:00",
+                                "updated_at": "2026-10-06T09:41:30+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def continue_connection(
     connection_id: str,
-    request: EduConnectionContinue,
+    request: Annotated[
+        EduConnectionContinue,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "携带验证码提交登录",
+                    "value": {
+                        "action": "SUBMIT_WITH_CAPTCHA",
+                        "username": "20240001",
+                        "password": "EduDemo123456",
+                        "captcha": "8A6F",
+                        "pre_login_token": "plt_9f2c4e7a1b",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduConnectionOut:
@@ -744,9 +1444,57 @@ async def continue_connection(
     return _connection_to_out(updated, container)
 
 
-@router.post("/connections/from-url", response_model=EduConnectionOut)
+@router.post(
+    "/connections/from-url",
+    response_model=EduConnectionOut,
+    summary="从URL创建教务连接",
+    responses={
+        200: {
+            "description": "已按 URL 探测并创建连接，返回初始状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "按门户 URL 创建后处于 idle 状态",
+                            "value": {
+                                "id": "conn_0002",
+                                "user_id": "u_demo",
+                                "edu_system_id": "sys_0001",
+                                "university_id": "uni_4111010001",
+                                "state": "idle",
+                                "provider": "zhengfang",
+                                "login_execution_mode": "backend_http",
+                                "portal_url": "https://dean.pku.edu.cn/",
+                                "allowed_origins": ["https://dean.pku.edu.cn"],
+                                "external_student_id": None,
+                                "external_student_name": None,
+                                "error_code": None,
+                                "error_message": None,
+                                "created_at": "2026-10-06T09:42:00+00:00",
+                                "updated_at": "2026-10-06T09:42:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_connection_from_url(
-    request: EduConnectionFromUrlRequest,
+    request: Annotated[
+        EduConnectionFromUrlRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "按门户 URL 创建连接",
+                    "value": {
+                        "portal_url": "https://dean.pku.edu.cn/",
+                        "university_id": "uni_4111010001",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduConnectionOut:
@@ -770,9 +1518,56 @@ async def create_connection_from_url(
     return _connection_to_out(conn, container)
 
 
-@router.post("/discovery/probe", response_model=EduProbeResult)
+@router.post(
+    "/discovery/probe",
+    response_model=EduProbeResult,
+    summary="探测教务系统URL",
+    responses={
+        200: {
+            "description": "URL 探测结果（不持久化任何数据）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "可达且识别为正方教务",
+                            "value": {
+                                "portal_url": "https://dean.pku.edu.cn/",
+                                "provider": "ZHENGFANG",
+                                "provider_confidence": 0.9,
+                                "reachable": True,
+                                "http_status": 200,
+                                "final_url": "https://dean.pku.edu.cn/",
+                                "title": "北京大学教务部",
+                                "is_edu_page": True,
+                                "suggested_login_mode": "backend_http",
+                                "challenge_type": "none",
+                                "evidence": [
+                                    {
+                                        "dimension": "url",
+                                        "detail": "命中正方教务特征路径",
+                                    }
+                                ],
+                                "error": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def discovery_probe(
-    request: EduProbeRequest,
+    request: Annotated[
+        EduProbeRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "探测北大教务门户",
+                    "value": {"portal_url": "https://dean.pku.edu.cn/"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> EduProbeResult:
@@ -789,9 +1584,61 @@ async def discovery_probe(
 from ...services.edu.discovery_service import submit_url as _discovery_submit_url
 
 
-@router.post("/discovery/submit-url", response_model=EduDiscoverySubmitUrlResult)
+@router.post(
+    "/discovery/submit-url",
+    response_model=EduDiscoverySubmitUrlResult,
+    summary="提交教务系统URL",
+    responses={
+        200: {
+            "description": "URL 检测与候选保存结果",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "保存为候选",
+                            "value": {
+                                "school_code": "4111010001",
+                                "school_name": "北京大学",
+                                "candidate_url": "https://dean.pku.edu.cn/",
+                                "provider": "ZHENGFANG",
+                                "provider_confidence": 0.9,
+                                "reachable": True,
+                                "http_status": 200,
+                                "final_url": "https://dean.pku.edu.cn/",
+                                "title": "北京大学教务部",
+                                "is_edu_page": True,
+                                "evidence": [
+                                    {
+                                        "dimension": "url",
+                                        "detail": "命中正方教务特征路径",
+                                    }
+                                ],
+                                "verification_status": "CANDIDATE",
+                                "saved": True,
+                                "error": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def discovery_submit_url(
-    request: EduDiscoverySubmitUrlRequest,
+    request: Annotated[
+        EduDiscoverySubmitUrlRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "提交北大教务门户 URL",
+                    "value": {
+                        "university_id": "uni_4111010001",
+                        "candidate_url": "https://dean.pku.edu.cn/",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
 ) -> EduDiscoverySubmitUrlResult:
     """用户手动提交教务系统 URL。

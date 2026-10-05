@@ -24,11 +24,35 @@ from ...services.focus_realtime_voice_service import (
 from ..deps import current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/focus/realtime-voice")
+router = APIRouter(prefix="/focus/realtime-voice", tags=["实时语音"])
 
 
-@router.post("/sessions", response_model=FocusRealtimeVoiceSessionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=FocusRealtimeVoiceSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建实时语音会话",
+    responses={
+        201: {
+            "description": "创建成功，返回会话标识与 WebSocket 路径",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建成功",
+                            "value": {
+                                "session_id": "rtv_20261006_demo",
+                                "websocket_path": "focus/realtime-voice/ws/rtv_20261006_demo",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def create_session(user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceSessionResponse:
+    """创建实时语音会话，返回会话标识与 WebSocket 连接路径；实时语音服务未配置时返回 503。"""
     try:
         session = get_focus_realtime_voice_service().create(user.id)
     except RealtimeVoiceUnavailableError:
@@ -39,8 +63,31 @@ def create_session(user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceS
     )
 
 
-@router.delete("/sessions/{session_id}", response_model=FocusRealtimeVoiceStopResponse)
+@router.delete(
+    "/sessions/{session_id}",
+    response_model=FocusRealtimeVoiceStopResponse,
+    summary="停止实时语音会话",
+    responses={
+        200: {
+            "description": "停止成功，返回会话标识与停止结果",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "停止成功",
+                            "value": {"session_id": "rtv_20261006_demo", "stopped": True},
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def stop_session(session_id: str, user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceStopResponse:
+    """删除本人实时语音会话的内存登记，阻止后续 WebSocket 握手。
+
+    会话不存在时返回 404；中继退出也会清理登记，随后调用可能返回 404，应按已结束处理。
+    """
     try:
         stopped = get_focus_realtime_voice_service().stop(session_id, user.id)
     except RealtimeVoiceSessionNotFoundError:
@@ -81,7 +128,10 @@ def _redact_for_log(value: object) -> object:
 
 @router.websocket("/ws/{session_id}")
 async def relay(session_id: str, websocket: WebSocket) -> None:
-    """Relay only: Android PCM binary frames become upstream Base64 JSON events."""
+    """实时语音中继(WebSocket)：仅转发，把 Android 的 PCM 二进制帧转为上游 Base64 JSON 事件。
+
+    通过 query 参数 access_token 鉴权，且会话须属于当前用户，否则以 1008 关闭连接。
+    """
     user = _websocket_user(websocket)
     service = get_focus_realtime_voice_service()
     if user is None or not service.owns(session_id, user.id):

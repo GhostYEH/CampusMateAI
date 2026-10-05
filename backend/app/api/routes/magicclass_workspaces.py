@@ -18,7 +18,7 @@ layer, so the gateway owns four things the client must not:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from fastapi import APIRouter, Body, Depends, Header, Query
 
@@ -43,7 +43,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUna
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client, require_idempotency_key, require_revision
 
-router = APIRouter(prefix="/courses", tags=["magicclass-workspaces"])
+router = APIRouter(prefix="/courses", tags=["课堂工作台"])
 
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 50
@@ -109,7 +109,40 @@ def _stage_summary(payload: Dict[str, Any]) -> StageSummaryOut:
 # ===== workspaces =====
 
 
-@router.get("/{course_id}/workspaces", response_model=WorkspaceListOut)
+@router.get(
+    "/{course_id}/workspaces",
+    response_model=WorkspaceListOut,
+    summary="列出工作台",
+    responses={
+        200: {
+            "description": "工作台列表，按不透明游标分页",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出工作台",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "ws_001",
+                                        "course_id": "course_001",
+                                        "name": "高等数学·期末冲刺",
+                                        "description": "按章节整理的高数复习工作台",
+                                        "folder_id": "fd_001",
+                                        "revision": 3,
+                                        "created_at": "2026-09-01T08:00:00+00:00",
+                                        "updated_at": "2026-10-05T09:30:00+00:00",
+                                    }
+                                ],
+                                "next_cursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_workspaces(
     course_id: str,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
@@ -118,6 +151,11 @@ async def list_workspaces(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> WorkspaceListOut:
+    """列出当前课程下用户可见的学习工作台。
+
+    - 仅返回归属过滤后的工作台，游标只在归属范围内收窄。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.list_workspaces(
@@ -129,15 +167,63 @@ async def list_workspaces(
     )
 
 
-@router.post("/{course_id}/workspaces", response_model=WorkspaceOut, status_code=201)
+@router.post(
+    "/{course_id}/workspaces",
+    response_model=WorkspaceOut,
+    status_code=201,
+    summary="创建工作台",
+    responses={
+        201: {
+            "description": "创建工作台成功，返回工作台详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建工作台",
+                            "value": {
+                                "id": "ws_001",
+                                "course_id": "course_001",
+                                "name": "高等数学·期末冲刺",
+                                "description": "按章节整理的高数复习工作台",
+                                "folder_id": "fd_001",
+                                "revision": 1,
+                                "created_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_workspace(
     course_id: str,
-    body: WorkspaceCreateIn,
+    body: Annotated[
+        WorkspaceCreateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "创建工作台",
+                    "value": {
+                        "name": "高等数学·期末冲刺",
+                        "description": "按章节整理的高数复习工作台",
+                        "folder_id": "fd_001",
+                    },
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> WorkspaceOut:
+    """在当前课程下创建一个学习工作台。
+
+    - 必须携带 Idempotency-Key；缺失返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.create_workspace(
@@ -151,7 +237,35 @@ async def create_workspace(
     return _workspace_out(payload)
 
 
-@router.get("/{course_id}/workspaces/{workspace_id}", response_model=WorkspaceOut)
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}",
+    response_model=WorkspaceOut,
+    summary="读取工作台",
+    responses={
+        200: {
+            "description": "返回指定工作台详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取工作台",
+                            "value": {
+                                "id": "ws_001",
+                                "course_id": "course_001",
+                                "name": "高等数学·期末冲刺",
+                                "description": "按章节整理的高数复习工作台",
+                                "folder_id": "fd_001",
+                                "revision": 3,
+                                "created_at": "2026-09-01T08:00:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_workspace(
     course_id: str,
     workspace_id: str,
@@ -159,6 +273,10 @@ async def get_workspace(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> WorkspaceOut:
+    """读取指定工作台的详情。
+
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     return _workspace_out(
@@ -166,16 +284,60 @@ async def get_workspace(
     )
 
 
-@router.patch("/{course_id}/workspaces/{workspace_id}", response_model=WorkspaceOut)
+@router.patch(
+    "/{course_id}/workspaces/{workspace_id}",
+    response_model=WorkspaceOut,
+    summary="更新工作台",
+    responses={
+        200: {
+            "description": "更新工作台成功，返回更新后的工作台详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "更新工作台",
+                            "value": {
+                                "id": "ws_001",
+                                "course_id": "course_001",
+                                "name": "高等数学·期末冲刺（修订）",
+                                "description": "按章节整理的高数复习工作台",
+                                "folder_id": "fd_001",
+                                "revision": 4,
+                                "created_at": "2026-09-01T08:00:00+00:00",
+                                "updated_at": "2026-10-06T10:15:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def update_workspace(
     course_id: str,
     workspace_id: str,
-    body: WorkspaceUpdateIn,
+    body: Annotated[
+        WorkspaceUpdateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "更新工作台名称",
+                    "value": {"name": "高等数学·期末冲刺（修订）"},
+                }
+            }
+        ),
+    ],
     if_match: Optional[str] = Header(None, alias="If-Match"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> WorkspaceOut:
+    """更新工作台的名称、说明或归档位置。
+
+    - 必须携带 If-Match（当前 revision），不接受 `*`；缺失或非法返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 至少要提供一个可更新字段，否则返回 400；服务端 revision 不一致返回 409（MAGICCLASS_REVISION_CONFLICT）。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     provides_folder = "folder_id" in body.model_fields_set
@@ -195,7 +357,25 @@ async def update_workspace(
     )
 
 
-@router.delete("/{course_id}/workspaces/{workspace_id}")
+@router.delete(
+    "/{course_id}/workspaces/{workspace_id}",
+    summary="删除工作台",
+    responses={
+        200: {
+            "description": "删除工作台成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "删除工作台",
+                            "value": {"deleted": True},
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def delete_workspace(
     course_id: str,
     workspace_id: str,
@@ -204,6 +384,12 @@ async def delete_workspace(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """删除指定工作台。
+
+    - 必须携带 If-Match（当前 revision），不接受 `*`；缺失或非法返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 服务端 revision 不一致返回 409（MAGICCLASS_REVISION_CONFLICT）。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     await client.delete_workspace(
@@ -218,7 +404,40 @@ async def delete_workspace(
 # ===== stages =====
 
 
-@router.get("/{course_id}/workspaces/{workspace_id}/stages", response_model=StageListOut)
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}/stages",
+    response_model=StageListOut,
+    summary="列出舞台",
+    responses={
+        200: {
+            "description": "舞台列表（摘要，不含 document），按不透明游标分页",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出舞台",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "stg_001",
+                                        "workspace_id": "ws_001",
+                                        "course_id": "course_001",
+                                        "title": "第一讲·极限与连续",
+                                        "revision": 2,
+                                        "dsl_version": "1.0",
+                                        "created_at": "2026-09-20T08:00:00+00:00",
+                                        "updated_at": "2026-10-05T09:30:00+00:00",
+                                    }
+                                ],
+                                "next_cursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_stages(
     course_id: str,
     workspace_id: str,
@@ -228,6 +447,11 @@ async def list_stages(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageListOut:
+    """列出指定工作台下的舞台摘要（不含 document）。
+
+    - 列表是导航面，只返回摘要；打开单个舞台时才取全文。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.list_stages(
@@ -243,16 +467,60 @@ async def list_stages(
     )
 
 
-@router.post("/{course_id}/workspaces/{workspace_id}/stages", response_model=StageOut, status_code=201)
+@router.post(
+    "/{course_id}/workspaces/{workspace_id}/stages",
+    response_model=StageOut,
+    status_code=201,
+    summary="创建舞台",
+    responses={
+        201: {
+            "description": "创建舞台成功，返回带完整文档的舞台",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建舞台",
+                            "value": {
+                                "id": "stg_001",
+                                "workspace_id": "ws_001",
+                                "course_id": "course_001",
+                                "title": "第一讲·极限与连续",
+                                "revision": 1,
+                                "dsl_version": "1.0",
+                                "created_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "document": {"stage": {"id": "stg_001", "name": "第一讲·极限与连续"}, "scenes": []},
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_stage(
     course_id: str,
     workspace_id: str,
-    body: StageCreateIn = Body(...),
+    body: StageCreateIn = Body(
+        ...,
+        openapi_examples={
+            "成功": {
+                "summary": "创建舞台",
+                "value": {"title": "第一讲·极限与连续"},
+            }
+        },
+    ),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageOut:
+    """在指定工作台下创建一个舞台。
+
+    - 必须携带 Idempotency-Key；缺失返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 省略 document 表示创建一个只有标题的空舞台。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.create_stage(
@@ -266,7 +534,36 @@ async def create_stage(
     return StageOut(**payload)
 
 
-@router.get("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}", response_model=StageOut)
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}",
+    response_model=StageOut,
+    summary="读取舞台",
+    responses={
+        200: {
+            "description": "返回指定舞台，含完整 DSL 文档",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取舞台",
+                            "value": {
+                                "id": "stg_001",
+                                "workspace_id": "ws_001",
+                                "course_id": "course_001",
+                                "title": "第一讲·极限与连续",
+                                "revision": 2,
+                                "dsl_version": "1.0",
+                                "created_at": "2026-09-20T08:00:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "document": {"stage": {"id": "stg_001", "name": "第一讲·极限与连续"}, "scenes": []},
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_stage(
     course_id: str,
     workspace_id: str,
@@ -275,6 +572,10 @@ async def get_stage(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageOut:
+    """读取指定舞台，返回带完整 DSL 文档的舞台。
+
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     return StageOut(
@@ -284,17 +585,65 @@ async def get_stage(
     )
 
 
-@router.put("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}", response_model=StageOut)
+@router.put(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}",
+    response_model=StageOut,
+    summary="替换舞台",
+    responses={
+        200: {
+            "description": "整份替换舞台成功，返回替换后的舞台",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "替换舞台",
+                            "value": {
+                                "id": "stg_001",
+                                "workspace_id": "ws_001",
+                                "course_id": "course_001",
+                                "title": "第一讲·极限与连续（重排）",
+                                "revision": 3,
+                                "dsl_version": "1.0",
+                                "created_at": "2026-09-20T08:00:00+00:00",
+                                "updated_at": "2026-10-06T10:15:00+00:00",
+                                "document": {"stage": {"id": "stg_001", "name": "第一讲·极限与连续（重排）"}, "scenes": []},
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def replace_stage(
     course_id: str,
     workspace_id: str,
     stage_id: str,
-    body: StageReplaceIn,
+    body: Annotated[
+        StageReplaceIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "整份替换舞台文档",
+                    "value": {
+                        "document": {"stage": {"id": "stg_001", "name": "第一讲·极限与连续（重排）"}, "scenes": []},
+                        "title": "第一讲·极限与连续（重排）",
+                    },
+                }
+            }
+        ),
+    ],
     if_match: Optional[str] = Header(None, alias="If-Match"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageOut:
+    """整份替换指定舞台的文档。
+
+    - 必须携带 If-Match（当前 revision），不接受 `*`；缺失或非法返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 服务端 revision 不一致返回 409（MAGICCLASS_REVISION_CONFLICT）。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     return StageOut(
@@ -310,7 +659,25 @@ async def replace_stage(
     )
 
 
-@router.delete("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}")
+@router.delete(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}",
+    summary="删除舞台",
+    responses={
+        200: {
+            "description": "删除舞台成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "删除舞台",
+                            "value": {"deleted": True},
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def delete_stage(
     course_id: str,
     workspace_id: str,
@@ -320,6 +687,12 @@ async def delete_stage(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """删除指定舞台。
+
+    - 必须携带 If-Match（当前 revision），不接受 `*`；缺失或非法返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 服务端 revision 不一致返回 409（MAGICCLASS_REVISION_CONFLICT）。
+    - 需要已登录且对该课程有访问权限；受管 magic class 服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     await client.delete_stage(

@@ -10,7 +10,7 @@ from ...services.container import get_container
 from ..deps import current_user
 from ...models.multi_role import UserRow
 
-router = APIRouter()
+router = APIRouter(tags=["知识库"])
 
 
 def _determine_knowledge_base_type(
@@ -37,7 +37,38 @@ def _determine_qa_mode(
     return "retrieval_summary"
 
 
-@router.get("/knowledge/status", response_model=KnowledgeStatus)
+@router.get(
+    "/knowledge/status",
+    response_model=KnowledgeStatus,
+    summary="查询知识库状态",
+    responses={
+        200: {
+            "description": "知识库状态查询成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "知识库可用",
+                            "value": {
+                                "document_count": 12,
+                                "chunk_count": 340,
+                                "last_updated": "2026-10-01T08:30:00+00:00",
+                                "index_status": "ready",
+                                "retrieval_method": "bm25",
+                                "is_available": True,
+                                "knowledge_base_type": "hybrid",
+                                "demo_document_count": 5,
+                                "user_document_count": 7,
+                                "llm_available": True,
+                                "qa_mode": "llm_rag",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def knowledge_status() -> KnowledgeStatus:
     """只读状态查询，全部是同步 SQLite 读取；用 def 让 FastAPI 放到线程池执行。"""
     container = get_container()
@@ -69,7 +100,43 @@ def knowledge_status() -> KnowledgeStatus:
     )
 
 
-@router.get("/knowledge/documents", response_model=List[DocumentSummary])
+@router.get(
+    "/knowledge/documents",
+    response_model=List[DocumentSummary],
+    summary="列出知识库文档",
+    responses={
+        200: {
+            "description": "知识库文档列表查询成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "返回一个文档",
+                            "value": [
+                                {
+                                    "document_id": "doc_demo_001",
+                                    "title": "学生请假管理办法",
+                                    "source_department": "教务处",
+                                    "source_type": "official",
+                                    "original_filename": "leave-policy.pdf",
+                                    "content_hash": "sha256:9f2c1a7e4b8d0f3c6a5e2b1d",
+                                    "published_at": "2026-09-01T00:00:00+00:00",
+                                    "version": "v2026.1",
+                                    "is_official": True,
+                                    "is_expired": False,
+                                    "is_demo": False,
+                                    "file_size": 204800,
+                                    "file_ext": "pdf",
+                                    "imported_at": "2026-10-01T08:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_documents(_user: UserRow = Depends(current_user)) -> List[DocumentSummary]:
     """只读文档元数据列表；用 def 避免在事件循环里执行同步 SQLite 读取。"""
     container = get_container()

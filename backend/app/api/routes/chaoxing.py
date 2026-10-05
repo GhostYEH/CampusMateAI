@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import threading
+from typing import Annotated
+
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from starlette.concurrency import run_in_threadpool
 from ...core.logging import logger
 
@@ -21,7 +23,7 @@ from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
 from ...services.container import ServiceContainer, get_container
 
-router = APIRouter()
+router = APIRouter(tags=["学习通"])
 
 _sync_locks: dict[str, threading.Lock] = {}
 _sync_locks_guard = threading.Lock()
@@ -53,12 +55,42 @@ def _last_user_sync_at(container: ServiceContainer, user_id: str):
     """最近一次学习通同步时间 —— 统一实现见 services/chaoxing/sync_facts.py。"""
     return last_chaoxing_sync_at(container, user_id)
 
-@router.post("/chaoxing/login")
+@router.post(
+    "/chaoxing/login",
+    summary="登录学习通",
+    responses={
+        200: {
+            "description": "学习通登录成功，会话凭证已保存",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {"summary": "登录成功", "value": {"status": "success"}}
+                    }
+                }
+            },
+        }
+    },
+)
 async def login_chaoxing(
-    req: ChaoxingLoginRequest,
+    req: Annotated[
+        ChaoxingLoginRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "使用学习通账号登录",
+                    "value": {"username": "13800000000", "password": "CxDemo123456"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
+    """登录学习通并保存会话凭证。
+
+    - 账号密码错误返回 401，需要验证码或重新认证返回 403。
+    - 同一用户已有同步任务在跑时返回 409（sync_in_progress）。
+    """
     sync_lock = _get_user_sync_lock(user.id)
     if not sync_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="sync_in_progress")
@@ -100,11 +132,44 @@ _credentials_unavailable_response = {
 }
 
 
-@router.get("/chaoxing/status", response_model=ChaoxingSyncStatus, responses=_credentials_unavailable_response)
+@router.get(
+    "/chaoxing/status",
+    response_model=ChaoxingSyncStatus,
+    summary="读取学习通状态",
+    responses={
+        **_credentials_unavailable_response,
+        200: {
+            "description": "学习通连接状态与已同步数据统计",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "在线并已同步",
+                            "value": {
+                                "status": "online",
+                                "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                "source": "chaoxing_live",
+                                "courses": 12,
+                                "teachers": 8,
+                                "pending_assignments": 3,
+                                "notices": 15,
+                                "warnings": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def get_chaoxing_status(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ) -> ChaoxingSyncStatus:
+    """读取学习通连接状态与已同步数据统计，结果缓存 30 秒。
+
+    - 连接信息无法读取时返回 503（CHAOXING_CREDENTIALS_UNAVAILABLE）。
+    """
     cached = _get_cached_status(user.id)
     if cached is not None:
         return cached
@@ -153,11 +218,79 @@ async def get_chaoxing_status(
     _status_cache_set(user.id, result)
     return result
 
-@router.post("/chaoxing/sync", responses=_credentials_unavailable_response)
+@router.post(
+    "/chaoxing/sync",
+    summary="同步学习通",
+    responses={
+        **_credentials_unavailable_response,
+        200: {
+            "description": "同步完成，返回分区状态与统计",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "全部同步完成",
+                            "value": {
+                                "status": "sync completed",
+                                "notice_sync": "available",
+                                "source": "chaoxing_live",
+                                "complete": True,
+                                "warnings": [],
+                                "stats": {
+                                    "courses_fetched": 12,
+                                    "courses_created": 12,
+                                    "assignments_fetched": 20,
+                                    "assignments_pending": 3,
+                                    "exams_fetched": 2,
+                                    "notices_fetched": 15,
+                                },
+                                "sections": {
+                                    "courses": {
+                                        "status": "complete",
+                                        "item_count": 12,
+                                        "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                        "error_code": None,
+                                        "error_message": None,
+                                    },
+                                    "assignments": {
+                                        "status": "complete",
+                                        "item_count": 20,
+                                        "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                        "error_code": None,
+                                        "error_message": None,
+                                    },
+                                    "exams": {
+                                        "status": "complete",
+                                        "item_count": 2,
+                                        "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                        "error_code": None,
+                                        "error_message": None,
+                                    },
+                                    "notices": {
+                                        "status": "complete",
+                                        "item_count": 15,
+                                        "last_synced_at": "2026-10-06T09:30:00+00:00",
+                                        "error_code": None,
+                                        "error_message": None,
+                                    },
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def sync_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
+    """同步学习通课程、作业、考试与通知，返回分区状态与统计。
+
+    - 未登录学习通返回 401，需要验证码返回 403；并发同步返回 409（sync_in_progress）。
+    - 连接信息无法读取时返回 503（CHAOXING_CREDENTIALS_UNAVAILABLE）。
+    """
     sync_lock = _get_user_sync_lock(user.id)
     if not sync_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="sync_in_progress")
@@ -185,11 +318,33 @@ async def _perform_sync_chaoxing(
 async def _sync_with_client(user, container, credentials, client):
     return await container.chaoxing_sync_service.sync(user, credentials, client)
 
-@router.post("/chaoxing/disconnect")
+@router.post(
+    "/chaoxing/disconnect",
+    summary="断开连接学习通",
+    responses={
+        200: {
+            "description": "已解除学习通绑定并清除会话凭证",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "断开成功",
+                            "value": {"status": "disconnected"},
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def disconnect_chaoxing(
     user: UserRow = Depends(require_role("student")),
     container: ServiceContainer = Depends(_container),
 ):
+    """解除学习通绑定并清除本地保存的会话凭证。
+
+    - 并发同步进行中返回 409（sync_in_progress）。
+    """
     sync_lock = _get_user_sync_lock(user.id)
     if not sync_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="sync_in_progress")

@@ -15,14 +15,85 @@ from ...services.agenda_service import TodayAgendaService
 from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
 
-router = APIRouter(prefix="/agenda", tags=["agenda"])
+router = APIRouter(prefix="/agenda", tags=["今日议程"])
 
 
 def _container() -> ServiceContainer:
     return get_container()
 
 
-@router.get("/today", response_model=TodayAgendaOut)
+@router.get(
+    "/today",
+    response_model=TodayAgendaOut,
+    summary="获取今日待办议程",
+    responses={
+        200: {
+            "description": "返回按 Asia/Shanghai 自然日聚合的今日待办快照",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "今日待办议程",
+                            "value": {
+                                "date": "2026-10-06",
+                                "timezone": "Asia/Shanghai",
+                                "generated_at": "2026-10-06T08:00:00+08:00",
+                                "last_chaoxing_synced_at": "2026-10-06T07:55:00+08:00",
+                                "stale": False,
+                                "summary": {
+                                    "total": 3,
+                                    "pending": 2,
+                                    "completed": 1,
+                                    "overdue": 0,
+                                },
+                                "sources": {
+                                    "chaoxing": {
+                                        "state": "ok",
+                                        "message": None,
+                                        "item_count": 2,
+                                        "last_synced_at": "2026-10-06T07:55:00+08:00",
+                                        "auth_state": "online",
+                                    },
+                                    "personal": {
+                                        "state": "ok",
+                                        "message": None,
+                                        "item_count": 1,
+                                        "last_synced_at": None,
+                                        "auth_state": "unknown",
+                                    },
+                                    "schedule": {
+                                        "state": "empty",
+                                        "message": None,
+                                        "item_count": 0,
+                                        "last_synced_at": None,
+                                        "auth_state": "unknown",
+                                    },
+                                },
+                                "items": [
+                                    {
+                                        "id": "chaoxing:assignment:a1",
+                                        "source": "chaoxing",
+                                        "kind": "assignment",
+                                        "source_id": "a1",
+                                        "course_id": "course_math",
+                                        "course_name": "高等数学",
+                                        "title": "第五章课后习题",
+                                        "deadline": "2026-10-06T23:59:00+08:00",
+                                        "status": "pending",
+                                        "priority": "high",
+                                        "editable": False,
+                                        "completable": False,
+                                        "route": "/courses/course_math/assignments/a1",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_today_agenda(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),

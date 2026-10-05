@@ -20,7 +20,7 @@ from ...services.magicclass.fusion_client import MagicClassFusionClient
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client
 
-router = APIRouter(prefix="/magicclass/fusion", tags=["magicclass-fusion"])
+router = APIRouter(prefix="/magicclass/fusion", tags=["融合课堂"])
 
 # "最近内容"的上限。浏览器默认要 20 条；上限固定，避免被当成全量导出接口。
 RECENT_DEFAULT_LIMIT = 20
@@ -54,18 +54,87 @@ def _service(container: ServiceContainer = Depends(_container)) -> MagicClassCla
     return container.magicclass_classroom_service
 
 
-@router.get("/status", response_model=FusionStatus)
+@router.get(
+    "/status",
+    response_model=FusionStatus,
+    summary="读取融合课堂状态",
+    responses={
+        200: {
+            "description": "受管课堂服务的公开状态（state 是唯一判据）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "服务就绪",
+                            "value": {
+                                "enabled": True,
+                                "available": True,
+                                "state": "ready",
+                                "capabilities": ["workspace", "generation", "tts"],
+                                "reason": "ready",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def fusion_status(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> FusionStatus:
+    """读取受管 magicclass 服务的公开状态。
+
+    state 是唯一判据（disabled/unavailable/degraded/ready）；未启用时返回
+    enabled=false 的状态而不联系上游。需要已登录。
+    """
     if not container.settings.magicclass_fusion_enabled:
         return disabled_fusion_status()
     return await client.status(user_id=str(user.id))
 
 
-@router.get("/recent", response_model=FusionRecentOut)
+@router.get(
+    "/recent",
+    response_model=FusionRecentOut,
+    summary="列出最近学习内容",
+    responses={
+        200: {
+            "description": "当前用户所有可见课程的最近学习内容",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出最近学习内容",
+                            "value": {
+                                "items": [
+                                    {
+                                        "kind": "classroom",
+                                        "id": "s1",
+                                        "course_id": "course_db_2025",
+                                        "course_name": "数据库系统原理",
+                                        "title": "关系模型 · 学习课堂",
+                                        "mode": "adaptive",
+                                        "status": "succeeded",
+                                        "scenes_count": 4,
+                                        "href": "/courses/course_db_2025?tab=mentoring&session=s1",
+                                        "classroom_url": None,
+                                        "classroom_url_unavailable_reason": "未配置浏览器公开地址",
+                                        "created_at": "2026-10-06T08:00:00+00:00",
+                                        "updated_at": "2026-10-06T08:00:00+00:00",
+                                    }
+                                ],
+                                "limit": 20,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def fusion_recent(
     limit: int = Query(RECENT_DEFAULT_LIMIT, ge=1, le=RECENT_MAX_LIMIT),
     user: UserRow = Depends(current_user),

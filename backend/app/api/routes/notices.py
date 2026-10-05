@@ -1,14 +1,14 @@
 """通知结构化抽取路由。"""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 from datetime import datetime, timezone
 import asyncio
 import hashlib
 import json
 import re
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Body, Depends, Header, Query
 from starlette.concurrency import run_in_threadpool
 
 from ...models.multi_role import UserRow
@@ -35,7 +35,7 @@ from ...services.notice_extraction_service import (
 from ...schemas.notice_workflow import ManualNoticeIn, ManualNoticeOut
 from ..deps import current_user, student_only
 
-router = APIRouter()
+router = APIRouter(tags=["通知"])
 
 
 _RELATIVE_TIME_RE = re.compile(r"(今天|今晚|明天|明晚|后天|本周|下周|周[一二三四五六日天])")
@@ -302,7 +302,44 @@ def _container() -> ServiceContainer:
     return get_container()
 
 
-@router.get("/notices", response_model=Page)
+@router.get(
+    "/notices",
+    response_model=Page,
+    summary="列出校园通知",
+    responses={
+        200: {
+            "description": "返回当前用户可见通知的分页列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "通知列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "notice_20260720_001",
+                                        "title": "关于2024级暑期社会实践的通知",
+                                        "source": "信息工程学院",
+                                        "time": "2026-07-20T09:00:00+08:00",
+                                        "unread": True,
+                                        "category": "软件工程2024级",
+                                        "content": "请2024级学生于7月30日前提交实践申请材料。",
+                                        "kind": "unified",
+                                        "source_url": "https://notice.example.edu.cn/20260720",
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 50,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_notices(
     unread_only: bool = Query(False, description="仅返回未读"),
     page: int = Query(1, ge=1),
@@ -323,11 +360,66 @@ def list_notices(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.post("/notices/extract", response_model=NoticeExtractResponse)
+@router.post(
+    "/notices/extract",
+    response_model=NoticeExtractResponse,
+    summary="提取单个通知任务",
+    responses={
+        200: {
+            "description": "返回抽取出的单个任务与关键字段",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "通知抽取结果",
+                            "value": {
+                                "title": "提交实践申请",
+                                "task": "提交实践申请",
+                                "actionable": True,
+                                "target_students": "2024级",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": [
+                                    {"id": "m_1", "name": "申请表", "required": True},
+                                    {"id": "m_2", "name": "证明材料", "required": True},
+                                ],
+                                "submission_method": "提交纸质版",
+                                "location": "学院办公室",
+                                "source_name": "信息工程学院通知",
+                                "source_text": "请2024级学生于7月30日前提交实践申请表及证明材料。",
+                                "importance": "important",
+                                "confidence": 0.82,
+                                "needs_confirmation": False,
+                                "warnings": [],
+                                "extracted_at": "2026-07-25T10:00:00+08:00",
+                                "extractor_mode": "rules",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def extract_notice(
-    req: NoticeExtractRequest,
+    req: Annotated[
+        NoticeExtractRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "抽取实践申请通知",
+                    "value": {
+                        "content": "请2024级学生于7月30日前填写实践申请表,并将申请表和证明材料提交至学院办公室。",
+                        "published_at": "2026-07-20T09:00:00+08:00",
+                        "source_name": "信息工程学院通知",
+                        "allow_multi_task": True,
+                    },
+                }
+            }
+        ),
+    ],
     _user: UserRow = Depends(current_user),
 ) -> NoticeExtractResponse:
+    """抽取单条通知中的任务与关键字段（标题、截止时间、材料等）。"""
     container = get_container()
     return await container.notice_extraction.extract(
         req.content,
@@ -336,9 +428,86 @@ async def extract_notice(
     )
 
 
-@router.post("/notices/extract-multi", response_model=MultiNoticeExtractResponse)
+@router.post(
+    "/notices/extract-multi",
+    response_model=MultiNoticeExtractResponse,
+    summary="多任务通知抽取",
+    responses={
+        200: {
+            "description": "返回抽取出的一个或多个任务及拆分说明",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "多任务抽取结果",
+                            "value": {
+                                "tasks": [
+                                    {
+                                        "title": "提交实践申请",
+                                        "task": "提交实践申请",
+                                        "actionable": True,
+                                        "target_students": "2024级",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "materials": [
+                                            {"id": "m_1", "name": "申请表", "required": True}
+                                        ],
+                                        "submission_method": "提交纸质版",
+                                        "location": "学院办公室",
+                                        "source_name": "信息工程学院通知",
+                                        "source_text": "请2024级学生于7月30日前提交实践申请表。",
+                                        "importance": "important",
+                                        "confidence": 0.82,
+                                        "needs_confirmation": False,
+                                        "warnings": [],
+                                        "extracted_at": "2026-07-25T10:00:00+08:00",
+                                        "extractor_mode": "rules",
+                                    },
+                                    {
+                                        "title": "完成线上安全考试",
+                                        "task": "完成线上安全考试",
+                                        "actionable": True,
+                                        "target_students": "2024级",
+                                        "deadline": "2026-08-05T23:59:00+08:00",
+                                        "materials": [],
+                                        "submission_method": "在线提交",
+                                        "location": None,
+                                        "source_name": "信息工程学院通知",
+                                        "source_text": "请于8月5日前完成线上安全考试。",
+                                        "importance": "high",
+                                        "confidence": 0.79,
+                                        "needs_confirmation": False,
+                                        "warnings": [],
+                                        "extracted_at": "2026-07-25T10:00:00+08:00",
+                                        "extractor_mode": "rules",
+                                    },
+                                ],
+                                "split_reason": "识别到 2 个独立截止时间",
+                                "needs_user_confirmation": True,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def extract_notice_multi(
-    req: NoticeExtractRequest,
+    req: Annotated[
+        NoticeExtractRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "拆分包含两个任务的通知",
+                    "value": {
+                        "content": "请2024级学生于7月30日前提交实践申请表；并于8月5日前完成线上安全考试。",
+                        "published_at": "2026-07-20T09:00:00+08:00",
+                        "source_name": "信息工程学院通知",
+                        "allow_multi_task": True,
+                    },
+                }
+            }
+        ),
+    ],
     _user: UserRow = Depends(current_user),
 ) -> MultiNoticeExtractResponse:
     """多任务抽取 — 自动识别通知中是否包含多个独立任务。
@@ -356,9 +525,65 @@ async def extract_notice_multi(
     )
 
 
-@router.post("/notices/check-duplicate", response_model=DuplicateNoticeCheckResponse)
+@router.post(
+    "/notices/check-duplicate",
+    response_model=DuplicateNoticeCheckResponse,
+    summary="检测通知重复",
+    responses={
+        200: {
+            "description": "返回是否可能重复、命中项与内容哈希",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "命中疑似重复",
+                            "value": {
+                                "is_duplicate": True,
+                                "matches": [
+                                    {
+                                        "notice_id": "task_001",
+                                        "title": "提交实践申请表",
+                                        "source_name": "信息工程学院通知",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "similarity": 0.92,
+                                        "reasons": ["content_hash", "task"],
+                                    }
+                                ],
+                                "content_hash": "8f14e45fceea167a5a36dedd4bea2543e2f0a1b6c7d8e9f0a1b2c3d4e5f60718",
+                                "note": "仅提示可能重复,不会自动覆盖原待办。请人工确认后决定是否继续保存。",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def check_duplicate(
-    req: DuplicateNoticeCheckRequest,
+    req: Annotated[
+        DuplicateNoticeCheckRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "与本地已存通知对比",
+                    "value": {
+                        "content": "请2024级学生于7月30日前提交实践申请表...",
+                        "source_name": "信息工程学院通知",
+                        "task_name": "提交实践申请表",
+                        "recent_notices": [
+                            {
+                                "notice_id": "task_001",
+                                "title": "提交实践申请表",
+                                "source_name": "信息工程学院通知",
+                                "source_text": "请2024级学生于7月30日前提交实践申请表...",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                            }
+                        ],
+                    },
+                }
+            }
+        ),
+    ],
     _user: UserRow = Depends(current_user),
 ) -> DuplicateNoticeCheckResponse:
     """检测当前通知是否可能与最近已存在的通知重复。
@@ -401,9 +626,68 @@ def check_duplicate(
 
     return container.notice_extraction.check_duplicate(req, recent_notices=recent_notices)
 
-@router.post("/notices/ingest", response_model=MultiNoticeExtractResponse)
+@router.post(
+    "/notices/ingest",
+    response_model=MultiNoticeExtractResponse,
+    summary="接收并同步校园通知",
+    responses={
+        200: {
+            "description": "返回同步抽取出的任务列表与拆分说明",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "同步抽取结果",
+                            "value": {
+                                "tasks": [
+                                    {
+                                        "title": "提交实践申请",
+                                        "task": "提交实践申请",
+                                        "actionable": True,
+                                        "target_students": "2024级",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "materials": [
+                                            {"id": "m_1", "name": "申请表", "required": True}
+                                        ],
+                                        "submission_method": "提交纸质版",
+                                        "location": "学院办公室",
+                                        "source_name": "信息工程学院通知",
+                                        "source_text": "请2024级学生于7月30日前提交实践申请表。",
+                                        "importance": "important",
+                                        "confidence": 0.82,
+                                        "needs_confirmation": False,
+                                        "warnings": [],
+                                        "extracted_at": "2026-07-25T10:00:00+08:00",
+                                        "extractor_mode": "llm",
+                                    }
+                                ],
+                                "split_reason": "合并为单任务",
+                                "needs_user_confirmation": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def ingest_notice(
-    req: NoticeExtractRequest,
+    req: Annotated[
+        NoticeExtractRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "接收端侧校园通知",
+                    "value": {
+                        "content": "请2024级学生于7月30日前填写实践申请表,并将申请表和证明材料提交至学院办公室。",
+                        "published_at": "2026-07-20T09:00:00+08:00",
+                        "source_name": "信息工程学院通知",
+                        "allow_multi_task": True,
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> MultiNoticeExtractResponse:
@@ -433,17 +717,120 @@ async def ingest_notice(
     )
 
 
-@router.post("/notices/ingest-batch", response_model=NoticeBatchIngestResponse)
+@router.post(
+    "/notices/ingest-batch",
+    response_model=NoticeBatchIngestResponse,
+    summary="批量接收校园通知",
+    responses={
+        200: {
+            "description": "返回逐条处理结果与统计计数",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "批量接收结果",
+                            "value": {
+                                "items": [
+                                    {
+                                        "client_id": "msg_20260720_001",
+                                        "client_fingerprint": "9f2c1a7d5b3e4c6f8a0d1e2f3a4b5c6d",
+                                        "status": "completed",
+                                        "semantic_type": "ACTIONABLE_NOTICE",
+                                        "notice_created": True,
+                                        "tasks_created": 1,
+                                        "duplicate": False,
+                                        "reason": "rule_first",
+                                    }
+                                ],
+                                "stats": {
+                                    "received_count": 1,
+                                    "duplicate_count": 0,
+                                    "rule_notice_count": 0,
+                                    "rule_task_count": 1,
+                                    "ai_candidate_count": 0,
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def ingest_notice_batch(
-    req: NoticeBatchIngestRequest,
+    req: Annotated[
+        NoticeBatchIngestRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "批量接收两条校园通知",
+                    "value": {
+                        "items": [
+                            {
+                                "client_id": "msg_20260720_001",
+                                "client_fingerprint": "9f2c1a7d5b3e4c6f8a0d1e2f3a4b5c6d",
+                                "source_name": "信息工程学院通知",
+                                "published_at": "2026-07-20T09:00:00+08:00",
+                                "messages": [
+                                    {
+                                        "text": "请2024级学生于7月30日前提交实践申请表。",
+                                        "published_at": "2026-07-20T09:00:00+08:00",
+                                    }
+                                ],
+                            }
+                        ]
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> NoticeBatchIngestResponse:
+    """批量接收端侧校园通知并同步为统一通知与待办。"""
     return await _ingest_batch(req, user, container)
 
-@router.post("/notices/manual", response_model=ManualNoticeOut)
+@router.post(
+    "/notices/manual",
+    response_model=ManualNoticeOut,
+    summary="手动提交通知文本",
+    responses={
+        200: {
+            "description": "返回持久化后的通知 ID 与标题",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "手动通知已保存",
+                            "value": {
+                                "notice_id": "notice_manual_3f1a2b4c",
+                                "title": "关于2024级暑期社会实践的通知",
+                                "duplicate": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def create_manual_notice(
-    body: ManualNoticeIn,
+    body: Annotated[
+        ManualNoticeIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "粘贴通知原文保存为通知 ID",
+                    "value": {
+                        "title": "关于2024级暑期社会实践的通知",
+                        "content": "请2024级学生于7月30日前提交实践申请材料。",
+                        "source_name": "信息工程学院通知",
+                        "idempotency_key": "manual_notice_demo_001",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),

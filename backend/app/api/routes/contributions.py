@@ -15,7 +15,7 @@ from ...core.config import get_settings
 from ...models.multi_role import UserRow
 from ..deps import current_user
 
-router = APIRouter()
+router = APIRouter(tags=["知识贡献"])
 
 _ALLOWED_LABELS = {
     "HAPPY", "NEUTRAL", "SAD", "ANGRY", "FEAR", "SURPRISE", "DISGUST",
@@ -46,6 +46,27 @@ def _metadata_path(sample_id: str) -> Path:
 @router.post(
     "/contributions/expression-samples",
     response_model=ExpressionContributionResponse,
+    summary="上传表情样本图片",
+    responses={
+        200: {
+            "description": "样本上传成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "样本已接收",
+                            "value": {
+                                "sample_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                                "label": "HAPPY",
+                                "status": "accepted",
+                                "message": "样本已接收，将用于后续人工复核与模型优化",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 async def upload_expression_sample(
     image: UploadFile = File(...),
@@ -121,6 +142,27 @@ async def upload_expression_sample(
 @router.delete(
     "/contributions/expression-samples/{sample_id}",
     response_model=ExpressionContributionResponse,
+    summary="删除自己的表情样本",
+    responses={
+        200: {
+            "description": "样本删除成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "样本已删除",
+                            "value": {
+                                "sample_id": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+                                "label": "HAPPY",
+                                "status": "deleted",
+                                "message": "样本及其元数据已删除",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
 )
 def delete_expression_sample(
     sample_id: str,

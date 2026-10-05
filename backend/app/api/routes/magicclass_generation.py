@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Body, Depends, Header, Response
 from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
@@ -18,7 +18,7 @@ from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client
 from .magicclass_archive import content_disposition
 
-router = APIRouter(prefix="/courses", tags=["magicclass-generation"])
+router = APIRouter(prefix="/courses", tags=["课堂生成"])
 
 #: What the service worker is able to produce today. Keeping the list closed
 #: means a future artifact type must be opted in here before the browser can
@@ -103,16 +103,76 @@ def _course_prompt(topic: str, context: str, budget: int = 2000) -> str:
     return prefix + _truncate_utf16(context, remaining)
 
 
-@router.post("/{course_id}/workspaces/{workspace_id}/generate", status_code=201)
+@router.post(
+    "/{course_id}/workspaces/{workspace_id}/generate",
+    status_code=201,
+    summary="生成舞台内容",
+    responses={
+        201: {
+            "description": "已生成舞台内容，返回舞台、任务与来源",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "生成一节函数极限讲解课堂",
+                            "value": {
+                                "stage_id": "stg_1a2b3c",
+                                "stage": {
+                                    "id": "stg_1a2b3c",
+                                    "workspace_id": "ws_1",
+                                    "course_id": "course_db_2025",
+                                    "title": "函数极限",
+                                    "revision": 1,
+                                    "dsl_version": "0.3.0",
+                                    "document": {"dslVersion": "0.3.0", "scenes": []},
+                                },
+                                "job": {
+                                    "id": "job_5b7e21",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "artifact_id": None,
+                                    "mode": "slide",
+                                    "error_code": None,
+                                },
+                                "source": "provider",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def generate_stage(
     course_id: str,
     workspace_id: str,
-    body: GenerationIn,
+    body: Annotated[
+        GenerationIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "生成函数极限讲解舞台",
+                    "value": {
+                        "mode": "slide",
+                        "prompt": "讲解函数极限的直观含义与典型例题",
+                        "role_mode": "preset",
+                        "selected_role_ids": ["role_teacher"],
+                    },
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """生成一节绑定课程与工作台的舞台内容。
+
+    - 必须携带有效 Idempotency-Key；重复提交同一键不会重复生成。
+    - 生成模型不可用（返回 local-template）时返回 503，而不是假的课堂。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     generated = await client.generate_stage(
@@ -126,16 +186,62 @@ async def generate_stage(
     return generated
 
 
-@router.post("/{course_id}/home-generate", status_code=201)
+@router.post(
+    "/{course_id}/home-generate",
+    status_code=201,
+    summary="生成首页内容",
+    responses={
+        201: {
+            "description": "已生成课程首页内容，返回工作台、任务与来源",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "由课程首页主题生成学习课堂",
+                            "value": {
+                                "workspace_id": "ws_home",
+                                "source": "provider",
+                                "stage_id": "stg_home",
+                                "job": {
+                                    "id": "job_home",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "artifact_id": None,
+                                    "mode": "slide",
+                                    "error_code": None,
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def generate_home(
     course_id: str,
-    body: HomeGenerationIn,
+    body: Annotated[
+        HomeGenerationIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "由主题生成课程首页",
+                    "value": {"mode": "slide", "prompt": "函数极限"},
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
-    """Resolve one course homepage submission into one workspace/job pair."""
+    """把一次课程首页提交收敛成一个工作台/任务对。
+
+    - 工作台按学习者与课程稳定复用，同一主题重试不会创建重复工作台。
+    - 课程上下文由服务端按 course_id 重建，浏览器只提交自己的主题。
+    - 生成模型不可用或未返回工作台标识时返回 503。
+    """
     _require(container)
     course = assert_course_access(container, user, course_id)
     key = _key(idempotency_key)
@@ -170,7 +276,38 @@ async def generate_home(
     return {"workspace_id": workspace_id, "source": "provider", **generated}
 
 
-@router.get("/{course_id}/jobs/{job_id}")
+@router.get(
+    "/{course_id}/jobs/{job_id}",
+    summary="读取生成任务",
+    responses={
+        200: {
+            "description": "生成任务的当前状态与进度",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取生成任务",
+                            "value": {
+                                "id": "job_5b7e21",
+                                "course_id": "course_db_2025",
+                                "kind": "generation",
+                                "mode": "slide",
+                                "status": "running",
+                                "progress": 60,
+                                "attempts": 1,
+                                "error_code": None,
+                                "artifact_id": None,
+                                "scene_id": None,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:30+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_job(
     course_id: str,
     job_id: str,
@@ -178,12 +315,20 @@ async def get_job(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """读取生成任务的状态与进度。
+
+    - 任务不存在返回 404（NOT_FOUND）。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.get_job(user_id=str(user.id), course_id=course_id, job_id=job_id)
 
 
-@router.get("/{course_id}/artifacts/{artifact_id}")
+@router.get(
+    "/{course_id}/artifacts/{artifact_id}",
+    summary="读取生成产物",
+)
 async def get_artifact(
     course_id: str,
     artifact_id: str,
@@ -191,6 +336,12 @@ async def get_artifact(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Response:
+    """读取一次生成产物的原始字节（按产物媒体类型返回文件）。
+
+    - 响应为二进制文件流，不是 JSON；带 X-Artifact-Sha256 头。
+    - 受管服务未返回可用或类型不受支持的产物时返回 503。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     payload = await client.get_artifact(user_id=str(user.id), course_id=course_id, artifact_id=artifact_id)
@@ -217,7 +368,38 @@ async def get_artifact(
     )
 
 
-@router.post("/{course_id}/jobs/{job_id}/cancel")
+@router.post(
+    "/{course_id}/jobs/{job_id}/cancel",
+    summary="取消生成任务",
+    responses={
+        200: {
+            "description": "已取消，返回更新后的任务状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "取消生成任务",
+                            "value": {
+                                "id": "job_5b7e21",
+                                "course_id": "course_db_2025",
+                                "kind": "generation",
+                                "mode": "slide",
+                                "status": "cancelled",
+                                "progress": 60,
+                                "attempts": 1,
+                                "error_code": None,
+                                "artifact_id": None,
+                                "scene_id": None,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:01:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def cancel_job(
     course_id: str,
     job_id: str,
@@ -225,12 +407,48 @@ async def cancel_job(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """取消一个进行中的生成任务。
+
+    - 已完成的任务不可取消；重复取消返回当前状态。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.cancel_job(user_id=str(user.id), course_id=course_id, job_id=job_id)
 
 
-@router.post("/{course_id}/jobs/{job_id}/retry")
+@router.post(
+    "/{course_id}/jobs/{job_id}/retry",
+    summary="重试生成任务",
+    responses={
+        200: {
+            "description": "已重新入队，返回更新后的任务状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "重试生成任务",
+                            "value": {
+                                "id": "job_5b7e21",
+                                "course_id": "course_db_2025",
+                                "kind": "generation",
+                                "mode": "slide",
+                                "status": "queued",
+                                "progress": 0,
+                                "attempts": 2,
+                                "error_code": None,
+                                "artifact_id": None,
+                                "scene_id": None,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:02:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def retry_job(
     course_id: str,
     job_id: str,
@@ -238,6 +456,11 @@ async def retry_job(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """重试一个失败或已取消的生成任务。
+
+    - 只有失败或已取消的任务可以重试；其他状态返回 400。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.retry_job(user_id=str(user.id), course_id=course_id, job_id=job_id)

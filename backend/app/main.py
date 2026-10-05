@@ -203,8 +203,31 @@ def create_app() -> FastAPI:
         logger.warning("数字人静态资源目录不存在: {}", digital_human_dir)
 
     # 健康检查根(无前缀，便于简单 ping)
-    @app.get("/")
+    @app.get(
+        "/",
+        summary="服务元信息",
+        tags=["服务信息"],
+        responses={
+            200: {
+                "description": "返回后端服务名称与版本",
+                "content": {
+                    "application/json": {
+                        "examples": {
+                            "成功": {
+                                "summary": "服务元信息",
+                                "value": {
+                                    "name": "CampusMate AI Backend",
+                                    "version": settings.app_version,
+                                },
+                            }
+                        }
+                    }
+                },
+            }
+        },
+    )
     async def root() -> dict:
+        """返回后端服务名称与版本，无需鉴权，便于负载均衡与探活。"""
         return {"name": "CampusMate AI Backend", "version": settings.app_version}
 
     return app

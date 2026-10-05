@@ -36,7 +36,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUna
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client, require_idempotency_key
 
-router = APIRouter(prefix="/courses", tags=["magicclass-archive"])
+router = APIRouter(prefix="/courses", tags=["课堂归档"])
 
 #: Mirrors `magicclass-service/src/archive/manifest.ts`. The gateway refuses first
 #: so the student gets a CampusMate-shaped message, and the service enforces the
@@ -101,7 +101,10 @@ def content_disposition(
     return f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{encoded}\''
 
 
-@router.get("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export")
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export",
+    summary="导出舞台档案",
+)
 async def export_stage(
     course_id: str,
     workspace_id: str,
@@ -110,6 +113,12 @@ async def export_stage(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Response:
+    """把一份舞台导出为 `.maic.zip` 档案（application/zip 下载）。
+
+    - 响应是二进制文件流，带 Content-Disposition 文件名与 X-Archive-* 头。
+    - 上游没返回可用档案时返回 503，而不是一个空下载。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     payload = await client.export_stage(
@@ -142,7 +151,10 @@ async def export_stage(
     )
 
 
-@router.get("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/{format}")
+@router.get(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/{format}",
+    summary="导出舞台指定格式",
+)
 async def export_stage_format(
     course_id: str,
     workspace_id: str,
@@ -152,6 +164,12 @@ async def export_stage_format(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Response:
+    """把一份舞台导出为指定格式（markdown/docx/pptx）的二进制文件。
+
+    - 不支持的 format 返回 400（MAGICCLASS_INVALID_REQUEST）。
+    - 上游返回的文件类型不匹配或无法解码时返回 503。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     if format not in FORMAT_MEDIA_TYPES:
         raise FusionInvalidRequest("暂不支持该导出格式")
@@ -186,7 +204,44 @@ async def export_stage_format(
     )
 
 
-@router.post("/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/video", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/export/video",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="导出舞台视频",
+    responses={
+        202: {
+            "description": "已受理视频导出，返回可轮询的渲染任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "排队导出舞台视频",
+                            "value": {
+                                "job_id": "job_video",
+                                "job": {
+                                    "id": "job_video",
+                                    "course_id": "course_db_2025",
+                                    "kind": "video",
+                                    "mode": "mp4",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "attempts": 0,
+                                    "error_code": None,
+                                    "artifact_id": None,
+                                    "scene_id": None,
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:00+00:00",
+                                },
+                                "format": "mp4",
+                                "source": "render-service",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def export_stage_video(
     course_id: str,
     workspace_id: str,
@@ -196,6 +251,12 @@ async def export_stage_video(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> dict:
+    """把一份舞台导出 MP4 视频：入队渲染任务，返回 202 与任务引用。
+
+    - 必须携带 Idempotency-Key；任务完成后经产物下载路由取回视频。
+    - 上游未返回视频导出任务时返回 503。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     key = _require_idempotency_key(idempotency_key)
@@ -211,7 +272,12 @@ async def export_stage_video(
     return payload
 
 
-@router.post("/{course_id}/workspaces/{workspace_id}/import", response_model=StageOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{course_id}/workspaces/{workspace_id}/import",
+    response_model=StageOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="导入舞台档案",
+)
 async def import_stage(
     course_id: str,
     workspace_id: str,
@@ -221,6 +287,12 @@ async def import_stage(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageOut:
+    """把一个 `.maic.zip` 档案导入为当前工作台里的新舞台。
+
+    - multipart/form-data，字段为 `file`；必须携带 Idempotency-Key。
+    - 档案超过 2.5 MB 或为空返回 400；落点始终由本次请求决定。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     key = _require_idempotency_key(idempotency_key)
@@ -246,7 +318,12 @@ async def import_stage(
     return StageOut(**{name: stage[name] for name in StageOut.model_fields if name in stage})
 
 
-@router.post("/{course_id}/workspaces/{workspace_id}/import/pptx", response_model=StageOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{course_id}/workspaces/{workspace_id}/import/pptx",
+    response_model=StageOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="导入 PPTX 舞台",
+)
 async def import_pptx_stage(
     course_id: str,
     workspace_id: str,
@@ -256,6 +333,12 @@ async def import_pptx_stage(
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> StageOut:
+    """把一个 PPTX 课件导入为当前工作台里的新舞台。
+
+    - multipart/form-data，字段为 `file`；必须携带 Idempotency-Key。
+    - PPTX 超过 3 MB 或为空返回 400；标题由文件名清洗后派生。
+    - 需要已登录且对该课程有访问权限；受管服务未启用时返回 503。
+    """
     _require_fusion_enabled(container.settings)
     assert_course_access(container, user, course_id)
     key = _require_idempotency_key(idempotency_key)

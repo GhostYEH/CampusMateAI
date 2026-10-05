@@ -41,10 +41,10 @@ import re
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
+from typing import Annotated, Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from fastapi.responses import StreamingResponse
 
 from ...core.logging import logger
@@ -60,7 +60,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest
 from ..deps import current_user_optional, limit_anonymous_chat
 from starlette.concurrency import run_in_threadpool
 
-router = APIRouter()
+router = APIRouter(tags=["AI 助手"])
 _emotion_context_builder = EmotionContextBuilder()
 
 
@@ -657,13 +657,44 @@ async def build_interactive_classroom_action(
     )
 
 
-@router.post("/counselor/chat", dependencies=[Depends(limit_anonymous_chat)], responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
-@router.post("/assistant/chat", dependencies=[Depends(limit_anonymous_chat)], responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}})
+@router.post(
+    "/counselor/chat",
+    summary="AI 校园助手问答",
+    dependencies=[Depends(limit_anonymous_chat)],
+    responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}},
+)
+@router.post(
+    "/assistant/chat",
+    summary="AI 校园助手对话",
+    dependencies=[Depends(limit_anonymous_chat)],
+    responses={429: {"description": "匿名请求过于频繁（RATE_LIMITED）；Retry-After 表示等待秒数"}},
+)
 async def chat(
-    req: ChatRequest,
+    req: Annotated[
+        ChatRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "学生提问复习安排",
+                    "value": {
+                        "message": "帮我安排今天的复习",
+                        "conversation_id": "conversation_example",
+                        "recent_tasks": [{"id": "task_example"}],
+                        "stream": False,
+                    },
+                }
+            }
+        ),
+    ],
     user: Optional[UserRow] = Depends(current_user_optional),
     workspace_client: MagicClassFusionClient = Depends(_workspace_client),
 ):
+    """AI 校园助手问答，两条别名路径（/counselor/chat 与 /assistant/chat）共用实现。
+
+    - 匿名访问按来源地址限流，两条路径共享计数，每 60 秒最多 10 次，超限返回 429（RATE_LIMITED）。
+    - course_id/class_id/workspace_id 等上下文需有效登录并通过权限校验，越权或不存在时忽略并生成 warning。
+    - stream=true 返回 SSE（sources/chunk/done 事件），stream=false 返回 ChatFinalMeta。
+    """
     container = get_container()
     # A quick question launched from /courses is a real native workspace
     # session, not only a course query-string hint. Validate the workspace at

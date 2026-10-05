@@ -21,9 +21,9 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from starlette.concurrency import run_in_threadpool
 
 from ...core.exceptions import (
@@ -53,7 +53,7 @@ from ...services.container import ServiceContainer, get_container
 from ...services.learner_event_service import LearnerEventService
 from ..deps import current_user
 
-router = APIRouter(prefix="/tasks", tags=["personal-tasks"])
+router = APIRouter(prefix="/tasks", tags=["个人待办"])
 
 
 def _container() -> ServiceContainer:
@@ -109,7 +109,50 @@ def _to_out(row: PersonalTaskRow) -> PersonalTaskOut:
     )
 
 
-@router.get("", response_model=Page)
+@router.get(
+    "",
+    response_model=Page,
+    summary="列出个人待办",
+    responses={
+        200: {
+            "description": "返回当前用户的个人待办分页列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "待办列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "task_20261006_001",
+                                        "user_id": "u_demo",
+                                        "title": "提交暑期实践证明材料",
+                                        "description": "填写实践申请表并附证明材料",
+                                        "target_students": "2024级各班",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "materials": ["实践申请表", "实践证明材料"],
+                                        "submission_method": "提交纸质版至学院办公室",
+                                        "location": "信息工程学院办公室",
+                                        "source_name": "信息工程学院通知",
+                                        "priority": "high",
+                                        "importance": "important",
+                                        "status": "pending",
+                                        "created_at": "2026-07-20T09:05:00+08:00",
+                                        "updated_at": "2026-07-20T09:05:00+08:00",
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 50,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_personal_tasks(
     status: Optional[str] = Query(
         None, pattern="^(pending|completed|deleted)$"
@@ -143,9 +186,68 @@ def list_personal_tasks(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.post("", response_model=PersonalTaskOut, status_code=201)
+@router.post(
+    "",
+    response_model=PersonalTaskOut,
+    status_code=201,
+    summary="创建个人待办",
+    responses={
+        201: {
+            "description": "创建成功，返回新建的个人待办",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "新建待办",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料",
+                                "description": "填写实践申请表并附证明材料",
+                                "target_students": "2024级各班",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "submission_method": "提交纸质版至学院办公室",
+                                "location": "信息工程学院办公室",
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "pending",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-20T09:05:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def create_personal_task(
-    req: PersonalTaskCreate,
+    req: Annotated[
+        PersonalTaskCreate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "创建一条实践材料待办",
+                    "value": {
+                        "title": "提交暑期实践证明材料",
+                        "description": "填写实践申请表并附证明材料",
+                        "target_students": "2024级各班",
+                        "deadline": "2026-07-30T23:59:00+08:00",
+                        "materials": ["实践申请表", "实践证明材料"],
+                        "submission_method": "提交纸质版至学院办公室",
+                        "location": "信息工程学院办公室",
+                        "source_name": "信息工程学院通知",
+                        "source_text": "请2024级学生于7月30日前提交实践申请材料。",
+                        "priority": "high",
+                        "importance": "important",
+                        "reminder_minutes": 1440,
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> PersonalTaskOut:
@@ -207,9 +309,62 @@ def _existing_by_title(repo, user_id: str) -> dict[str, PersonalTaskRow]:
     return {_normalized_title(row.title): row for row in all_rows}
 
 
-@router.post("/import/analyze", response_model=TaskImportAnalyzeResponse)
+@router.post(
+    "/import/analyze",
+    response_model=TaskImportAnalyzeResponse,
+    summary="解析待办导入草稿",
+    responses={
+        200: {
+            "description": "返回可编辑的待办草稿与拆分说明",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "结构化清单解析结果",
+                            "value": {
+                                "mode": "structured_text",
+                                "split_reason": "识别到 2 条清单任务",
+                                "needs_user_confirmation": False,
+                                "tasks": [
+                                    {
+                                        "title": "提交暑期实践证明材料",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "materials": ["实践申请表", "实践证明材料"],
+                                        "submission_method": "提交纸质版至学院办公室",
+                                        "location": "信息工程学院办公室",
+                                        "source_name": "信息工程学院通知",
+                                        "priority": "high",
+                                        "importance": "important",
+                                        "confidence": 0.82,
+                                        "needs_confirmation": False,
+                                        "selected": True,
+                                        "existing_task_id": None,
+                                        "existing_status": None,
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def analyze_task_import(
-    req: TaskImportAnalyzeRequest,
+    req: Annotated[
+        TaskImportAnalyzeRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "解析课程材料为待办草稿",
+                    "value": {
+                        "content": "1. 7月30日前提交实践申请表\n2. 8月5日前完成线上安全考试",
+                        "source_name": "信息工程学院通知",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> TaskImportAnalyzeResponse:
@@ -299,10 +454,75 @@ async def analyze_task_import(
 
 
 @router.post(
-    "/import/commit", response_model=TaskImportCommitResponse, status_code=201
+    "/import/commit",
+    response_model=TaskImportCommitResponse,
+    status_code=201,
+    summary="提交待办导入草稿",
+    responses={
+        201: {
+            "description": "批量保存成功，返回新建与跳过的任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "批量保存结果",
+                            "value": {
+                                "created": [
+                                    {
+                                        "id": "task_20261006_001",
+                                        "user_id": "u_demo",
+                                        "title": "提交暑期实践证明材料",
+                                        "description": "填写实践申请表并附证明材料",
+                                        "deadline": "2026-07-30T23:59:00+08:00",
+                                        "materials": ["实践申请表", "实践证明材料"],
+                                        "submission_method": "提交纸质版至学院办公室",
+                                        "location": "信息工程学院办公室",
+                                        "source_name": "信息工程学院通知",
+                                        "priority": "high",
+                                        "importance": "important",
+                                        "status": "pending",
+                                        "created_at": "2026-07-20T09:05:00+08:00",
+                                        "updated_at": "2026-07-20T09:05:00+08:00",
+                                    }
+                                ],
+                                "skipped_existing": [
+                                    {
+                                        "task_id": "task_20260901_007",
+                                        "title": "提交暑期实践证明材料",
+                                        "status": "completed",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 def commit_task_import(
-    req: TaskImportCommitRequest,
+    req: Annotated[
+        TaskImportCommitRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "保存确认后的待办草稿",
+                    "value": {
+                        "tasks": [
+                            {
+                                "title": "提交暑期实践证明材料",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                            }
+                        ]
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> TaskImportCommitResponse:
@@ -321,7 +541,42 @@ def commit_task_import(
     )
 
 
-@router.get("/{task_id}", response_model=PersonalTaskOut)
+@router.get(
+    "/{task_id}",
+    response_model=PersonalTaskOut,
+    summary="获取个人待办详情",
+    responses={
+        200: {
+            "description": "返回指定个人待办的详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "待办详情",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料",
+                                "description": "填写实践申请表并附证明材料",
+                                "target_students": "2024级各班",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "submission_method": "提交纸质版至学院办公室",
+                                "location": "信息工程学院办公室",
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "pending",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-20T09:05:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_personal_task(
     task_id: str,
     user: UserRow = Depends(current_user),
@@ -335,10 +590,60 @@ def get_personal_task(
     return _to_out(row)
 
 
-@router.patch("/{task_id}", response_model=PersonalTaskOut)
+@router.patch(
+    "/{task_id}",
+    response_model=PersonalTaskOut,
+    summary="更新个人待办",
+    responses={
+        200: {
+            "description": "更新成功，返回更新后的个人待办",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "更新后的待办",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料（含电子版）",
+                                "description": "填写实践申请表并附证明材料",
+                                "target_students": "2024级各班",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "submission_method": "提交纸质版至学院办公室",
+                                "location": "信息工程学院办公室",
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "pending",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-22T14:30:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def update_personal_task(
     task_id: str,
-    req: PersonalTaskUpdate,
+    req: Annotated[
+        PersonalTaskUpdate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "修改标题与截止时间",
+                    "value": {
+                        "title": "提交暑期实践证明材料（含电子版）",
+                        "deadline": "2026-07-30T23:59:00+08:00",
+                        "priority": "high",
+                        "reminder_minutes": 1440,
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> PersonalTaskOut:
@@ -357,7 +662,39 @@ def update_personal_task(
     return _to_out(updated)
 
 
-@router.post("/{task_id}/complete", response_model=PersonalTaskOut)
+@router.post(
+    "/{task_id}/complete",
+    response_model=PersonalTaskOut,
+    summary="完成个人待办",
+    responses={
+        200: {
+            "description": "标记完成成功，返回已完成的个人待办",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已完成待办",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "completed",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-25T16:00:00+08:00",
+                                "completed_at": "2026-07-25T16:00:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def complete_personal_task(
     task_id: str,
     user: UserRow = Depends(current_user),
@@ -392,7 +729,38 @@ def complete_personal_task(
     return _to_out(updated)
 
 
-@router.post("/{task_id}/restore", response_model=PersonalTaskOut)
+@router.post(
+    "/{task_id}/restore",
+    response_model=PersonalTaskOut,
+    summary="恢复个人待办",
+    responses={
+        200: {
+            "description": "恢复成功，返回重新回到 pending 的个人待办",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已恢复待办",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "pending",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-26T09:00:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def restore_personal_task(
     task_id: str,
     user: UserRow = Depends(current_user),
@@ -410,7 +778,39 @@ def restore_personal_task(
     return _to_out(updated)
 
 
-@router.delete("/{task_id}", response_model=PersonalTaskOut)
+@router.delete(
+    "/{task_id}",
+    response_model=PersonalTaskOut,
+    summary="软删除个人待办",
+    responses={
+        200: {
+            "description": "软删除成功，返回 deleted 状态的个人待办",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已删除待办",
+                            "value": {
+                                "id": "task_20261006_001",
+                                "user_id": "u_demo",
+                                "title": "提交暑期实践证明材料",
+                                "deadline": "2026-07-30T23:59:00+08:00",
+                                "materials": ["实践申请表", "实践证明材料"],
+                                "source_name": "信息工程学院通知",
+                                "priority": "high",
+                                "importance": "important",
+                                "status": "deleted",
+                                "created_at": "2026-07-20T09:05:00+08:00",
+                                "updated_at": "2026-07-28T10:00:00+08:00",
+                                "deleted_at": "2026-07-28T10:00:00+08:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def delete_personal_task(
     task_id: str,
     user: UserRow = Depends(current_user),
@@ -430,9 +830,50 @@ def delete_personal_task(
     return _to_out(updated)
 
 
-@router.post("/rank-importance", response_model=ImportanceRankResponse)
+@router.post(
+    "/rank-importance",
+    response_model=ImportanceRankResponse,
+    summary="批量评定任务重要程度",
+    responses={
+        200: {
+            "description": "返回评定结果、跳过列表与实际使用模式",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "重要程度评定结果",
+                            "value": {
+                                "updated": [
+                                    {
+                                        "task_id": "task_20261006_001",
+                                        "importance": "high",
+                                        "reason": "涉及材料提交且有明确截止时间",
+                                        "mode": "llm",
+                                    }
+                                ],
+                                "skipped": [],
+                                "mode": "llm",
+                                "total": 1,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def rank_importance(
-    req: ImportanceRankRequest,
+    req: Annotated[
+        ImportanceRankRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "评定指定任务的重要程度",
+                    "value": {"task_ids": ["task_20261006_001", "task_20261006_002"]},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> ImportanceRankResponse:

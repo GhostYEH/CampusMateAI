@@ -24,9 +24,9 @@ API:
 from __future__ import annotations
 
 from datetime import date as date_type, datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Body, Depends, Query, Response
 
 from ...core.exceptions import (
     StudySessionNotFound,
@@ -58,7 +58,7 @@ from ...services.learner_event_service import LearnerEventService
 from ...services.task_breakdown_service import TaskBreakdownService
 from ..deps import current_user
 
-router = APIRouter(prefix="/study", tags=["study"])
+router = APIRouter(prefix="/study", tags=["学习陪伴"])
 
 
 def _container() -> ServiceContainer:
@@ -132,21 +132,77 @@ def _session_to_out(
     )
 
 
-@router.get("/goals/daily", response_model=StudyGoalOut)
+@router.get(
+    "/goals/daily",
+    response_model=StudyGoalOut,
+    summary="读取每日学习目标",
+    responses={
+        200: {
+            "description": "读取成功，返回每日学习目标",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取成功",
+                            "value": {
+                                "target_minutes": 120,
+                                "updated_at": "2026-10-06T09:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_daily_goal(
     user: UserRow = Depends(current_user),
     repo: StudyGoalRepository = Depends(_goal_repo),
 ) -> StudyGoalOut:
+    """读取当前登录用户的每日学习目标；尚未设置时按默认值创建后返回。"""
     goal = repo.get_or_create(user.id)
     return StudyGoalOut(target_minutes=goal.target_minutes, updated_at=goal.updated_at)
 
 
-@router.put("/goals/daily", response_model=StudyGoalOut)
+@router.put(
+    "/goals/daily",
+    response_model=StudyGoalOut,
+    summary="更新每日学习目标",
+    responses={
+        200: {
+            "description": "更新成功，返回新的每日学习目标",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "更新成功",
+                            "value": {
+                                "target_minutes": 120,
+                                "updated_at": "2026-10-06T09:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def update_daily_goal(
-    req: StudyGoalUpdate,
+    req: Annotated[
+        StudyGoalUpdate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "设置每日目标 120 分钟",
+                    "value": {"target_minutes": 120},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     repo: StudyGoalRepository = Depends(_goal_repo),
 ) -> StudyGoalOut:
+    """更新每日学习目标分钟数；取值范围 15~480。"""
     goal = repo.set_target(user.id, req.target_minutes)
     return StudyGoalOut(target_minutes=goal.target_minutes, updated_at=goal.updated_at)
 
@@ -188,24 +244,101 @@ def _checkin_stats(rows) -> tuple[int, int, int, bool]:
     return streak, longest, week_count, today_checked
 
 
-@router.post("/checkins", response_model=StudyCheckinResponse, status_code=201)
+@router.post(
+    "/checkins",
+    response_model=StudyCheckinResponse,
+    status_code=201,
+    summary="创建今日签到",
+    responses={
+        201: {
+            "description": "本日首次签到成功",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "本日首次签到",
+                            "value": {
+                                "checkin": {
+                                    "id": "checkin_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "date": "2026-10-06",
+                                    "scene": "rain",
+                                    "mood": "今天状态不错",
+                                    "created_at": "2026-10-06T08:30:00+00:00",
+                                },
+                                "created": True,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def create_checkin(
-    req: StudyCheckinCreate,
+    req: Annotated[
+        StudyCheckinCreate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "雨天场景签到",
+                    "value": {"scene": "rain", "mood": "今天状态不错"},
+                }
+            }
+        ),
+    ],
     response: Response,
     user: UserRow = Depends(current_user),
     repo: StudyCheckinRepository = Depends(_checkin_repo),
 ) -> StudyCheckinResponse:
+    """创建今日签到；本日首次签到返回 201，重复签到返回 200（created=false）。"""
     row, created = repo.create_today(user.id, scene=req.scene, mood=req.mood)
     if not created:
         response.status_code = 200
     return StudyCheckinResponse(checkin=_checkin_to_out(row), created=created)
 
 
-@router.get("/checkins", response_model=StudyCheckinSummary)
+@router.get(
+    "/checkins",
+    response_model=StudyCheckinSummary,
+    summary="列出签到记录",
+    responses={
+        200: {
+            "description": "读取成功，返回签到列表与统计",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取成功",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "checkin_20261006_demo",
+                                        "user_id": "u_demo",
+                                        "date": "2026-10-06",
+                                        "scene": "rain",
+                                        "mood": "今天状态不错",
+                                        "created_at": "2026-10-06T08:30:00+00:00",
+                                    }
+                                ],
+                                "total": 1,
+                                "streak": 3,
+                                "longest_streak": 7,
+                                "week_count": 3,
+                                "today_checked": True,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_checkins(
     user: UserRow = Depends(current_user),
     repo: StudyCheckinRepository = Depends(_checkin_repo),
 ) -> StudyCheckinSummary:
+    """列出当前用户全部签到记录，并统计连续签到天数与本周签到次数。"""
     rows = repo.list_checkins(user.id)
     streak, longest, week_count, today_checked = _checkin_stats(rows)
     return StudyCheckinSummary(
@@ -221,9 +354,60 @@ def list_checkins(
 # ===== 会话 CRUD =====
 
 
-@router.post("/sessions", response_model=StudySessionOut, status_code=201)
+@router.post(
+    "/sessions",
+    response_model=StudySessionOut,
+    status_code=201,
+    summary="创建学习会话",
+    responses={
+        201: {
+            "description": "创建成功，返回新会话",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建专注会话",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 0,
+                                "status": "active",
+                                "self_report": None,
+                                "self_report_tags": [],
+                                "breaks": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def create_session(
-    req: StudySessionCreate,
+    req: Annotated[
+        StudySessionCreate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "开始一次专注学习",
+                    "value": {
+                        "mode": "focus",
+                        "experience_mode": "QUIET",
+                        "planned_duration_seconds": 3600,
+                        "goal": "完成考研数学第三章习题",
+                        "related_task_id": "task_20261006_math",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
 ) -> StudySessionOut:
@@ -245,7 +429,43 @@ def create_session(
     return _session_to_out(session, breaks=[])
 
 
-@router.get("/sessions", response_model=List[StudySessionOut])
+@router.get(
+    "/sessions",
+    response_model=List[StudySessionOut],
+    summary="列出学习会话",
+    responses={
+        200: {
+            "description": "读取成功，返回会话列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取成功",
+                            "value": [
+                                {
+                                    "id": "sess_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "mode": "focus",
+                                    "experience_mode": "QUIET",
+                                    "goal": "完成考研数学第三章习题",
+                                    "started_at": "2026-10-06T09:00:00+00:00",
+                                    "ended_at": None,
+                                    "planned_duration_seconds": 3600,
+                                    "duration_seconds": 0,
+                                    "pause_seconds": 0,
+                                    "status": "active",
+                                    "self_report": None,
+                                    "self_report_tags": [],
+                                    "breaks": [],
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_sessions(
     status: Optional[str] = Query(
         None, pattern="^(active|paused|completed)$"
@@ -262,7 +482,51 @@ def list_sessions(
     return [_session_to_out(r, breaks=[]) for r in rows]
 
 
-@router.get("/sessions/active", response_model=Optional[StudySessionOut])
+@router.get(
+    "/sessions/active",
+    response_model=Optional[StudySessionOut],
+    summary="获取未结束会话",
+    responses={
+        200: {
+            "description": "读取成功；无未结束会话时返回 null",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "存在未结束会话",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "paused_at": "2026-10-06T09:40:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 180,
+                                "status": "paused",
+                                "self_report": None,
+                                "self_report_tags": [],
+                                "breaks": [
+                                    {
+                                        "id": "brk_20261006_demo",
+                                        "session_id": "sess_20261006_demo",
+                                        "started_at": "2026-10-06T09:40:00+00:00",
+                                        "ended_at": None,
+                                        "reason": "接水休息",
+                                        "created_at": "2026-10-06T09:40:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_active_session(
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
@@ -278,13 +542,47 @@ def get_active_session(
     return _session_to_out(session, breaks=breaks)
 
 
-@router.get("/sessions/{session_id}", response_model=StudySessionOut)
+@router.get(
+    "/sessions/{session_id}",
+    response_model=StudySessionOut,
+    summary="获取会话详情",
+    responses={
+        200: {
+            "description": "读取成功，返回会话详情及休息记录",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取成功",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 0,
+                                "status": "active",
+                                "self_report": None,
+                                "self_report_tags": [],
+                                "breaks": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_session(
     session_id: str,
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
 ) -> StudySessionOut:
-    """获取会话详情(含休息记录)。"""
+    """获取会话详情(含休息记录)；会话不存在或不属于当前用户时返回 404（STUDY_SESSION_NOT_FOUND）。"""
     session = repo.get_session(session_id, user_id=user.id)
     if session is None:
         raise StudySessionNotFound()
@@ -295,7 +593,51 @@ def get_session(
 # ===== 状态机动作 =====
 
 
-@router.post("/sessions/{session_id}/pause", response_model=StudySessionOut)
+@router.post(
+    "/sessions/{session_id}/pause",
+    response_model=StudySessionOut,
+    summary="暂停学习会话",
+    responses={
+        200: {
+            "description": "暂停成功，会话进入 paused 并开启一条休息记录",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "暂停成功",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "paused_at": "2026-10-06T09:40:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 0,
+                                "status": "paused",
+                                "self_report": None,
+                                "self_report_tags": [],
+                                "breaks": [
+                                    {
+                                        "id": "brk_20261006_demo",
+                                        "session_id": "sess_20261006_demo",
+                                        "started_at": "2026-10-06T09:40:00+00:00",
+                                        "ended_at": None,
+                                        "reason": "接水休息",
+                                        "created_at": "2026-10-06T09:40:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def pause_session(
     session_id: str,
     user: UserRow = Depends(current_user),
@@ -312,7 +654,41 @@ def pause_session(
     return _session_to_out(session, breaks=breaks)
 
 
-@router.post("/sessions/{session_id}/resume", response_model=StudySessionOut)
+@router.post(
+    "/sessions/{session_id}/resume",
+    response_model=StudySessionOut,
+    summary="恢复学习会话",
+    responses={
+        200: {
+            "description": "恢复成功，会话回到 active 并累加休息时长",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "恢复成功",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 180,
+                                "status": "active",
+                                "self_report": None,
+                                "self_report_tags": [],
+                                "breaks": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def resume_session(
     session_id: str,
     user: UserRow = Depends(current_user),
@@ -324,10 +700,57 @@ def resume_session(
     return _session_to_out(session, breaks=breaks)
 
 
-@router.post("/sessions/{session_id}/finish", response_model=StudySessionOut)
+@router.post(
+    "/sessions/{session_id}/finish",
+    response_model=StudySessionOut,
+    summary="结束学习会话",
+    responses={
+        200: {
+            "description": "结束成功，会话进入 completed 并返回统计后的时长",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "结束成功",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "ended_at": "2026-10-06T10:00:00+00:00",
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 3420,
+                                "pause_seconds": 180,
+                                "status": "completed",
+                                "self_report": "专注度不错，完成了大部分习题",
+                                "self_report_tags": ["专注", "有收获"],
+                                "breaks": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def finish_session(
     session_id: str,
-    req: StudySessionFinish,
+    req: Annotated[
+        StudySessionFinish,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "填写结束感受",
+                    "value": {
+                        "self_report": "专注度不错，完成了大部分习题",
+                        "self_report_tags": ["专注", "有收获"],
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
     event_service: LearnerEventService = Depends(_learner_event_service),
@@ -382,10 +805,57 @@ def finish_session(
     return _session_to_out(session, breaks=breaks)
 
 
-@router.patch("/sessions/{session_id}", response_model=StudySessionOut)
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=StudySessionOut,
+    summary="部分更新学习会话",
+    responses={
+        200: {
+            "description": "更新成功，返回更新后的会话",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "更新成功",
+                            "value": {
+                                "id": "sess_20261006_demo",
+                                "user_id": "u_demo",
+                                "mode": "focus",
+                                "experience_mode": "QUIET",
+                                "goal": "完成考研数学第三章习题",
+                                "started_at": "2026-10-06T09:00:00+00:00",
+                                "ended_at": None,
+                                "planned_duration_seconds": 3600,
+                                "duration_seconds": 0,
+                                "pause_seconds": 0,
+                                "status": "active",
+                                "self_report": "今天效率较高",
+                                "self_report_tags": [],
+                                "breaks": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def update_session(
     session_id: str,
-    req: StudySessionUpdate,
+    req: Annotated[
+        StudySessionUpdate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "更新目标与感受",
+                    "value": {
+                        "goal": "完成考研数学第三章习题",
+                        "self_report": "今天效率较高",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     repo: StudySessionRepository = Depends(_repo),
 ) -> StudySessionOut:
@@ -421,9 +891,59 @@ def update_session(
 # ===== 任务拆解 =====
 
 
-@router.post("/task-breakdown", response_model=TaskBreakdownResponse)
+@router.post(
+    "/task-breakdown",
+    response_model=TaskBreakdownResponse,
+    summary="拆解学习任务",
+    responses={
+        200: {
+            "description": "拆解成功；mode 标注 llm 或 rule_fallback",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "拆解成功（模型生成）",
+                            "value": {
+                                "mode": "llm",
+                                "steps": [
+                                    {
+                                        "step_number": 1,
+                                        "title": "梳理考研数学第三章知识点",
+                                        "description": "整理章节公式与典型例题",
+                                        "estimated_minutes": 30,
+                                        "dependencies": [],
+                                        "completion_criteria": "能独立写出本章核心公式",
+                                        "is_policy_step": False,
+                                        "knowledge_status": "not_applicable",
+                                    }
+                                ],
+                                "goal": "完成考研数学第三章复习",
+                                "related_task_id": None,
+                                "related_task_title": None,
+                                "warnings": [],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def task_breakdown(
-    req: TaskBreakdownRequest,
+    req: Annotated[
+        TaskBreakdownRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "按任务与目标拆解",
+                    "value": {
+                        "task_id": "task_20261006_math",
+                        "goal": "完成考研数学第三章复习",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     service: TaskBreakdownService = Depends(_breakdown_service),
 ) -> TaskBreakdownResponse:

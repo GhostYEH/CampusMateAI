@@ -22,7 +22,7 @@ from ...services.container import ServiceContainer, get_container
 from ...services.magicclass.classroom_service import MagicClassClassroomService
 from ..deps import current_user
 
-router = APIRouter(prefix="/magicclass/learning-space", tags=["magicclass-learning-space"])
+router = APIRouter(prefix="/magicclass/learning-space", tags=["独立学习空间"])
 
 
 def _container() -> ServiceContainer:
@@ -33,9 +33,45 @@ def _service(c: ServiceContainer = Depends(_container)) -> MagicClassClassroomSe
     return c.magicclass_classroom_service
 
 
-@router.get("/status", response_model=MagicClassStatusOut)
+@router.get(
+    "/status",
+    response_model=MagicClassStatusOut,
+    summary="读取学习空间状态",
+    responses={
+        200: {
+            "description": "学习空间（独立 magicclass 应用）的可用性与公开内嵌地址",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "学习空间已就绪",
+                            "value": {
+                                "enabled": True,
+                                "configured": True,
+                                "available": True,
+                                "degraded": False,
+                                "service": "magicclass",
+                                "version": "1.0.3",
+                                "embed_origin": "https://classroom.example.edu",
+                                "browser_embed_available": True,
+                                "external_3d_available": True,
+                                "poll_interval_ms": 5000,
+                                "reason": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def learning_space_status(
     _user: UserRow = Depends(current_user),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassStatusOut:
+    """读取导航栏「学习空间」入口的浏览器可见性状态。
+
+    与课程级状态读的是同一份服务状态；未配置公开 Origin 时 fail-closed
+    （embed_origin 为 None、browser_embed_available=false）。需要已登录。
+    """
     return MagicClassStatusOut(**await service.status())

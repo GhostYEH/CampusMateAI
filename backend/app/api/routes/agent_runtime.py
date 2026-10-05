@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import json
 from functools import partial
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, Header, Query, Request, Response
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -49,12 +49,12 @@ from ...schemas.agent_runtime import (
 from ..deps import current_user, student_only
 from ..deps import ServiceContainer, get_container
 
-router = APIRouter(prefix="/agent-runtime", tags=["agent-runtime"])
-jobs_router = APIRouter(prefix="/agent-jobs", tags=["agent-runtime"])
-runs_router = APIRouter(prefix="/agent-runs", tags=["agent-runtime"])
-approvals_router = APIRouter(prefix="/agent-approvals", tags=["agent-runtime"])
-artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["agent-runtime"])
-memories_router = APIRouter(prefix="/agent-memories", tags=["agent-runtime"])
+router = APIRouter(prefix="/agent-runtime", tags=["Agent 运行时"])
+jobs_router = APIRouter(prefix="/agent-jobs", tags=["Agent 运行时"])
+runs_router = APIRouter(prefix="/agent-runs", tags=["Agent 运行时"])
+approvals_router = APIRouter(prefix="/agent-approvals", tags=["Agent 运行时"])
+artifacts_router = APIRouter(prefix="/agent-artifacts", tags=["Agent 运行时"])
+memories_router = APIRouter(prefix="/agent-memories", tags=["Agent 运行时"])
 
 # SSE 注释心跳间隔:只用于维持连接,不写库、不推进事件序列。
 _SSE_HEARTBEAT_SECONDS = 15.0
@@ -121,7 +121,43 @@ def _job_input_ref(job: dict) -> dict:
 # ===== capabilities =====
 
 
-@router.get("/capabilities")
+@router.get(
+    "/capabilities",
+    summary="获取运行时能力清单",
+    responses={
+        200: {
+            "description": "返回 runtime 能力清单与契约版本",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "能力清单",
+                            "value": {
+                                "contract_version": "v1",
+                                "capabilities": [
+                                    {
+                                        "name": "learning_goal.run",
+                                        "version": "1.0",
+                                        "route_policy": "reasoning_primary",
+                                        "risk_level": "AUTO_SAFE",
+                                        "requires_approval": False,
+                                    },
+                                    {
+                                        "name": "final_review.plan",
+                                        "version": "1.0",
+                                        "route_policy": "reasoning_primary",
+                                        "risk_level": "CONFIRM_REQUIRED",
+                                        "requires_approval": True,
+                                    },
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_capabilities(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
@@ -247,15 +283,85 @@ def _resolve_approval_sync(repo, container, approval_id: str, body, user_id: str
     return approval
 
 
-@jobs_router.post("")
+@jobs_router.post(
+    "",
+    summary="创建 Agent 任务",
+    responses={
+        202: {
+            "description": "任务首次创建并入队",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "任务已入队",
+                            "value": {
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "job_kind": "learning_goal",
+                                "status": "QUEUED",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:00+00:00",
+                                "latest_run_id": "run_20261006_demo",
+                                "pending_approval_id": None,
+                                "input_ref": {"goal_id": "goal_2026_spring", "available_minutes": 90},
+                            },
+                        }
+                    }
+                }
+            },
+        },
+        200: {
+            "description": "同一幂等键与相同输入重放，返回既有任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "重放": {
+                            "summary": "幂等重放",
+                            "value": {
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "job_kind": "learning_goal",
+                                "status": "RUNNING",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:05+00:00",
+                                "latest_run_id": "run_20261006_demo",
+                                "pending_approval_id": None,
+                                "input_ref": {"goal_id": "goal_2026_spring", "available_minutes": 90},
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def create_job(
-    body: AgentJobCreateIn,
+    body: Annotated[
+        AgentJobCreateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "创建学习目标任务",
+                    "value": {
+                        "job_kind": "learning_goal",
+                        "input_ref": {"goal_id": "goal_2026_spring", "available_minutes": 90},
+                        "idempotency_key": "job_demo_20261006",
+                    },
+                }
+            }
+        ),
+    ],
     request: Request,
     response: Response,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentJobOut:
+    """创建一个 Agent 任务并立即入队，返回任务概览。
+
+    - 首次创建返回 202；同一幂等键与相同输入重放返回 200（body.idempotency_key 优先于 Idempotency-Key 头）。
+    - Runtime 停止接单返回 503；幂等键复用于不同输入返回 409；input_ref 需通过 Handler 校验，否则 422。
+    """
     repo = _repo(container)
     # Runtime 停止接单时必须明确返回 503，不能回退到请求内执行。
     if not container.agent_worker.accepts_new_jobs:
@@ -308,23 +414,89 @@ async def create_job(
     )
 
 
-@jobs_router.get("")
+@jobs_router.get(
+    "",
+    summary="分页列出任务列表",
+    responses={
+        200: {
+            "description": "返回当前学生的任务概览分页",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "任务列表",
+                            "value": [
+                                {
+                                    "job_id": "job_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "job_kind": "final_review",
+                                    "status": "AWAITING_APPROVAL",
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:30+00:00",
+                                    "latest_run_id": "run_20261006_demo",
+                                    "pending_approval_id": "approval_20261006_demo",
+                                    "input_ref": {"goal_id": "goal_2026_spring"},
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[AgentJobOut]:
+    """分页列出当前学生的 Agent 任务；等待审批的任务会带出 pending_approval_id。"""
     repo = _repo(container)
     return await _offload(_job_page, repo, user.id, page, page_size)
 
 
-@jobs_router.get("/{job_id}/runs")
+@jobs_router.get(
+    "/{job_id}/runs",
+    summary="列出任务的运行记录",
+    responses={
+        200: {
+            "description": "返回该任务的全部运行记录",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行记录列表",
+                            "value": [
+                                {
+                                    "run_id": "run_20261006_demo",
+                                    "job_id": "job_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "status": "SUCCEEDED",
+                                    "phase": "IDLE",
+                                    "risk_level": "AUTO_SAFE",
+                                    "started_at": "2026-10-06T08:00:05+00:00",
+                                    "finished_at": "2026-10-06T08:00:42+00:00",
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:42+00:00",
+                                    "error": None,
+                                    "artifact_ids": ["artifact_20261006_demo"],
+                                    "retry_of": None,
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_job_runs(
     job_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> list[AgentRunOut]:
+    """列出指定任务的全部运行记录（含产物 id）；任务不存在或不属于当前用户返回 404。"""
     repo = _repo(container)
     job, runs = await _offload(lambda: (repo.get_job(job_id), repo.list_runs_by_job(job_id)))
     if not job or job["user_id"] != user.id:
@@ -333,12 +505,41 @@ async def list_job_runs(
     return outputs
 
 
-@jobs_router.get("/{job_id}")
+@jobs_router.get(
+    "/{job_id}",
+    summary="读取任务详情",
+    responses={
+        200: {
+            "description": "返回单个任务概览",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "任务详情",
+                            "value": {
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "job_kind": "final_review",
+                                "status": "AWAITING_APPROVAL",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:30+00:00",
+                                "latest_run_id": "run_20261006_demo",
+                                "pending_approval_id": "approval_20261006_demo",
+                                "input_ref": {"goal_id": "goal_2026_spring"},
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_job(
     job_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentJobOut:
+    """读取单个任务概览；不存在或不属于当前用户返回 404（AGENT_RUN_NOT_FOUND）。"""
     repo = _repo(container)
     job, latest_run_id, pending_approval_id = await _offload(_job_detail, repo, job_id)
     if not job:
@@ -374,7 +575,43 @@ def _run_to_out(run: dict, artifacts: list[dict]) -> AgentRunOut:
     )
 
 
-@router.get("/skills", response_model=AgentSkillsOut)
+@router.get(
+    "/skills",
+    response_model=AgentSkillsOut,
+    summary="获取可发现的技能元数据",
+    responses={
+        200: {
+            "description": "返回可发现的 Skill/MCP 元数据清单",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "技能清单",
+                            "value": {
+                                "contract_version": "v1",
+                                "skills": [
+                                    {
+                                        "skill_code": "learning_goal_center",
+                                        "version": "1.0",
+                                        "description": "把学习目标转为可确认、可追踪、可重规划的任务计划",
+                                        "capabilities": [
+                                            "goal.aggregate",
+                                            "plan.generate",
+                                            "plan.replan",
+                                        ],
+                                        "tools": ["student.read", "course.read", "task.create"],
+                                        "transport": "internal",
+                                        "permission_policy": "student_owned_only",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_skills(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
@@ -394,21 +631,99 @@ async def get_skills(
 # ===== explicit memory =====
 
 
-@memories_router.get("", response_model=list[AgentMemoryOut])
+@memories_router.get(
+    "",
+    response_model=list[AgentMemoryOut],
+    summary="列出显式记忆",
+    responses={
+        200: {
+            "description": "返回当前学生的显式记忆列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "记忆列表",
+                            "value": [
+                                {
+                                    "memory_id": "memory_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "kind": "CONFIRMED_STUDY_GOAL",
+                                    "content_summary": "希望在本学期通过数据结构期末考试",
+                                    "sensitivity": "low",
+                                    "confirmed": True,
+                                    "withdrawn": False,
+                                    "model_may_consume": True,
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_memories(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[AgentMemoryOut]:
+    """列出当前学生的显式记忆，包含已撤回项（withdrawn=true）。"""
     memories = await _offload(container.agent_memory_manager.list_for_user, user.id)
     return [_memory_to_out(memory) for memory in memories]
 
 
-@memories_router.post("", response_model=AgentMemoryOut)
+@memories_router.post(
+    "",
+    response_model=AgentMemoryOut,
+    summary="创建显式记忆",
+    responses={
+        200: {
+            "description": "返回新建的显式记忆",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "记忆已创建",
+                            "value": {
+                                "memory_id": "memory_20261006_demo",
+                                "user_id": "u_demo",
+                                "kind": "CONFIRMED_STUDY_GOAL",
+                                "content_summary": "希望在本学期通过数据结构期末考试",
+                                "sensitivity": "low",
+                                "confirmed": True,
+                                "withdrawn": False,
+                                "model_may_consume": True,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def create_memory(
-    body: AgentMemoryCreateIn,
+    body: Annotated[
+        AgentMemoryCreateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "记录已确认的学习目标",
+                    "value": {
+                        "kind": "CONFIRMED_STUDY_GOAL",
+                        "content_summary": "希望在本学期通过数据结构期末考试",
+                        "sensitivity": "low",
+                        "confirmed": True,
+                        "model_may_consume": True,
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentMemoryOut:
+    """创建一条显式记忆；仅当 confirmed 且 model_may_consume 为真时才会进入模型上下文。"""
     try:
         memory_id = await _offload(
             container.agent_memory_manager.record,
@@ -423,12 +738,42 @@ async def create_memory(
     return _memory_to_out(memory)
 
 
-@memories_router.post("/{memory_id}/withdraw", response_model=AgentMemoryOut)
+@memories_router.post(
+    "/{memory_id}/withdraw",
+    response_model=AgentMemoryOut,
+    summary="撤回显式记忆",
+    responses={
+        200: {
+            "description": "返回撤回后的记忆（withdrawn=true）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "记忆已撤回",
+                            "value": {
+                                "memory_id": "memory_20261006_demo",
+                                "user_id": "u_demo",
+                                "kind": "CONFIRMED_STUDY_GOAL",
+                                "content_summary": "希望在本学期通过数据结构期末考试",
+                                "sensitivity": "low",
+                                "confirmed": True,
+                                "withdrawn": True,
+                                "model_may_consume": False,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def withdraw_memory(
     memory_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentMemoryOut:
+    """撤回指定记忆，撤回后不再进入模型上下文；记忆不存在返回 404。"""
     memory = await _offload(
         container.agent_memory_manager.withdraw, user_id=user.id, memory_id=memory_id
     )
@@ -437,24 +782,92 @@ async def withdraw_memory(
     return _memory_to_out(memory)
 
 
-@runs_router.get("")
+@runs_router.get(
+    "",
+    summary="分页列出运行列表",
+    responses={
+        200: {
+            "description": "返回当前学生的运行记录分页",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行列表",
+                            "value": [
+                                {
+                                    "run_id": "run_20261006_demo",
+                                    "job_id": "job_20261006_demo",
+                                    "user_id": "u_demo",
+                                    "status": "RUNNING",
+                                    "phase": "WAITING_FOR_MODEL",
+                                    "risk_level": "AUTO_SAFE",
+                                    "started_at": "2026-10-06T08:00:05+00:00",
+                                    "finished_at": None,
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:20+00:00",
+                                    "error": None,
+                                    "artifact_ids": [],
+                                    "retry_of": None,
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_runs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[AgentRunOut]:
+    """分页列出当前学生的 Agent 运行记录（含状态、阶段与产物 id）。"""
     return await _offload(
         _runs_for_user, _repo(container), _artifact_repo(container), user.id, page, page_size
     )
 
 
-@runs_router.get("/{run_id}")
+@runs_router.get(
+    "/{run_id}",
+    summary="读取运行详情",
+    responses={
+        200: {
+            "description": "返回单个运行详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行详情",
+                            "value": {
+                                "run_id": "run_20261006_demo",
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "status": "SUCCEEDED",
+                                "phase": "IDLE",
+                                "risk_level": "AUTO_SAFE",
+                                "started_at": "2026-10-06T08:00:05+00:00",
+                                "finished_at": "2026-10-06T08:00:42+00:00",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:42+00:00",
+                                "error": None,
+                                "artifact_ids": ["artifact_20261006_demo"],
+                                "retry_of": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_run(
     run_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentRunOut:
+    """读取单个运行详情（含错误信封与产物 id）；不存在或不属于当前用户返回 404。"""
     repo = _repo(container)
     run, artifacts = await _offload(_load_run, repo, _artifact_repo(container), run_id)
     if not run:
@@ -464,13 +877,57 @@ async def get_run(
     return _run_to_out(run, artifacts or [])
 
 
-@runs_router.post("/{run_id}/cancel")
+@runs_router.post(
+    "/{run_id}/cancel",
+    summary="取消运行",
+    responses={
+        200: {
+            "description": "取消成功，返回取消后的运行详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行已取消",
+                            "value": {
+                                "run_id": "run_20261006_demo",
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "status": "CANCELLED",
+                                "phase": "IDLE",
+                                "risk_level": "AUTO_SAFE",
+                                "started_at": "2026-10-06T08:00:05+00:00",
+                                "finished_at": "2026-10-06T08:00:20+00:00",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:20+00:00",
+                                "error": None,
+                                "artifact_ids": [],
+                                "retry_of": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def cancel_run(
     run_id: str,
-    body: AgentRunCancelIn,
+    body: Annotated[
+        AgentRunCancelIn,
+        Body(
+            openapi_examples={
+                "成功": {"summary": "取消运行", "value": {"reason": "本轮结果不再需要"}}
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentRunOut:
+    """取消指定运行；取消依赖状态机幂等，重复取消与终态冲突见运行控制。
+
+    - 运行不存在或不属于当前用户返回 404（AGENT_RUN_NOT_FOUND）。
+    - 无权取消他人运行返回 403（AGENT_PERMISSION_DENIED）。
+    """
     repo = _repo(container)
     run = await _offload(repo.get_run, run_id)
     if not run:
@@ -539,36 +996,168 @@ async def _control_run(
     return _run_to_out(refreshed, artifacts or [])
 
 
-@runs_router.post("/{run_id}/pause")
+@runs_router.post(
+    "/{run_id}/pause",
+    summary="暂停运行",
+    responses={
+        200: {
+            "description": "暂停成功，返回暂停后的运行详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行已暂停",
+                            "value": {
+                                "run_id": "run_20261006_demo",
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "status": "PAUSED",
+                                "phase": "IDLE",
+                                "risk_level": "AUTO_SAFE",
+                                "started_at": "2026-10-06T08:00:05+00:00",
+                                "finished_at": None,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:20+00:00",
+                                "error": None,
+                                "artifact_ids": [],
+                                "retry_of": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def pause_run(
     run_id: str,
-    body: AgentRunControlIn,
+    body: Annotated[
+        AgentRunControlIn,
+        Body(
+            openapi_examples={
+                "成功": {"summary": "暂停运行", "value": {"idempotency_key": "pause_example_1"}}
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentRunOut:
+    """暂停指定运行；每次独立暂停生成新幂等键，仅网络重试复用，body 优先于请求头。
+
+    - 运行不存在返回 404（AGENT_RUN_NOT_FOUND）。
+    - 无权控制他人运行返回 403（AGENT_PERMISSION_DENIED）。
+    """
     return await _control_run(run_id, action="pause", body=body, idempotency_key=idempotency_key, user=user, container=container)
 
 
-@runs_router.post("/{run_id}/resume")
+@runs_router.post(
+    "/{run_id}/resume",
+    summary="恢复运行",
+    responses={
+        200: {
+            "description": "恢复成功，返回恢复后的运行详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "运行已恢复",
+                            "value": {
+                                "run_id": "run_20261006_demo",
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "status": "RUNNING",
+                                "phase": "WAITING_FOR_MODEL",
+                                "risk_level": "AUTO_SAFE",
+                                "started_at": "2026-10-06T08:00:05+00:00",
+                                "finished_at": None,
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:35+00:00",
+                                "error": None,
+                                "artifact_ids": [],
+                                "retry_of": None,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def resume_run(
     run_id: str,
-    body: AgentRunControlIn,
+    body: Annotated[
+        AgentRunControlIn,
+        Body(
+            openapi_examples={
+                "成功": {"summary": "恢复运行", "value": {"idempotency_key": "resume_example_1"}}
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentRunOut:
+    """恢复已暂停的运行；每次独立恢复生成新幂等键，不与暂停键共用，body 优先于请求头。
+
+    - 运行不存在返回 404（AGENT_RUN_NOT_FOUND）。
+    - 无权控制他人运行返回 403（AGENT_PERMISSION_DENIED）。
+    """
     return await _control_run(run_id, action="resume", body=body, idempotency_key=idempotency_key, user=user, container=container)
 
 
-@runs_router.post("/{run_id}/retry")
+@runs_router.post(
+    "/{run_id}/retry",
+    summary="重试运行",
+    responses={
+        200: {
+            "description": "重试成功，返回新建（或幂等重放的）运行详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已按新运行重试",
+                            "value": {
+                                "run_id": "run_20261006_retry",
+                                "job_id": "job_20261006_demo",
+                                "user_id": "u_demo",
+                                "status": "QUEUED",
+                                "phase": "QUEUED",
+                                "risk_level": "AUTO_SAFE",
+                                "started_at": None,
+                                "finished_at": None,
+                                "created_at": "2026-10-06T08:05:00+00:00",
+                                "updated_at": "2026-10-06T08:05:00+00:00",
+                                "error": None,
+                                "artifact_ids": [],
+                                "retry_of": "run_20261006_demo",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def retry_run(
     run_id: str,
-    body: AgentRunControlIn,
+    body: Annotated[
+        AgentRunControlIn,
+        Body(
+            openapi_examples={
+                "成功": {"summary": "重试运行", "value": {"idempotency_key": "retry_example_1"}}
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> AgentRunOut:
+    """重试指定运行；首次成功返回新运行，同键重放返回原运行。
+
+    - 首次响应丢失时可按运行控制说明回读任务运行列表，避免换键创建重复运行。
+    - 运行不存在返回 404（AGENT_RUN_NOT_FOUND）；无权控制他人运行返回 403（AGENT_PERMISSION_DENIED）。
+    """
     return await _control_run(run_id, action="retry", body=body, idempotency_key=idempotency_key, user=user, container=container)
 
 
@@ -596,7 +1185,40 @@ def _event_to_out(evt: dict) -> AgentEventOut:
     )
 
 
-@runs_router.get("/{run_id}/events")
+@runs_router.get(
+    "/{run_id}/events",
+    summary="列出运行事件",
+    responses={
+        200: {
+            "description": "返回该运行的事件列表（按 sequence 升序）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "事件列表",
+                            "value": [
+                                {
+                                    "id": "evt_20261006_001",
+                                    "type": "RUN_STARTED",
+                                    "run_id": "run_20261006_demo",
+                                    "sequence": 1,
+                                    "status": "RUNNING",
+                                    "phase": "WAITING_FOR_MODEL",
+                                    "role": "coordinator",
+                                    "summary": "开始执行学习目标规划",
+                                    "progress": {"current": 1, "total": 4, "percent": 25},
+                                    "artifact_id": None,
+                                    "approval_id": None,
+                                    "created_at": "2026-10-06T08:00:05+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def list_events(
     run_id: str,
     user: UserRow = Depends(current_user),
@@ -604,6 +1226,11 @@ async def list_events(
     after_sequence: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
 ) -> list[AgentEventOut]:
+    """列出指定运行的事件，支持 after_sequence 增量拉取。
+
+    - 事件以持久化序列为真源，summary 为安全摘要，不含 prompt 或凭据。
+    - 运行不存在或不属于当前用户返回 404（AGENT_RUN_NOT_FOUND）。
+    """
     repo = _repo(container)
     run = await _offload(repo.get_run, run_id)
     if not run:
@@ -614,7 +1241,10 @@ async def list_events(
     return [_event_to_out(e) for e in events]
 
 
-@runs_router.get("/{run_id}/events/stream")
+@runs_router.get(
+    "/{run_id}/events/stream",
+    summary="订阅运行事件流",
+)
 async def stream_events(
     run_id: str,
     request: Request,
@@ -622,7 +1252,11 @@ async def stream_events(
     container: ServiceContainer = Depends(get_container),
     last_event_id: Optional[str] = Header(None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    """SSE 流。以持久化事件为真源,支持 Last-Event-ID 续传。断开不取消 run。"""
+    """SSE 流。以持久化事件为真源,支持 Last-Event-ID 续传。断开不取消 run。
+
+    - 游标无效或不属于该运行返回 409（AGENT_CURSOR_INVALID）。
+    - 运行不存在或不属于当前用户返回 404（AGENT_RUN_NOT_FOUND）。
+    """
     import time
 
     repo = _repo(container)
@@ -688,10 +1322,51 @@ async def stream_events(
 # ===== approvals =====
 
 
-@approvals_router.post("/{approval_id}/decision")
+@approvals_router.post(
+    "/{approval_id}/decision",
+    summary="落定审批决定",
+    responses={
+        200: {
+            "description": "返回落定后的审批记录",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "审批已通过",
+                            "value": {
+                                "approval_id": "approval_20261006_demo",
+                                "run_id": "run_20261006_demo",
+                                "status": "APPROVED",
+                                "risk_level": "CONFIRM_REQUIRED",
+                                "action_summary": "生成期末复习计划",
+                                "expires_at": "2026-10-06T09:00:00+00:00",
+                                "resolved_at": "2026-10-06T08:10:00+00:00",
+                                "decision_reason": "确认可以生成",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def resolve_approval(
     approval_id: str,
-    body: AgentApprovalDecisionIn,
+    body: Annotated[
+        AgentApprovalDecisionIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "通过审批",
+                    "value": {"decision": "APPROVED", "reason": "确认可以生成"},
+                },
+                "拒绝": {
+                    "summary": "拒绝审批",
+                    "value": {"decision": "REJECTED", "reason": "暂不需要"},
+                },
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
@@ -722,13 +1397,20 @@ async def resolve_approval(
 # ===== artifacts =====
 
 
-@artifacts_router.get("/{artifact_id}/content")
+@artifacts_router.get(
+    "/{artifact_id}/content",
+    summary="读取产物正文",
+)
 async def get_artifact_content(
     artifact_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ):
-    """返回 artifact 文本内容(Markdown / JSON)。"""
+    """返回 artifact 文本内容(Markdown / JSON)。
+
+    - 响应为 text/plain 或对应 mime_type 的纯文本，非 JSON 结构。
+    - 产物不存在返回 404（AGENT_RUN_NOT_FOUND）；内容不可读同样返回 404。
+    """
     repo = _artifact_repo(container)
     meta, content = await _offload(_read_artifact_content, repo, artifact_id, user.id)
     if not meta:
@@ -738,12 +1420,42 @@ async def get_artifact_content(
     return PlainTextResponse(content, media_type=meta.get("mime_type") or "text/plain")
 
 
-@artifacts_router.get("/{artifact_id}")
+@artifacts_router.get(
+    "/{artifact_id}",
+    summary="读取产物元数据",
+    responses={
+        200: {
+            "description": "返回产物元数据（不含正文）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "产物元数据",
+                            "value": {
+                                "artifact_id": "artifact_20261006_demo",
+                                "run_id": "run_20261006_demo",
+                                "user_id": "u_demo",
+                                "artifact_type": "PLAN",
+                                "version": 1,
+                                "mime_type": "application/json",
+                                "size_bytes": 2048,
+                                "content_hash": "3f786850e387550fdab836ed7e6dc881de23001b",
+                                "download_url": None,
+                                "created_at": "2026-10-06T08:00:42+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def get_artifact(
     artifact_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(get_container),
 ) -> AgentArtifactOut:
+    """读取单个产物的元数据；不存在或不属于当前用户返回 404（AGENT_RUN_NOT_FOUND）。"""
     repo = _artifact_repo(container)
     meta = await _offload(repo.get_artifact, artifact_id, user.id)
     if not meta:

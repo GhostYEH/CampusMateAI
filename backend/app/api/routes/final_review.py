@@ -15,9 +15,9 @@ from starlette.concurrency import run_in_threadpool
 
 import json
 import hashlib
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Body, Depends, Header, Request
 
 from ...core.exceptions import (
     AgentApprovalRequired,
@@ -52,7 +52,7 @@ from ...schemas.final_review import (
 )
 from ..deps import ServiceContainer, get_container, student_only
 
-router = APIRouter(prefix="/final-review", tags=["final-review"])
+router = APIRouter(prefix="/final-review", tags=["期末复习"])
 
 # 审批后的实际执行由这两个 Handler 经 Gateway 完成,路由不再直接写计划状态。
 _ACTIVATE_JOB_KIND = "final_review_plan_activate"
@@ -193,9 +193,55 @@ def _persist_generated_plan(
 # ===== Campaigns =====
 
 
-@router.post("/campaigns")
+@router.post(
+    "/campaigns",
+    summary="创建复习活动",
+    responses={
+        200: {
+            "description": "创建成功，返回新建的复习活动",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "创建复习活动",
+                            "value": {
+                                "campaign_id": "frc_1001",
+                                "user_id": "u_demo",
+                                "exam_ids": ["exam_linear_algebra", "exam_os"],
+                                "daily_capacity_minutes": 120,
+                                "preferred_periods": ["evening"],
+                                "rest_days": ["sunday"],
+                                "intensity": "medium",
+                                "status": "draft",
+                                "active_version": None,
+                                "created_at": "2026-10-06T09:00:00+00:00",
+                                "updated_at": "2026-10-06T09:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def create_campaign(
-    body: FinalReviewCampaignIn,
+    body: Annotated[
+        FinalReviewCampaignIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "创建复习活动",
+                    "value": {
+                        "exam_ids": ["exam_linear_algebra", "exam_os"],
+                        "daily_capacity_minutes": 120,
+                        "preferred_periods": ["evening"],
+                        "rest_days": ["sunday"],
+                        "intensity": "medium",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
@@ -222,22 +268,86 @@ def create_campaign(
     return _campaign_to_out(row)
 
 
-@router.get("/campaigns")
+@router.get(
+    "/campaigns",
+    summary="列出复习活动",
+    responses={
+        200: {
+            "description": "返回当前用户的复习活动列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "复习活动列表",
+                            "value": [
+                                {
+                                    "campaign_id": "frc_1001",
+                                    "user_id": "u_demo",
+                                    "exam_ids": ["exam_linear_algebra", "exam_os"],
+                                    "daily_capacity_minutes": 120,
+                                    "preferred_periods": ["evening"],
+                                    "rest_days": ["sunday"],
+                                    "intensity": "medium",
+                                    "status": "active",
+                                    "active_version": 1,
+                                    "created_at": "2026-10-06T09:00:00+00:00",
+                                    "updated_at": "2026-10-06T10:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_campaigns(
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[FinalReviewCampaignOut]:
+    """列出当前用户的全部复习活动。"""
     repo = _repo(container)
     rows = repo.list_campaigns(user.id)
     return [_campaign_to_out(r) for r in rows]
 
 
-@router.get("/campaigns/{campaign_id}")
+@router.get(
+    "/campaigns/{campaign_id}",
+    summary="读取复习活动",
+    responses={
+        200: {
+            "description": "返回指定复习活动的详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "复习活动详情",
+                            "value": {
+                                "campaign_id": "frc_1001",
+                                "user_id": "u_demo",
+                                "exam_ids": ["exam_linear_algebra", "exam_os"],
+                                "daily_capacity_minutes": 120,
+                                "preferred_periods": ["evening"],
+                                "rest_days": ["sunday"],
+                                "intensity": "medium",
+                                "status": "active",
+                                "active_version": 1,
+                                "created_at": "2026-10-06T09:00:00+00:00",
+                                "updated_at": "2026-10-06T10:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_campaign(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> FinalReviewCampaignOut:
+    """读取当前用户指定的复习活动；不存在返回 404（NOT_FOUND）。"""
     repo = _repo(container)
     row = repo.get_campaign(campaign_id, user_id=user.id)
     if not row:
@@ -248,10 +358,50 @@ def get_campaign(
 # ===== Plans =====
 
 
-@router.post("/campaigns/{campaign_id}/plans/generate")
+@router.post(
+    "/campaigns/{campaign_id}/plans/generate",
+    summary="生成复习计划",
+    responses={
+        200: {
+            "description": "计划已生成并进入待审批状态",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "生成复习计划",
+                            "value": {
+                                "run_id": "run_plan_1001",
+                                "version": 1,
+                                "plan": {
+                                    "sessions": [
+                                        {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                    ],
+                                    "intensity": "medium",
+                                },
+                                "risk_level": "CONFIRM_REQUIRED",
+                                "requires_approval": True,
+                                "approval_id": "apv_1001",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def generate_plan(
     campaign_id: str,
-    body: PlanGenerateIn,
+    body: Annotated[
+        PlanGenerateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "生成复习计划",
+                    "value": {},
+                }
+            }
+        ),
+    ],
     request: Request,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -403,24 +553,94 @@ async def generate_plan(
     )
 
 
-@router.get("/campaigns/{campaign_id}/plan-versions")
+@router.get(
+    "/campaigns/{campaign_id}/plan-versions",
+    summary="列出计划版本",
+    responses={
+        200: {
+            "description": "返回该复习活动的全部计划版本",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "计划版本列表",
+                            "value": [
+                                {
+                                    "campaign_id": "frc_1001",
+                                    "version": 1,
+                                    "plan": {
+                                        "sessions": [
+                                            {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                        ]
+                                    },
+                                    "source_snapshot_id": "snap_1001",
+                                    "model_provider": "reasoning_primary",
+                                    "route_policy": "reasoning_primary",
+                                    "risk_level": "CONFIRM_REQUIRED",
+                                    "approval_id": "apv_1001",
+                                    "supersedes_version": None,
+                                    "created_at": "2026-10-06T09:30:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_plan_versions(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[PlanVersionOut]:
+    """列出指定复习活动的全部计划版本（版本不可变）。"""
     repo = _repo(container)
     rows = repo.list_plan_versions(campaign_id, user_id=user.id)
     return [_plan_to_out(r) for r in rows]
 
 
-@router.get("/campaigns/{campaign_id}/plan-versions/{version}")
+@router.get(
+    "/campaigns/{campaign_id}/plan-versions/{version}",
+    summary="读取计划版本",
+    responses={
+        200: {
+            "description": "返回指定计划版本",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "计划版本详情",
+                            "value": {
+                                "campaign_id": "frc_1001",
+                                "version": 1,
+                                "plan": {
+                                    "sessions": [
+                                        {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                    ]
+                                },
+                                "source_snapshot_id": "snap_1001",
+                                "model_provider": "reasoning_primary",
+                                "route_policy": "reasoning_primary",
+                                "risk_level": "CONFIRM_REQUIRED",
+                                "approval_id": "apv_1001",
+                                "supersedes_version": None,
+                                "created_at": "2026-10-06T09:30:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_plan_version(
     campaign_id: str,
     version: int,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> PlanVersionOut:
+    """读取指定计划版本；不存在返回 404（NOT_FOUND）。"""
     repo = _repo(container)
     row = repo.get_plan_version(campaign_id, version, user_id=user.id)
     if not row:
@@ -431,10 +651,44 @@ def get_plan_version(
 # ===== Activate =====
 
 
-@router.post("/campaigns/{campaign_id}/activate")
+@router.post(
+    "/campaigns/{campaign_id}/activate",
+    summary="激活计划版本",
+    responses={
+        200: {
+            "description": "激活命令已受理；实际激活由 Worker 经 Gateway 原子完成后生效",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "激活计划版本",
+                            "value": {
+                                "campaign_id": "frc_1001",
+                                "active_version": 1,
+                                "activated": False,
+                                "status": "PENDING",
+                                "run_id": "run_activate_1001",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def activate_campaign(
     campaign_id: str,
-    body: ActivateIn,
+    body: Annotated[
+        ActivateIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "激活计划版本 1",
+                    "value": {"version": 1},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
@@ -497,13 +751,53 @@ def activate_campaign(
 # ===== Daily agenda =====
 
 
-@router.get("/campaigns/{campaign_id}/agendas/today")
+@router.get(
+    "/campaigns/{campaign_id}/agendas/today",
+    summary="获取今日议程",
+    responses={
+        200: {
+            "description": "返回今日议程；不存在时按已激活版本生成",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "今日议程",
+                            "value": {
+                                "agenda_id": "agenda_1001",
+                                "campaign_id": "frc_1001",
+                                "plan_version": 1,
+                                "agenda_date": "2026-10-06",
+                                "total_minutes": 120,
+                                "items": [
+                                    {
+                                        "item_id": "item_1001",
+                                        "title": "线性代数：特征值复习",
+                                        "course_name": "线性代数",
+                                        "scheduled_minutes": 60,
+                                        "sort_order": 1,
+                                        "status": "pending",
+                                        "personal_task_id": None,
+                                        "difficulty": None,
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_today_agenda(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> DailyAgendaOut:
-    """获取今日议程。若不存在则按 active version 生成。"""
+    """获取今日议程，若不存在则按已激活版本生成。
+
+    - campaign 不存在返回 404（NOT_FOUND）。
+    - campaign 尚未激活返回 409（AGENT_INVALID_STATE）。
+    """
     repo = _repo(container)
     campaign = repo.get_campaign(campaign_id, user_id=user.id)
     if not campaign:
@@ -532,15 +826,50 @@ def get_today_agenda(
     )
 
 
-@router.post("/daily-items/{item_id}/complete")
+@router.post(
+    "/daily-items/{item_id}/complete",
+    summary="完成议程任务",
+    responses={
+        200: {
+            "description": "议程任务已标记完成",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "完成议程任务",
+                            "value": {
+                                "item_id": "item_1001",
+                                "status": "completed",
+                                "completed_at": "2026-10-06T20:30:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def complete_item(
     item_id: str,
-    body: CompleteItemIn,
+    body: Annotated[
+        CompleteItemIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "完成任务并反馈难度",
+                    "value": {
+                        "difficulty": "medium",
+                        "feedback": "特征值部分仍需再巩固",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> CompleteItemOut:
-    """完成 agenda item。"""
+    """完成 agenda item；item 不存在返回 404（NOT_FOUND）。"""
     repo = _repo(container)
     from ...services.final_review.agenda_service import AgendaService
 
@@ -564,15 +893,48 @@ def complete_item(
     )
 
 
-@router.post("/campaigns/{campaign_id}/daily-checkins")
+@router.post(
+    "/campaigns/{campaign_id}/daily-checkins",
+    summary="提交每日签到",
+    responses={
+        200: {
+            "description": "签到已记录，返回写入的 evidence 条数",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "提交每日签到",
+                            "value": {"recorded": True, "evidence_count": 2},
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def daily_checkin(
     campaign_id: str,
-    body: DailyCheckinIn,
+    body: Annotated[
+        DailyCheckinIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "晚间反馈",
+                    "value": {
+                        "report_date": "2026-10-06",
+                        "completed_item_ids": ["item_1001"],
+                        "insufficient_time": False,
+                        "difficulty_notes": "线性代数时间偏紧",
+                    },
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ) -> DailyCheckinOut:
-    """每日签到/晚间反馈。记录完成情况和反馈作为 evidence。"""
+    """每日签到/晚间反馈，把完成情况和反馈记录为 evidence；campaign 不存在返回 404（NOT_FOUND）。"""
     repo = _repo(container)
     campaign = repo.get_campaign(campaign_id, user_id=user.id)
     if not campaign:
@@ -598,10 +960,44 @@ def daily_checkin(
 # ===== Adjustments =====
 
 
-@router.post("/campaigns/{campaign_id}/adjustments/analyze")
+@router.post(
+    "/campaigns/{campaign_id}/adjustments/analyze",
+    summary="分析复习调整",
+    responses={
+        200: {
+            "description": "分析完成并产生调整建议（不直接改动已激活计划）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "分析复习调整",
+                            "value": {
+                                "run_id": "run_adjust_1001",
+                                "proposal_id": "prop_1001",
+                                "risk_level": "CONFIRM_REQUIRED",
+                                "requires_approval": True,
+                                "approval_id": "apv_1002",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def analyze_adjustments(
     campaign_id: str,
-    body: AdjustmentAnalyzeIn,
+    body: Annotated[
+        AdjustmentAnalyzeIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "分析近期完成情况",
+                    "value": {"idempotency_key": "adjust-frc_1001-2026-10-06"},
+                }
+            }
+        ),
+    ],
     request: Request,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
@@ -760,21 +1156,93 @@ async def analyze_adjustments(
     )
 
 
-@router.get("/campaigns/{campaign_id}/adjustment-proposals")
+@router.get(
+    "/campaigns/{campaign_id}/adjustment-proposals",
+    summary="列出调整建议",
+    responses={
+        200: {
+            "description": "返回该复习活动的全部调整建议",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "调整建议列表",
+                            "value": [
+                                {
+                                    "proposal_id": "prop_1001",
+                                    "campaign_id": "frc_1001",
+                                    "source_version": 1,
+                                    "proposal": {
+                                        "changes": [
+                                            {"action": "reduce_minutes", "course_name": "线性代数"}
+                                        ],
+                                        "reason": "连续两天未完成",
+                                    },
+                                    "risk_level": "CONFIRM_REQUIRED",
+                                    "status": "pending",
+                                    "approval_id": "apv_1002",
+                                    "target_version": None,
+                                    "reason": "连续两天未完成",
+                                    "created_at": "2026-10-06T21:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_proposals(
     campaign_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
 ) -> list[AdjustmentProposalOut]:
+    """列出指定复习活动的全部调整建议。"""
     repo = _repo(container)
     rows = repo.list_proposals(campaign_id, user_id=user.id)
     return [_proposal_to_out(r) for r in rows]
 
 
-@router.post("/adjustment-proposals/{proposal_id}/decision")
+@router.post(
+    "/adjustment-proposals/{proposal_id}/decision",
+    summary="审批调整建议",
+    responses={
+        200: {
+            "description": "审批已受理；批准由 Worker 异步创建并激活新版本，拒绝则保持计划不变",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "批准调整建议",
+                            "value": {
+                                "proposal_id": "prop_1001",
+                                "status": "pending",
+                                "new_version": None,
+                                "active_version": None,
+                                "run_id": "run_apply_1001",
+                                "pending": True,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def proposal_decision(
     proposal_id: str,
-    body: AdjustmentDecisionIn,
+    body: Annotated[
+        AdjustmentDecisionIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "批准调整建议",
+                    "value": {"decision": "APPROVED", "reason": "同意降低每日任务量"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(get_container),
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),

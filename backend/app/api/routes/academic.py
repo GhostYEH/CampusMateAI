@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Body, Depends
 
 from ...core.exceptions import AppException
 from ...models.multi_role import UserRow
@@ -13,7 +15,7 @@ from ...schemas.academic import AcademicBindRequest
 from ...services.container import ServiceContainer, get_container
 from ..deps import require_role
 
-router = APIRouter(prefix="/academic", tags=["academic"])
+router = APIRouter(prefix="/academic", tags=["教务兼容（已废弃）"])
 
 
 class UniversityRequired(AppException):
@@ -41,9 +43,40 @@ def _university(user: UserRow, c: ServiceContainer):
     return university
 
 
-@router.get("/providers")
+@router.get(
+    "/providers",
+    summary="列出教务提供方",
+    responses={
+        200: {
+            "description": "当前学校教务系统探测结果（供兼容前端使用）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已支持自动教务同步的学校",
+                            "value": {
+                                "items": [
+                                    {
+                                        "university_id": "uni_demo",
+                                        "provider": "zhengfang",
+                                        "status": "available",
+                                        "supports": ["courses", "schedule", "grades", "exams"],
+                                    }
+                                ],
+                                "_deprecated": "Use GET /api/v1/edu/detect instead",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def providers(user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)) -> dict:
-    """[deprecated] 委托 EduConnector.detect。"""
+    """[deprecated] 委托 EduConnector.detect 探测当前学校的教务厂商与能力。
+
+    未选择学校返回 409 UNIVERSITY_REQUIRED；新前端请改用 /edu/*。
+    """
     university = _university(user, c)
     detect = c.edu_connector.detect(university.id)
     supported = detect.detected and detect.provider not in ("unknown", "unsupported")
@@ -60,9 +93,36 @@ def providers(user: UserRow = Depends(require_role("student")), c: ServiceContai
     }
 
 
-@router.get("/status")
+@router.get(
+    "/status",
+    summary="读取教务绑定状态",
+    responses={
+        200: {
+            "description": "当前用户教务绑定状态；未绑定或学校不支持时给出状态占位",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "已绑定教务账号",
+                            "value": {
+                                "status": "active",
+                                "provider": "zhengfang",
+                                "last_synced_at": "2026-10-05T00:00:00+00:00",
+                                "external_student_id": "20240001",
+                                "_deprecated": "Use GET /api/v1/edu/binding instead",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def status(user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)) -> dict:
-    """[deprecated] 委托 EduConnector.get_binding。"""
+    """[deprecated] 委托 EduConnector.get_binding 读取教务绑定状态。
+
+    未选择学校返回 409 UNIVERSITY_REQUIRED；新前端请改用 /edu/*。
+    """
     university = _university(user, c)
     binding = c.edu_connector.get_binding(user.id)
     if not binding:
@@ -83,18 +143,55 @@ def status(user: UserRow = Depends(require_role("student")), c: ServiceContainer
     }
 
 
-@router.post("/bind")
+@router.post("/bind", summary="绑定教务账号")
 async def bind(
-    req: AcademicBindRequest,
+    req: Annotated[
+        AcademicBindRequest,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "提交教务账号密码",
+                    "value": {"username": "20240001", "password": "Demo123456"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(require_role("student")),
     c: ServiceContainer = Depends(_container),
 ) -> dict:
-    """[deprecated] 委托 EduConnector.bind。"""
+    """[deprecated] 兼容旧版一次性绑定；当前恒抛 409 ACADEMIC_UNSUPPORTED。
+
+    新前端请改用 /edu/connections 等异步连接流程。
+    """
     raise AcademicUnsupported()
 
 
-@router.delete("/binding")
+@router.delete(
+    "/binding",
+    summary="解绑教务账号",
+    responses={
+        200: {
+            "description": "解绑完成",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "解绑教务账号",
+                            "value": {
+                                "ok": True,
+                                "_deprecated": "Use DELETE /api/v1/edu/binding instead",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def disconnect(user: UserRow = Depends(require_role("student")), c: ServiceContainer = Depends(_container)) -> dict:
-    """[deprecated] 委托 EduConnector.unbind。"""
+    """[deprecated] 委托 EduConnector.unbind 解绑当前用户教务账号。
+
+    新前端请改用 /edu/binding。
+    """
     c.edu_connector.unbind(user.id)
     return {"ok": True, "_deprecated": "Use DELETE /api/v1/edu/binding instead"}

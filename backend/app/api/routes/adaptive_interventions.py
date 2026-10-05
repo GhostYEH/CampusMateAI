@@ -29,7 +29,7 @@ from ...services.container import ServiceContainer, get_container
 from ...services.adaptive_agent.intervention_service import PLAN_SCOPE_GOAL_PREFIX
 from ..deps import student_only
 
-router = APIRouter(prefix="/adaptive-interventions", tags=["adaptive-interventions"])
+router = APIRouter(prefix="/adaptive-interventions", tags=["自适应干预"])
 
 
 def _container() -> ServiceContainer:
@@ -144,12 +144,59 @@ def _out(row: AdaptiveInterventionRow) -> AdaptiveInterventionOut:
     )
 
 
-@router.get("", response_model=AdaptiveInterventionPage)
+@router.get(
+    "",
+    response_model=AdaptiveInterventionPage,
+    summary="列出自适应干预",
+    responses={
+        200: {
+            "description": "分页返回当前学生本人的干预记录",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "列出自适应干预",
+                            "value": {
+                                "items": [
+                                    {
+                                        "intervention_id": "intv_20261006_a1b2c3",
+                                        "goal_id": "goal_20260920_001",
+                                        "plan_id": "plan_20261006_a1b2c3d4",
+                                        "scope_type": "GOAL",
+                                        "status": "OBSERVING",
+                                        "strategy_code": "WORKLOAD_REDUCTION",
+                                        "strategy_version": "adaptive-strategy-v1",
+                                        "rationale_codes": ["workload_pressure_high"],
+                                        "expected_outcomes": ["TOTAL_WORKLOAD_REDUCED"],
+                                        "confidence": 0.72,
+                                        "problem_types": ["WORKLOAD_PRESSURE_HIGH"],
+                                        "data_quality": "verified",
+                                        "observation_due_at": "2026-10-08T08:00:00+00:00",
+                                        "created_at": "2026-10-06T08:00:00+00:00",
+                                        "updated_at": "2026-10-06T08:00:00+00:00",
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 20,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def list_adaptive_interventions(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> AdaptiveInterventionPage:
+    """分页列出当前学生的自适应干预记录，按创建时间倒序。
+
+    - 只读、仅学生本人；不返回内部 user_id、原始 JSON 或证据正文。
+    """
     rows, total = container.adaptive_intervention_repository.list_interventions(
         user_id=user.id, page=page, page_size=page_size
     )
@@ -159,12 +206,51 @@ def list_adaptive_interventions(
     )
 
 
-@router.get("/{intervention_id}", response_model=AdaptiveInterventionOut)
+@router.get(
+    "/{intervention_id}",
+    response_model=AdaptiveInterventionOut,
+    summary="读取自适应干预",
+    responses={
+        200: {
+            "description": "返回单条干预记录的公开视图",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取自适应干预",
+                            "value": {
+                                "intervention_id": "intv_20261006_a1b2c3",
+                                "goal_id": "goal_20260920_001",
+                                "plan_id": "plan_20261006_a1b2c3d4",
+                                "scope_type": "GOAL",
+                                "status": "OBSERVING",
+                                "strategy_code": "WORKLOAD_REDUCTION",
+                                "strategy_version": "adaptive-strategy-v1",
+                                "rationale_codes": ["workload_pressure_high"],
+                                "expected_outcomes": ["TOTAL_WORKLOAD_REDUCED"],
+                                "confidence": 0.72,
+                                "problem_types": ["WORKLOAD_PRESSURE_HIGH"],
+                                "data_quality": "verified",
+                                "observation_due_at": "2026-10-08T08:00:00+00:00",
+                                "created_at": "2026-10-06T08:00:00+00:00",
+                                "updated_at": "2026-10-06T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_adaptive_intervention(
     intervention_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> AdaptiveInterventionOut:
+    """读取指定干预记录的公开视图。
+
+    - 记录不存在或不属于本人一律返回 404（NOT_FOUND），不泄露是否存在。
+    """
     row = container.adaptive_intervention_repository.get(
         user_id=user.id, intervention_id=intervention_id
     )
@@ -174,12 +260,51 @@ def get_adaptive_intervention(
     return _out(row)
 
 
-@router.get("/{intervention_id}/outcome", response_model=AdaptiveInterventionOutcomeOut)
+@router.get(
+    "/{intervention_id}/outcome",
+    response_model=AdaptiveInterventionOutcomeOut,
+    summary="读取自适应干预效果评估",
+    responses={
+        200: {
+            "description": "返回干预结果评估视图；尚无后台观测时返回兼容的未观测形状",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "读取自适应干预效果评估",
+                            "value": {
+                                "evaluation_id": "eval_20261007_x1y2z3",
+                                "intervention_id": "intv_20261006_a1b2c3",
+                                "goal_id": "goal_20260920_001",
+                                "plan_id": "plan_20261006_a1b2c3d4",
+                                "as_of": "2026-10-07T08:00:00+00:00",
+                                "observation_status": "IN_PROGRESS",
+                                "execution_signal": "IN_PROGRESS",
+                                "adoption": "IN_PROGRESS",
+                                "plan_fidelity": "UNVERIFIABLE",
+                                "verdict": "INCONCLUSIVE",
+                                "observed_outcome": "INSUFFICIENT_EVIDENCE",
+                                "causal_claim": "NOT_ESTIMATED",
+                                "confidence": 0.66,
+                                "evaluator_version": "adaptive-intervention-outcome-v2",
+                                "created_at": "2026-10-07T08:00:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 def get_adaptive_intervention_outcome(
     intervention_id: str,
     user: UserRow = Depends(student_only),
     container: ServiceContainer = Depends(_container),
 ) -> AdaptiveInterventionOutcomeOut:
+    """读取指定干预的效果评估，纯查询、不触发重算或写入。
+
+    - 尚无后台观测时返回 NOT_OBSERVED 兼容形状；记录不存在或不属于本人返回 404。
+    """
     intervention = container.adaptive_intervention_repository.get(
         user_id=user.id, intervention_id=intervention_id
     )

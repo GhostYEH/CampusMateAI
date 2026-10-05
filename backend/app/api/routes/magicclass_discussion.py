@@ -7,9 +7,9 @@ fetched afterwards through the artifact download route.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Body, Depends, Header
 from pydantic import BaseModel, Field
 
 from ...models.multi_role import UserRow
@@ -20,7 +20,7 @@ from ...services.magicclass.fusion_errors import FusionInvalidRequest, FusionUna
 from ..deps import current_user
 from ..magicclass_gateway import build_fusion_client
 
-router = APIRouter(prefix="/courses", tags=["magicclass-discussion"])
+router = APIRouter(prefix="/courses", tags=["课堂讨论"])
 
 
 class DiscussionIn(BaseModel):
@@ -47,15 +47,66 @@ def _key(value: Optional[str]) -> str:
     return text
 
 
-@router.post("/{course_id}/discussion", status_code=202)
+@router.post(
+    "/{course_id}/discussion",
+    status_code=202,
+    summary="运行圆桌讨论",
+    responses={
+        202: {
+            "description": "已受理，返回可轮询的多智能体讨论任务",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "排队一场圆桌讨论",
+                            "value": {
+                                "job_id": "job_9",
+                                "job": {
+                                    "id": "job_9",
+                                    "course_id": "course_db_2025",
+                                    "kind": "discussion",
+                                    "mode": "stub-model",
+                                    "status": "queued",
+                                    "progress": 0,
+                                    "attempts": 0,
+                                    "error_code": None,
+                                    "artifact_id": None,
+                                    "scene_id": None,
+                                    "created_at": "2026-10-06T08:00:00+00:00",
+                                    "updated_at": "2026-10-06T08:00:00+00:00",
+                                },
+                            },
+                        }
+                    }
+                }
+            },
+        }
+    },
+)
 async def run_discussion(
     course_id: str,
-    body: DiscussionIn,
+    body: Annotated[
+        DiscussionIn,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "就函数极限发起圆桌讨论",
+                    "value": {"prompt": "请讨论函数极限的直观含义"},
+                }
+            }
+        ),
+    ],
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
     client: MagicClassFusionClient = Depends(_client),
 ) -> Dict[str, Any]:
+    """运行一场绑定课程的多智能体圆桌讨论。
+
+    讨论在受管服务上作为排队任务执行，因此返回 202 与任务引用，讨论记录稍后
+    经产物下载路由取回。必须携带有效 Idempotency-Key；需要已登录且对该课程有
+    访问权限；受管服务未启用时返回 503。
+    """
     _require(container)
     assert_course_access(container, user, course_id)
     return await client.run_discussion(
