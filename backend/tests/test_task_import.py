@@ -79,6 +79,23 @@ def test_notice_keeps_eligibility_and_signature_dates_out_of_deadline() -> None:
     assert body["needs_user_confirmation"] is True
 
 
+def test_dot_date_deadline_and_form_task_are_extracted() -> None:
+    client = _client()
+    response = client.post(
+        "/api/v1/tasks/import/analyze",
+        headers=_headers(client),
+        json={
+            "content": "本次中秋假期和国庆假期的离校统计为合并表，请仔细填写。截止时间为9.23（周三）下午18:00。",
+            "source_name": "班级通知",
+        },
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["tasks"][0]
+    assert draft["title"] == "填写离校统计表"
+    assert draft["deadline"].endswith("T18:00:00+08:00")
+
+
 def test_analyze_marks_existing_title_without_overwriting_progress() -> None:
     client = _client()
     headers = _headers(client)

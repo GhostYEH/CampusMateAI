@@ -273,6 +273,10 @@ async def analyze_task_import(
         allow_multi_task=not _submission_time_pending(source_text),
     )
     drafts = []
+    actionable_items = [item for item in extracted.tasks if item.actionable]
+    inferred_deadline = None
+    if len(actionable_items) == 1:
+        inferred_deadline = next((item.deadline for item in extracted.tasks if item.deadline), None)
     for item in extracted.tasks:
         if not item.actionable:
             continue
@@ -303,7 +307,7 @@ async def analyze_task_import(
         drafts.append(TaskImportDraft(
             title=title,
             description=_notice_notes(source_text, materials),
-            deadline=item.deadline.isoformat() if item.deadline and not pending_submission else None,
+            deadline=(item.deadline or inferred_deadline).isoformat() if (item.deadline or inferred_deadline) and not pending_submission else None,
             materials=materials,
             submission_method=item.submission_method,
             location=item.location,

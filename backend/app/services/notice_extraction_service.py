@@ -76,6 +76,8 @@ _DEADLINE_PATTERNS = [
     # 允许截止/截至后跟中文/英文冒号或"为/是"
     (re.compile(r"截止(?:时间)?(?:为|是|[:：])?\s*(\d{4})年(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?"), "deadline_full"),
     (re.compile(r"截止(?:时间)?(?:为|是|[:：])?\s*(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?"), "deadline_md"),
+    (re.compile(r"截止(?:时间)?(?:为|是|[:：])?\s*(\d{1,2})[./](\d{1,2})(?:\s*[（(][^）)]*[）)])?\s*(上午|下午|晚上|晚)?\s*(\d{1,2})[:：](\d{2})"), "deadline_dot"),
+    (re.compile(r"截止(?:时间)?(?:为|是|[:：])?\s*(\d{1,2})[./](\d{1,2})(?:\s*[（(][^）)]*[）)])?"), "deadline_dot_date"),
     (re.compile(r"截至\s*(?:时间)?(?:[:：])?\s*(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?"), "deadline_md"),
     # 第X周周X (如: 第8周周五17:00)
     (re.compile(r"第(\d{1,2})周(?:周([一二三四五六日天]))(?:\s*(\d{1,2}):(\d{2}))?"), "week_n"),
@@ -95,6 +97,8 @@ _DEADLINE_PATTERNS = [
         "full_date",
     ),
     (re.compile(r"(\d{1,2})月(\d{1,2})日(?:\s*(\d{1,2}):(\d{2}))?(?:前|之前)?"), "md_date"),
+    (re.compile(r"(\d{1,2})[./](\d{1,2})(?:\s*[（(][^）)]*[）)])?\s*(上午|下午|晚上|晚)?\s*(\d{1,2})[:：](\d{2})(?:前|之前)?"), "md_dot"),
+    (re.compile(r"(\d{1,2})[./](\d{1,2})(?:前|之前)?"), "md_dot_date"),
     (re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})"), "iso_date"),
 ]
 
@@ -325,6 +329,19 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                 if candidate < now - _timedelta(days=2):
                     candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
                 return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
+            if kind in ("deadline_dot", "deadline_dot_date"):
+                mo, d = int(m.group(1)), int(m.group(2))
+                if kind == "deadline_dot":
+                    period, h, mi = m.group(3), int(m.group(4)), int(m.group(5))
+                    if period in ("下午", "晚上", "晚") and h < 12:
+                        h += 12
+                else:
+                    h, mi = None, None
+                ref_year = published_at.year if published_at else now.year
+                candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
+                if candidate < now - _timedelta(days=2):
+                    candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
+                return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
             if kind == "week_n":
                 weekday_cn = m.group(2) or "五"
                 target_wd = _WEEKDAY_CN.get(weekday_cn, 4)
@@ -397,7 +414,7 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
 
     # 第二轮:普通日期,需排除"开始时间"/"公示日"等上下文
     for pat, kind in _DEADLINE_PATTERNS:
-        if kind not in ("full_date", "md_date", "iso_date"):
+        if kind not in ("full_date", "md_date", "md_dot", "md_dot_date", "iso_date"):
             continue
         # 找出所有匹配,选第一个不在非截止上下文中的
         for m in pat.finditer(text):
@@ -412,6 +429,19 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                     mo, d = int(m.group(1)), int(m.group(2))
                     h, mi = _extract_time(m, 3, 4)
                     ref_year = (published_at.year if published_at else now.year)
+                    candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
+                    if candidate < now - _timedelta(days=2):
+                        candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
+                    return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
+                if kind in ("md_dot", "md_dot_date"):
+                    mo, d = int(m.group(1)), int(m.group(2))
+                    if kind == "md_dot":
+                        period, h, mi = m.group(3), int(m.group(4)), int(m.group(5))
+                        if period in ("下午", "晚上", "晚") and h < 12:
+                            h += 12
+                    else:
+                        h, mi = None, None
+                    ref_year = published_at.year if published_at else now.year
                     candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
                     if candidate < now - _timedelta(days=2):
                         candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
@@ -522,6 +552,10 @@ def _rule_parse_location(text: str) -> Optional[str]:
 
 def _rule_parse_task(text: str) -> str:
     text_norm = text.replace(" ", "")
+    if "离校" in text_norm and ("填写" in text_norm or "统计表" in text_norm or "合并表" in text_norm):
+        return "填写离校统计表"
+    if "填写" in text_norm and "表" in text_norm:
+        return "填写通知中的表格"
     for keys, key2, default in _TASK_KEYWORDS:
         if key2:
             if keys in text_norm and key2 in text_norm:
