@@ -45,6 +45,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -246,7 +247,7 @@ fun FocusScreen(
         }
         Unit
     }
-    val wallpaperResource = R.drawable.focus_room_entry
+    val wallpaperResource = R.drawable.focus_study_desk_twilight
     CampusGlassScene(
         darkMode = false,
         background = { FocusHallBackdrop(wallpaperResource) },
@@ -383,21 +384,26 @@ private fun QuickFocusCard(
     val ink = FocusStudyPalette.Ink
     val quiet = FocusStudyPalette.Muted
     val green = FocusStudyPalette.Pine
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(FocusStudyPalette.Paper)
-            .border(1.dp, FocusStudyPalette.Line, RoundedCornerShape(28.dp))
-            .padding(20.dp),
-    ) {
-        Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+    val paperShape = RoundedCornerShape(26.dp)
+    Box(Modifier.fillMaxWidth().shadow(14.dp, paperShape).clip(paperShape)
+        .background(FocusStudyPalette.Paper).border(1.dp, Color(0xFFC7B79A), paperShape)) {
+        Image(painterResource(R.drawable.focus_study_paper_texture), contentDescription = null,
+            modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 21.dp, vertical = 20.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("CAMPUSMATE  /  STUDY ROOM", color = green, fontSize = 10.sp,
+                fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("✦  01", color = FocusStudyPalette.Copper, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
         Spacer(Modifier.height(8.dp))
-        Box(Modifier.width(42.dp).height(2.dp).background(FocusStudyPalette.Copper))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(FocusStudyPalette.Copper.copy(alpha = .52f)))
         Spacer(Modifier.height(9.dp))
         Text("从现在开始，专注一件事", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (taskName != "本次专注") Text(taskName, color = quiet, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text("进入后可以切换雨夜、图书馆与林间场景", color = quiet, fontSize = 13.sp)
         Spacer(Modifier.height(18.dp))
-        Text("小伴想先问你：这次准备完成什么？", color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Text("这次准备完成什么？", color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         if (fixedGoal != null) {
             Text(fixedGoal, color = green, fontSize = 15.sp, fontWeight = FontWeight.Medium)
@@ -415,7 +421,9 @@ private fun QuickFocusCard(
                 ),
             )
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(19.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(FocusStudyPalette.Line))
+        Spacer(Modifier.height(16.dp))
         Text("01  专注时长", color = green, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -451,7 +459,9 @@ private fun QuickFocusCard(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(15.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(FocusStudyPalette.Line))
+        Spacer(Modifier.height(16.dp))
         Text("02  专注方式", color = green, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         listOf(FocusSessionMode.QUIET, FocusSessionMode.AI_COMPANION, FocusSessionMode.SMART_GUARD).forEach { option ->
@@ -492,6 +502,7 @@ private fun QuickFocusCard(
             Spacer(Modifier.width(6.dp))
             Text("开始专注", fontWeight = FontWeight.Bold)
         }
+        }
     }
 }
 
@@ -508,10 +519,10 @@ private fun BoxScope.FocusHallBackdrop(@DrawableRes wallpaperResource: Int) {
             .matchParentSize()
             .background(
                 Brush.verticalGradient(
-                    0f to Color(0xA8132C26),
-                    .25f to Color(0x330E211C),
+                    0f to Color(0x99101F22),
+                    .2f to Color(0x330E211C),
                     .72f to Color.Transparent,
-                    1f to Color(0x9614221B),
+                    1f to Color(0x5510181A),
                 ),
             ),
     )
