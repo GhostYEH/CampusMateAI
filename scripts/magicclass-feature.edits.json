@@ -1,6 +1,11 @@
 {
   "edits": [
     {
+      "file": ".dockerignore",
+      "from": "# dependencies\nnode_modules\n.pnpm-store\n\n# build output\n.next\nout\nbuild\ndist\n",
+      "to": "# dependencies\n# 注意：必须用 **/ 递归匹配。无斜杠的 `node_modules` 只匹配根目录，\n# pnpm workspace 的嵌套依赖（packages/@magicclass/*/node_modules）会被漏掉，\n# 而它们是 Windows junction 软链接，拷进 Linux 镜像后失效，\n# 会遮蔽容器内 pnpm 正确安装的包，导致 next build 报 \"Module not found\"。\n**/node_modules\n**/.pnpm-store\n\n# build output（同样递归：packages/*/dist 都是构建产物，由 postinstall 重新生成）\n**/.next\n**/out\n**/build\n**/dist\n"
+    },
+    {
       "file": ".env.example",
       "from": "# Optional bearer-token authentication or custom Bedrock-compatible endpoint.\n# AWS_BEARER_TOKEN_BEDROCK=\n# BEDROCK_API_KEY=\n# BEDROCK_BASE_URL=\n# DEFAULT_MODEL=bedrock:us.anthropic.claude-sonnet-5\n\n# --- TTS (Text-to-Speech) ----------------------------------------------------\n\nTTS_OPENAI_API_KEY=\nTTS_OPENAI_BASE_URL=\n\nTTS_AZURE_API_KEY=\nTTS_AZURE_BASE_URL=\n\nTTS_GLM_API_KEY=\nTTS_GLM_BASE_URL=\n",
       "to": "# Optional bearer-token authentication or custom Bedrock-compatible endpoint.\n# AWS_BEARER_TOKEN_BEDROCK=\n# BEDROCK_API_KEY=\n# BEDROCK_BASE_URL=\n# DEFAULT_MODEL=bedrock:us.anthropic.claude-sonnet-5\n\n# --- TTS (Text-to-Speech) ----------------------------------------------------\n\n# MiMo V2.5 speech synthesis. Set the key only in a local .env.local file.\nTTS_MIMO_API_KEY=\nTTS_MIMO_BASE_URL=https://api.xiaomimimo.com/v1\nTTS_MIMO_MODELS=mimo-v2.5-tts\n\nTTS_OPENAI_API_KEY=\nTTS_OPENAI_BASE_URL=\n\nTTS_AZURE_API_KEY=\nTTS_AZURE_BASE_URL=\n\nTTS_GLM_API_KEY=\nTTS_GLM_BASE_URL=\n"
