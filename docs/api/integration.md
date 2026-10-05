@@ -188,7 +188,9 @@ data: {"id":"evt_example","type":"RUN_STARTED","sequence":1,"run_id":"run_exampl
 
 示例包含必需字段，可空的可选字段省略；event 为实际 AgentEventType，且与 data.type 一致。重连发送 **Last-Event-ID（event id，不是 sequence）**；按 sequence 去重并保持顺序。心跳注释不改变业务状态；流断开不会取消运行。无效或不属于本 run 的游标返回 AGENT_CURSOR_INVALID，改用 REST `/events?after_sequence=0&limit=...` 归并，再续传。终态事件发送后流会关闭，不能把正常关闭当作任务失败。
 
-pause/resume/retry/cancel 通过 run 控制接口执行。retry 返回新的运行结果时按新 run_id 追踪。审批决策为 APPROVED/REJECTED；相同决策重放幂等，相反决策冲突，过期不等于批准。产物先读 `/agent-artifacts/{id}`，再 `/content` 获取文本（按 mime_type 读取 Markdown/JSON）；记忆的建立与 withdraw 独立管理。全局运行观测页面及管理接口已移除，客户端只追踪当前用户的任务与运行。
+pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每次独立动作生成新 idempotency_key，仅网络重试复用；body 的键优先于请求头，省略键会使后续相同动作不再执行。retry 首次成功返回新 run_id，但同键重放返回原运行，首次响应丢失时须回读任务的 runs 并检查 retry_of；多个候选时不能自动认定关联，也不能盲目换键重试。cancel 按状态机幂等，当前不消费控制键。完整规则见[运行控制与重试幂等](12-agents.md#run-controls)。
+
+审批决策为 APPROVED/REJECTED；相同决策重放幂等，相反决策冲突，过期不等于批准。产物先读 `/agent-artifacts/{id}`，再 `/content` 获取文本（按 mime_type 读取 Markdown/JSON）；记忆的建立与 withdraw 独立管理。全局运行观测页面及管理接口已移除，客户端只追踪当前用户的任务与运行。
 
 当前普通依赖支持 access_token query 回退，但 Web Agent SSE 明确使用 Authorization fetch，避免把 token 放进 URL；不要照搬原生 EventSource。
 

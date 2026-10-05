@@ -188,7 +188,9 @@ history 返回 `{items:object[],pagination:object,...}`，常见 pagination 为 
 
 本接口未出现在 OpenAPI，但已由后端注册：`WS /api/v1/focus/realtime-voice/ws/{session_id}?access_token=<access token>`。完整收发协议来自后端 [focus_realtime_voice.py](../../backend/app/api/routes/focus_realtime_voice.py)，本次未查看其他客户端。
 
-先 `POST /focus/realtime-voice/sessions`，201 返回 session_id 和相对 websocket_path，当前该字段不含 `/api/v1`；按基础路径拼接，并将 http/https Origin 转为 ws/wss。只能连接本用户创建的会话，无登录或不归属本用户在握手前关闭 code=1008。会话仅保存在单后端进程内，重启后丢失；DELETE sessions/{id} 停止并释放。
+先 `POST /focus/realtime-voice/sessions`，201 返回 session_id 和相对 websocket_path，当前该字段不含 `/api/v1`；按基础路径拼接，并将 http/https Origin 转为 ws/wss。只能连接本用户创建的会话，无登录或不归属本用户在握手前关闭 code=1008。会话仅保存在单后端进程内，重启后丢失。
+
+结束时先停止采集与播放，向已连接的 WebSocket 发送 `{"type":"stop"}` 或主动关闭连接；中继结束时会清理会话登记。`DELETE /focus/realtime-voice/sessions/{session_id}` 只删除内存会话登记、阻止后续握手，不会主动断开已经连接的 WebSocket，不能仅调用 DELETE 就认为音频传输已停止。DELETE 成功返回 200 `{session_id,stopped:true}`；会话已经清理、不存在或不属于本人时返回 404 `NOT_FOUND`，关闭后的清理请求可按已结束处理。
 
 | 方向 / 帧 | 数据 |
 | --- | --- |

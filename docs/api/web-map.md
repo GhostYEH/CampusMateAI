@@ -287,7 +287,7 @@
 
 ## 无对应注册路由的调用与核对边界
 
-以下是当前代码中保留的调用，不能据此给新前端实现出一个不存在的 API。活动模块已移除，旧 agentApi 与个人资料更新封装也有旧路径；未在当前页面使用的封装仍需避开。普通请求优先复用 api.js、agentRuntimeApi.js、learnerStateApi.js 中与本手册匹配的函数。
+以下是当前代码中保留的调用，不能据此给新前端实现出一个不存在的 API。活动模块已移除，旧 agentApi 仍有旧路径；未在当前页面使用的封装仍需避开。本人资料更新已使用 `PATCH /auth/me`。普通请求优先复用 api.js、agentRuntimeApi.js、learnerStateApi.js 中与本手册匹配的函数。
 
 | 方法 | 路径 | 函数 | 说明 |
 | --- | --- | --- | --- |
@@ -300,9 +300,9 @@
 | POST | `/activities/{id}/registration` | registerActivity | 旧活动封装；后端未注册活动接口 |
 | DELETE | `/activities/{id}/registration` | cancelActivityRegistration | 旧活动封装；后端未注册活动接口 |
 | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | addMagicClassWhiteboard | 受管服务有内部实现，但 CampusMate 网关未注册该公开路径；新前端不能直接调用内部服务 |
-| POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用课程场景 quiz-attempts 契约 |
+| POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用[课程场景 quiz-attempt 契约](14-magicclass.md) |
 
-覆盖方式：310 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+覆盖方式：298 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
 
 ## 动态地址与流式调用补充
 

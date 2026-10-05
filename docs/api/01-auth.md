@@ -1,6 +1,6 @@
 # 认证、账号与扫码登录
 
-> 对照日期：2026-10-04。本模块共 15 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-05。本模块共 15 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -74,6 +74,7 @@ Web 封装：`login`（[webreact/src/data/http/authEndpoints.js](../../webreact/
 | --- | --- | --- |
 | 200 | application/json | [TokenPair](schemas.md#schema-tokenpair) |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 429 | application/json | `RATE_LIMITED`；读取 `Retry-After` 后等待重试，见本页登录与注册限流 |
 
 200 响应顶层字段：
 
@@ -144,12 +145,14 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 | --- | --- | --- |
 | 201 | application/json | [UserPublic](schemas.md#schema-userpublic) |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 429 | application/json | `RATE_LIMITED`；读取 `Retry-After` 后等待重试，见本页登录与注册限流 |
 
 201 响应顶层字段：
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | string | 是 | — | 当前资源标识 |
+| `uid` | string | 否 | default="" | 账号唯一 UID；当前实现与 `id` 相同，供共同课堂邀请使用 |
 | `username` | string | 是 | — | 登录用户名 |
 | `role` | string | 是 | — | — |
 | `name` | string | 否 | default="" | 名称 |

@@ -1,12 +1,25 @@
 # Agent 运行时、审批、记忆、产物
 
-> 对照日期：2026-10-04。本模块共 20 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-05。本模块共 20 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
 ## 并发工具调用与执行归属
 
 相同 Run、幂等键和参数指纹的工具副作用最多由一个执行者接管；已完成调用重放结果，正在执行的并发调用返回既有 `AGENT_INVALID_STATE`（409），不能重新执行工具。审批恢复会原子抢占执行权，拒绝或过期审批仍拒绝执行。持久化 Worker 只领取已声明非空 handler_code 的运行，通知解析、复习生成和课程研究的内联运行由其原流程推进，避免被后台 Worker 当作未知处理器失败。
+
+<a id="run-controls"></a>
+## 运行控制与重试幂等
+
+`pause`、`resume`、`retry` 的幂等键优先级为请求体 `idempotency_key` → `Idempotency-Key` 请求头 → 固定默认值 `{action}:{run_id}`。记录按 run_id 和 key 查重，不再比较动作名；每次独立点击必须生成新键，同一次请求的网络重试才复用。省略键虽然能通过校验，但“暂停 → 恢复 → 再次暂停”会命中第一次暂停的默认键，第二次暂停不执行，仍返回当前运行状态。不同动作也不要共用同一键。上述控制返回 HTTP 200 后仍须检查响应中的 status；不满足状态前置条件返回 409 `AGENT_INVALID_STATE`。
+
+pause 从 QUEUED/RUNNING 切换为 PAUSED，已 PAUSED 时返回原状态；resume 从 PAUSED 恢复为 RUNNING（仍有执行者租约）或 QUEUED，已 RUNNING/QUEUED 时也返回原状态。retry 仅允许 FAILED/PARTIAL/CANCELLED；新运行还需要任务具有已注册的 handler。状态前置条件针对首次执行，同键重放先查重，可能返回其他当前状态。
+
+`retry` 首次成功创建新运行，返回新的 run_id，并将 retry_of 设置为原 run_id；后续按新 ID 追踪。**对原运行用同一键重放时，当前接口返回原运行的当前状态，不返回已创建的新运行**。客户端保留首次收到的新 ID；首次响应丢失时先用同一键重试，再读取 `GET /api/v1/agent-jobs/{job_id}/runs`（按创建时间降序）查 retry_of 为原 ID 的运行，并核对任务详情的 latest_run_id。此列表没有 source_run_id 筛选参数，公开响应也不包含控制键；多个重试运行并存时无法仅凭该列表精确对应某个键，应展示候选供确认，不要换新键盲目 retry，以免再创建运行。
+
+`cancel` 使用独立的状态机流程：请求体的 idempotency_key 当前未被消费，也没有声明 `Idempotency-Key` 请求头。重复取消 CANCELLED 运行返回该运行；对 SUCCEEDED/FAILED 取消返回 409 `AGENT_RUN_CANCELLED`；PARTIAL 仍允许取消为 CANCELLED。不要套用 pause/resume/retry 的键查重逻辑。
+
+这些是当前后端行为的接入说明，没有改变接口或字段。现有 Web 封装已提供控制调用；本次没有修改任何客户端，以上重复控制与响应丢失场景在 Web、Android、HarmonyOS、微信小程序均未做端侧验收。
 
 ## 接口索引
 
@@ -349,6 +362,8 @@ Web 封装：`getAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../webrea
 
 用途：取消运行。
 
+取消依赖状态机幂等，body.idempotency_key 当前不参与查重；重复取消与终态冲突见[运行控制](#run-controls)。
+
 鉴权：Bearer access token；已登录用户（另有资源归属校验）。
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`cancel_run`。
@@ -410,6 +425,8 @@ Web 封装：`cancelAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../web
 
 用途：暂停运行。
 
+每次独立暂停生成新幂等键，仅网络重试复用；省略键会使第二轮暂停被第一次的记录吞掉，见[运行控制](#run-controls)。
+
 鉴权：Bearer access token；已登录用户（另有资源归属校验）。
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`pause_run`。
@@ -433,7 +450,7 @@ Web 封装：`pauseAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../webr
 请求结构示例（占位符需替换；业务约束见字段字典与流程）：
 
 ```json
-{}
+{"idempotency_key":"pause_example_1"}
 ```
 
 响应：
@@ -472,6 +489,8 @@ Web 封装：`pauseAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../webr
 
 用途：恢复运行。
 
+每次独立恢复生成新幂等键，不与暂停键共用；body 优先于请求头，见[运行控制](#run-controls)。
+
 鉴权：Bearer access token；已登录用户（另有资源归属校验）。
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`resume_run`。
@@ -495,7 +514,7 @@ Web 封装：`resumeAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../web
 请求结构示例（占位符需替换；业务约束见字段字典与流程）：
 
 ```json
-{}
+{"idempotency_key":"resume_example_1"}
 ```
 
 响应：
@@ -534,6 +553,8 @@ Web 封装：`resumeAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../web
 
 用途：重试运行。
 
+首次成功返回新运行；同键重放返回原运行。首次响应丢失时按[运行控制](#run-controls)回读任务运行列表，避免换键创建重复运行。
+
 鉴权：Bearer access token；已登录用户（另有资源归属校验）。
 
 实现：[backend/app/api/routes/agent_runtime.py](../../backend/app/api/routes/agent_runtime.py)，`retry_run`。
@@ -557,7 +578,7 @@ Web 封装：`retryAgentRun`（[webreact/src/data/agentRuntimeApi.js](../../webr
 请求结构示例（占位符需替换；业务约束见字段字典与流程）：
 
 ```json
-{}
+{"idempotency_key":"retry_example_1"}
 ```
 
 响应：

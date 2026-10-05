@@ -2470,6 +2470,7 @@ Web 封装：`saveMagicClassQuizAttempt`（[webreact/src/data/api.js](../../webr
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | [QuizAttemptStateOut](schemas.md#schema-quizattemptstateout) |
+| 409 | application/json | `QUIZ_ATTEMPT_CONFLICT`；测验状态回退或课堂归属冲突，回读当前作答后再决定操作 |
 | 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
 
 200 响应顶层字段：

@@ -760,7 +760,7 @@ Web 封装：当前 Web 未找到直接封装；仍属于已注册后端接口�
 
 ### `DELETE /api/v1/focus/realtime-voice/sessions/{session_id}`
 
-用途：停止会话。
+用途：删除本人会话的内存登记，阻止后续 WebSocket 握手。已连接的中继不会被本接口主动断开；客户端须先停止采集与播放，并发送 `{"type":"stop"}` 或关闭 WebSocket，见[实时语音协议](response-contracts.md#实时语音-websocket)。中继退出也会清理登记，因此随后 DELETE 可能返回 404，应按已结束处理。
 
 鉴权：Bearer access token；已登录用户（另有资源归属校验）。
 
