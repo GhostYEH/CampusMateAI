@@ -12,7 +12,7 @@ from ...services.container import ServiceContainer, get_container
 from ...services.course_access import can_view_course
 from ..deps import current_user
 
-router = APIRouter(prefix="/courses", tags=["courses"])
+router = APIRouter(prefix="/courses", tags=["课程"])
 
 
 def _container() -> ServiceContainer:
@@ -42,7 +42,50 @@ def _course_to_out(
     )
 
 
-@router.get("", response_model=Page)
+@router.get(
+    "",
+    response_model=Page,
+    summary="列出课程",
+    responses={
+        200: {
+            "description": "课程分页列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "课程列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "course_001",
+                                        "name": "高等数学",
+                                        "code": "MATH101",
+                                        "semester": "2026-2027-1",
+                                        "description": "微积分与线性代数基础",
+                                        "teacher_id": "u_teacher",
+                                        "teacher_name": "张老师",
+                                        "provider": "chaoxing",
+                                        "external_id": "cx_1001",
+                                        "source_url": "https://mooc.example.com/course/1001",
+                                        "last_synced_at": "2026-09-30T01:00:00+00:00",
+                                        "status": "active",
+                                        "created_at": "2026-09-01T08:00:00+00:00",
+                                        "updated_at": "2026-09-30T01:00:00+00:00",
+                                        "owner_user_id": "u_teacher",
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 20,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_courses(
     query: Optional[str] = Query(None, description="按名称/代码/描述模糊搜索"),
     status: Optional[str] = Query(None, pattern="^(draft|active|archived)$"),
@@ -51,6 +94,11 @@ def list_courses(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
+    """列出当前用户可见的课程。
+
+    - 学生仅返回已加入班级关联的课程，教师返回自有的全部课程。
+    - 支持 query 按名称/代码/描述模糊搜索，status 过滤 draft/active/archived，分页返回。
+    """
     rows, total = container.course_repository.list_courses(
         status=status,
         query=query,
@@ -78,12 +126,52 @@ def _teacher_name(container: ServiceContainer, teacher_id: Optional[str]) -> Opt
     return u.display_name or u.username
 
 
-@router.get("/{course_id}", response_model=CourseOut)
+@router.get(
+    "/{course_id}",
+    response_model=CourseOut,
+    summary="读取课程详情",
+    responses={
+        200: {
+            "description": "课程详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "课程详情",
+                            "value": {
+                                "id": "course_001",
+                                "name": "高等数学",
+                                "code": "MATH101",
+                                "semester": "2026-2027-1",
+                                "description": "微积分与线性代数基础",
+                                "teacher_id": "u_teacher",
+                                "teacher_name": "张老师",
+                                "provider": "chaoxing",
+                                "external_id": "cx_1001",
+                                "source_url": "https://mooc.example.com/course/1001",
+                                "last_synced_at": "2026-09-30T01:00:00+00:00",
+                                "status": "active",
+                                "created_at": "2026-09-01T08:00:00+00:00",
+                                "updated_at": "2026-09-30T01:00:00+00:00",
+                                "owner_user_id": "u_teacher",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_course(
     course_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> CourseOut:
+    """读取单个课程详情。
+
+    - 课程不存在返回 404（COURSE_NOT_FOUND）。
+    - 未加入该课程下的任何班级返回 403（FORBIDDEN）。
+    """
     course = container.course_repository.get_course(course_id)
     if course is None:
         raise CourseNotFound()

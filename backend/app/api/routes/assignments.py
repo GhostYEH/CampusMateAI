@@ -26,7 +26,7 @@ from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
 from .classes import _assert_can_view_class
 
-router = APIRouter(tags=["assignments"])
+router = APIRouter(tags=["课程作业"])
 
 
 def _container() -> ServiceContainer:
@@ -97,7 +97,52 @@ def _author_name(container: ServiceContainer, author_id: str) -> Optional[str]:
     return u.display_name or u.username
 
 
-@router.get("/classes/{class_id}/assignments", response_model=Page)
+@router.get(
+    "/classes/{class_id}/assignments",
+    response_model=Page,
+    summary="列出班级作业",
+    responses={
+        200: {
+            "description": "班级任务分页列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "任务列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "assign_001",
+                                        "class_group_id": "class_001",
+                                        "course_id": "course_001",
+                                        "author_id": "u_teacher",
+                                        "author_name": "张老师",
+                                        "title": "第一章习题",
+                                        "description": "完成教材第一章课后习题 1-10。",
+                                        "deadline": "2026-10-10T15:59:59+00:00",
+                                        "submission_types": ["text", "file"],
+                                        "max_score": 100,
+                                        "allow_resubmit": True,
+                                        "status": "published",
+                                        "published_at": "2026-09-25T08:00:00+00:00",
+                                        "created_at": "2026-09-25T07:00:00+00:00",
+                                        "updated_at": "2026-09-25T08:00:00+00:00",
+                                        "submission_status": "not_submitted",
+                                        "attachments": [],
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 20,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_assignments(
     class_id: str,
     status: Optional[str] = Query(None, pattern="^(draft|published|closed|archived)$"),
@@ -106,6 +151,11 @@ def list_assignments(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
+    """列出班级下的作业。
+
+    - 学生只返回 published 作业并附带本人 submission_status，教师可按 status 过滤。
+    - 班级不存在返回 404（CLASS_GROUP_NOT_FOUND）。
+    """
     cls = container.class_group_repository.get_class(class_id)
     if cls is None:
         raise ClassGroupNotFound()
@@ -138,7 +188,52 @@ def list_assignments(
     return Page.from_rows(items, total=total, page=page, page_size=page_size)
 
 
-@router.get("/student/assignments", response_model=Page)
+@router.get(
+    "/student/assignments",
+    response_model=Page,
+    summary="列出学生作业",
+    responses={
+        200: {
+            "description": "跨班级的学生任务分页列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "学生任务列表",
+                            "value": {
+                                "items": [
+                                    {
+                                        "id": "assign_001",
+                                        "class_group_id": "class_001",
+                                        "course_id": "course_001",
+                                        "author_id": "u_teacher",
+                                        "author_name": "张老师",
+                                        "title": "第一章习题",
+                                        "description": "完成教材第一章课后习题 1-10。",
+                                        "deadline": "2026-10-10T15:59:59+00:00",
+                                        "submission_types": ["text", "file"],
+                                        "max_score": 100,
+                                        "allow_resubmit": True,
+                                        "status": "published",
+                                        "published_at": "2026-09-25T08:00:00+00:00",
+                                        "created_at": "2026-09-25T07:00:00+00:00",
+                                        "updated_at": "2026-09-25T08:00:00+00:00",
+                                        "submission_status": "pending",
+                                        "attachments": [],
+                                    }
+                                ],
+                                "total": 1,
+                                "page": 1,
+                                "page_size": 20,
+                                "has_more": False,
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_student_assignments(
     status: Optional[str] = Query(
         None,
@@ -152,6 +247,11 @@ def list_student_assignments(
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> Page:
+    """跨班级列出当前学生的作业。
+
+    - 仅学生可访问，非学生返回 403（FORBIDDEN）。
+    - 支持按提交状态、关键词搜索，并按 deadline/created_at/title 排序。
+    """
     if user.role != "student":
         raise Forbidden("仅学生可访问学生任务列表")
     items, total = container.assignment_repository.list_assignments_for_student(
@@ -172,12 +272,65 @@ def list_student_assignments(
 
 
 
-@router.get("/assignments/{assignment_id}", response_model=AssignmentOut)
+@router.get(
+    "/assignments/{assignment_id}",
+    response_model=AssignmentOut,
+    summary="读取作业详情",
+    responses={
+        200: {
+            "description": "任务详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "任务详情",
+                            "value": {
+                                "id": "assign_001",
+                                "class_group_id": "class_001",
+                                "course_id": "course_001",
+                                "author_id": "u_teacher",
+                                "author_name": "张老师",
+                                "title": "第一章习题",
+                                "description": "完成教材第一章课后习题 1-10。",
+                                "deadline": "2026-10-10T15:59:59+00:00",
+                                "submission_types": ["text", "file"],
+                                "max_score": 100,
+                                "allow_resubmit": True,
+                                "status": "published",
+                                "published_at": "2026-09-25T08:00:00+00:00",
+                                "created_at": "2026-09-25T07:00:00+00:00",
+                                "updated_at": "2026-09-25T08:00:00+00:00",
+                                "submission_status": "not_submitted",
+                                "attachments": [
+                                    {
+                                        "id": "att_001",
+                                        "assignment_id": "assign_001",
+                                        "author_id": "u_teacher",
+                                        "original_filename": "习题说明.pdf",
+                                        "stored_filename": "a1b2c3d4_习题说明.pdf",
+                                        "mime_type": "application/pdf",
+                                        "size_bytes": 204800,
+                                        "created_at": "2026-09-25T07:00:00+00:00",
+                                    }
+                                ],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_assignment(
     assignment_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> AssignmentOut:
+    """读取单个作业详情。
+
+    - 作业不存在或学生读取非 published/closed 作业返回 404（ASSIGNMENT_NOT_FOUND）。
+    - 班级不存在返回 404（CLASS_GROUP_NOT_FOUND）。
+    """
     a = container.assignment_repository.get_assignment(assignment_id)
     if a is None:
         raise AssignmentNotFound()
@@ -202,7 +355,36 @@ def get_assignment(
 # ===== 任务附件 =====
 
 
-@router.get("/assignments/{assignment_id}/attachments")
+@router.get(
+    "/assignments/{assignment_id}/attachments",
+    summary="列出任务附件",
+    responses={
+        200: {
+            "description": "任务附件列表",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "附件列表",
+                            "value": [
+                                {
+                                    "id": "att_001",
+                                    "assignment_id": "assign_001",
+                                    "author_id": "u_teacher",
+                                    "original_filename": "习题说明.pdf",
+                                    "stored_filename": "a1b2c3d4_习题说明.pdf",
+                                    "mime_type": "application/pdf",
+                                    "size_bytes": 204800,
+                                    "created_at": "2026-09-25T07:00:00+00:00",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def list_assignment_attachments(
     assignment_id: str,
     user: UserRow = Depends(current_user),
@@ -237,7 +419,10 @@ def list_assignment_attachments(
     ]
 
 
-@router.get("/assignments/{assignment_id}/attachments/{attachment_id}")
+@router.get(
+    "/assignments/{assignment_id}/attachments/{attachment_id}",
+    summary="下载任务附件",
+)
 def download_assignment_attachment(
     assignment_id: str,
     attachment_id: str,

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Body, Depends, File, UploadFile
 from fastapi.responses import FileResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -33,7 +33,7 @@ from ...services.container import ServiceContainer, get_container
 from ..deps import current_user
 from .classes import _assert_can_view_class
 
-router = APIRouter(tags=["submissions"])
+router = APIRouter(tags=["课程提交"])
 
 
 def _container() -> ServiceContainer:
@@ -117,12 +117,49 @@ def _load_attachments(
 @router.get(
     "/assignments/{assignment_id}/my-submission",
     response_model=SubmissionOut,
+    summary="读取我的作业提交",
+    responses={
+        200: {
+            "description": "当前学生在指定作业下的提交",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "我的提交",
+                            "value": {
+                                "id": "sub_001",
+                                "assignment_id": "assign_001",
+                                "student_id": "u_student",
+                                "student_name": "演示学生",
+                                "student_number": "20240001",
+                                "college": "计算机学院",
+                                "major": "软件工程",
+                                "grade": "2024",
+                                "text_content": "已完成第一章习题 1-10。",
+                                "status": "submitted",
+                                "submitted_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "score": None,
+                                "teacher_comment": None,
+                                "attachments": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
 )
 def get_my_submission(
     assignment_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> SubmissionOut:
+    """读取当前学生在指定作业下的本人提交。
+
+    - 仅学生可访问，非学生返回 403（FORBIDDEN）。
+    - 尚无提交返回 404（SUBMISSION_NOT_FOUND）。
+    """
     if user.role != "student":
         raise Forbidden("仅学生可查看自己的提交")
     sub = container.submission_repository.get_submission_for_student(
@@ -136,13 +173,65 @@ def get_my_submission(
     return out
 
 
-@router.post("/assignments/{assignment_id}/submissions", response_model=SubmissionOut, status_code=201)
+@router.post(
+    "/assignments/{assignment_id}/submissions",
+    response_model=SubmissionOut,
+    status_code=201,
+    summary="创建作业提交",
+    responses={
+        201: {
+            "description": "创建成功，返回提交详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "直接提交作业",
+                            "value": {
+                                "id": "sub_001",
+                                "assignment_id": "assign_001",
+                                "student_id": "u_student",
+                                "student_name": "演示学生",
+                                "student_number": "20240001",
+                                "college": "计算机学院",
+                                "major": "软件工程",
+                                "grade": "2024",
+                                "text_content": "已完成第一章习题 1-10。",
+                                "status": "submitted",
+                                "submitted_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "score": None,
+                                "teacher_comment": None,
+                                "attachments": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def create_submission(
     assignment_id: str,
-    req: SubmissionCreate,
+    req: Annotated[
+        SubmissionCreate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "填写内容并直接提交",
+                    "value": {"text_content": "已完成第一章习题 1-10。", "submit": True},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> SubmissionOut:
+    """为指定作业创建或覆盖本人提交。
+
+    - 仅学生可创建，非学生返回 403（FORBIDDEN）。
+    - submit=false 保存为 draft，submit=true 按截止时间记为 submitted 或 late。
+    - 作业已关闭仍提交返回 409（ASSIGNMENT_CLOSED）。
+    """
     a = container.assignment_repository.get_assignment(assignment_id)
     if a is None:
         raise AssignmentNotFound()
@@ -178,12 +267,52 @@ def _compute_initial_status(a, submit: bool) -> str:
     return "submitted"
 
 
-@router.get("/submissions/{submission_id}", response_model=SubmissionOut)
+@router.get(
+    "/submissions/{submission_id}",
+    response_model=SubmissionOut,
+    summary="读取提交详情",
+    responses={
+        200: {
+            "description": "提交详情（仅本人可读）",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "提交详情",
+                            "value": {
+                                "id": "sub_001",
+                                "assignment_id": "assign_001",
+                                "student_id": "u_student",
+                                "student_name": "演示学生",
+                                "student_number": "20240001",
+                                "college": "计算机学院",
+                                "major": "软件工程",
+                                "grade": "2024",
+                                "text_content": "已完成第一章习题 1-10。",
+                                "status": "submitted",
+                                "submitted_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "score": None,
+                                "teacher_comment": None,
+                                "attachments": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def get_submission(
     submission_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> SubmissionOut:
+    """读取单条提交详情。
+
+    - 仅本人可读：非学生或非本人返回 403（FORBIDDEN）。
+    - 提交或作业不存在返回 404（SUBMISSION_NOT_FOUND / ASSIGNMENT_NOT_FOUND）。
+    """
     sub = container.submission_repository.get_submission(submission_id)
     if sub is None:
         raise SubmissionNotFound()
@@ -205,13 +334,63 @@ def get_submission(
     return out
 
 
-@router.patch("/submissions/{submission_id}", response_model=SubmissionOut)
+@router.patch(
+    "/submissions/{submission_id}",
+    response_model=SubmissionOut,
+    summary="更新提交内容",
+    responses={
+        200: {
+            "description": "更新成功，返回提交详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "更新草稿内容",
+                            "value": {
+                                "id": "sub_001",
+                                "assignment_id": "assign_001",
+                                "student_id": "u_student",
+                                "student_name": "演示学生",
+                                "student_number": "20240001",
+                                "college": "计算机学院",
+                                "major": "软件工程",
+                                "grade": "2024",
+                                "text_content": "已完成第一章习题 1-10，正在补充第 11 题。",
+                                "status": "draft",
+                                "submitted_at": None,
+                                "updated_at": "2026-10-05T10:00:00+00:00",
+                                "score": None,
+                                "teacher_comment": None,
+                                "attachments": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def update_submission(
     submission_id: str,
-    req: SubmissionUpdate,
+    req: Annotated[
+        SubmissionUpdate,
+        Body(
+            openapi_examples={
+                "成功": {
+                    "summary": "更新提交正文",
+                    "value": {"text_content": "已完成第一章习题 1-10，正在补充第 11 题。"},
+                }
+            }
+        ),
+    ],
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> SubmissionOut:
+    """更新本人提交的正文内容，状态保持不变。
+
+    - 只能修改自己的提交，否则返回 403（FORBIDDEN）。
+    - 作业已关闭且不允许重新提交时返回 409（ASSIGNMENT_CLOSED）。
+    """
     sub = container.submission_repository.get_submission(submission_id)
     if sub is None:
         raise SubmissionNotFound()
@@ -235,12 +414,53 @@ def update_submission(
     return _enrich_with_student_info(container, sub)
 
 
-@router.post("/submissions/{submission_id}/submit", response_model=SubmissionOut)
+@router.post(
+    "/submissions/{submission_id}/submit",
+    response_model=SubmissionOut,
+    summary="提交作业",
+    responses={
+        200: {
+            "description": "提交成功，返回更新后的提交详情",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "提交成功",
+                            "value": {
+                                "id": "sub_001",
+                                "assignment_id": "assign_001",
+                                "student_id": "u_student",
+                                "student_name": "演示学生",
+                                "student_number": "20240001",
+                                "college": "计算机学院",
+                                "major": "软件工程",
+                                "grade": "2024",
+                                "text_content": "已完成第一章习题 1-10。",
+                                "status": "submitted",
+                                "submitted_at": "2026-10-05T09:30:00+00:00",
+                                "updated_at": "2026-10-05T09:30:00+00:00",
+                                "score": None,
+                                "teacher_comment": None,
+                                "attachments": [],
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 def submit_submission(
     submission_id: str,
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> SubmissionOut:
+    """将本人提交正式提交。
+
+    - 只能提交自己的提交，否则返回 403（FORBIDDEN）。
+    - 已提交且不允许重新提交返回 409（RESUBMIT_NOT_ALLOWED）。
+    - 逾期提交状态记为 late，重复提交状态记为 resubmitted。
+    """
     sub = container.submission_repository.get_submission(submission_id)
     if sub is None:
         raise SubmissionNotFound()
@@ -273,13 +493,47 @@ def submit_submission(
     return _enrich_with_student_info(container, sub)
 
 
-@router.post("/submissions/{submission_id}/attachments", response_model=AttachmentOut, status_code=201)
+@router.post(
+    "/submissions/{submission_id}/attachments",
+    response_model=AttachmentOut,
+    status_code=201,
+    summary="上传提交附件",
+    responses={
+        201: {
+            "description": "上传成功，返回附件元数据",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "summary": "上传成功",
+                            "value": {
+                                "id": "att_002",
+                                "submission_id": "sub_001",
+                                "original_filename": "实验报告.pdf",
+                                "stored_filename": "9f8e7d6c_实验报告.pdf",
+                                "mime_type": "application/pdf",
+                                "size_bytes": 512000,
+                                "created_at": "2026-10-05T09:35:00+00:00",
+                            },
+                        }
+                    }
+                }
+            },
+        },
+    },
+)
 async def upload_attachment(
     submission_id: str,
     file: UploadFile = File(...),
     user: UserRow = Depends(current_user),
     container: ServiceContainer = Depends(_container),
 ) -> AttachmentOut:
+    """为本人提交上传附件（multipart/form-data）。
+
+    - 仅可为自己的提交上传，否则返回 403（FORBIDDEN）。
+    - 扩展名不在白名单返回 415（ATTACHMENT_TYPE_NOT_ALLOWED）；超过 10MB 返回 413（ATTACHMENT_TOO_LARGE）。
+    - 作业已关闭返回 409（ASSIGNMENT_CLOSED）。
+    """
     # 同步 SQLite 读取（所有权 / 提交状态 / 作业状态）下放到线程池。
     await run_in_threadpool(_authorize_attachment_upload, container, submission_id, user)
     # 文件名安全校验
@@ -390,7 +644,10 @@ def _guess_mime(ext: str) -> str:
     }.get(ext, "application/octet-stream")
 
 
-@router.get("/submissions/{submission_id}/attachments/{attachment_id}")
+@router.get(
+    "/submissions/{submission_id}/attachments/{attachment_id}",
+    summary="下载提交附件",
+)
 def download_attachment(
     submission_id: str,
     attachment_id: str,
