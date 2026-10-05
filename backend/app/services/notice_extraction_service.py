@@ -1224,6 +1224,19 @@ class NoticeExtractionService:
             # source_text 始终保留完整原文,避免子片段上下文丢失
             r = r.model_copy(update={"source_text": content})
             tasks.append(r)
+        actionable = [task for task in tasks if task.actionable]
+        deadline_only = [task for task in tasks if not task.actionable and task.deadline]
+        if len(actionable) == 1 and len(deadline_only) == 1 and actionable[0].deadline is None:
+            merged = actionable[0].model_copy(update={
+                "deadline": deadline_only[0].deadline,
+                "warnings": [*actionable[0].warnings, *deadline_only[0].warnings],
+                "needs_confirmation": True,
+            })
+            return MultiNoticeExtractResponse(
+                tasks=[merged],
+                split_reason="已将截止时间合并到对应任务",
+                needs_user_confirmation=True,
+            )
         if len(tasks) <= 1:
             single = self._rule_extract(
                 content, source_name=source_name, published_at=published_at
