@@ -53,6 +53,14 @@ app/src/main/java/com/example/campusai/
 
 学习通还有独立的账号连接与同步链路：后端同步课程、课程通知、作业和考试；Android 可定期触发同步，并提示登录态失效或需重新验证。学习通系统通知监听只是辅助来源，不等同于账号同步。
 
+## 互动课堂接入
+
+Android 当前接入课程内经典互动课堂的 7 个接口：状态、生成前计划、生成、任务进度、历史、重试和内容组成。实现位于 [ApiService](app/src/main/java/com/example/campusai/data/remote/ApiService.kt) 与 [InteractiveClassroomSection](app/src/main/java/com/example/campusai/ui/screens/courses/InteractiveClassroomSection.kt)。课堂通过系统浏览器打开，地址须先通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 的公开 HTTPS 与 Origin 校验。
+
+课程内经典课堂、CampusMate 受管工作台和导航栏独立学习空间使用不同的数据与身份链路。Android 尚未接入受管工作台或独立学习空间，也没有原生课堂播放器与编辑器；不能混用 `session_id/classroom_id` 和 `workspace_id/stage_id/scene_id`，或假定本站 JWT 自动成为独立应用的身份。
+
+后续接入以 [课程侧 API](../docs/api/14-magicclass.md)、[独立学习空间 API](../docs/api/learning-space.md) 和 [接口流程](../docs/api/integration.md) 为准。课程侧复用本站登录态与课程权限校验，不直接调用受管服务的 `/internal/*`。先读取状态、资料和历史，再实现生成、异步进度、播放与写入；提供方可用性、浏览器打开条件和实际内容组成须分别确认。上述说明来自源码核对，不代表真机或真实提供方验收。
+
 ## 构建配置
 
 | 配置 | 值 |

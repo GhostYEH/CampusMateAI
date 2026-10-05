@@ -26,7 +26,7 @@
 | 经典课堂、工作台、资料、编辑、播放、生成、测验、讨论、讲解与导出 | 68 | [magic class](14-magicclass.md) |
 | **合计** | **298** | [全部 Web 调用对照](web-map.md) |
 
-导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 298 个接口；它的 **86 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。保留原有 [magic class 模块说明](../magicclass-module-report.md)，新 Web 开发优先使用本目录的契约和流程。
+导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 298 个接口；它的 **87 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。课程侧接入参见 [课程互动课堂与受管工作台](14-magicclass.md)，Android 当前能力与接入边界见 [客户端说明](../../android/README.md#互动课堂接入)。
 
 ## 按 Web 功能查找
 

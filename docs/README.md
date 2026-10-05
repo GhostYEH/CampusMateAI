@@ -6,7 +6,7 @@
 - [六层世界模型：后端完成情况与接口接入](world-model-backend.md)
 - [OpenAPI JSON](api/openapi.json)
 - [独立学习空间 API](api/learning-space.md)
-- [原有 magic class 模块说明](magicclass-module-report.md)
+- [课程互动课堂与受管工作台 API](api/14-magicclass.md)
 
 ## 端侧 AI 能力（行为识别 / 表情识别）
 

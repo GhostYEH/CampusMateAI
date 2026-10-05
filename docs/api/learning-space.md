@@ -2,7 +2,7 @@
 
 > 核对日期：2026-10-04。当前独立应用 app/api 下 70 个 route.ts 文件的全部导出 HTTP handler 均列入本手册。它与本站课程工作台的数据、身份、路径前缀不同。
 
-[总目录](README.md) · [课程侧 54 个接口](14-magicclass.md) · [已有模块说明](../magicclass-module-report.md)
+[总目录](README.md) · [课程互动课堂与受管工作台](14-magicclass.md) · [Android 接入说明](../../android/README.md#互动课堂接入)
 
 ## Origin、认证与能力
 
