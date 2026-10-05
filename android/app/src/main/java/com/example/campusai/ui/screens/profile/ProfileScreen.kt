@@ -83,6 +83,7 @@ fun ProfileScreen(
                     rows = listOf(
                         ProfileRow(Icons.Default.Description, "我的文件", "查看保存的资料") { onNavigate("files") },
                         ProfileRow(Icons.Default.NotificationsActive, "系统消息", "查看账号与校园消息") { onNavigate("notifications") },
+                        ProfileRow(Icons.Default.AccountBalance, "教务系统", "连接学校账号，查看课表、成绩与考试") { onNavigate("edu_system") },
                         ProfileRow(Icons.Default.Security, "隐私与数据", "查看权限、通知与数据说明") { onNavigate("settings") },
                         ProfileRow(Icons.Default.HeadsetMic, "帮助与反馈", "常见问题、问题反馈与服务状态") { onNavigate("help-feedback") },
                         ProfileRow(Icons.Default.Info, "关于 CampusMate", "版本与能力边界") { showAbout = true },

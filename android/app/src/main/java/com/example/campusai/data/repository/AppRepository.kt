@@ -57,6 +57,20 @@ import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class ClassroomStudyVisit(
+    val id: String,
+    val classroomFingerprint: String,
+    val enteredAt: String,
+    val endedAt: String,
+    val activeSeconds: Long,
+    val completed: Boolean,
+)
+
+data class ClassroomHistoryEntry(
+    val courseName: String,
+    val classroom: InteractiveClassroomItemDto,
+)
+
 class AppRepository(
     application: Application,
     campusNewsPreferences: CampusNewsPreferences? = null,
@@ -125,6 +139,8 @@ class AppRepository(
 
 
     private val taskMutex = Mutex()
+    private val classroomVisitMutex = Mutex()
+    @Volatile private var pendingClassroomVisitWrite: Job? = null
     private var taskJob: Job? = null
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
@@ -1517,6 +1533,20 @@ class AppRepository(
         } catch (_: Exception) { emptyList() }
     }
 
+    /** One history source for the classroom hub and learning footprint. */
+    suspend fun allClassroomHistory(): List<ClassroomHistoryEntry> = coroutineScope {
+        val self = async { selfClassroomHistory().map { ClassroomHistoryEntry("自主学习", it) } }
+        val courseEntries = _courses.value.chunked(8).flatMap { group ->
+            group.map { course -> async {
+                interactiveClassroomHistory(course.id).map { ClassroomHistoryEntry(course.name, it) }
+            } }.awaitAll().flatten()
+        }
+        (self.await() + courseEntries).distinctBy {
+            it.classroom.sessionId ?: it.classroom.classroomId ?: it.classroom.url
+                ?: "${it.courseName}:${it.classroom.createdAt}"
+        }
+    }
+
     suspend fun generateSelfClassroom(topic: String, materialIds: List<String> = emptyList()): Result<InteractiveClassroomGenerateResponse> {
         if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法生成课堂"))
         return try {
@@ -1539,6 +1569,55 @@ class AppRepository(
             val entries = JSONObject(raw)
             entries.keys().asSequence().associateWith { entries.getString(it) }
         }.getOrDefault(emptyMap())
+    }
+
+    suspend fun classroomStudyVisits(): List<ClassroomStudyVisit> {
+        val user = _session.value ?: return emptyList()
+        pendingClassroomVisitWrite?.join()
+        return classroomVisitMutex.withLock {
+            val raw = dataStore.readRaw("classroom_visits_${accountStorageKey(user)}") ?: return@withLock emptyList()
+            runCatching {
+                val entries = JSONArray(raw)
+                (0 until entries.length()).mapNotNull { index ->
+                    val item = entries.optJSONObject(index) ?: return@mapNotNull null
+                    val fingerprint = item.optString("classroomFingerprint")
+                    val enteredAt = item.optString("enteredAt")
+                    if (fingerprint.isBlank() || enteredAt.isBlank()) return@mapNotNull null
+                    ClassroomStudyVisit(
+                        id = item.optString("id"),
+                        classroomFingerprint = fingerprint,
+                        enteredAt = enteredAt,
+                        endedAt = item.optString("endedAt"),
+                        activeSeconds = item.optLong("activeSeconds").coerceAtLeast(0),
+                        completed = item.optBoolean("completed"),
+                    )
+                }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Queue the write on repository scope so closing the viewer cannot cancel it. */
+    fun recordClassroomStudyVisit(url: String, enteredAt: String, activeSeconds: Long, completed: Boolean) {
+        val user = _session.value ?: return
+        if (enteredAt.isBlank()) return
+        pendingClassroomVisitWrite = scope.launch {
+            classroomVisitMutex.withLock {
+                val key = "classroom_visits_${accountStorageKey(user)}"
+                val entries = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+                val next = JSONArray()
+                val start = (entries.length() - 499).coerceAtLeast(0)
+                for (index in start until entries.length()) next.put(entries.get(index))
+                next.put(JSONObject().apply {
+                    put("id", java.util.UUID.randomUUID().toString())
+                    put("classroomFingerprint", classroomVisitFingerprint(url))
+                    put("enteredAt", enteredAt)
+                    put("endedAt", java.time.Instant.now().toString())
+                    put("activeSeconds", activeSeconds.coerceAtLeast(0))
+                    put("completed", completed)
+                })
+                dataStore.saveRaw(key, next.toString())
+            }
+        }
     }
 
     suspend fun recordClassroomEntry(url: String) {

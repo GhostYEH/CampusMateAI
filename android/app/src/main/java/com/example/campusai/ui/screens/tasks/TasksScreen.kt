@@ -61,7 +61,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     val backendOnline by repository.backendOnline.collectAsStateWithLifecycle()
     val taskError by repository.taskError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var filter by remember { mutableStateOf("待完成") }
+    var filter by remember { mutableStateOf("全部") }
     var selectedCourse by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
     var showAddSheet by remember { mutableStateOf(false) }
@@ -74,14 +74,24 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     val currentAssignments = remember(tasks, courseCatalog, now.epochSecond / 60) {
         tasks.filter { it.isCurrentSemesterAssignment(courseCatalog, now) }
     }
-    val pending = remember(currentAssignments) { currentAssignments.filterNot(Task::done) }
-    val courseFilters = remember(currentAssignments) {
-        currentAssignments.map(Task::course).filter(String::isNotBlank).distinct().sorted()
+    val completedAssignments = remember(tasks, courseCatalog, now.epochSecond / 60) {
+        tasks.filter { it.done && it.isCurrentSemesterCourseTask(courseCatalog, now) }
+    }
+    val personalTasks = remember(tasks) { tasks.filterNot(Task::isCourseAssignment) }
+    val pending = remember(currentAssignments, personalTasks) {
+        currentAssignments.filterNot(Task::done) + personalTasks.filterNot(Task::done)
+    }
+    val allTasks = remember(currentAssignments, completedAssignments, personalTasks) {
+        (currentAssignments + completedAssignments + personalTasks).distinctBy(Task::id)
+    }
+    val courseFilters = remember(currentAssignments, completedAssignments) {
+        (currentAssignments + completedAssignments).map(Task::course).filter(String::isNotBlank).distinct().sorted()
     }
     val visibleTasks = remember(tasks, courseCatalog, filter, selectedCourse, search, now.epochSecond / 60) {
         val relevant = when (filter) {
-            "个人事务" -> tasks.filter { it.source !in setOf("chaoxing", "chaoxing_notice", "course_notice") && !it.done }
-            "已完成" -> currentAssignments.filter(Task::done)
+            "全部" -> allTasks
+            "个人事务" -> personalTasks
+            "已完成" -> allTasks.filter(Task::done)
             else -> pending
         }
         relevant.filter { task ->
@@ -91,7 +101,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             }
             matchesFilter && (filter == "个人事务" || selectedCourse == null || task.course == selectedCourse) &&
                 (search.isBlank() || task.title.contains(search, true) || task.course.contains(search, true))
-        }.sortedBy { it.dueInstant() ?: Instant.MAX }
+        }.sortedWith(compareBy<Task> { filter == "全部" && it.done }.thenBy { it.dueInstant() ?: Instant.MAX })
     }
     val dueSoon = if (filter == "待完成") visibleTasks.filter {
         it.dueInstant()?.isBefore(now.plusSeconds(48 * 3600)) == true
@@ -121,7 +131,7 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                     Column {
                         Text("待办", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp)
                         Spacer(Modifier.height(4.dp))
-                        Text("${pending.size} 项本学期课程作业待完成", color = Color.White.copy(alpha = .86f), fontSize = 14.sp)
+                        Text("${pending.size} 项待完成 · 课程作业与个人事务", color = Color.White.copy(alpha = .86f), fontSize = 14.sp)
                     }
                     }
                     IconButton(onClick = { showImportDialog = true }) {
@@ -157,10 +167,10 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                         colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Primary),
                     )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        items(listOf("待完成", "快截止", "已完成", "个人事务")) { label ->
+                        items(listOf("全部", "待完成", "已完成", "个人事务")) { label ->
                             FilterChip(
                                 selected = filter == label,
-                                onClick = { filter = label },
+                                onClick = { filter = label; selectedCourse = null },
                                 label = { Text(label, fontSize = 13.sp) },
                                 shape = RoundedCornerShape(18.dp),
                                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TaskBlue, selectedLabelColor = Color.White),
@@ -185,12 +195,13 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (filter == "待完成") "按课程查看" else filter, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, color = Color.White)
+                    Text(if (filter == "全部") "全部任务" else if (filter == "待完成") "按课程查看" else filter,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, color = Color.White)
                     Text("${visibleTasks.size} 项", color = Color.White.copy(alpha = .8f), fontSize = 13.sp)
                 }
             }
             if (visibleTasks.isEmpty()) {
-                item { EmptyTasks(backendOnline, onRetry = { scope.launch { repository.refreshTasks() } }) }
+                item { EmptyTasks(backendOnline, filter, onRetry = { scope.launch { repository.refreshTasks() } }) }
             } else {
                 if (dueSoon.isNotEmpty()) {
                     item { Text("快截止", color = Color(0xFFFFECD0), fontSize = 16.sp,
@@ -270,6 +281,16 @@ private fun Task.listKey(index: Int): String =
     "task|${id.ifBlank { "$title|$due|$course" }}|$index"
 
 private fun Task.dueInstant(): Instant? = due.takeIf { it != "待设置" }?.courseDeadlineInstant()
+
+private fun Task.isCourseAssignment(): Boolean = source in setOf("chaoxing", "chaoxing_notice", "course_notice")
+
+private fun Task.isCurrentSemesterCourseTask(courses: List<Course>, now: Instant): Boolean {
+    if (!isCourseAssignment()) return false
+    val course = courses.firstOrNull { it.id == courseId }
+        ?: courses.firstOrNull { it.name == this.course }
+        ?: return false
+    return course.isCurrentSemesterAt(now)
+}
 
 /** Only verified current-course assignments are promoted into automatic pending tasks. */
 internal fun Task.isCurrentSemesterAssignment(courses: List<Course>, now: Instant): Boolean {
@@ -383,6 +404,11 @@ private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Uni
                 Spacer(Modifier.width(4.dp))
                 Text("截止 ${task.due.replace('T', ' ').take(16)}", color = Muted, fontSize = 12.sp)
             }
+            if (task.done) {
+                Text(if (task.submittedAt != null) "平台已提交"
+                    else if (task.isCourseAssignment()) "已确认完成" else "已完成",
+                    color = TaskGreen, fontSize = 11.sp)
+            }
             if (!task.done && task.source in setOf("chaoxing_notice", "course_notice")) {
                 Text("提交状态待确认 · 请进入课程核对", color = Color(0xFF94633C), fontSize = 11.sp)
             }
@@ -392,11 +418,12 @@ private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Uni
 }
 
 @Composable
-private fun EmptyTasks(online: Boolean, onRetry: () -> Unit) {
+private fun EmptyTasks(online: Boolean, filter: String, onRetry: () -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Surface).padding(vertical = 38.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(if (online) Icons.Default.TaskAlt else Icons.Default.CloudOff, null, tint = Primary, modifier = Modifier.size(36.dp))
-        Text(if (online) "还没有待办" else "暂时无法获取后端数据", color = TextPrimary, fontWeight = FontWeight.Bold)
-        Text(if (online) "同步课程后，本学期未提交的作业会自动出现在这里" else "请检查网络或稍后重试", color = Muted, fontSize = 12.sp)
+        Text(if (online) "这里还没有${if (filter == "全部") "任务" else filter + "任务"}" else "暂时无法获取后端数据",
+            color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text(if (online) "本学期课程作业会自动同步，也可以自己添加事务" else "请检查网络或稍后重试", color = Muted, fontSize = 12.sp)
         if (!online) TextButton(onClick = onRetry) { Text("重新获取", color = Primary) }
     }
 }

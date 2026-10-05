@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Refresh
@@ -77,7 +76,6 @@ fun LibraryScreen(
     initialCourseId: String? = null,
     onBack: () -> Unit,
     onConnectChaoxing: () -> Unit,
-    onOpenEduSystem: () -> Unit = {},
     onStartFocus: (String) -> Unit,
     onOpenClassroom: (String) -> Unit,
 ) {
@@ -149,20 +147,6 @@ fun LibraryScreen(
                     Text("同步课程", color = Color(0xFF2A433B), fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xFFF2DFC0))
                             .clickable { showSyncDialog = true }.padding(horizontal = 14.dp, vertical = 10.dp))
-                }
-            }
-            item {
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                    .background(Color(0xF1FFF7E9)).clickable(onClick = onOpenEduSystem)
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AccountBalance, contentDescription = null, tint = Color(0xFF285443))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("教务系统", color = Color(0xFF203B32), fontWeight = FontWeight.Bold)
-                        Text("课表、成绩与选课", color = Color(0xFF5D7066), fontSize = 12.sp)
-                    }
-                    Icon(Icons.Default.ChevronRight, contentDescription = "打开教务系统", tint = Color(0xFF285443))
                 }
             }
             if (accountStatus == "online") {

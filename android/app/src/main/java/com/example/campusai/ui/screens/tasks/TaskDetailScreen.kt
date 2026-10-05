@@ -141,7 +141,10 @@ fun TaskDetailScreen(
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
-                    if (task.done) "已完成" else if (task.source in setOf("chaoxing_notice", "course_notice")) "待确认" else "待完成",
+                    if (task.done && task.submittedAt != null) "平台已提交"
+                    else if (task.done) "已完成"
+                    else if (task.source in setOf("chaoxing_notice", "course_notice")) "待确认"
+                    else "待完成",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = if (task.done) Success else TaskOrange,

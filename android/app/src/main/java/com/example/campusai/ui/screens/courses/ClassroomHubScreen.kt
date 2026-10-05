@@ -38,10 +38,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.BuildConfig
 import com.example.campusai.R
 import com.example.campusai.data.remote.ClassroomUrlPolicy
-import com.example.campusai.data.remote.InteractiveClassroomItemDto
 import com.example.campusai.data.remote.InteractiveClassroomSessionDto
 import com.example.campusai.data.remote.InteractiveClassroomStatusDto
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.ClassroomHistoryEntry
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +50,12 @@ import java.io.ByteArrayOutputStream
 
 private val midnight = Color(0xFF172747)
 private val paper = Color(0xFFFFECD0)
+
+private data class RecentClassroom(
+    val entry: ClassroomHistoryEntry,
+    val lastEnteredAt: String?,
+    val totalSeconds: Long,
+)
 
 @Composable
 fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
@@ -61,7 +67,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     var uploading by remember { mutableStateOf(false) }
     var sessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<InteractiveClassroomStatusDto?>(null) }
-    var history by remember { mutableStateOf<List<InteractiveClassroomItemDto>>(emptyList()) }
+    var history by remember { mutableStateOf<List<RecentClassroom>>(emptyList()) }
+    var historyLoading by remember { mutableStateOf(true) }
+    var historyRefresh by remember { mutableIntStateOf(0) }
     var progress by remember { mutableStateOf<InteractiveClassroomSessionDto?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
@@ -102,9 +110,18 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     }
     val online by repository.backendOnline.collectAsStateWithLifecycle()
 
-    LaunchedEffect(online) {
+    LaunchedEffect(online, historyRefresh) {
+        historyLoading = true
         status = repository.selfClassroomStatus()
-        history = repository.selfClassroomHistory()
+        repository.refreshCourses()
+        val entryTimes = repository.classroomEntryTimes()
+        val visits = repository.classroomStudyVisits().groupBy { it.classroomFingerprint }
+        history = repository.allClassroomHistory().map { entry ->
+            val fingerprint = entry.classroom.url?.let(repository::classroomVisitFingerprint)
+            RecentClassroom(entry, fingerprint?.let(entryTimes::get),
+                fingerprint?.let { visits[it].orEmpty().sumOf { visit -> visit.activeSeconds } } ?: 0L)
+        }.sortedByDescending { it.lastEnteredAt ?: it.entry.classroom.createdAt.orEmpty() }
+        historyLoading = false
     }
     LaunchedEffect(sessionId) {
         val id = sessionId ?: return@LaunchedEffect
@@ -114,7 +131,7 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 .onSuccess { job ->
                     progress = job
                     if (job.terminal) {
-                        history = repository.selfClassroomHistory()
+                        historyRefresh++
                         sessionId = null
                         return@LaunchedEffect
                     }
@@ -226,24 +243,28 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 Text("查看学习足迹  →", color = Color(0xFF295643), fontSize = 12.sp,
                     modifier = Modifier.clickable(onClick = onOpenHistory).padding(6.dp))
             }
-            if (history.isEmpty()) {
-                Text("还没有课堂记录，从上面的主题开始一节课吧。",
+            if (historyLoading || history.isEmpty()) {
+                Text(if (historyLoading) "正在加载最近学习…" else "还没有课堂记录，从上面的主题开始一节课吧。",
                     color = Color(0xFF58647A), fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                         .background(Color(0xFFFFF9F0)).padding(16.dp))
             } else {
-                history.take(4).forEach { item ->
-                    val safe = trusted(item.url)
-                    val label = item.createdAt?.take(10) ?: "最近课堂"
-                    Text(if (safe == null) "$label · 暂不可打开" else "$label · 继续上课  →",
-                        color = paper, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                            .clip(RoundedCornerShape(14.dp)).background(Color(0xCF1B3151))
-                            .clickable(enabled = safe != null) { viewerUrl = safe }.padding(14.dp))
+                history.take(4).forEach { recent ->
+                    val safe = trusted(recent.entry.classroom.url)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                        .clip(RoundedCornerShape(14.dp)).background(Color(0xCF1B3151))
+                        .clickable(enabled = safe != null) { viewerUrl = safe }.padding(14.dp)) {
+                        Text("${recent.entry.courseName} · ${if (safe == null) "暂不可打开" else "继续上课  →"}",
+                            color = paper, fontWeight = FontWeight.Bold)
+                        Text("${if (recent.lastEnteredAt != null) "上次进入" else "创建于"} ${(recent.lastEnteredAt ?: recent.entry.classroom.createdAt).orEmpty().replace('T', ' ').take(16)}" +
+                            if (recent.totalSeconds > 0) " · 已学 ${formatClassroomStudyDuration(recent.totalSeconds)}" else "",
+                            color = Color.White.copy(alpha = .85f), fontSize = 12.sp)
+                    }
                 }
             }
             Spacer(Modifier.height(28.dp))
             }
         }
     }
-    viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null }, repository) }
+    viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null; historyRefresh++ }, repository) }
 }

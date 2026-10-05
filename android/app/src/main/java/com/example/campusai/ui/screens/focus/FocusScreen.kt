@@ -91,9 +91,11 @@ import com.example.campusai.data.model.FocusSessionMode
 import com.example.campusai.data.model.FocusSessionSummary
 import com.example.campusai.data.repository.ApiFocusRepository
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.ClassroomStudyVisit
 import com.example.campusai.data.remote.InteractiveClassroomItemDto
 import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.ui.screens.courses.ClassroomViewer
+import com.example.campusai.ui.screens.courses.formatClassroomStudyDuration
 import com.example.campusai.data.repository.FocusPlanRepository
 import com.example.campusai.data.repository.remainingSeconds
 import com.example.campusai.ui.glass.CampusGlassRole
@@ -853,6 +855,7 @@ private data class ClassroomFootprint(
     val courseName: String,
     val item: InteractiveClassroomItemDto,
     val enteredAt: String?,
+    val visits: List<ClassroomStudyVisit>,
 )
 
 private fun String?.classroomTimeLabel(): String {
@@ -869,6 +872,7 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
     val records by repository.records.collectAsStateWithLifecycle()
     var selectedRecordId by rememberSaveable { mutableStateOf<String?>(null) }
     var classrooms by remember { mutableStateOf<List<ClassroomFootprint>>(emptyList()) }
+    var historyLoading by remember { mutableStateOf(true) }
     var trustedOrigin by remember { mutableStateOf<String?>(null) }
     var viewerUrl by remember { mutableStateOf<String?>(null) }
     var historyRefresh by remember { mutableIntStateOf(0) }
@@ -876,24 +880,18 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
     val selectedClassroom = classrooms.firstOrNull { "classroom:${it.item.sessionId ?: it.item.url}" == selectedRecordId }
     BackHandler(enabled = selectedRecordId != null) { selectedRecordId = null }
     LaunchedEffect(historyRefresh) {
+        historyLoading = true
         repository.refresh()
         trustedOrigin = appRepository.selfClassroomStatus()?.embedOrigin
         appRepository.refreshCourses()
-        val visits = appRepository.classroomEntryTimes()
+        val entryTimes = appRepository.classroomEntryTimes()
+        val studyVisits = appRepository.classroomStudyVisits().groupBy { it.classroomFingerprint }
         fun footprint(courseName: String, item: InteractiveClassroomItemDto) = ClassroomFootprint(
-            courseName, item, item.url?.let { visits[appRepository.classroomVisitFingerprint(it)] })
-        val own = appRepository.selfClassroomHistory().map { footprint("自主学习", it) }
-        classrooms = own
-        val fromCourses = mutableListOf<ClassroomFootprint>()
-        appRepository.courses.value.chunked(8).forEach { group ->
-            fromCourses += coroutineScope {
-                group.map { course -> async {
-                    appRepository.interactiveClassroomHistory(course.id)
-                        .map { footprint(course.name, it) }
-                } }.awaitAll().flatten()
-            }
-        }
-        classrooms = (own + fromCourses).distinctBy { it.item.sessionId ?: it.item.url }
+            courseName, item,
+            item.url?.let { entryTimes[appRepository.classroomVisitFingerprint(it)] },
+            item.url?.let { studyVisits[appRepository.classroomVisitFingerprint(it)].orEmpty() }.orEmpty())
+        classrooms = appRepository.allClassroomHistory().map { footprint(it.courseName, it.classroom) }
+        historyLoading = false
     }
     val bottomContentPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
     Box(Modifier.fillMaxSize()) {
@@ -926,6 +924,15 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
                                 Text("互动课堂 · ${selectedClassroom.courseName}", color = Color(0xFF295643), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 Text("${if (selectedClassroom.enteredAt != null) "进入时间" else "创建时间"}：${(selectedClassroom.enteredAt ?: selectedClassroom.item.createdAt).classroomTimeLabel()}",
                                     color = Color(0xFF203B32), fontSize = 15.sp)
+                                if (selectedClassroom.visits.isNotEmpty()) {
+                                    Text("累计学习 ${formatClassroomStudyDuration(selectedClassroom.visits.sumOf { it.activeSeconds })}",
+                                        color = Color(0xFF203B32), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text("进入记录", color = Color(0xFF295643), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    selectedClassroom.visits.sortedByDescending { it.enteredAt }.forEach { visit ->
+                                        Text("${visit.enteredAt.classroomTimeLabel()} · ${formatClassroomStudyDuration(visit.activeSeconds)} · ${if (visit.completed) "已结束" else "暂时离开"}",
+                                            color = Color(0xFF63796E), fontSize = 13.sp)
+                                    }
+                                }
                                 val safe = ClassroomUrlPolicy.sanitize(selectedClassroom.item.url,
                                     listOf(trustedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
                                 if (safe != null) Button(onClick = { viewerUrl = safe }) { Text("继续上课") }
@@ -944,12 +951,14 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
                         }
                     }
                 }
+            } else if (historyLoading) item {
+                Text("正在汇总专注与互动课堂记录…", color = Color.White, fontSize = 14.sp)
             } else if (records.isEmpty() && classrooms.isEmpty()) item {
                 Text("还没有学习足迹，专注或进入互动课堂后会显示在这里。", color = Color.White, fontSize = 14.sp)
             }
-            if (selectedRecordId == null && classrooms.isNotEmpty()) {
+            if (selectedRecordId == null && !historyLoading && classrooms.isNotEmpty()) {
                 item { Text("互动课堂", color = Color(0xFFFFECD0), fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                items(classrooms.sortedByDescending { it.item.createdAt.orEmpty() }, key = { "classroom:${it.item.sessionId ?: it.item.url}" }) { entry ->
+                items(classrooms.sortedByDescending { it.enteredAt ?: it.item.createdAt.orEmpty() }, key = { "classroom:${it.item.sessionId ?: it.item.url}" }) { entry ->
                     Surface(onClick = { selectedRecordId = "classroom:${entry.item.sessionId ?: entry.item.url}" },
                         shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {
                         Column(Modifier.fillMaxWidth().padding(18.dp)) {
@@ -957,11 +966,13 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
                                 fontSize = 17.sp, fontWeight = FontWeight.Bold)
                             Text("${if (entry.enteredAt != null) "进入时间" else "创建时间"} ${(entry.enteredAt ?: entry.item.createdAt).classroomTimeLabel()}",
                                 color = Color(0xFF63796E), fontSize = 13.sp)
+                            if (entry.visits.isNotEmpty()) Text("累计学习 ${formatClassroomStudyDuration(entry.visits.sumOf { it.activeSeconds })}",
+                                color = Color(0xFF63796E), fontSize = 13.sp)
                         }
                     }
                 }
             }
-            if (selectedRecordId == null && records.isNotEmpty()) {
+            if (selectedRecordId == null && !historyLoading && records.isNotEmpty()) {
                 item { Text("专注记录", color = Color(0xFFFFECD0), fontSize = 18.sp, fontWeight = FontWeight.Bold) }
                 items(records, key = { "focus:${it.sourceId}" }) { record ->
                 Surface(onClick = { selectedRecordId = "focus:${record.sourceId}" }, shape = RoundedCornerShape(20.dp), color = Color(0xF5FBF8EF)) {

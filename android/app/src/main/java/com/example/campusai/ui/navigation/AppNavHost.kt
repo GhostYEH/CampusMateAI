@@ -319,7 +319,6 @@ fun AppNavHost(
                 focusRepository = modules.focus,
                 onBack = { navController.popBackStack() },
                 onConnectChaoxing = { go("chaoxing") },
-                onOpenEduSystem = { go("edu_system") },
                 onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                 onOpenClassroom = { courseId -> go("course-classroom/${Uri.encode(courseId)}") },
             )
@@ -352,7 +351,6 @@ fun AppNavHost(
                     initialCourseId = courseId,
                     onBack = { navController.popBackStack() },
                     onConnectChaoxing = { go("chaoxing") },
-                    onOpenEduSystem = { go("edu_system") },
                     onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
                     onOpenClassroom = { id -> go("course-classroom/${Uri.encode(id)}") },
                 )

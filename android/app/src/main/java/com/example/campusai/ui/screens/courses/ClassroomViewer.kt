@@ -49,6 +49,13 @@ import com.example.campusai.ui.theme.Muted
 import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.material3.AlertDialog
+import androidx.material3.TextButton
+import java.time.Instant
 import org.json.JSONTokener
 import org.json.JSONObject
 import kotlinx.coroutines.launch
@@ -346,6 +353,7 @@ private val classroomTeacherQuestionFix = """
 @Composable
 internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRepository? = null) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val origin = remember(url) { ClassroomUrlPolicy.originOf(url) }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var loading by remember(url) { mutableStateOf(true) }
@@ -359,6 +367,12 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
     var candidateCount by remember(url) { mutableIntStateOf(0) }
     var lastNarratedSpeech by remember(url) { mutableStateOf("") }
     var pendingAudioRequest by remember(url) { mutableStateOf<PermissionRequest?>(null) }
+    var enteredAt by remember(url) { mutableStateOf<String?>(null) }
+    var activeSince by remember(url) { mutableLongStateOf(0L) }
+    var accumulatedMs by remember(url) { mutableLongStateOf(0L) }
+    var completedVisit by remember(url) { mutableStateOf(false) }
+    var showEndSummary by remember(url) { mutableStateOf(false) }
+    var visibleSeconds by remember(url) { mutableLongStateOf(0L) }
     val speaker = remember(url) { AndroidTextToSpeechSynthesizer(context) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val scope = rememberCoroutineScope()
@@ -409,6 +423,33 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
         }
     }
     BackHandler { if (webView?.canGoBack() == true) webView?.goBack() else onClose() }
+    DisposableEffect(lifecycleOwner, url) {
+        val lifecycle = lifecycleOwner.lifecycle
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> if (activeSince != 0L) {
+                    accumulatedMs += SystemClock.elapsedRealtime() - activeSince
+                    activeSince = 0L
+                }
+                Lifecycle.Event.ON_START -> if (enteredAt != null && activeSince == 0L) {
+                    activeSince = SystemClock.elapsedRealtime()
+                }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            val totalMs = accumulatedMs + if (activeSince != 0L) SystemClock.elapsedRealtime() - activeSince else 0L
+            enteredAt?.let { repository?.recordClassroomStudyVisit(url, it, totalMs / 1000L, completedVisit) }
+        }
+    }
+    LaunchedEffect(enteredAt) {
+        while (enteredAt != null) {
+            visibleSeconds = (accumulatedMs + if (activeSince != 0L) SystemClock.elapsedRealtime() - activeSince else 0L) / 1000L
+            kotlinx.coroutines.delay(1000)
+        }
+    }
     DisposableEffect(url) { onDispose {
         pendingAudioRequest?.deny()
         pendingAudioRequest = null
@@ -476,6 +517,9 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                 IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, contentDescription = "返回互动课堂", tint = Color.White) }
                 Text("互动课堂", color = Color.White, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showEndSummary = true }) {
+                    Text("结束", color = Color.White, fontSize = 12.sp)
+                }
                 IconButton(onClick = {
                     webView?.evaluateJavascript("""
                         (function () {
@@ -618,7 +662,13 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                                     view.evaluateJavascript(classroomViewportFix, null)
                                     view.evaluateJavascript(classroomMobileFix, null)
                                     view.evaluateJavascript(classroomTeacherQuestionFix, null)
-                                    if (ClassroomUrlPolicy.originOf(pageUrl) == origin) {
+                                    if (loadError == null && ClassroomUrlPolicy.originOf(pageUrl) == origin) {
+                                        if (enteredAt == null) {
+                                            enteredAt = Instant.now().toString()
+                                            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                                                activeSince = SystemClock.elapsedRealtime()
+                                            }
+                                        }
                                         scope.launch { repository?.recordClassroomEntry(url) }
                                     }
                                     loading = false
@@ -674,4 +724,18 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
             }
         }
     }
+    if (showEndSummary) AlertDialog(
+        onDismissRequest = { showEndSummary = false },
+        title = { Text("结束本次学习？") },
+        text = { Text("本次课堂学习 ${formatClassroomStudyDuration(visibleSeconds)}。结束后会保存到学习足迹，之后仍可继续进入课堂。") },
+        confirmButton = { TextButton(onClick = { completedVisit = true; showEndSummary = false; onClose() }) { Text("结束并返回") } },
+        dismissButton = { TextButton(onClick = { showEndSummary = false }) { Text("继续上课") } },
+    )
+}
+
+internal fun formatClassroomStudyDuration(seconds: Long): String {
+    val safe = seconds.coerceAtLeast(0)
+    return if (safe >= 3600) "${safe / 3600} 小时 ${(safe % 3600) / 60} 分钟"
+        else if (safe >= 60) "${safe / 60} 分 ${safe % 60} 秒"
+        else "${safe} 秒"
 }
