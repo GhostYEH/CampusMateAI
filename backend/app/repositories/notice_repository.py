@@ -86,11 +86,19 @@ class NoticeRepository:
             ).fetchone()
         return NoticeRow.from_row(row) if row else None
 
-    def list_notices(self, user_id: str) -> List[NoticeRow]:
+    def list_notices(self, user_id: str, limit: Optional[int] = None) -> List[NoticeRow]:
+        """列出该用户通知，按发布时间倒序。
+
+        传入 limit 时只返回前 N 条：调用方(规划器)只关心截断后的少量通知，
+        无需为了 Python 侧切片把该用户全部通知(含正文)读入内存。
+        """
+        sql = "SELECT * FROM notices WHERE user_id = ? ORDER BY published_at DESC"
+        params: List = [user_id]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
         with self._db.query() as conn:
-            cur = conn.execute(
-                "SELECT * FROM notices WHERE user_id = ? ORDER BY published_at DESC", (user_id,)
-            )
+            cur = conn.execute(sql, params)
             return [NoticeRow.from_row(r) for r in cur.fetchall()]
 
     def get_notice(self, user_id: str, notice_id: str) -> Optional[NoticeRow]:

@@ -182,7 +182,10 @@ class LearningPlannerService:
             raise ValueError("当前运行时未配置目标仓储")
         notices: list[Any] = []
         if self._notice_repository is not None:
-            all_notices = self._notice_repository.list_notices(user_id)
+            # 多取一条即可判断是否被截断，无需全量拉取后再切片。
+            all_notices = self._notice_repository.list_notices(
+                user_id, limit=MAX_NOTICES + 1
+            )
             notices = all_notices[:MAX_NOTICES]
             if len(all_notices) > MAX_NOTICES:
                 warnings.append("notices_truncated")
