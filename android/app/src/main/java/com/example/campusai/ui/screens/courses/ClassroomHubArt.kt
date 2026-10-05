@@ -1,6 +1,5 @@
 package com.example.campusai.ui.screens.courses
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -41,27 +40,16 @@ internal val ClassroomNight = Color(0xFF182638)
 internal val ClassroomChalk = Color(0xFFF2E9D3)
 internal val ClassroomAmber = Color(0xFFDAB27A)
 internal val ClassroomWood = Color(0xFFAD7A50)
-private val Board = Color(0xFF1B3838)
+private val Board = Color(0xFF172E38)
 private val BoardMuted = Color(0xFFB9CAC4)
 
 @Composable
 internal fun ClassroomStageBackdrop(modifier: Modifier = Modifier) {
     Box(modifier.background(ClassroomNight)) {
-        Image(painterResource(R.drawable.campus_twilight_original), null,
-            Modifier.fillMaxWidth().height(252.dp).align(Alignment.TopCenter),
-            contentScale = ContentScale.Crop, alignment = Alignment.TopCenter)
-        Box(Modifier.fillMaxWidth().height(300.dp).align(Alignment.TopCenter)
-            .background(Brush.verticalGradient(listOf(Color(0x77132235), Color(0x55182435), ClassroomNight))))
-        Canvas(Modifier.matchParentSize()) {
-            val lamp = Offset(size.width * .77f, size.height * .18f)
-            drawCircle(Brush.radialGradient(listOf(Color(0x33E9B979), Color.Transparent),
-                center = lamp, radius = size.width * .75f),
-                radius = size.width * .75f, center = lamp)
-            for (column in 0..6) {
-                val x = size.width * (column + .35f) / 7f
-                drawLine(Color(0x123B7190), Offset(x, size.height * .35f), Offset(x, size.height), 1.dp.toPx())
-            }
-        }
+        Image(painterResource(R.drawable.classroom_evening_interior), null,
+            Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.matchParentSize().background(Brush.verticalGradient(listOf(
+            Color(0x4D101D2B), Color(0x66101D2B), Color(0xB5182638)))))
     }
 }
 
@@ -80,7 +68,7 @@ internal fun LessonBlackboard(
     Column(Modifier.fillMaxWidth().border(5.dp, ClassroomWood, frame)
         .background(Color(0xFF5B4436), frame).padding(3.dp)
         .clip(RoundedCornerShape(7.dp))
-        .background(Brush.verticalGradient(listOf(Color(0xFF244443), Board, Color(0xFF142F31))))
+        .background(Brush.verticalGradient(listOf(Color(0xFF203D45), Board, Color(0xFF112A34))))
         .drawBehind {
             for (row in 0..7) for (column in 0..9) {
                 drawCircle(Color(0x0DF2E9D3), .65.dp.toPx(),
@@ -94,7 +82,7 @@ internal fun LessonBlackboard(
         Text("今天想弄懂什么？", color = ClassroomChalk, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Text("写下一个问题，老师会陪你一步步探索。", color = BoardMuted, fontSize = 12.sp)
         Spacer(Modifier.height(18.dp))
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp)).background(Color(0x66233839))
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp)).background(Color(0x66213A46))
             .border(1.dp, Color(0x668EAAA3), RoundedCornerShape(5.dp)).padding(13.dp)) {
             BasicTextField(
                 value = topic,
@@ -132,7 +120,7 @@ internal fun LessonBlackboard(
                 Triple("例题练习", "∑", "通过例题掌握")).forEach { (label, symbol, hint) ->
                 val active = teachingStyle == label
                 Column(Modifier.weight(1f).clip(RoundedCornerShape(5.dp))
-                    .background(if (active) Color(0x334B6D69) else Color.Transparent)
+                    .background(if (active) Color(0x334B6C79) else Color.Transparent)
                     .border(1.dp, if (active) ClassroomAmber else Color(0x557D9C98), RoundedCornerShape(5.dp))
                     .clickable { onTeachingStyleChange(label) }.padding(horizontal = 5.dp, vertical = 9.dp),
                     horizontalAlignment = Alignment.CenterHorizontally) {

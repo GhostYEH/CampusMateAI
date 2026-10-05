@@ -4,6 +4,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -152,21 +153,22 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     Box(Modifier.fillMaxSize()) {
         ClassroomStageBackdrop(Modifier.matchParentSize())
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.size(54.dp).clip(CircleShape)
-                    .background(Color(0xA8173344))) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = Color.White)
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text("互动课堂", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text("选好主题，走进你的课堂", color = Color.White.copy(alpha = .8f), fontSize = 12.sp)
-                }
-            }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)) {
-                Spacer(Modifier.height(68.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack, modifier = Modifier.size(54.dp).clip(CircleShape)
+                        .background(Color(0xB21A3440))
+                        .border(1.dp, ClassroomWood.copy(alpha = .7f), CircleShape)) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = ClassroomChalk)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("互动课堂", color = ClassroomChalk, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                        Text("选好主题，走进你的课堂", color = ClassroomChalk.copy(alpha = .8f), fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(28.dp))
                 LessonBlackboard(
                     topic = topic,
                     onTopicChange = { topic = it },
