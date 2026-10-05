@@ -76,6 +76,20 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 后端环境变量从 [`backend/.env.example`](backend/.env.example) 复制；默认 `LLM_PROVIDER=none`，通知可走规则抽取，聊天会走现有检索摘要降级。若要测试真实模型回答或课堂生成，须按对应服务配置模型提供方；不要提交 `.env` 或密钥。
 
+## Docker 一键部署
+
+`deploy/docker/` 提供四服务编排（`backend` / `webreact` / `magicclass-service` / `magicclass-app`），与本地 `start_all.bat` 同拓扑：
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env   # 首次：填密钥（至少 MAGICCLASS_INTERNAL_SECRET）
+docker compose -f deploy/docker/docker-compose.yml up --build
+```
+
+- **配置优先级**：`backend` 依次加载 `backend/.env` 与 `deploy/docker/.env`，后者覆盖前者。注意 Compose 的 `env_file` 是**无条件覆盖**：某个键只要出现在 `deploy/docker/.env`（哪怕写成空的 `KEY=`）就会覆盖 `backend/.env` 的同名值。因此不想覆盖的键要保持注释或删除，不要写成 `KEY=`；`.env.example` 里的后端密钥默认已注释，直接复制不会抹掉 `backend/.env` 的有效配置。真实密钥只写进这两个 `.env`（均被 Git 忽略），禁止提交。
+- **可信反向代理**：`backend` 只信任 `webreact`(Nginx) 的固定容器地址（`FORWARDED_ALLOW_IPS`，默认 `172.28.0.2`）。因此二维码创建、每日壁纸等按客户端地址的限流经代理后仍按真实来源分离，客户端伪造 `X-Forwarded-For` 无效；宿主直连后端发布端口也不在信任范围内。若改动 `webreact` 的静态地址或子网，需同步该值；不要设成 `*`。
+- **首次初始化与已有卷**：有状态数据都落在具名卷。`magicclass-app` 以非 root 的 `nextjs` 运行，容器启动时先把 `/app/data` 属主修正为 `nextjs` 再降权运行，因此全新卷与旧的 root 所有卷都可写；重建容器数据保留，初始化不会覆盖已有数据。
+- **可选课堂 MP4 导出**：默认不启动渲染服务。需要时在 `deploy/docker/.env` 设 `NEXT_PUBLIC_ENABLE_VIDEO_EXPORT=true` 并用 `--profile video-export` 启动；渲染服务在容器网络内以 `http://render-service:9000` 暴露（编排已固定），`magicclass-app` 会探测其 `/health`，未启动则自动降级为仅下载 ZIP。渲染服务需要 `NET_ADMIN` 安装出网封锁（编排已配置），请勿改为 `privileged` 或关闭封锁。
+
 ## 已知边界
 
 - 当前聊天**仍有知识库检索**，与“纯通用、无知识库检索”的目标不一致；这需要单独调整后端聊天编排及相关测试，不能只改 README 宣称已经完成。

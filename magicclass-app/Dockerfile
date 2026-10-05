@@ -97,7 +97,7 @@ RUN if [ -n "$ALPINE_MIRROR" ]; then \
       cp /etc/apk/repositories /tmp/apk.repositories; \
       sed -i "s|dl-cdn.alpinelinux.org|$ALPINE_MIRROR|g" /etc/apk/repositories; \
     fi && \
-    apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg && \
+    apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg su-exec && \
     if [ -n "$ALPINE_MIRROR" ]; then \
       mv /tmp/apk.repositories /etc/apk/repositories; \
     fi
@@ -109,8 +109,19 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+# 具名卷挂载到 /app/data。Docker 首次创建的具名卷是 root 所有，旧部署里已有的卷
+# 也可能是 root 所有；而应用以非 root 的 nextjs 运行，写这类目录会 EACCES
+# （课堂、生成任务、素材字节、用量日志都落在 /app/data 下）。
+# 因此镜像不再声明 `USER nextjs`，改为容器以 root 启动，由 entrypoint 在初始化
+# 阶段把 /app/data 的属主修正为 nextjs，再立刻用 su-exec 降权运行 Node ——
+# 保持非 root 应用用户，不使用 chmod 777。chown -R 幂等，只改属主，
+# 不删除也不覆盖卷中已有数据（重建容器后数据保留）。
+# /app/data 缺省内容不入镜像（.dockerignore 排除 data/），首次挂载为空卷，
+# 由应用自己创建子目录。
+COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

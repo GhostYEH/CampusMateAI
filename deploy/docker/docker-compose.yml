@@ -47,10 +47,19 @@ services:
   backend:
     build:
       context: ../../backend
-    # 复用本机已有的 backend/.env（LLM / 火山 / MiMo / UAPI 等密钥都在这里）。
-    # 不存在时不报错——密钥也可以直接写进 deploy/docker/.env。
+    # 后端密钥来源，按顺序加载，后者覆盖前者：
+    #   1) backend/.env  —— 既有用法，LLM / 火山 / MiMo / UAPI 等密钥常放这里；
+    #   2) deploy/docker/.env —— 本编排模板声明的键也在这里生效，用来覆盖上一项。
+    # 两个文件都不存在时不报错。注意 Compose 的两条语义：
+    #   - `environment:` 里的**无值键**会被解析成空值并删除 env_file 里的同名变量，
+    #     所以不能用它做"有值才覆盖"的透传；
+    #   - `env_file` 列表里靠后的文件**无条件覆盖**靠前的文件，**空值也算覆盖**。
+    # 因此要覆盖 backend/.env 的键必须在 deploy/docker/.env 里填真实值；
+    # 不想覆盖的键要整行注释或删除，不能写成 `KEY=`（见 .env.example 说明）。
     env_file:
       - path: ../../backend/.env
+        required: false
+      - path: .env
         required: false
     environment:
       APP_ENV: ${APP_ENV:-development}
@@ -58,6 +67,18 @@ services:
       APP_PORT: "8000"
       DATABASE_URL: sqlite:///./data/app.db
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:*,http://127.0.0.1:*}
+      # 可信反向代理地址。uvicorn 默认只信任 127.0.0.1，而本拓扑里 Nginx 在
+      # 容器网络内（非 127.0.0.1），否则 X-Forwarded-For 会被忽略，所有经代理
+      # 的用户都塌缩成同一个 request.client.host —— 二维码创建、壁纸等按 ASGI
+      # peer 的限流会共享额度、互相拖累。
+      # 这里只信任 Nginx 容器的固定地址（webreact 的 ipv4_address），因此：
+      #   - 不同真实客户端经代理后额度彼此分离；
+      #   - 客户端伪造 X-Forwarded-For 无效（uvicorn 取最右侧不可信地址）；
+      #   - 宿主直连 backend 发布端口时 peer 是网关(172.28.0.1)，不在信任表内，
+      #     伪造的转发头同样不被采信。
+      # 禁止设成 *（FORWARDED_ALLOW_IPS=* 会无条件信任任何来源的 XFF）。
+      # 若改了 webreact 的 ipv4_address，这里要同步。
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.28.0.2}
       # 本地起开发栈时默认准备演示账号（与 start_all.bat 行为一致）。
       AUTO_SEED_DEMO_USERS: ${AUTO_SEED_DEMO_USERS:-true}
 
@@ -80,7 +101,9 @@ services:
       magicclass-service:
         condition: service_healthy
     networks:
-      - campusmate
+      campusmate:
+        # 固定地址，避免动态分配抢占 webreact 的静态地址 172.28.0.2。
+        ipv4_address: 172.28.0.3
     restart: unless-stopped
 
   # ---------- 上游「学习空间」应用（Next.js standalone） ----------
@@ -90,6 +113,10 @@ services:
       args:
         # 构建期变量：放行本站 Origin 内嵌课堂。改了要重新 build。
         ALLOWED_FRAME_ANCESTORS: ${ALLOWED_FRAME_ANCESTORS:-http://localhost:5174 http://127.0.0.1:5174}
+        # 构建期开关：MP4 导出入口（导出菜单里的“导出视频”）。默认关闭，
+        # 需在 deploy/docker/.env 设 NEXT_PUBLIC_ENABLE_VIDEO_EXPORT=true 后重新 build。
+        # 它只控制前端入口是否显示；实际能力由下面的 RENDER_SERVICE_URL + /health 探测决定。
+        NEXT_PUBLIC_ENABLE_VIDEO_EXPORT: ${NEXT_PUBLIC_ENABLE_VIDEO_EXPORT:-}
         # 构建期网络：国内镜像源 / 宿主机代理（见 deploy/docker/.env）。
         NPM_REGISTRY: ${NPM_REGISTRY:-}
         HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
@@ -102,6 +129,10 @@ services:
       # standalone 用 `node server.js` 启动，不经过 npm，因此 npm_package_version
       # 取不到，/api/health 会回落成硬编码 0.1.0。这里显式补上真实版本。
       npm_package_version: "1.0.3"
+      # 内部渲染服务地址（容器网络内，只服务端可见）。app 的导出能力接口会探测
+      # 它的 /health：启用 video-export profile 时返回可用，否则探测失败并降级为
+      # 仅下载 ZIP。设置该地址本身不会虚假声明渲染可用。
+      RENDER_SERVICE_URL: http://render-service:9000
       # 服务端默认模型（不配时服务端 stage 会因解析不到模型而失败）。
       DEFAULT_MODEL: ${MAGICCLASS_APP_DEFAULT_MODEL:-}
       # 可选：上游自己的 LLM / TTS / ASR Provider 密钥（按需填，不填则对应能力不可用）。
@@ -136,7 +167,10 @@ services:
     depends_on:
       - backend
     networks:
-      - campusmate
+      campusmate:
+        # Nginx 代理的固定地址：backend 只信任这一个地址转发来的 X-Forwarded-For，
+        # 因此其它来源（含宿主直连）无法靠伪造转发头绕过按 peer 的限流。
+        ipv4_address: 172.28.0.2
     restart: unless-stopped
 
   # ---------- 可选：隔离的 MP4 导出服务（重，默认不启动） ----------
@@ -150,6 +184,11 @@ services:
         HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
         HTTPS_PROXY: ${BUILD_HTTPS_PROXY:-}
         NO_PROXY: ${BUILD_NO_PROXY:-}
+    # 入口脚本默认安装 iptables 出网封锁（隔离不可信 Chromium），这需要
+    # CAP_NET_ADMIN。缺失时脚本 fail-closed 退出，容器会不断重启；这里补上该
+    # 能力。用最小能力而非 privileged，也不关闭防火墙来绕过。
+    cap_add:
+      - NET_ADMIN
     expose:
       - "9000"
     environment:
@@ -165,6 +204,14 @@ services:
 networks:
   campusmate:
     driver: bridge
+    # 固定子网，使 webreact(Nginx) 获得可预测的地址，便于把后端可信代理
+    # 精确配置成该地址（见 backend 的 FORWARDED_ALLOW_IPS），而不是信任整个
+    # 私有网段 —— 否则宿主直连 backend 发布端口时也会被当成可信代理，
+    # 客户端就能用伪造的 X-Forwarded-For 绕过按 peer 的限流。
+    # 若该网段与既有网络冲突，改这里的 subnet 并同步 backend 的 FORWARDED_ALLOW_IPS。
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
 
 volumes:
   backend-data:

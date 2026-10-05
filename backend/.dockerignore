@@ -13,8 +13,16 @@ __pycache__/
 .env.*
 !.env.example
 
-# 本地运行期数据（SQLite / 上传 / 缓存 / 知识库）
+# 本地运行期数据（SQLite / 上传 / 缓存 / 知识库 / 训练产物）
 data/
+# 但 data/ 下有 Git 跟踪的**发布资源**，全新部署必须随镜像分发，否则：
+#   - universities.json / edu_system_candidates.json 缺失 -> 学校名单为空、教务发现无候选；
+#   - banner_images/* 缺失 -> 首页默认轮播图 404。
+# 只放行这三类；数据库、上传文件、缓存、artifacts 等本地产物仍被上面的 data/ 排除。
+!data/universities.json
+!data/edu_system_candidates.json
+!data/banner_images
+!data/banner_images/**
 *.db
 *.db-journal
 *.db-wal
