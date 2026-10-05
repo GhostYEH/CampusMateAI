@@ -335,8 +335,12 @@ class LearningPlannerService:
                    )
                ),
                "supersedes_plan_id": supersedes_plan_id, "replan_key": replan_key}
-        for item in selected:
-            item_key = [run["run_id"], item["item_type"], item.get("task_id")]
+        for index, item in enumerate(selected):
+            # 同一 item_type 可以出现多条：多条通知、多个目标、多门课程的基础练习
+            # 都不带 task_id。仅凭 type+task_id 会算出相同摘要，插入时撞
+            # learning_plan_items.item_id 唯一键（整次生成 500）。序号与 course_id
+            # 只在本次 run 内参与摘要，plan_id/run_id 已隔离跨次生成。
+            item_key = [run["run_id"], index, item["item_type"], item.get("task_id"), item.get("course_id")]
             item["item_id"] = f"lpitem_{_digest(item_key)[:16]}"
         plan = self.repository.create_plan(user_id=user_id, run=run, items=selected)
         if plan.run.run_id != run_id:
