@@ -45,7 +45,20 @@ fun TaskDetailScreen(
     onOpenCourse: (String) -> Unit = {},
 ) {
     val tasks by repository.tasks.collectAsStateWithLifecycle()
-    val task = remember(tasks, taskId) { tasks.find { it.id == taskId } }
+    val liveTask = remember(tasks, taskId) { tasks.find { it.id == taskId } }
+    var lastKnownTask by remember(taskId) { mutableStateOf<Task?>(null) }
+    var missingConfirmed by remember(taskId) { mutableStateOf(false) }
+    LaunchedEffect(liveTask, taskId) {
+        if (liveTask != null) {
+            lastKnownTask = liveTask
+            missingConfirmed = false
+        } else {
+            // A background task refresh can briefly omit a notice before its next read.
+            delay(5_000)
+            missingConfirmed = true
+        }
+    }
+    val task = liveTask ?: lastKnownTask
     val courseSynced = task?.source in setOf("chaoxing", "chaoxing_notice", "course_notice")
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -53,8 +66,9 @@ fun TaskDetailScreen(
     if (task == null) {
         Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Default.Warning, null, tint = Muted, modifier = Modifier.size(48.dp))
-                Text("任务不存在或已被删除", color = Muted, fontSize = 15.sp)
+                if (missingConfirmed) Icon(Icons.Default.Warning, null, tint = Muted, modifier = Modifier.size(48.dp))
+                else CircularProgressIndicator(color = JournalBlue, modifier = Modifier.size(32.dp))
+                Text(if (missingConfirmed) "任务不存在或已被删除" else "正在读取任务…", color = Muted, fontSize = 15.sp)
                 TextButton(onClick = onBack) { Text("返回待办列表", color = JournalNight) }
             }
         }
@@ -100,7 +114,7 @@ fun TaskDetailScreen(
                     editTitle = task.title; editDue = task.due; editCourse = task.course
                     editDescription = task.description; isEditing = false
                 }) { Text("取消", color = JournalNight) }
-                if (!courseSynced) IconButton(onClick = { deleting = true }) {
+                if (!courseSynced && liveTask != null) IconButton(onClick = { deleting = true }) {
                     Icon(Icons.Default.DeleteOutline, "删除", tint = JournalNight)
                 }
             }
@@ -130,7 +144,7 @@ fun TaskDetailScreen(
                     color = if (task.done) JournalBlue else JournalClay,
                 )
                 Spacer(Modifier.weight(1f))
-                if (!isEditing && !courseSynced) {
+                if (!isEditing && !courseSynced && liveTask != null) {
                     IconButton(onClick = { isEditing = true }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Default.Edit, "编辑", tint = Muted, modifier = Modifier.size(18.dp))
                     }
@@ -294,6 +308,10 @@ fun TaskDetailScreen(
                         Text("保存修改", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                 } else if (courseSynced) {
+                    if (liveTask == null) Text(
+                        if (missingConfirmed) "暂时无法同步这项任务，请返回列表重试" else "正在同步任务状态…",
+                        color = JournalMuted, fontSize = 12.sp,
+                    )
                     Text(when {
                         task.source == "chaoxing" || task.submittedAt != null -> "提交状态由课程平台同步更新"
                         task.done -> "已由你标记为已提交"
@@ -306,7 +324,7 @@ fun TaskDetailScreen(
                             Text("打开原课程作业", fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (!task.done && task.source != "chaoxing") {
+                    if (!task.done && task.source != "chaoxing" && liveTask != null) {
                         androidx.compose.material3.OutlinedButton(onClick = {
                             scope.launch {
                                 val result = if (task.source == "course_notice")
@@ -323,7 +341,7 @@ fun TaskDetailScreen(
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = JournalClay)) {
                             Text("我已在课程中提交", fontWeight = FontWeight.Bold)
                         }
-                    } else if (task.done && task.source != "chaoxing" && task.submittedAt == null) {
+                    } else if (task.done && task.source != "chaoxing" && task.submittedAt == null && liveTask != null) {
                         androidx.compose.material3.OutlinedButton(onClick = {
                             scope.launch {
                                 val result = if (task.source == "course_notice")
@@ -339,6 +357,9 @@ fun TaskDetailScreen(
                         }
                     }
                     confirmationError?.let { Text(it, color = Color(0xFF974D42), fontSize = 13.sp) }
+                } else if (liveTask == null) {
+                    Text(if (missingConfirmed) "暂时无法同步这项任务，请返回列表重试" else "正在同步任务状态…",
+                        color = JournalMuted, fontSize = 12.sp)
                 } else {
                     if (task.done) androidx.compose.material3.OutlinedButton(onClick = { scope.launch { repository.toggleTask(task.id) } },
                         modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(5.dp),
@@ -365,7 +386,7 @@ fun TaskDetailScreen(
                         .padding(horizontal = 12.dp, vertical = 5.dp))
 
                 // Delete button at bottom
-                if (!courseSynced) TextButton(
+                if (!courseSynced && liveTask != null) TextButton(
                     onClick = { deleting = true },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
