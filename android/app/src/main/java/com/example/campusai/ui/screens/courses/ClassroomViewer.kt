@@ -250,13 +250,18 @@ private val classroomNarrationSnapshot = """
         return node.querySelector('p') && node.querySelector('p').textContent.trim();
       });
       var spoken = card && card.querySelector('p');
+      var qaSpeech = window.__campusQaSpeech || '';
+      var qaEmpty = window.__campusQaEmpty === true;
+      window.__campusQaSpeech = '';
+      window.__campusQaEmpty = false;
       return JSON.stringify({ playing: playing,
         browserSpeaking: !!(window.speechSynthesis && window.speechSynthesis.speaking),
-        text: spoken ? spoken.textContent.trim().slice(0, 6000) : '' });
+        text: spoken ? spoken.textContent.trim().slice(0, 6000) : '',
+        qaSpeech: qaSpeech, qaEmpty: qaEmpty });
     })()
 """.trimIndent()
 
-/** Q&A addresses the teacher directly; the upstream multi-agent director can end without dispatching anyone. */
+/** Route classroom Q&A to the configured server model and read the teacher's streamed reply aloud. */
 private val classroomTeacherQuestionFix = """
     (function () {
       if (window.__campusTeacherQuestionFix) return;
@@ -293,9 +298,42 @@ private val classroomTeacherQuestionFix = """
             console.warn('CAMPUS_QA_TEACHER_FALLBACK');
           }
           delete request.config.triggerAgentId;
+          // The browser can retain a model that this classroom server cannot use.
+          // Let the server select its configured chat model for teacher Q&A.
+          delete request.model;
+          delete request.apiKey;
+          delete request.baseUrl;
+          delete request.providerType;
+          delete request.thinking;
+          request.thinkingConfig = { mode: 'disabled', enabled: false };
           return originalFetch.call(this, input, Object.assign({}, init, {
             body: JSON.stringify(request)
-          }));
+          })).then(function (response) {
+            if (response.ok) {
+              response.clone().text().then(function (body) {
+                var spoken = '';
+                var empty = false;
+                body.split(/\r?\n/).forEach(function (line) {
+                  if (line.indexOf('data: ') !== 0) return;
+                  try {
+                    var event = JSON.parse(line.slice(6));
+                    if (event.type === 'text_delta' && event.data &&
+                        typeof event.data.content === 'string') {
+                      spoken += event.data.content;
+                    } else if (event.type === 'done' && event.data &&
+                               event.data.agentHadContent === false &&
+                               event.data.totalAgents > 0) {
+                      empty = true;
+                    }
+                  } catch (_) { /* Ignore incomplete SSE lines. */ }
+                });
+                spoken = spoken.replace(/\s+/g, ' ').trim().slice(0, 2000);
+                if (spoken) window.__campusQaSpeech = spoken;
+                else if (empty) window.__campusQaEmpty = true;
+              }).catch(function () { /* The classroom still handles the stream. */ });
+            }
+            return response;
+          });
         } catch (error) {
           console.warn('CAMPUS_QA_TEACHER_ROUTING_FAILED', String(error));
           return originalFetch.apply(this, arguments);
@@ -397,8 +435,19 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                 val playing = snapshot?.optBoolean("playing") == true
                 val browserSpeaking = snapshot?.optBoolean("browserSpeaking") == true
                 val line = snapshot?.optString("text").orEmpty().trim()
+                val qaSpeech = snapshot?.optString("qaSpeech").orEmpty().trim()
                 transcript = line
-                if (!playing) {
+                if (snapshot?.optBoolean("qaEmpty") == true) {
+                    speechError = "老师这次没有生成回答，请重试提问。"
+                }
+                if (qaSpeech.isNotBlank() && !browserSpeaking && !speaking) {
+                    speaker.stop()
+                    autoSpeaking = false
+                    lastNarratedSpeech = line
+                    speaker.speak(qaSpeech.take(2000),
+                        onDone = { },
+                        onError = { message -> mainHandler.post { speechError = message } })
+                } else if (!playing) {
                     if (autoSpeaking) { speaker.stop(); autoSpeaking = false }
                     candidateSpeech = ""; candidateCount = 0; lastNarratedSpeech = ""
                 } else if (browserSpeaking) {
