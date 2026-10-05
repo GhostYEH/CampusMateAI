@@ -474,7 +474,6 @@ fun FocusSessionScreen(
     }
     if (showEndConfirmation) {
         FocusEndDialog(
-            scene = sceneSettings.scene,
             timerExpired = timerExpired,
             finishing = finishingSession,
             hasPlanStep = planTaskId != null,
@@ -737,71 +736,73 @@ private fun FocusSensingSystem(
         state == LearningContinuityState.PAUSED -> "看起来你正在短暂调整，准备好后我们继续。"
         else -> "我会安静关注你的学习状态，帮助你保持专注。"
     }
-    Surface(
-        modifier = Modifier.campusGlass(
-            shape = RoundedCornerShape(26.dp),
-            role = CampusGlassRole.PANEL,
-            tint = Color(0xF8FFF9EE),
-        ),
-        shape = RoundedCornerShape(26.dp),
-        color = Color.Transparent,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE0D7C8)),
-    ) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Surface(shape = RoundedCornerShape(26.dp), color = FocusStudyPalette.Paper,
+        border = androidx.compose.foundation.BorderStroke(1.dp, FocusStudyPalette.Line),
+        shadowElevation = 12.dp) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = CircleShape, color = PrimarySoft) { Icon(Icons.Default.GraphicEq, null, tint = Primary, modifier = Modifier.padding(8.dp).size(18.dp)) }
+                Surface(shape = CircleShape, color = FocusStudyPalette.Pine) {
+                    Icon(Icons.Default.GraphicEq, null, tint = Color.White, modifier = Modifier.padding(9.dp).size(18.dp))
+                }
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("CampusMate AI", color = TextPrimary, fontWeight = FontWeight.Bold)
-                    Text("● $voiceLabel", color = Primary, fontSize = 12.sp)
+                    Text("CampusMate AI", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold)
+                    Text(voiceLabel, color = FocusStudyPalette.Pine, fontSize = 12.sp)
                 }
                 if (phase == FocusVoicePhase.SPEAKING || phase == FocusVoicePhase.THINKING) VoiceStatusAnimation(phase)
             }
             if (userText.isNotBlank() || aiText.isNotBlank() || phase == FocusVoicePhase.THINKING || phase == FocusVoicePhase.SPEAKING) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    userText.takeIf { it.isNotBlank() }?.let { Text("我：$it", color = TextPrimary, fontSize = 14.sp) }
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    .background(FocusStudyPalette.PaperSoft).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    userText.takeIf { it.isNotBlank() }?.let { Text("我：$it", color = FocusStudyPalette.Ink, fontSize = 14.sp) }
                     if (aiText.isNotBlank() || phase == FocusVoicePhase.THINKING || phase == FocusVoicePhase.SPEAKING) {
-                        Text("CampusMate：${aiText.ifBlank { if (phase == FocusVoicePhase.THINKING) "正在思考…" else "正在回答…" }}", color = Muted, fontSize = 14.sp)
+                        Text("CampusMate：${aiText.ifBlank { if (phase == FocusVoicePhase.THINKING) "正在思考…" else "正在回答…" }}",
+                            color = FocusStudyPalette.Ink, fontSize = 14.sp)
                     }
                 }
             } else {
-                Text("需要帮助时可以直接说话。", color = Muted, fontSize = 12.sp)
+                Text("需要帮助时可以直接说话。", color = FocusStudyPalette.Muted, fontSize = 12.sp)
             }
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
-            HorizontalDivider(color = PrimarySoft)
+            HorizontalDivider(color = FocusStudyPalette.Line)
             Row(
                 modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleDetails),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.Visibility, null, tint = Primary, modifier = Modifier.size(19.dp))
+                Icon(Icons.Default.Visibility, null, tint = FocusStudyPalette.Pine, modifier = Modifier.size(19.dp))
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("AI 学习观察", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text("● ${if (enabled && sessionMode == FocusSessionMode.SMART_GUARD) "正在关注你的学习状态" else "暂未开启智能观察"}", color = if (enabled) Primary else Muted, fontSize = 12.sp)
+                    Text("AI 学习观察", color = FocusStudyPalette.Ink, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text(if (enabled && sessionMode == FocusSessionMode.SMART_GUARD) "正在关注你的学习状态" else "暂未开启智能观察",
+                        color = FocusStudyPalette.Muted, fontSize = 12.sp)
                 }
-                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = Primary)
+                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                    tint = FocusStudyPalette.Pine)
             }
             Text(
-                "CampusMate：$observationMessage",
-                color = if (reminder != null) Primary else Muted,
-                fontSize = 12.sp,
+                observationMessage,
+                color = if (reminder != null) FocusStudyPalette.Pine else FocusStudyPalette.Muted,
+                fontSize = 13.sp,
                 fontWeight = if (reminder != null) FontWeight.SemiBold else FontWeight.Normal,
             )
             AnimatedVisibility(visible = expanded, enter = fadeIn() + slideInVertically(), exit = fadeOut() + slideOutVertically()) {
                 Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Text("学习状态详情", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("学习状态详情", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     if (enabled && sessionMode == FocusSessionMode.SMART_GUARD) {
                         AndroidView(
                             factory = { cameraContext -> PreviewView(cameraContext).apply {
-                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                scaleType = PreviewView.ScaleType.FIT_CENTER
                                 implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                                 onAttachPreview(this)
                             } },
-                            modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)),
+                            modifier = Modifier.fillMaxWidth().height(166.dp).clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF172923)),
                         )
                     }
-                    Text("人在座位：${if (presence == PresenceState.PRESENT) "是" else "正在识别"}", color = TextPrimary, fontSize = 12.sp)
-                    Text("状态分析：${expressionLabel ?: observationLabel(state)}", color = TextPrimary, fontSize = 12.sp)
+                    Text("画面仅用于本次学习状态观察", color = FocusStudyPalette.Muted, fontSize = 11.sp)
+                    Text("人在座位：${if (presence == PresenceState.PRESENT) "是" else "正在识别"}", color = FocusStudyPalette.Ink, fontSize = 12.sp)
+                    Text("状态分析：${expressionLabel ?: observationLabel(state)}", color = FocusStudyPalette.Ink, fontSize = 12.sp)
                 }
             }
         }
