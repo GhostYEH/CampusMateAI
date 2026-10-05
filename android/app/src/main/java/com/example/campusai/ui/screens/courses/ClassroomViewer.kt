@@ -53,8 +53,8 @@ import android.os.SystemClock
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.material3.AlertDialog
-import androidx.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import java.time.Instant
 import org.json.JSONTokener
 import org.json.JSONObject
