@@ -665,6 +665,7 @@ class AppRepository(
                             courseId = dto.course_id,
                             sourceUrl = dto.source_url,
                             submittedAt = dto.remote_submitted_at,
+                            sourceText = dto.source_text,
                         )
                     }
                 val now = java.time.Instant.now()

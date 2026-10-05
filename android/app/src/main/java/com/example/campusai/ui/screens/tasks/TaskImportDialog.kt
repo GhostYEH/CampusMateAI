@@ -5,6 +5,7 @@ import android.app.TimePickerDialog
 import com.example.campusai.ui.components.GlassIconButton as IconButton
 
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -15,12 +16,14 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,10 +33,7 @@ import com.example.campusai.data.remote.TaskImportAnalyzeResponse
 import com.example.campusai.data.remote.TaskImportCommitRequest
 import com.example.campusai.data.remote.PersonalTaskCreateRequest
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.components.GlassButton
 import com.example.campusai.ui.components.GlassTextButton
-import com.example.campusai.ui.glass.CampusGlassRole
-import com.example.campusai.ui.glass.campusGlass
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -42,7 +42,7 @@ import java.time.format.DateTimeFormatter
 
 private val taskDateDisplay = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-private fun pickTaskDeadline(current: String?, onPicked: (String) -> Unit, context: android.content.Context) {
+internal fun pickTaskDeadline(current: String?, onPicked: (String) -> Unit, context: android.content.Context) {
     val start = current?.let { runCatching { LocalDateTime.parse(it.substring(0, 16).replace('T', ' '), taskDateDisplay) }.getOrNull() }
         ?: LocalDateTime.now().plusDays(1).withHour(20).withMinute(0)
     DatePickerDialog(context, { _, year, month, day ->
@@ -53,7 +53,7 @@ private fun pickTaskDeadline(current: String?, onPicked: (String) -> Unit, conte
     }, start.year, start.monthValue - 1, start.dayOfMonth).show()
 }
 
-private fun displayTaskDeadline(value: String?): String =
+internal fun displayTaskDeadline(value: String?): String =
     value?.let { runCatching { taskDateDisplay.format(java.time.OffsetDateTime.parse(it).atZoneSameInstant(ZoneId.systemDefault())) }.getOrNull() }
         ?: "未设置截止时间"
 
@@ -68,7 +68,7 @@ fun TaskImportDialog(
     var manualTitle by remember { mutableStateOf("") }
     var manualNote by remember { mutableStateOf("") }
     var manualDeadline by remember { mutableStateOf<String?>(null) }
-    var showExtract by remember { mutableStateOf(false) }
+    var entryMode by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<TaskImportAnalyzeResponse?>(null) }
     val drafts = remember { mutableStateListOf<TaskImportDraftState>() }
     var busy by remember { mutableStateOf(false) }
@@ -86,37 +86,61 @@ fun TaskImportDialog(
             val shortWindow = maxHeight < 560.dp
             Column(
                 Modifier.widthIn(max = 760.dp).fillMaxWidth()
-                    .fillMaxHeight(if (shortWindow) .98f else .9f)
-                    .campusGlass(RoundedCornerShape(28.dp), CampusGlassRole.PANEL)
+                    .fillMaxHeight(if (shortWindow) .96f else when {
+                        result != null -> .87f
+                        entryMode == "extract" -> .74f
+                        entryMode == "manual" -> .68f
+                        else -> .43f
+                    })
+                    .journalPaper(RoundedCornerShape(28.dp))
                     .padding(if (compact) 18.dp else 26.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) {
-                        Text("PERSONAL TASK", color = Primary, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.4.sp)
-                        Text(if (result == null) "新建个人待办" else "确认识别结果", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(if (result == null) "自己填写，或粘贴消息提取后再确认" else "请核对任务、截止时间和备注", color = Muted, fontSize = 12.sp)
+                        Text("CAMPUS / TASK JOURNAL", color = JournalAmber, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.4.sp)
+                        Text(when { result != null -> "确认任务卡"; entryMode == "extract" -> "整理一条消息"; entryMode == "manual" -> "写下这件事"; else -> "新建待办" }, color = JournalInk, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(when { result != null -> "核对后再收进待办"; entryMode == "extract" -> "粘贴通知，找出任务与时间"; else -> "给这件事留下一张记录" }, color = JournalMuted, fontSize = 12.sp)
                     }
                     IconButton(onClick = onDismiss, enabled = !busy) { Icon(Icons.Default.Close, "关闭", tint = Muted) }
                 }
 
-                if (result == null) {
+                if (result == null && entryMode == null) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        JournalSheet(Modifier.fillMaxWidth().clickable { entryMode = "manual" }) {
+                            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.EditNote, null, tint = JournalInk)
+                                Spacer(Modifier.width(12.dp))
+                                Column { Text("手动创建", color = JournalInk, fontWeight = FontWeight.Bold); Text("名称、截止时间、备注", color = JournalMuted, fontSize = 11.sp) }
+                            }
+                        }
+                        JournalSheet(Modifier.fillMaxWidth().clickable { entryMode = "extract" }) {
+                            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ContentPaste, null, tint = JournalInk)
+                                Spacer(Modifier.width(12.dp))
+                                Column { Text("从消息提取", color = JournalInk, fontWeight = FontWeight.Bold); Text("粘贴班群消息，整理成任务卡", color = JournalMuted, fontSize = 11.sp) }
+                            }
+                        }
+                    }
+                } else if (result == null) {
                     Column(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        OutlinedTextField(manualTitle, { manualTitle = it.take(256) }, Modifier.fillMaxWidth(), label = { Text("任务名称") }, singleLine = true, shape = RoundedCornerShape(16.dp))
-                        OutlinedButton(onClick = { pickTaskDeadline(manualDeadline, { manualDeadline = it }, context) }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("截止时间：${displayTaskDeadline(manualDeadline)}")
-                        }
-                        if (manualDeadline != null) GlassTextButton(onClick = { manualDeadline = null }) { Text("清除截止时间") }
-                        OutlinedTextField(manualNote, { manualNote = it.take(4_000) }, Modifier.fillMaxWidth(), label = { Text("备注（材料、地点、注意事项）") }, minLines = 2, shape = RoundedCornerShape(16.dp))
-                        OutlinedButton(onClick = { showExtract = !showExtract }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("从消息提取")
-                        }
-                        if (showExtract) {
-                            OutlinedTextField(sourceName, { sourceName = it.take(256) }, Modifier.fillMaxWidth(), label = { Text("消息来源（选填）") }, singleLine = true, shape = RoundedCornerShape(16.dp))
-                            OutlinedTextField(content, { content = it.take(20_000) }, Modifier.fillMaxWidth().heightIn(min = if (shortWindow) 120.dp else 180.dp), label = { Text("粘贴整条消息") }, placeholder = { Text("保留原文，识别后逐项确认") }, shape = RoundedCornerShape(16.dp))
+                        if (entryMode == "manual") {
+                            Text("01  我要做什么", color = JournalInk, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(manualTitle, { manualTitle = it.take(256) }, Modifier.fillMaxWidth(), label = { Text("任务名称") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                            OutlinedTextField(manualNote, { manualNote = it.take(4_000) }, Modifier.fillMaxWidth(), label = { Text("备注、材料与地点") }, minLines = 2, shape = RoundedCornerShape(14.dp))
+                            Text("02  什么时候完成", color = JournalInk, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            OutlinedButton(onClick = { pickTaskDeadline(manualDeadline, { manualDeadline = it }, context) }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text(displayTaskDeadline(manualDeadline))
+                            }
+                            if (manualDeadline != null) GlassTextButton(onClick = { manualDeadline = null }) { Text("清除截止时间") }
+                        } else {
+                            Text("消息原文", color = JournalInk, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(sourceName, { sourceName = it.take(256) }, Modifier.fillMaxWidth(), label = { Text("消息来源（选填）") }, singleLine = true, shape = RoundedCornerShape(14.dp))
+                            OutlinedTextField(content, { content = it.take(20_000) }, Modifier.fillMaxWidth().heightIn(min = if (shortWindow) 120.dp else 200.dp), label = { Text("粘贴整条消息") }, placeholder = { Text("原文会保留，识别后逐项确认") }, shape = RoundedCornerShape(14.dp))
+                            Text("原文仅用于这次任务提取，并保留在任务记录中供你核对。", color = JournalMuted, fontSize = 11.sp)
                         }
                     }
                 } else {
@@ -142,7 +166,7 @@ fun TaskImportDialog(
                             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                                 itemsIndexed(drafts) { index, draft ->
                                     Row(
-                                        Modifier.fillMaxWidth().campusGlass(RoundedCornerShape(18.dp), CampusGlassRole.DENSE).padding(11.dp),
+                                        Modifier.fillMaxWidth().journalPaper(RoundedCornerShape(16.dp)).padding(10.dp),
                                         verticalAlignment = Alignment.Top,
                                     ) {
                                         Checkbox(draft.selected, { drafts[index] = draft.copy(selected = it) }, enabled = draft.existingTaskId == null)
@@ -172,14 +196,14 @@ fun TaskImportDialog(
                 }
                 error?.let { Text(it, color = Danger, fontSize = 11.sp) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    GlassTextButton(onClick = { if (result == null) onDismiss() else { result = null; drafts.clear(); showExtract = true } }, enabled = !busy) { Text(if (result == null) "取消" else "返回修改") }
+                    GlassTextButton(onClick = { when { result != null -> { result = null; drafts.clear(); entryMode = "extract" }; entryMode != null -> entryMode = null; else -> onDismiss() } }, enabled = !busy) { Text(if (entryMode == null) "取消" else "返回") }
                     Spacer(Modifier.width(8.dp))
-                    GlassButton(
+                    if (entryMode != null) Button(
                         onClick = {
                             scope.launch {
                                 busy = true; error = null
                                 try {
-                                    if (result == null && showExtract) {
+                                    if (result == null && entryMode == "extract") {
                                         val analyzed = repository.analyzeTaskImport(content.trim(), sourceName.trim())
                                         result = analyzed
                                         drafts.addAll(analyzed.tasks.map {
@@ -221,8 +245,10 @@ fun TaskImportDialog(
                                 finally { busy = false }
                             }
                         },
-                        enabled = !busy && if (result == null) (if (showExtract) content.isNotBlank() else manualTitle.isNotBlank()) else selectedCount > 0,
-                    ) { Text(if (busy) "处理中…" else if (result != null) "保存 $selectedCount 项" else if (showExtract) "提取并预览" else "保存待办") }
+                        enabled = !busy && if (result == null) (if (entryMode == "extract") content.isNotBlank() else manualTitle.isNotBlank()) else selectedCount > 0,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = JournalInk, contentColor = Color.White),
+                    ) { Text(if (busy) "处理中…" else if (result != null) "收进待办 · $selectedCount" else if (entryMode == "extract") "提取并预览" else "收进待办") }
                 }
             }
         }

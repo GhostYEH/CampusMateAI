@@ -15,4 +15,5 @@ data class Task(
     val submittedAt: String? = null,
     val startAt: String? = null,
     val externalId: String? = null,
+    val sourceText: String? = null,
 )
