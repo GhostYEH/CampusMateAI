@@ -105,8 +105,17 @@ fun TaskDetailScreen(
 
     Box(Modifier.fillMaxSize()) {
         JournalBackdrop(Modifier.fillMaxSize())
-        Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp, top = 7.dp)
+        Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 22.dp)
             .journalBookPage().verticalScroll(rememberScrollState()).padding(start = 15.dp, end = 5.dp, top = 12.dp)) {
+            Row(Modifier.fillMaxWidth().height(54.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = ::handleBack, modifier = Modifier.size(42.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回待办", tint = JournalNight)
+                }
+                Spacer(Modifier.width(7.dp))
+                Text("待办详情", color = JournalNight, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = JournalBlue.copy(alpha = .45f))
+            Spacer(Modifier.height(9.dp))
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("TASK JOURNAL  /  任务档案", color = JournalClay, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 Spacer(Modifier.weight(1f))

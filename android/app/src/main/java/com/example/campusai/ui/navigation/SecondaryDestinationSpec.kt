@@ -24,6 +24,7 @@ internal fun navigationDestinationLayout(
 ): NavigationDestinationLayout {
     val normalizedRoute = route?.substringBefore('?')?.substringBefore('/')
     val contentTopPadding = when {
+        route?.startsWith("task_detail/") == true -> statusBarHeight
         secondaryDestinationSpec(route) != null ->
             statusBarHeight + StickySecondaryNavigationContentHeight
         routeOwnsStatusBarInset(route) || normalizedRoute in profileFlowRoutes -> 0.dp

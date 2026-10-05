@@ -47,6 +47,12 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
+    fun taskDetailKeepsItsHeaderInsideTheJournalPage() {
+        assertEquals(24.dp, navigationDestinationLayout("task_detail/{taskId}", 24.dp).contentTopPadding)
+        assertEquals("待办详情", secondaryDestinationSpec("task_detail/{taskId}")?.title)
+    }
+
+    @Test
     fun rootPagesWithoutLocalStatusInsetReserveTheStatusBarInNavHostContent() {
         assertEquals(0.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
         assertEquals(0.dp, navigationDestinationLayout("focus", 24.dp).contentTopPadding)

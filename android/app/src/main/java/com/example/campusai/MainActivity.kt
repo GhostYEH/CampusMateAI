@@ -10,6 +10,14 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
@@ -18,6 +26,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +54,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -108,6 +119,8 @@ fun CampusAIApp(
     val lifecycleOwner = LocalLifecycleOwner.current
     var appEntry by remember { mutableIntStateOf(1) }
     var showTaskReminder by remember { mutableStateOf(false) }
+    var reminderDismissed by remember(appEntry) { mutableStateOf(false) }
+    var reminderDragY by remember { mutableFloatStateOf(0f) }
     var reminderCount by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -129,7 +142,7 @@ fun CampusAIApp(
             reminderCount = repository.tasks.value.count {
                 !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
             }
-            showTaskReminder = reminderCount > 0
+            showTaskReminder = reminderCount > 0 && !reminderDismissed
         }
         LaunchedEffect(showTaskReminder, appEntry) {
             if (showTaskReminder) {
@@ -149,7 +162,7 @@ fun CampusAIApp(
                     reminderCount = repository.tasks.value.count {
                         !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
                     }
-                    if (reminderCount > 0) showTaskReminder = true
+                    if (reminderCount > 0 && !reminderDismissed) showTaskReminder = true
                 } else if (syncResult.second == "reauth_required" || syncResult.second == "verification_required") {
                     syncStateStore.setReauthRequired(true)
                 }
@@ -171,14 +184,36 @@ fun CampusAIApp(
                     notificationInboxRepository = notificationInboxRepository,
                 )
             }
-            if (showTaskReminder) {
+            AnimatedVisibility(
+                visible = showTaskReminder,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+                enter = if (reduceMotion) EnterTransition.None else slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = if (reduceMotion) ExitTransition.None else slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            ) {
                 Surface(
                     onClick = {
+                        reminderDismissed = true
                         showTaskReminder = false
                         navController.navigate("tasks") { launchSingleTop = true }
                     },
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()
-                        .fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .offset { IntOffset(0, reminderDragY.roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { change, dragAmount ->
+                                    reminderDragY = (reminderDragY + dragAmount).coerceAtMost(0f)
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    if (reminderDragY < -48.dp.toPx()) {
+                                        reminderDismissed = true
+                                        showTaskReminder = false
+                                    }
+                                    reminderDragY = 0f
+                                },
+                                onDragCancel = { reminderDragY = 0f },
+                            )
+                        },
                     shape = RoundedCornerShape(18.dp),
                     color = Color(0xFFF9F2E6),
                     shadowElevation = 10.dp,

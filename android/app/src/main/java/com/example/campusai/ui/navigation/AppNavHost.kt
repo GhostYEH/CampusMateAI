@@ -94,6 +94,7 @@ private fun NavigationDestinationFrame(
         else -> destination?.title
     }
     val layout = navigationDestinationLayout(route, statusBarHeight)
+    val hasInlineJournalHeader = route?.startsWith("task_detail/") == true
 
     Box(Modifier.fillMaxSize().background(Background)) {
         Box(
@@ -103,7 +104,7 @@ private fun NavigationDestinationFrame(
         ) {
             content()
         }
-        destination?.let {
+        destination?.takeUnless { hasInlineJournalHeader }?.let {
             StickySecondaryNavigation(
                 title = title ?: it.title,
                 onBack = onBack,
