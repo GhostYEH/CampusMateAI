@@ -42,7 +42,6 @@ import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 private val ink = Color(0xFF101F3F)
 private val cream = Color(0xFFFFEBCB)
@@ -58,33 +57,6 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
         infiniteRepeatable(tween(8500, easing = LinearEasing), RepeatMode.Reverse), label = "cloud-drift")
     val leafSway by transition.animateFloat(-1f, 1f,
         infiniteRepeatable(tween(3400), RepeatMode.Reverse), label = "leaf-sway")
-    var lampTarget by remember { mutableFloatStateOf(0f) }
-    val lampSway by animateFloatAsState(lampTarget, tween(850), label = "pendant-sway")
-    var dimPendant by remember { mutableStateOf(false) }
-    var dimPath by remember { mutableStateOf(false) }
-    val pendantShade by animateFloatAsState(if (dimPendant && !reduceMotion) .58f else 0f,
-        tween(650), label = "pendant-dim")
-    val pathShade by animateFloatAsState(if (dimPath && !reduceMotion) .55f else 0f,
-        tween(800), label = "path-dim")
-    LaunchedEffect(reduceMotion) {
-        if (reduceMotion) return@LaunchedEffect
-        while (true) {
-            delay(Random.nextLong(11000, 21000)); dimPendant = true
-            delay(Random.nextLong(1500, 2700)); dimPendant = false
-            delay(Random.nextLong(8000, 17000)); dimPath = true
-            delay(Random.nextLong(1300, 2200)); dimPath = false
-        }
-    }
-    LaunchedEffect(reduceMotion) {
-        if (reduceMotion) { lampTarget = 0f; return@LaunchedEffect }
-        while (true) {
-            delay(Random.nextLong(7000, 16000))
-            lampTarget = -1f; delay(850)
-            lampTarget = 1f; delay(850)
-            lampTarget = -.45f; delay(850)
-            lampTarget = 0f
-        }
-    }
     fun enter(route: String) {
         if (pendingRoute != null) return
         if (reduceMotion) { onNavigate(route); return }
@@ -106,22 +78,11 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                     })
                     SceneLayer(R.drawable.campus_twilight_ground, Modifier.fillMaxSize())
                     SceneLayer(R.drawable.campus_twilight_buildings, Modifier.fillMaxSize())
-                    SceneLayer(R.drawable.campus_twilight_lights, Modifier.fillMaxSize().graphicsLayer {
-                        alpha = .12f + (drift + 1f) * .11f
-                    })
-                    SceneLayer(R.drawable.campus_twilight_pendants, Modifier.fillMaxSize().graphicsLayer {
-                        transformOrigin = TransformOrigin(.25f, .19f)
-                        rotationZ = lampSway * 2f
-                    })
                     SceneLayer(R.drawable.campus_twilight_leaves, Modifier.fillMaxSize().graphicsLayer {
                         transformOrigin = TransformOrigin(.05f, .98f)
                         rotationZ = leafSway * .65f
                         translationX = leafSway * 1.5.dp.toPx()
                     })
-                    LightShade(Modifier.offset(x = width * .12f, y = sceneHeight * .225f)
-                        .width(width * .27f).height(sceneHeight * .11f), pendantShade)
-                    LightShade(Modifier.offset(x = width * .235f, y = sceneHeight * .66f)
-                        .width(width * .11f).height(sceneHeight * .07f), pathShade)
                 }
                 Box(Modifier.fillMaxWidth().height(sceneHeight * .20f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(Color(0xA5101E3A), Color.Transparent))))
@@ -131,15 +92,12 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                 }
                 LandmarkArea("二楼图书馆", x = width * .11f, y = sceneHeight * .19f,
                     width = width * .39f, height = sceneHeight * .20f,
-                    sceneWidth = width, sceneHeight = sceneHeight,
                     active = pendingRoute == "courses", reduceMotion = reduceMotion) { enter("courses") }
                 LandmarkArea("一楼自习室", x = width * .10f, y = sceneHeight * .39f,
                     width = width * .40f, height = sceneHeight * .15f,
-                    sceneWidth = width, sceneHeight = sceneHeight,
                     active = pendingRoute == "focus", reduceMotion = reduceMotion) { enter("focus") }
                 LandmarkArea("互动课堂", x = width * .58f, y = sceneHeight * .38f,
                     width = width * .42f, height = sceneHeight * .28f,
-                    sceneWidth = width, sceneHeight = sceneHeight,
                     active = pendingRoute == "classroom-hub", reduceMotion = reduceMotion) { enter("classroom-hub") }
                 val archLabels = listOf("社区", "学习足迹", "待办", "CPM", "我的")
                 val archRoutes = listOf("community", "focus_history", "tasks", "counselor", "profile")
@@ -163,15 +121,9 @@ private fun SceneLayer(drawable: Int, modifier: Modifier) {
 }
 
 @Composable
-private fun LightShade(modifier: Modifier, alpha: Float) {
-    Box(modifier.graphicsLayer { this.alpha = alpha }.background(Brush.radialGradient(
-        listOf(Color(0xCC0C1B33), Color(0x770C1B33), Color.Transparent))))
-}
-
-@Composable
 private fun LandmarkArea(
     label: String, x: Dp, y: Dp, width: Dp, height: Dp,
-    sceneWidth: Dp, sceneHeight: Dp, active: Boolean, reduceMotion: Boolean, onClick: () -> Unit,
+    active: Boolean, reduceMotion: Boolean, onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -188,10 +140,6 @@ private fun LandmarkArea(
         .border(2.dp, cream.copy(alpha = .72f * pop), RoundedCornerShape(24.dp))
         .semantics { contentDescription = "进入$label" }
         .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
-        if (pop > .01f) Image(painterResource(R.drawable.campus_twilight_buildings), null,
-            Modifier.wrapContentSize(unbounded = true, align = Alignment.TopStart)
-                .offset(-x, -y).requiredWidth(sceneWidth).requiredHeight(sceneHeight)
-                .graphicsLayer { alpha = pop }, contentScale = ContentScale.FillBounds)
         if (pop > .01f) Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
             .clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .8f)).padding(horizontal = 6.dp, vertical = 3.dp),
             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
