@@ -51,7 +51,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.focus.scene.FocusScenePreferenceStore
 
-private val SummaryInk = FocusStudyPalette.Ink
+private val SummaryInk = Color(0xFF23364B)
+private val SummaryCopper = Color(0xFFAD6845)
+private val SummaryPaper = Color(0xFFF6EEDB)
 
 /** A terminal page for one completed session. It owns no timer or active-session state. */
 @Composable
@@ -74,43 +76,43 @@ fun FocusSummaryScreen(
     val duration = if (minutes > 0) "$minutes 分 ${seconds.toString().padStart(2, '0')} 秒" else "$seconds 秒"
     val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF132A35))) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF192640))) {
         Image(
             painter = painterResource(scene.backgroundResource()),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xC015302A), Color(0xE0132926)))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xA0182748), Color(0xE51D223C)))))
         LazyColumn(
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
             contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = bottomPadding),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(15.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onReturnHome) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回自习室", tint = Color.White)
                     }
-                    Text("本次专注", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("本次专注  /  学习留影", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-            item { Surface(shape = CircleShape, color = FocusStudyPalette.Paper) {
-                Icon(Icons.Default.CheckCircle, null, tint = FocusStudyPalette.Pine, modifier = Modifier.padding(15.dp))
+            item { Spacer(Modifier.height(20.dp)) }
+            item { Surface(shape = CircleShape, color = Color(0xFFE7BE75)) {
+                Icon(Icons.Default.CheckCircle, null, tint = SummaryInk, modifier = Modifier.padding(11.dp).size(22.dp))
             } }
             item { Text(if (actualSeconds >= 60) "这段学习，完成了" else "这段学习，已结束", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold) }
-            item { Text("这次的收获，已经留在学习足迹里", color = Color.White.copy(alpha = .86f), fontSize = 14.sp) }
+            item { Text("时间已经为你留在学习足迹里", color = Color.White.copy(alpha = .80f), fontSize = 13.sp) }
             item {
-                Surface(shape = RoundedCornerShape(26.dp), color = FocusStudyPalette.Pine,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = .16f)), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(21.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("本次专注", color = Color(0xFFFFE5B9), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(duration, color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(taskName, color = Color.White.copy(alpha = .86f), fontSize = 14.sp)
-                        Text(if (actualSeconds >= 60) "✓ 已完成" else "已结束 · 不足 1 分钟",
-                            color = Color(0xFFFFE5B9), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
+                Column(Modifier.fillMaxWidth().padding(vertical = 17.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("本次专注", color = Color(0xFFEACB91), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(duration, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(taskName, color = Color.White.copy(alpha = .86f), fontSize = 14.sp)
+                    Text(if (actualSeconds >= 60) "✦  已完成" else "已结束 · 不足 1 分钟",
+                        color = Color(0xFFEACB91), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
             item { SummaryNote(Icons.Default.AutoAwesome, "我的学习收获", selfReport?.takeIf { it.isNotBlank() } ?: "这次还没有记录收获。下次结束时，可以写下一件完成的事。") }
@@ -127,8 +129,8 @@ fun FocusSummaryScreen(
                 Button(
                     onClick = onStartNext,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = FocusStudyPalette.Pine, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SummaryCopper, contentColor = Color.White),
                 ) {
                     Text(if (!planComplete && !nextStepTitle.isNullOrBlank()) "开始下一步骤" else "返回自习室", fontWeight = FontWeight.Bold)
                 }
@@ -137,8 +139,8 @@ fun FocusSummaryScreen(
                 OutlinedButton(
                     onClick = onOpenHistory,
                     modifier = Modifier.fillMaxWidth().height(50.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = .7f)),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEACB91)),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                 ) { Text("查看学习足迹") }
             }
@@ -148,16 +150,14 @@ fun FocusSummaryScreen(
 
 @Composable
 private fun SummaryNote(icon: ImageVector, title: String, content: String) {
-    Surface(shape = RoundedCornerShape(20.dp), color = FocusStudyPalette.Paper,
-        border = BorderStroke(1.dp, FocusStudyPalette.Line), modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(7.dp), color = SummaryPaper,
+        border = BorderStroke(1.dp, Color(0xFFD8BF92)), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
-            Surface(shape = CircleShape, color = FocusStudyPalette.PaperSoft) {
-                Icon(icon, null, tint = FocusStudyPalette.Pine, modifier = Modifier.padding(8.dp).size(18.dp))
-            }
+            Icon(icon, null, tint = SummaryCopper, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(11.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, color = SummaryInk, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(content, color = FocusStudyPalette.Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                Text(content, color = Color(0xFF57657A), fontSize = 13.sp, lineHeight = 19.sp)
             }
         }
     }

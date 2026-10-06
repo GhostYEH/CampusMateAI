@@ -1,6 +1,7 @@
 package com.example.campusai.ui.screens.courses
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,11 +22,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.R
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.Muted
 
@@ -44,8 +48,12 @@ fun InteractiveClassroomScreen(
         finally { loadingCourse = false }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFF1EAD9), Color(0xFFEAE7D9)))),
+    Box(Modifier.fillMaxSize()) {
+        Image(painter = painterResource(R.drawable.classroom_evening_interior), contentDescription = null,
+            modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xB3152036), Color(0xD31A2037)))))
+        LazyColumn(
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
             start = 20.dp,
             top = 18.dp,
@@ -58,31 +66,35 @@ fun InteractiveClassroomScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth().background(Color(0xFF173B32), RoundedCornerShape(6.dp))
-                .border(1.dp, Color(0xFFB79F70), RoundedCornerShape(6.dp)).padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "返回课程", tint = Color.White) }
                 Column(Modifier.padding(start = 6.dp).weight(1f)) {
                     Text("互动课堂", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text(course?.name ?: "正在读取课程…", color = Color.White.copy(alpha = .78f), fontSize = 12.sp)
+                    Text(course?.name ?: "正在读取课程…", color = Color(0xFFF1D4A3), fontSize = 12.sp)
                 }
             }
         }
         if (course == null && loadingCourse) {
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(24.dp), color = Color(0xFFE7BE75), strokeWidth = 2.dp)
                 }
             }
         } else if (course == null) {
-            item { Text("找不到这门课，请返回图书馆重新同步课程。", color = Muted, fontSize = 13.sp) }
+            item { Text("找不到这门课，请返回图书馆重新同步课程。", color = Color.White, fontSize = 13.sp) }
         } else {
             item {
-                InteractiveClassroomSection(
-                    course = course,
-                    repository = repository,
-                    initialSessionId = initialSessionId,
-                )
+                Column(Modifier.fillMaxWidth().background(Color(0xFFF5EEDC), RoundedCornerShape(topStart = 8.dp, topEnd = 26.dp, bottomEnd = 8.dp, bottomStart = 8.dp))
+                    .border(1.dp, Color(0xFFD4BC91), RoundedCornerShape(topStart = 8.dp, topEnd = 26.dp, bottomEnd = 8.dp, bottomStart = 8.dp))
+                    .padding(17.dp)) {
+                    InteractiveClassroomSection(
+                        course = course,
+                        repository = repository,
+                        initialSessionId = initialSessionId,
+                    )
+                }
             }
+        }
         }
     }
 }

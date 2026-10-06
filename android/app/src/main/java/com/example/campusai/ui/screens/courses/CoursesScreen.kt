@@ -551,6 +551,9 @@ internal fun CourseDetailSheet(
     val filterOptions = if (populatedFilters.size > 1) listOf("全部") + populatedFilters else populatedFilters.ifEmpty { listOf("全部") }
     val activeFilter = filter.takeIf { it in filterOptions } ?: filterOptions.first()
     val visible = kinds[activeFilter]?.let { accepted -> content.filter { it.kind in accepted } } ?: content
+    val bookInk = Color(0xFF263A50)
+    val bookCopper = Color(0xFFAE6C49)
+    val bookLine = Color(0xFFD7C19C)
 
     androidx.compose.runtime.LaunchedEffect(course.id) {
         try {
@@ -562,44 +565,40 @@ internal fun CourseDetailSheet(
     }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFFF0E9D8),
-        shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+        containerColor = Color(0xFFF4EBD9),
+        shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.86f)
-                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF5EFDF), Color(0xFFEDE4D0)))),
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFF8F1E2), Color(0xFFEDE1CA)))),
             contentPadding = PaddingValues(start = 22.dp, end = 22.dp, bottom = 34.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(5.dp))
-                        .background(Brush.horizontalGradient(listOf(Color(0xFF132F2A), Color(0xFF315243), Color(0xFF6B6044))))
-                        .border(1.dp, Color(0xFFC2A878), RoundedCornerShape(5.dp))
-                        .height(128.dp),
+                    Modifier.fillMaxWidth().background(Color(0xFFF8F0DF))
+                        .border(1.dp, bookLine).height(118.dp),
                 ) {
-                    Box(Modifier.width(15.dp).fillMaxHeight().background(Color(0xFF102721))
-                        .border(1.dp, Color(0x77E1C891)))
-                    Column(Modifier.weight(1f).padding(17.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Text("课程藏书  /  ${course.type}", color = Color(0xFFF0D9A6), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Text(course.name, color = Color.White, fontSize = 22.sp, lineHeight = 26.sp,
+                    Box(Modifier.width(9.dp).fillMaxHeight().background(bookInk))
+                    Column(Modifier.weight(1f).padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("课程藏书  /  ${course.type}", color = bookCopper, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text(course.name, color = bookInk, fontSize = 22.sp, lineHeight = 26.sp,
                             fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(listOf(summary?.teacher_name ?: course.teacher, summary?.class_name ?: course.code)
                             .filter(String::isNotBlank).joinToString(" · "),
-                            color = Color.White.copy(alpha = .84f), fontSize = 12.sp,
+                            color = Color(0xFF667283), fontSize = 12.sp,
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFFF0D9A6),
+                    Icon(Icons.Default.MenuBook, contentDescription = null, tint = bookCopper,
                         modifier = Modifier.padding(top = 19.dp, end = 15.dp).size(25.dp))
                 }
             }
             item {
-                Row(Modifier.fillMaxWidth().height(58.dp).clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF214A3A))
-                    .border(1.dp, Color(0xFFB69B68), RoundedCornerShape(8.dp))
+                Row(Modifier.fillMaxWidth().height(54.dp)
+                    .background(bookCopper)
                     .clickable { onOpenClassroom(course.id) }.padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFFF1DDB1))
+                    Icon(Icons.Default.Class, contentDescription = null, tint = Color.White)
                     Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("进入互动课堂", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         Text("从这门课生成讲解与练习", color = Color.White.copy(alpha = .74f), fontSize = 10.sp)
@@ -610,13 +609,13 @@ internal fun CourseDetailSheet(
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("课程内容来自学习通", color = Muted, fontSize = 12.sp)
-                    Text("带着课程去自习室 ›", color = DetailForest, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                    Text("带着课程去自习室 ›", color = bookInk, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.clickable { onStartFocus("学习《${course.name}》") }.padding(8.dp))
                 }
             }
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("课程目录", color = DetailForest, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("课程目录", color = bookInk, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("${content.size} 项", color = Muted, fontSize = 12.sp)
                     Box(Modifier.size(42.dp).clip(CircleShape).clickable(enabled = !syncing) {
                         syncing = true
@@ -630,13 +629,13 @@ internal fun CourseDetailSheet(
                             finally { syncing = false }
                         }
                     }, contentAlignment = Alignment.Center) {
-                        if (syncing) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp)
-                        else Icon(Icons.Default.Refresh, contentDescription = "更新这门课的目录", tint = DetailForest)
+                        if (syncing) CircularProgressIndicator(Modifier.size(19.dp), color = bookCopper, strokeWidth = 2.dp)
+                        else Icon(Icons.Default.Refresh, contentDescription = "更新这门课的目录", tint = bookCopper)
                     }
                 }
             }
             item { Text("右侧按钮只更新这门课的章节、资料与通知", color = Muted, fontSize = 11.sp) }
-            if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
+            if (loading) item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator(Modifier.size(28.dp), color = bookCopper) } }
             error?.let { message -> item { Text(message, color = Color(0xFFC64A46), fontSize = 12.sp) } }
             summary?.sections?.let { sections ->
                 val blocked = sections.filter { it.status == "failed" || it.status == "partial" }
@@ -653,13 +652,12 @@ internal fun CourseDetailSheet(
                             val selected = activeFilter == item
                             val count = if (item == "全部") content.size else content.count { it.kind in kinds[item].orEmpty() }
                             Box(
-                                Modifier.clip(CircleShape)
-                                    .background(if (selected) DetailForest else Color.White.copy(alpha = .55f))
-                                    .border(1.dp, if (selected) DetailGold else DetailForest.copy(alpha = .18f), CircleShape)
+                                Modifier.background(if (selected) bookInk else Color.Transparent)
+                                    .border(1.dp, if (selected) bookInk else bookLine)
                                     .clickable { filter = item }
-                                    .padding(horizontal = 17.dp, vertical = 9.dp),
+                                    .padding(horizontal = 13.dp, vertical = 9.dp),
                                 contentAlignment = Alignment.Center,
-                            ) { Text("$item $count", color = if (selected) Color.White else DetailForest, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
+                            ) { Text("$item $count", color = if (selected) Color.White else bookInk, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
                         }
                     }
                 }
@@ -677,10 +675,9 @@ internal fun CourseDetailSheet(
                 }
                 itemsIndexed(visible, key = { _, item -> item.id }) { _, item ->
                     val icon = when (item.kind) { "notice" -> Icons.Default.Notifications; "assignment" -> Icons.Default.TaskAlt; "document" -> Icons.Default.Description; else -> Icons.Default.FolderOpen }
+                    Column {
                     Row(
                         modifier = Modifier.fillMaxWidth()
-                            .background(Color(0x77FFFDF5))
-                            .border(1.dp, DetailGold.copy(alpha = .26f))
                             .clickable {
                                 if (item.kind == "notice") {
                                     selectedNotice = item
@@ -715,12 +712,12 @@ internal fun CourseDetailSheet(
                                         downloadFailure = item to "network_error"
                                     }
                                 }
-                            }.padding(horizontal = 12.dp, vertical = 13.dp),
+                            }.padding(horizontal = 4.dp, vertical = 13.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Box(Modifier.size(34.dp).background(DetailForest.copy(alpha = .09f)), contentAlignment = Alignment.Center) {
-                            Icon(icon, null, tint = DetailForest, modifier = Modifier.size(19.dp))
+                        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                            Icon(icon, null, tint = bookCopper, modifier = Modifier.size(19.dp))
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -730,7 +727,9 @@ internal fun CourseDetailSheet(
                                 color = Muted, fontSize = 10.sp,
                             )
                         }
-                        Icon(Icons.Default.ChevronRight, null, tint = DetailForest)
+                        Icon(Icons.Default.ChevronRight, null, tint = bookInk)
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = bookLine, thickness = 1.dp)
                     }
                 }
             }
