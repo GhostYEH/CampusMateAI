@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,14 +47,17 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var pendingRoute by remember { mutableStateOf<String?>(null) }
-    val entrance = remember { Animatable(0f) }
+    var entrancePlayed by rememberSaveable { mutableStateOf(false) }
+    val entrance = remember { Animatable(if (entrancePlayed || reduceMotion) 1f else 0f) }
     LaunchedEffect(reduceMotion) {
-        if (reduceMotion) {
+        if (reduceMotion || entrancePlayed) {
             entrance.snapTo(1f)
+            entrancePlayed = true
         } else {
             entrance.snapTo(0f)
             delay(80)
             entrance.animateTo(1f, tween(850))
+            entrancePlayed = true
         }
     }
     val entranceProgress = if (reduceMotion) 1f else entrance.value
@@ -62,7 +66,7 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
         if (pendingRoute != null) return
         if (reduceMotion) { onNavigate(route); return }
         pendingRoute = route
-        scope.launch { delay(330); onNavigate(route); pendingRoute = null }
+        scope.launch { delay(170); onNavigate(route); pendingRoute = null }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(ink)) {
@@ -87,12 +91,15 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                 }
                 LandmarkArea("二楼图书馆", x = width * .11f, y = sceneHeight * .19f,
                     width = width * .39f, height = sceneHeight * .20f,
+                    signText = "图书馆", signAlignment = Alignment.BottomEnd,
                     active = pendingRoute == "courses", reduceMotion = reduceMotion) { enter("courses") }
                 LandmarkArea("一楼自习室", x = width * .10f, y = sceneHeight * .39f,
                     width = width * .40f, height = sceneHeight * .15f,
+                    signText = "自习室", signAlignment = Alignment.BottomStart,
                     active = pendingRoute == "focus", reduceMotion = reduceMotion) { enter("focus") }
                 LandmarkArea("互动课堂", x = width * .58f, y = sceneHeight * .38f,
                     width = width * .42f, height = sceneHeight * .28f,
+                    signText = "互动课堂", signAlignment = Alignment.TopStart,
                     active = pendingRoute == "classroom-hub", reduceMotion = reduceMotion) { enter("classroom-hub") }
                 val archLabels = listOf("社区", "学习足迹", "待办", "CPM", "我的")
                 val archRoutes = listOf("community", "focus_history", "tasks", "counselor", "profile")
@@ -118,6 +125,7 @@ private fun SceneLayer(drawable: Int, modifier: Modifier) {
 @Composable
 private fun LandmarkArea(
     label: String, x: Dp, y: Dp, width: Dp, height: Dp,
+    signText: String, signAlignment: Alignment,
     active: Boolean, reduceMotion: Boolean, onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -129,12 +137,13 @@ private fun LandmarkArea(
         .border(1.dp, cream.copy(alpha = .65f * pop), RoundedCornerShape(24.dp))
         .semantics { contentDescription = "进入$label" }
         .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
-        Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
-            .graphicsLayer {
-                alpha = pop
-                translationY = (1f - pop) * 4.dp.toPx()
-            }.clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .8f)).padding(horizontal = 6.dp, vertical = 3.dp),
-            color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(signText, Modifier.align(signAlignment).padding(8.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(ink.copy(alpha = .72f + .12f * pop))
+            .border(.5.dp, cream.copy(alpha = .34f + .3f * pop), RoundedCornerShape(3.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp),
+            color = cream, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+            letterSpacing = .5.sp)
     }
 }
 

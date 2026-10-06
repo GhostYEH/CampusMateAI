@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.Dp
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -77,6 +78,20 @@ import java.net.URLEncoder
 
 internal fun eduFlowViewModelOwner(navController: NavHostController): NavBackStackEntry =
     navController.getBackStackEntry("edu_system")
+
+private fun homePortalRoute(route: String?): Boolean {
+    val key = route?.substringBefore('?') ?: return false
+    return key in setOf(
+        "courses", "focus", "classroom-hub", "community", "focus_history", "tasks", "counselor", "profile",
+    )
+}
+
+private fun homeLandmarkOrigin(route: String?): TransformOrigin? = when (route?.substringBefore('?')) {
+    "courses" -> TransformOrigin(.31f, .29f)
+    "focus" -> TransformOrigin(.30f, .49f)
+    "classroom-hub" -> TransformOrigin(.79f, .50f)
+    else -> null
+}
 
 @Composable
 private fun NavigationDestinationFrame(
@@ -158,6 +173,10 @@ fun AppNavHost(
         enterTransition = {
             if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
+            } else if (initialState.destination.route == "home" && homePortalRoute(targetState.destination.route)) {
+                fadeIn(animationSpec = tween(300, easing = CampusMotion.routeEasing)) +
+                    slideInVertically(animationSpec = tween(300, easing = CampusMotion.routeEasing),
+                        initialOffsetY = { (it * .012f).toInt() })
             } else {
                 val motion = forwardNavigationMotion(
                     initialRoute = initialState.destination.route,
@@ -177,6 +196,12 @@ fun AppNavHost(
         exitTransition = {
             if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
+            } else if (initialState.destination.route == "home" && homePortalRoute(targetState.destination.route)) {
+                val fade = fadeOut(animationSpec = tween(280, easing = CampusMotion.routeEasing))
+                homeLandmarkOrigin(targetState.destination.route)?.let { origin ->
+                    fade + scaleOut(targetScale = 1.018f, transformOrigin = origin,
+                        animationSpec = tween(280, easing = CampusMotion.routeEasing))
+                } ?: fade
             } else {
                 val motion = forwardNavigationMotion(
                     initialRoute = initialState.destination.route,
@@ -196,6 +221,12 @@ fun AppNavHost(
         popEnterTransition = {
             if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
+            } else if (targetState.destination.route == "home" && homePortalRoute(initialState.destination.route)) {
+                val fade = fadeIn(animationSpec = tween(300, easing = CampusMotion.routeEasing))
+                homeLandmarkOrigin(initialState.destination.route)?.let { origin ->
+                    fade + scaleIn(initialScale = 1.018f, transformOrigin = origin,
+                        animationSpec = tween(300, easing = CampusMotion.routeEasing))
+                } ?: fade
             } else {
                 slideInHorizontally(
                     animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
@@ -211,6 +242,10 @@ fun AppNavHost(
         popExitTransition = {
             if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
+            } else if (targetState.destination.route == "home" && homePortalRoute(initialState.destination.route)) {
+                fadeOut(animationSpec = tween(260, easing = CampusMotion.routeEasing)) +
+                    slideOutVertically(animationSpec = tween(260, easing = CampusMotion.routeEasing),
+                        targetOffsetY = { (it * .012f).toInt() })
             } else {
                 slideOutHorizontally(
                     animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
