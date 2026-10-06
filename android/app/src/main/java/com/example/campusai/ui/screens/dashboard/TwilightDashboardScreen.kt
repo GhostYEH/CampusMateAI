@@ -55,8 +55,6 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
     val transition = rememberInfiniteTransition(label = "campus-breeze")
     val drift by transition.animateFloat(-1f, 1f,
         infiniteRepeatable(tween(8500, easing = LinearEasing), RepeatMode.Reverse), label = "cloud-drift")
-    val leafSway by transition.animateFloat(-1f, 1f,
-        infiniteRepeatable(tween(3400), RepeatMode.Reverse), label = "leaf-sway")
     fun enter(route: String) {
         if (pendingRoute != null) return
         if (reduceMotion) { onNavigate(route); return }
@@ -78,11 +76,6 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                     })
                     SceneLayer(R.drawable.campus_twilight_ground, Modifier.fillMaxSize())
                     SceneLayer(R.drawable.campus_twilight_buildings, Modifier.fillMaxSize())
-                    SceneLayer(R.drawable.campus_twilight_leaves, Modifier.fillMaxSize().graphicsLayer {
-                        transformOrigin = TransformOrigin(.05f, .98f)
-                        rotationZ = leafSway * .65f
-                        translationX = leafSway * 1.5.dp.toPx()
-                    })
                 }
                 Box(Modifier.fillMaxWidth().height(sceneHeight * .20f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(Color(0xA5101E3A), Color.Transparent))))
