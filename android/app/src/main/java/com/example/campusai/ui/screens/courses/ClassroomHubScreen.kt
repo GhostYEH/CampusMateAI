@@ -55,6 +55,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     var uploading by remember { mutableStateOf(false) }
     var sessionId by rememberSaveable { mutableStateOf<String?>(null) }
     var status by remember { mutableStateOf<InteractiveClassroomStatusDto?>(null) }
+    var statusLoading by remember { mutableStateOf(true) }
+    var statusError by remember { mutableStateOf<String?>(null) }
+    var statusRefresh by remember { mutableIntStateOf(0) }
     var history by remember { mutableStateOf<List<RecentClassroom>>(emptyList()) }
     var historyLoading by remember { mutableStateOf(true) }
     var historyRefresh by remember { mutableIntStateOf(0) }
@@ -98,9 +101,13 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     }
     val online by repository.backendOnline.collectAsStateWithLifecycle()
 
-    LaunchedEffect(online, historyRefresh) {
+    LaunchedEffect(online, historyRefresh, statusRefresh) {
         historyLoading = true
-        status = repository.selfClassroomStatus()
+        statusLoading = true
+        repository.selfClassroomStatusResult()
+            .onSuccess { status = it; statusError = null }
+            .onFailure { status = null; statusError = it.message ?: "课堂状态读取失败，请重试" }
+        statusLoading = false
         repository.refreshCourses()
         val entryTimes = repository.classroomEntryTimes()
         val visits = repository.classroomStudyVisits().groupBy { it.classroomFingerprint }
@@ -181,10 +188,23 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     },
                     onRemoveMaterial = { selectedMaterialId = null; selectedMaterialName = null },
                 )
-                if (status?.enabled != true || status?.browserEmbedAvailable != true) {
-                    Text(status?.reason ?: status?.browserEmbedReason ?: "课堂服务暂时不可用，请检查连接。",
+                if (statusLoading || statusError != null || status?.enabled != true || status?.browserEmbedAvailable != true) {
+                    Text(when {
+                        statusLoading -> "正在检查课堂服务…"
+                        statusError != null -> statusError!!
+                        else -> status?.reason ?: status?.browserEmbedReason ?: "互动课堂服务暂不可用"
+                    },
                         color = Color(0xFFFFBBA1), fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
+                    if (!statusLoading) {
+                        Text("重试 →", color = ClassroomAmber, fontSize = 12.sp,
+                            modifier = Modifier.clickable {
+                                scope.launch {
+                                    if (!online) repository.refreshBackendStatus()
+                                    statusRefresh++
+                                }
+                            }.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
                 }
                 progress?.let { job ->
                     Text(if (job.terminal) job.message ?: job.status else "正在生成 · ${job.progress}% · ${job.message.orEmpty()}",
@@ -235,7 +255,7 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 Spacer(Modifier.height(30.dp))
             }
             if (sessionId == null) ClassroomStartDock(
-                enabled = !submitting && !uploading && status?.enabled == true && status?.browserEmbedAvailable == true,
+                enabled = !statusLoading && !submitting && !uploading && status?.enabled == true && status?.browserEmbedAvailable == true,
                 submitting = submitting,
                 onStart = { startClassroom() },
             )

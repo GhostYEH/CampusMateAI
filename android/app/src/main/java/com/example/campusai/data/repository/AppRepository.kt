@@ -1558,13 +1558,35 @@ class AppRepository(
         return null
     }
 
-    suspend fun selfClassroomStatus(): InteractiveClassroomStatusDto? {
-        if (!_backendOnline.value || _mockMode.value) return null
+    suspend fun selfClassroomStatusResult(): Result<InteractiveClassroomStatusDto> {
+        if (!_backendOnline.value) return Result.failure(IllegalStateException("后端未连接，请重试"))
+        if (_mockMode.value) return Result.failure(IllegalStateException("模拟模式下无法读取课堂状态"))
         return try {
             val response = ApiClient.classroomApi.getSelfClassroomStatus()
-            if (response.isSuccessful) response.body() else null
-        } catch (_: Exception) { null }
+            if (response.isSuccessful) {
+                response.body()?.let { Result.success(it) }
+                    ?: Result.failure(IllegalStateException("课堂状态响应为空，请重试"))
+            } else {
+                val message = when (response.code()) {
+                    401 -> "登录状态已失效，请重新登录"
+                    403 -> "当前账号无权使用互动课堂"
+                    404 -> "当前后端未提供课堂状态接口（HTTP 404）"
+                    else -> "课堂状态读取失败（HTTP ${response.code()}）"
+                }
+                Result.failure(IllegalStateException(message))
+            }
+        } catch (error: java.net.SocketTimeoutException) {
+            Result.failure(IllegalStateException("课堂状态请求超时，请重试", error))
+        } catch (error: java.io.IOException) {
+            Result.failure(IllegalStateException("无法连接课堂状态接口，请检查手机与后端的连接", error))
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(IllegalStateException("课堂状态响应无法读取，请重试", error))
+        }
     }
+
+    suspend fun selfClassroomStatus(): InteractiveClassroomStatusDto? = selfClassroomStatusResult().getOrNull()
 
     suspend fun selfClassroomHistory(): List<InteractiveClassroomItemDto> {
         if (!_backendOnline.value || _mockMode.value) return emptyList()
