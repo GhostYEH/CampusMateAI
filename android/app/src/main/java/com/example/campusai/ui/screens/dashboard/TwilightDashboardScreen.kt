@@ -1,11 +1,7 @@
 package com.example.campusai.ui.screens.dashboard
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -23,10 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -46,15 +40,24 @@ import kotlinx.coroutines.launch
 private val ink = Color(0xFF101F3F)
 private val cream = Color(0xFFFFEBCB)
 
-/** Separate sky, ground and architecture layers leave the destinations accessible. */
+/** Keep the illustration intact; motion only introduces the scene and acknowledges taps. */
 @Composable
 fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> Unit) {
     val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var pendingRoute by remember { mutableStateOf<String?>(null) }
-    val transition = rememberInfiniteTransition(label = "campus-breeze")
-    val drift by transition.animateFloat(-1f, 1f,
-        infiniteRepeatable(tween(8500, easing = LinearEasing), RepeatMode.Reverse), label = "cloud-drift")
+    val entrance = remember { Animatable(0f) }
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) {
+            entrance.snapTo(1f)
+        } else {
+            entrance.snapTo(0f)
+            delay(80)
+            entrance.animateTo(1f, tween(850))
+        }
+    }
+    val entranceProgress = if (reduceMotion) 1f else entrance.value
+    val titleReveal = ((entranceProgress - .12f) / .45f).coerceIn(0f, 1f)
     fun enter(route: String) {
         if (pendingRoute != null) return
         if (reduceMotion) { onNavigate(route); return }
@@ -67,19 +70,18 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
         val sceneHeight = width * (1870f / 841f)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(Modifier.fillMaxWidth().height(sceneHeight).clipToBounds()) {
-                if (reduceMotion) {
-                    SceneLayer(R.drawable.campus_twilight_original, Modifier.fillMaxSize())
-                } else {
-                    SceneLayer(R.drawable.campus_twilight_sky, Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = 1.075f; scaleY = 1.02f
-                        translationX = drift * 18.dp.toPx(); translationY = drift * 3.dp.toPx()
-                    })
-                    SceneLayer(R.drawable.campus_twilight_ground, Modifier.fillMaxSize())
-                    SceneLayer(R.drawable.campus_twilight_buildings, Modifier.fillMaxSize())
-                }
+                SceneLayer(R.drawable.campus_twilight_original, Modifier.fillMaxSize().graphicsLayer {
+                    val scale = 1f + .018f * (1f - entranceProgress)
+                    scaleX = scale
+                    scaleY = scale
+                })
                 Box(Modifier.fillMaxWidth().height(sceneHeight * .20f).align(Alignment.TopCenter)
                     .background(Brush.verticalGradient(listOf(Color(0xA5101E3A), Color.Transparent))))
-                Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
+                Column(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 18.dp)
+                    .graphicsLayer {
+                        alpha = titleReveal
+                        translationY = (1f - titleReveal) * 6.dp.toPx()
+                    }) {
                     Text("CampusMate", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Text("沿着灯光，走进今天的学习", color = cream, fontSize = 14.sp)
                 }
@@ -98,7 +100,7 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                     val x = width * (.065f + index * .19f)
                     ArchDestination(label, x = x, y = sceneHeight * .835f,
                         width = width * .18f, height = sceneHeight * .087f,
-                        sceneWidth = width, sceneHeight = sceneHeight,
+                        labelReveal = ((entranceProgress - (.42f + index * .07f)) / .22f).coerceIn(0f, 1f),
                         active = pendingRoute == archRoutes[index], reduceMotion = reduceMotion) {
                         enter(archRoutes[index])
                     }
@@ -122,19 +124,16 @@ private fun LandmarkArea(
     val pressed by interaction.collectIsPressedAsState()
     val pop by animateFloatAsState(if (!reduceMotion && (pressed || active)) 1f else 0f,
         tween(220), label = "$label-touch")
-    Box(Modifier.offset(x, y).width(width).height(height).graphicsLayer {
-        transformOrigin = TransformOrigin(.5f, 1f)
-        translationY = -5.dp.toPx() * pop
-        scaleX = 1f + .025f * pop
-        scaleY = 1f + .025f * pop
-        rotationY = 2.5f * pop
-    }.clip(RoundedCornerShape(24.dp))
-        .background(Brush.radialGradient(listOf(cream.copy(alpha = .35f * pop), Color.Transparent)))
-        .border(2.dp, cream.copy(alpha = .72f * pop), RoundedCornerShape(24.dp))
+    Box(Modifier.offset(x, y).width(width).height(height).clip(RoundedCornerShape(24.dp))
+        .background(Brush.radialGradient(listOf(cream.copy(alpha = .18f * pop), Color.Transparent)))
+        .border(1.dp, cream.copy(alpha = .65f * pop), RoundedCornerShape(24.dp))
         .semantics { contentDescription = "进入$label" }
         .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
-        if (pop > .01f) Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .8f)).padding(horizontal = 6.dp, vertical = 3.dp),
+        Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+            .graphicsLayer {
+                alpha = pop
+                translationY = (1f - pop) * 4.dp.toPx()
+            }.clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .8f)).padding(horizontal = 6.dp, vertical = 3.dp),
             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -142,7 +141,7 @@ private fun LandmarkArea(
 @Composable
 private fun ArchDestination(
     label: String, x: Dp, y: Dp, width: Dp, height: Dp,
-    sceneWidth: Dp, sceneHeight: Dp, active: Boolean, reduceMotion: Boolean, onClick: () -> Unit,
+    labelReveal: Float, active: Boolean, reduceMotion: Boolean, onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -150,27 +149,17 @@ private fun ArchDestination(
         tween(220), label = "$label-arch")
     val shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp, bottomStart = 8.dp, bottomEnd = 8.dp)
     Box(Modifier.offset(x, y).width(width).height(height)
-        .graphicsLayer {
-            transformOrigin = TransformOrigin(.5f, 1f)
-            translationY = -6.dp.toPx() * pop
-            scaleX = 1f + .045f * pop
-            scaleY = 1f + .075f * pop
-            rotationX = -4f * pop
-        }
-        .shadow(if (pop > .01f) 11.dp else 0.dp, shape)
         .clip(shape)
-        .border(2.dp, cream.copy(alpha = .85f * pop), shape)
+        .border(1.dp, cream.copy(alpha = .72f * pop), shape)
         .semantics { contentDescription = "打开$label" }
         .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)) {
-        // The exact segment is repainted above the original so only this arch rises.
-        Image(painterResource(R.drawable.campus_twilight_original), null,
-            Modifier.wrapContentSize(unbounded = true, align = Alignment.TopStart)
-                .offset(-x, -y).requiredWidth(sceneWidth).requiredHeight(sceneHeight),
-            contentScale = ContentScale.FillBounds)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(
-            cream.copy(alpha = .22f * pop), Color.Transparent))))
+            cream.copy(alpha = .12f * pop), Color.Transparent))))
         Text(label, Modifier.align(Alignment.BottomCenter).padding(bottom = 5.dp)
-            .clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .58f + .25f * pop))
+            .graphicsLayer {
+                alpha = labelReveal
+                translationY = (1f - labelReveal) * 4.dp.toPx()
+            }.clip(RoundedCornerShape(8.dp)).background(ink.copy(alpha = .58f + .15f * pop))
             .padding(horizontal = 5.dp),
             color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
     }
