@@ -1,7 +1,10 @@
 """Risk engine + approval gate 测试。"""
+
 from __future__ import annotations
 
 import pytest
+from datetime import datetime, timedelta, timezone
+from contextlib import contextmanager
 
 from app.core.exceptions import AgentRuntimeError
 from app.database.sqlite_db import reset_db_for_tests
@@ -76,6 +79,84 @@ class TestRiskEngine:
 
 
 class TestApprovalGate:
+    def test_expiration_is_checked_after_waiting_for_the_write_lock(
+        self, approval_gate, monkeypatch
+    ):
+        from app.repositories import agent_runtime_repository
+
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
+        repo = approval_gate._repo
+        aid = repo.create_approval(
+            run_id="r1",
+            user_id="u1",
+            risk_level="CONFIRM_REQUIRED",
+            action_summary="等待写锁期间到期",
+            expires_at=deadline.isoformat(),
+        )
+        clock = {"now": deadline - timedelta(seconds=1)}
+        monkeypatch.setattr(
+            agent_runtime_repository, "_now", lambda: clock["now"].isoformat()
+        )
+        transaction = repo._db.transaction
+
+        @contextmanager
+        def delayed_transaction(*, immediate=False):
+            with transaction(immediate=immediate) as conn:
+                # Model the clock advancing while the writer waits to enter.
+                clock["now"] = deadline
+                yield conn
+
+        monkeypatch.setattr(repo._db, "transaction", delayed_transaction)
+        assert repo.resolve_approval_if_pending(aid, status="APPROVED") is False
+        assert repo.get_approval(aid).status == "EXPIRED"
+
+    @pytest.mark.parametrize("decision", ["APPROVED", "REJECTED"])
+    def test_deadline_is_rechecked_when_the_decision_is_written(
+        self, approval_gate, monkeypatch, decision
+    ):
+        from app.repositories import agent_runtime_repository
+
+        aid = approval_gate.require(
+            run_id="r1",
+            user_id="u1",
+            risk_level=RiskLevel.CONFIRM_REQUIRED,
+            action_summary="决策落库时已过期",
+        )
+        expires_at = approval_gate._repo.get_approval(aid).expires_at
+        # The gate reads before expiration; a delayed write reaches the deadline.
+        monkeypatch.setattr(agent_runtime_repository, "_now", lambda: expires_at)
+        with pytest.raises(AgentRuntimeError) as exc:
+            approval_gate.resolve(aid, decision=decision, user_id="u1")
+        assert (exc.value.http_status, exc.value.code) == (410, "AGENT_INVALID_STATE")
+        assert approval_gate._repo.get_approval(aid).status == "EXPIRED"
+
+    @pytest.mark.parametrize("offset,accepted", [(-1, True), (0, False), (1, False)])
+    def test_repository_decision_deadline_uses_instants_not_timezone_text(
+        self, approval_gate, monkeypatch, offset, accepted
+    ):
+        from app.repositories import agent_runtime_repository
+
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=10)
+        aid = approval_gate._repo.create_approval(
+            run_id="r1",
+            user_id="u1",
+            risk_level="CONFIRM_REQUIRED",
+            action_summary="时区边界",
+            expires_at=deadline.astimezone(timezone(timedelta(hours=8))).isoformat(),
+        )
+        monkeypatch.setattr(
+            agent_runtime_repository,
+            "_now",
+            lambda: (deadline + timedelta(microseconds=offset)).isoformat(),
+        )
+        assert (
+            approval_gate._repo.resolve_approval_if_pending(aid, status="APPROVED")
+            is accepted
+        )
+        assert approval_gate._repo.get_approval(aid).status == (
+            "APPROVED" if accepted else "EXPIRED"
+        )
+
     def test_require_creates_pending_approval(self, approval_gate):
         aid = approval_gate.require(
             run_id="r1",
@@ -161,25 +242,35 @@ class TestApprovalGate:
         ],
     )
     def test_expiry_race_preserves_competing_approval(
-        self, approval_gate, monkeypatch, decision, expected_status,
-        expected_http_status, replayed,
+        self,
+        approval_gate,
+        monkeypatch,
+        decision,
+        expected_status,
+        expected_http_status,
+        replayed,
     ):
         aid = approval_gate.require(
-            run_id="r1", user_id="u1", risk_level=RiskLevel.CONFIRM_REQUIRED,
-            action_summary="过期竞争测试", ttl_minutes=-1,
+            run_id="r1",
+            user_id="u1",
+            risk_level=RiskLevel.CONFIRM_REQUIRED,
+            action_summary="过期竞争测试",
+            ttl_minutes=-1,
         )
         repo = approval_gate._repo
         original = repo.resolve_approval_if_pending
 
         def approve_before_expiration_cas(approval_id, *, status, decision_reason=None):
             if approval_id == aid and status == "EXPIRED":
-                assert original(approval_id, status="APPROVED") is True
+                # Inject an already-settled competing decision; the expiry path
+                # must preserve it even if its initial PENDING read was stale.
+                repo.resolve_approval(approval_id, status="APPROVED")
                 return False
-            return original(
-                approval_id, status=status, decision_reason=decision_reason
-            )
+            return original(approval_id, status=status, decision_reason=decision_reason)
 
-        monkeypatch.setattr(repo, "resolve_approval_if_pending", approve_before_expiration_cas)
+        monkeypatch.setattr(
+            repo, "resolve_approval_if_pending", approve_before_expiration_cas
+        )
         if expected_http_status:
             with pytest.raises(AgentRuntimeError) as exc:
                 approval_gate.resolve(aid, decision=decision, user_id="u1")
@@ -188,6 +279,8 @@ class TestApprovalGate:
         else:
             result = approval_gate.resolve(aid, decision=decision, user_id="u1")
             assert result == {
-                "approval_id": aid, "status": expected_status, "replayed": replayed
+                "approval_id": aid,
+                "status": expected_status,
+                "replayed": replayed,
             }
         assert repo.get_approval(aid).status == expected_status

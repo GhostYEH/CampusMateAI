@@ -114,13 +114,18 @@ class MagicClassClassroomService:
         self._probe_cache: Optional[tuple[float, MagicClassProbeResult]] = None
 
     async def _heartbeat_reservation(
-        self, *, user_id: str, course_id: str, session_id: str
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        session_id: str,
+        lost_ownership: asyncio.Event,
     ) -> None:
         """Keep the submission reservation live while the upstream accepts work."""
         interval = max(0.05, self._ttl / 3)
         while True:
-            await self._sleeper(interval)
             try:
+                await self._sleeper(interval)
                 owned = await asyncio.to_thread(
                     self._store.touch_reservation,
                     user_id=user_id,
@@ -133,8 +138,10 @@ class MagicClassClassroomService:
                     session_id,
                     type(exc).__name__,
                 )
+                lost_ownership.set()
                 return
             if not owned:
+                lost_ownership.set()
                 return
 
     def _persist_closed_submission(
@@ -193,19 +200,21 @@ class MagicClassClassroomService:
     @staticmethod
     async def _wait_for_cleanup(
         cleanup: asyncio.Task, *, log_cancelled_task: bool = True
-    ) -> None:
-        """Finish cleanup despite repeated cancellation of the request task."""
+    ) -> bool:
+        """Finish cleanup despite repeated cancellation; report observed cancellation."""
+        cancellation_observed = False
         while True:
             try:
                 await asyncio.shield(cleanup)
-                return
+                return cancellation_observed
             except asyncio.CancelledError:
+                cancellation_observed = True
                 if cleanup.done():
                     if cleanup.cancelled() and log_cancelled_task:
                         logger.warning(
                             "magicclass cancellation cleanup task was cancelled"
                         )
-                    return
+                    return cancellation_observed
                 # A cancellation of this request must not interrupt cleanup.
                 continue
             except Exception as exc:  # noqa: BLE001 - preserve cancellation, report safely
@@ -214,6 +223,32 @@ class MagicClassClassroomService:
                     type(exc).__name__,
                 )
                 return
+
+    @classmethod
+    async def _cancel_and_wait(cls, task: asyncio.Task) -> bool:
+        """Cancel and join a child; report cancellation received while joining."""
+        if not task.done():
+            task.cancel()
+
+        async def join() -> None:
+            await asyncio.gather(task, return_exceptions=True)
+
+        cleanup = asyncio.create_task(join())
+        return await cls._wait_for_cleanup(cleanup, log_cancelled_task=False)
+
+    @staticmethod
+    def _capture_submit_result(
+        session: MagicClassSession, submit_task: asyncio.Task
+    ) -> bool:
+        """Copy a completed successful submission onto the session synchronously."""
+        if not submit_task.done() or submit_task.cancelled():
+            return False
+        result = submit_task.result()
+        session.job_id = result.job_id
+        session.status = result.status
+        session.step = _public_step(result.step, result.status)
+        session.message = "课堂生成任务已提交"
+        return True
 
     @property
     def enabled(self) -> bool:
@@ -522,6 +557,22 @@ class MagicClassClassroomService:
             # 复用已有任务 —— 必须返回任务真实 mode，而不是本次请求的 mode
             return reusable
 
+        # Keep the lease alive across every await after acquisition, including
+        # the initial session write and capability probe. Otherwise a slow disk
+        # or health endpoint can let another request take over before POST.
+        lost_ownership = asyncio.Event()
+        heartbeat = asyncio.create_task(
+            self._heartbeat_reservation(
+                user_id=user_id,
+                course_id=course_id,
+                session_id=session_id,
+                lost_ownership=lost_ownership,
+            )
+        )
+        submit_started = False
+        submit_task: Optional[asyncio.Task] = None
+        heartbeat_failure: Optional[asyncio.Task] = None
+
         # 2) 先落盘(mode 为真实 mode)，让并发落败方能读到真实 mode
         session = MagicClassSession(
             session_id=session_id,
@@ -540,9 +591,15 @@ class MagicClassClassroomService:
                 request_snapshot.to_dict() if request_snapshot is not None else None
             ),
         )
-        await asyncio.to_thread(self._store.save, session)
+        try:
+            await asyncio.to_thread(self._store.save, session)
+        except BaseException:
+            # The worker thread may still finish writing the queued session.
+            # Stop renewing and leave the lease recoverable after its TTL.
+            heartbeat.cancel()
+            await self._wait_for_cleanup(heartbeat, log_cancelled_task=False)
+            raise
 
-        heartbeat: Optional[asyncio.Task] = None
         try:
             capabilities = await self._health_capabilities(client)
             requirement = build_requirement(
@@ -562,41 +619,86 @@ class MagicClassClassroomService:
                 capabilities=capabilities,
                 pdf_text=context.material_text or context.text,
             )
-            heartbeat = asyncio.create_task(
-                self._heartbeat_reservation(
-                    user_id=user_id, course_id=course_id, session_id=session_id
-                )
+            # Do not send work if renewal failed while saving or probing. The
+            # CAS touch is the final owner/TTL check immediately before POST.
+            if lost_ownership.is_set():
+                raise MagicClassProtocolError("互动课堂提交前预占所有权已丢失")
+            owned = await asyncio.to_thread(
+                self._store.touch_reservation,
+                user_id=user_id,
+                course_id=course_id,
+                session_id=session_id,
             )
-            result = await client.submit(payload)
-
-            session.job_id = result.job_id
+            if not owned:
+                lost_ownership.set()
+                raise MagicClassProtocolError("互动课堂提交前预占所有权已丢失")
+            if lost_ownership.is_set():
+                raise MagicClassProtocolError("互动课堂提交前预占所有权已丢失")
+            submit_started = True
+            submit_task = asyncio.create_task(client.submit(payload))
+            heartbeat_failure = asyncio.create_task(lost_ownership.wait())
+            done, _ = await asyncio.wait(
+                {submit_task, heartbeat_failure},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if submit_task not in done:
+                # The request may already have reached magicclass. Stop waiting
+                # locally, but retain the explicit unknown-outcome state below.
+                cancelled_during_join = await self._cancel_and_wait(submit_task)
+                self._capture_submit_result(session, submit_task)
+                if cancelled_during_join:
+                    raise asyncio.CancelledError
+                raise MagicClassProtocolError(
+                    "互动课堂提交期间预占续租失败，无法确认上游结果"
+                )
+            if not self._capture_submit_result(session, submit_task):
+                raise asyncio.CancelledError
+            heartbeat_failure.cancel()
+            await self._wait_for_cleanup(heartbeat_failure, log_cancelled_task=False)
             # Keep the lease alive until both the job id and local session are
             # persisted; otherwise the submit window can expire after acceptance.
-            session.status = result.status
-            session.step = _public_step(result.step, result.status)
-            session.message = "课堂生成任务已提交"
             persisted = await asyncio.to_thread(
-                self._store.persist_submission, session, job_id=result.job_id
+                self._store.persist_submission, session, job_id=session.job_id
             )
             if not persisted:
                 raise MagicClassProtocolError("互动课堂提交成功，但预占所有权已变化")
         except asyncio.CancelledError:
+            submit_error: Optional[Exception] = None
+            if submit_task is not None and submit_task.done():
+                try:
+                    self._capture_submit_result(session, submit_task)
+                except Exception as exc:  # preserve real submit failure after cleanup
+                    submit_error = exc
+            if submit_task is not None and not submit_task.done():
+                await self._cancel_and_wait(submit_task)
+                try:
+                    self._capture_submit_result(session, submit_task)
+                except Exception as exc:  # preserve real submit failure after cleanup
+                    submit_error = exc
+            if heartbeat_failure is not None and not heartbeat_failure.done():
+                heartbeat_failure.cancel()
+                await self._wait_for_cleanup(
+                    heartbeat_failure, log_cancelled_task=False
+                )
             if session.job_id:
                 cleanup = asyncio.create_task(
                     asyncio.to_thread(self._persist_known_submission, session)
                 )
                 await self._wait_for_cleanup(cleanup)
                 raise
-            # Cancellation can land after the upstream accepted the request but
-            # before we recorded its job id. Close the local reservation so it
-            # cannot remain stuck forever; the failed session makes the outcome
-            # explicit and preserves the request snapshot for a deliberate retry.
             session.status = "failed"
             session.step = "failed"
             session.progress = 0
-            session.error_code = "SUBMISSION_CANCELLED"
-            session.error = "提交被取消，无法确认上游是否已受理"
-            session.message = "提交已取消，可重试"
+            if submit_error is not None:
+                session.error_code = _error_code_of(submit_error)
+                session.error = f"提交课堂生成任务失败: {type(submit_error).__name__}"
+                session.message = "提交失败，可重试"
+            else:
+                # Cancellation can land after upstream acceptance but before a
+                # job id is known, so the persisted state must retain uncertainty.
+                session.error_code = "SUBMISSION_CANCELLED"
+                session.error = "提交被取消，无法确认上游是否已受理"
+                session.message = "提交已取消，可重试"
             session.updated_at = _now_iso()
             cleanup = asyncio.create_task(
                 asyncio.to_thread(
@@ -607,6 +709,8 @@ class MagicClassClassroomService:
                 )
             )
             await self._wait_for_cleanup(cleanup)
+            if submit_error is not None:
+                raise submit_error
             raise
         except Exception as exc:  # noqa: BLE001 - 提交失败必须释放预占，允许重试
             if session.job_id:
@@ -618,9 +722,14 @@ class MagicClassClassroomService:
             session.status = "failed"
             session.step = "failed"
             session.progress = 0
-            session.error_code = _error_code_of(exc)
-            session.error = f"提交课堂生成任务失败: {type(exc).__name__}"
-            session.message = "提交失败，可重试"
+            if submit_started and lost_ownership.is_set():
+                session.error_code = "SUBMISSION_OUTCOME_UNKNOWN"
+                session.error = "提交期间预占续租失败，无法确认上游是否已受理"
+                session.message = "提交结果未知，请确认后再重试"
+            else:
+                session.error_code = _error_code_of(exc)
+                session.error = f"提交课堂生成任务失败: {type(exc).__name__}"
+                session.message = "提交失败，可重试"
             session.updated_at = _now_iso()
             cleanup = asyncio.create_task(
                 asyncio.to_thread(
@@ -633,9 +742,13 @@ class MagicClassClassroomService:
             await self._wait_for_cleanup(cleanup)
             raise
         finally:
-            if heartbeat is not None:
-                heartbeat.cancel()
-                await self._wait_for_cleanup(heartbeat, log_cancelled_task=False)
+            if heartbeat_failure is not None and not heartbeat_failure.done():
+                heartbeat_failure.cancel()
+                await self._wait_for_cleanup(
+                    heartbeat_failure, log_cancelled_task=False
+                )
+            heartbeat.cancel()
+            await self._wait_for_cleanup(heartbeat, log_cancelled_task=False)
         return session
 
     async def poll(self, session: MagicClassSession) -> MagicClassSession:

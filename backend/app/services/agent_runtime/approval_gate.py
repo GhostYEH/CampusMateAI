@@ -104,7 +104,7 @@ class ApprovalGate:
         # 检查过期
         now = datetime.now(timezone.utc)
         expires = datetime.fromisoformat(apv.expires_at)
-        if now > expires:
+        if now >= expires:
             if not self._repo.resolve_approval_if_pending(
                 approval_id, status=ApprovalStatus.EXPIRED.value
             ):
@@ -147,6 +147,10 @@ class ApprovalGate:
             settled = again.status if again else ApprovalStatus.EXPIRED.value
             if settled == target:
                 return {"approval_id": approval_id, "status": settled, "replayed": True}
+            if settled == ApprovalStatus.EXPIRED.value:
+                raise AgentRuntimeError(
+                    "审批已过期", code="AGENT_INVALID_STATE", http_status=410
+                )
             raise AgentRuntimeError(
                 f"审批已被其他请求处理({settled})",
                 code="AGENT_APPROVAL_CONFLICT",

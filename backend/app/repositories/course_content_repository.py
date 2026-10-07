@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from ..database.sqlite_db import Database
 
@@ -75,6 +76,12 @@ class CourseContentRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    @contextmanager
+    def cache_write_lock(self) -> Iterator[None]:
+        """Serialize cache-file metadata and filesystem changes across DB instances."""
+        with self._db.transaction(immediate=True):
+            yield
+
     def upsert_item(
         self,
         *,
@@ -114,7 +121,7 @@ class CourseContentRepository:
             if fields.get("metadata") is not None
             else None
         )
-        with self._db.transaction() as conn:
+        with self._db.transaction(immediate=True) as conn:
             existing = conn.execute(
                 "SELECT id, created_at, remote_object_id, source_url, file_size, mime_type "
                 "FROM course_content_items WHERE user_id=? AND provider=? AND course_id=? AND kind=? AND external_id=?",
@@ -367,6 +374,29 @@ class CourseContentRepository:
                 )
         return dict(row) if row else None
 
+    def get_item_and_cache(
+        self, item_id: str, *, user_id: str
+    ) -> tuple[Optional[CourseContentItemRow], Optional[dict]]:
+        """Read the current item snapshot and its cache in one transaction."""
+        with self._db.transaction(immediate=True) as conn:
+            item_row = conn.execute(
+                "SELECT * FROM course_content_items WHERE id=? AND user_id=?",
+                (item_id, user_id),
+            ).fetchone()
+            cache_row = conn.execute(
+                "SELECT * FROM course_resource_cache WHERE item_id=? AND user_id=?",
+                (item_id, user_id),
+            ).fetchone()
+            if cache_row is not None:
+                conn.execute(
+                    "UPDATE course_resource_cache SET last_accessed_at=? WHERE item_id=? AND user_id=?",
+                    (_now(), item_id, user_id),
+                )
+        return (
+            CourseContentItemRow.from_row(item_row) if item_row else None,
+            dict(cache_row) if cache_row else None,
+        )
+
     def list_cached_item_ids(self, *, item_ids: list[str], user_id: str) -> set[str]:
         """Return cached IDs for a page and touch their LRU timestamps in one transaction."""
         if not item_ids:
@@ -412,10 +442,29 @@ class CourseContentRepository:
             )
         return str(row["relative_path"]) if row else None
 
+    def delete_cache_if_matches(
+        self,
+        *,
+        item_id: str,
+        user_id: str,
+        relative_path: str,
+        content_hash: str,
+        cached_at: str,
+        expires_at: Optional[str],
+    ) -> Optional[str]:
+        """Delete a cache row only if it still matches the observed cache version."""
+        with self._db.transaction(immediate=True) as conn:
+            cursor = conn.execute(
+                "DELETE FROM course_resource_cache WHERE item_id=? AND user_id=? "
+                "AND relative_path=? AND content_hash=? AND cached_at=? AND expires_at IS ?",
+                (item_id, user_id, relative_path, content_hash, cached_at, expires_at),
+            )
+        return relative_path if cursor.rowcount else None
+
     def prune_cache(self, *, max_bytes: int) -> list[str]:
         """Delete LRU cache records until recorded bytes fit the configured ceiling."""
         removed: list[str] = []
-        with self._db.transaction() as conn:
+        with self._db.transaction(immediate=True) as conn:
             rows = conn.execute(
                 "SELECT item_id,user_id,relative_path,file_size FROM course_resource_cache ORDER BY last_accessed_at ASC"
             ).fetchall()
@@ -428,7 +477,13 @@ class CourseContentRepository:
                     (row["item_id"], row["user_id"]),
                 )
                 total -= int(row["file_size"] or 0)
-                removed.append(str(row["relative_path"]))
+                relative_path = str(row["relative_path"])
+                still_referenced = conn.execute(
+                    "SELECT 1 FROM course_resource_cache WHERE relative_path=? LIMIT 1",
+                    (relative_path,),
+                ).fetchone()
+                if still_referenced is None:
+                    removed.append(relative_path)
         return removed
 
     def upsert_cache(
@@ -444,7 +499,7 @@ class CourseContentRepository:
         expires_at: Optional[str] = None,
     ) -> dict:
         now = _now()
-        with self._db.transaction() as conn:
+        with self._db.transaction(immediate=True) as conn:
             conn.execute(
                 """INSERT INTO course_resource_cache
                    (item_id,user_id,course_id,relative_path,content_hash,mime_type,file_size,cached_at,last_accessed_at,expires_at)
@@ -468,3 +523,42 @@ class CourseContentRepository:
                 ),
             )
         return self.get_cache(item_id=item_id, user_id=user_id) or {}
+
+    def upsert_cache_for_item_identity(
+        self,
+        *,
+        item_id: str,
+        user_id: str,
+        course_id: str,
+        relative_path: str,
+        content_hash: str,
+        mime_type: Optional[str],
+        file_size: int,
+        expected_identity: tuple[
+            Optional[str], Optional[str], Optional[int], Optional[str]
+        ],
+    ) -> bool:
+        """Publish downloaded bytes only while the item's remote identity is unchanged."""
+        identity_columns = ("remote_object_id", "source_url", "file_size", "mime_type")
+        with self._db.transaction(immediate=True) as conn:
+            item = conn.execute(
+                "SELECT remote_object_id,source_url,file_size,mime_type "
+                "FROM course_content_items WHERE id=? AND user_id=?",
+                (item_id, user_id),
+            ).fetchone()
+            if (
+                item is None
+                or tuple(item[column] for column in identity_columns)
+                != expected_identity
+            ):
+                return False
+            self.upsert_cache(
+                item_id=item_id,
+                user_id=user_id,
+                course_id=course_id,
+                relative_path=relative_path,
+                content_hash=content_hash,
+                mime_type=mime_type,
+                file_size=file_size,
+            )
+        return True

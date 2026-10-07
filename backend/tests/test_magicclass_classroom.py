@@ -12,6 +12,7 @@
 - 课程上下文包含章节但不泄露隐私
 通过 httpx.MockTransport 模拟 magicclass，不伪造真实生成。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -79,15 +80,25 @@ async def test_poll_persistence_runs_outside_event_loop_thread():
         return "closed"
 
     store = SimpleNamespace(resolve_missing_job_for_poll=resolve_missing_job)
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=object())
-    session = SimpleNamespace(is_terminal=False, job_id=None, user_id="user", course_id="course", session_id="session")
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=object()
+    )
+    session = SimpleNamespace(
+        is_terminal=False,
+        job_id=None,
+        user_id="user",
+        course_id="course",
+        session_id="session",
+    )
     await service.poll(session)
     assert session.status == "failed"
     assert len(thread_ids) == 1
     assert all(thread_id != threading.get_ident() for thread_id in thread_ids)
 
 
-def _age_reservation(store, user_id: str, course_id: str, session_id: str, mode: str = "review"):
+def _age_reservation(
+    store, user_id: str, course_id: str, session_id: str, mode: str = "review"
+):
     old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     reservation = MagicClassReservation(
         session_id=session_id, mode=mode, created_at=old, updated_at=old
@@ -123,7 +134,9 @@ def test_stale_queued_session_without_job_id_is_taken_over_and_closed(tmp_path):
     abandoned = store.get_session(user_id="user", course_id="course", session_id=old_id)
     assert abandoned.status == "failed"
     assert abandoned.error_code == "SUBMISSION_OUTCOME_UNKNOWN"
-    assert store.read_reservation(user_id="user", course_id="course").session_id == new_id
+    assert (
+        store.read_reservation(user_id="user", course_id="course").session_id == new_id
+    )
 
 
 def test_stale_reservation_with_known_job_id_is_reused(tmp_path):
@@ -152,7 +165,10 @@ def test_stale_reservation_with_known_job_id_is_reused(tmp_path):
 
     assert acquired_id == session_id
     assert reusable.job_id == "upstream_job"
-    assert store.read_reservation(user_id="user", course_id="course").session_id == session_id
+    assert (
+        store.read_reservation(user_id="user", course_id="course").session_id
+        == session_id
+    )
 
 
 def test_reservation_job_id_recovers_session_persist_crash_window(tmp_path):
@@ -215,7 +231,9 @@ def test_stale_reservation_takeover_is_compare_and_swap(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_cancelled_submit_persists_failure_releases_reservation_and_propagates(tmp_path):
+async def test_cancelled_submit_persists_failure_releases_reservation_and_propagates(
+    tmp_path,
+):
     store = MagicClassResultStore(tmp_path)
     client = SimpleNamespace()
     submitted = asyncio.Event()
@@ -225,7 +243,9 @@ async def test_cancelled_submit_persists_failure_releases_reservation_and_propag
         await asyncio.Event().wait()
 
     client.submit = submit
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -279,7 +299,9 @@ async def test_poll_during_active_submit_keeps_lease_and_prevents_duplicate_subm
         return SimpleNamespace(job_id="upstream_job", status="queued", step="queued")
 
     client.submit = submit
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -306,7 +328,10 @@ async def test_poll_during_active_submit_keeps_lease_and_prevents_duplicate_subm
     assert polled.status == "queued"
     assert reused.session_id == queued.session_id
     assert submit_calls == 1
-    assert store.read_reservation(user_id="user", course_id="course").session_id == queued.session_id
+    assert (
+        store.read_reservation(user_id="user", course_id="course").session_id
+        == queued.session_id
+    )
 
     finish_submit.set()
     assert (await first).job_id == "upstream_job"
@@ -358,9 +383,12 @@ async def test_poll_backfills_job_id_from_reservation(tmp_path):
 
     assert polled_ids == ["upstream_job"]
     assert result.job_id == "upstream_job"
-    assert store.get_session(
-        user_id="user", course_id="course", session_id=session_id
-    ).job_id == "upstream_job"
+    assert (
+        store.get_session(
+            user_id="user", course_id="course", session_id=session_id
+        ).job_id
+        == "upstream_job"
+    )
 
 
 @pytest.mark.asyncio
@@ -390,7 +418,9 @@ async def test_cancel_during_known_job_persistence_keeps_job_for_reuse(tmp_path)
 
     client.submit = submit
     store.save = controlled_save
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -451,7 +481,9 @@ async def test_known_job_persistence_error_does_not_release_for_resubmit(tmp_pat
 
     client.submit = submit
     store.save = fail_first_job_save
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -495,7 +527,9 @@ async def test_submit_error_releases_reservation_even_if_failure_save_raises(tmp
         raise RuntimeError("upstream unavailable")
 
     client.submit = submit
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -593,6 +627,9 @@ async def test_submit_heartbeat_keeps_reservation_owned_past_ttl(tmp_path):
     reservation = await asyncio.to_thread(
         store.read_reservation, user_id="user", course_id="course"
     )
+    # generate now performs an ownership touch immediately before POST.
+    # Observe the heartbeat renewal below, rather than that prior touch.
+    touch_finished.clear()
     _age_reservation(store, "user", "course", reservation.session_id)
 
     # Drive the injected heartbeat without waiting for the configured 10s interval.
@@ -660,7 +697,9 @@ async def test_repeated_cancellation_waits_for_save_and_reservation_release(tmp_
     client.submit = submit
     store.save = controlled_save
     store.release_reservation = record_release
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=client)
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
 
     async def compatible():
         return client
@@ -694,7 +733,9 @@ async def test_repeated_cancellation_waits_for_save_and_reservation_release(tmp_
 
 
 @pytest.mark.asyncio
-async def test_cancelled_initial_save_leaves_reservation_recoverable_after_ttl(tmp_path):
+async def test_cancelled_initial_save_leaves_reservation_recoverable_after_ttl(
+    tmp_path,
+):
     import threading
 
     store = MagicClassResultStore(tmp_path)
@@ -711,7 +752,9 @@ async def test_cancelled_initial_save_leaves_reservation_recoverable_after_ttl(t
         save_finished.set()
 
     store.save = controlled_initial_save
-    service = MagicClassClassroomService(settings=_test_settings(), store=store, client=object())
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=object()
+    )
 
     async def compatible():
         return service._client
@@ -735,9 +778,7 @@ async def test_cancelled_initial_save_leaves_reservation_recoverable_after_ttl(t
     assert await asyncio.to_thread(save_finished.wait, 2)
     _age_reservation(store, "user", "course", reservation.session_id)
     store.save = original_save
-    new_id, reusable = service._acquire(
-        user_id="user", course_id="course", mode="quiz"
-    )
+    new_id, reusable = service._acquire(user_id="user", course_id="course", mode="quiz")
     assert new_id != reservation.session_id
     assert reusable is None
     abandoned = store.get_session(
@@ -748,6 +789,516 @@ async def test_cancelled_initial_save_leaves_reservation_recoverable_after_ttl(t
 
 
 @pytest.mark.asyncio
+async def test_heartbeat_renews_lease_during_slow_initial_save(tmp_path):
+    import threading
+
+    store = MagicClassResultStore(tmp_path)
+    original_save = store.save
+    save_started = threading.Event()
+    allow_save = threading.Event()
+    touched = threading.Event()
+    pulse = asyncio.Event()
+    submitted = asyncio.Event()
+    save_calls = 0
+    original_touch = store.touch_reservation
+    client = SimpleNamespace()
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def controlled_save(session):
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 1:
+            save_started.set()
+            if not allow_save.wait(timeout=3):
+                raise TimeoutError("controlled initial save was not released")
+        original_save(session)
+
+    def record_touch(**kwargs):
+        result = original_touch(**kwargs)
+        touched.set()
+        return result
+
+    async def submit(_payload):
+        submitted.set()
+        return SimpleNamespace(job_id="upstream_job", status="queued", step="queued")
+
+    async def capabilities(_client):
+        return {}
+
+    store.save = controlled_save
+    store.touch_reservation = record_touch
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = capabilities
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    assert await asyncio.to_thread(save_started.wait, 2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    _age_reservation(store, "user", "course", reservation.session_id)
+    pulse.set()
+    assert await asyncio.to_thread(touched.wait, 2)
+
+    reused = await service.generate(
+        user_id="user", course_id="course", context=context, mode="quiz"
+    )
+    assert reused.session_id == reservation.session_id
+    assert reused.mode == "review"
+    assert not submitted.is_set()
+
+    allow_save.set()
+    result = await asyncio.wait_for(task, timeout=2)
+    assert result.job_id == "upstream_job"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_renews_lease_during_slow_capability_probe(tmp_path):
+    import threading
+
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    probe_started = asyncio.Event()
+    allow_probe = asyncio.Event()
+    pulse = asyncio.Event()
+    touched = threading.Event()
+    original_touch = store.touch_reservation
+    submitted = asyncio.Event()
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def record_touch(**kwargs):
+        result = original_touch(**kwargs)
+        touched.set()
+        return result
+
+    async def capabilities(_client):
+        probe_started.set()
+        await allow_probe.wait()
+        return {}
+
+    async def submit(_payload):
+        submitted.set()
+        return SimpleNamespace(job_id="upstream_job", status="queued", step="queued")
+
+    store.touch_reservation = record_touch
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = capabilities
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(probe_started.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    _age_reservation(store, "user", "course", reservation.session_id)
+    pulse.set()
+    assert await asyncio.to_thread(touched.wait, 2)
+
+    reused = await service.generate(
+        user_id="user", course_id="course", context=context, mode="quiz"
+    )
+    assert reused.session_id == reservation.session_id
+    assert not submitted.is_set()
+
+    allow_probe.set()
+    result = await asyncio.wait_for(task, timeout=2)
+    assert result.job_id == "upstream_job"
+
+
+@pytest.mark.parametrize("heartbeat_failure", [False, True])
+@pytest.mark.asyncio
+async def test_lost_or_failed_heartbeat_stops_pre_submit_without_releasing_new_owner(
+    tmp_path, heartbeat_failure
+):
+    import threading
+
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    probe_started = asyncio.Event()
+    allow_probe = asyncio.Event()
+    pulse = asyncio.Event()
+    touched = threading.Event()
+    submitted = False
+    from app.services.magicclass.errors import MagicClassProtocolError
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def lose_touch(**_kwargs):
+        touched.set()
+        if heartbeat_failure:
+            raise OSError("controlled heartbeat failure")
+        return False
+
+    async def capabilities(_client):
+        probe_started.set()
+        await allow_probe.wait()
+        return {}
+
+    async def submit(_payload):
+        nonlocal submitted
+        submitted = True
+        return SimpleNamespace(job_id="unexpected", status="queued", step="queued")
+
+    store.touch_reservation = lose_touch
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = capabilities
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(probe_started.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    pulse.set()
+    assert await asyncio.to_thread(touched.wait, 2)
+    # Model a different request taking over after the old lease became stale.
+    _age_reservation(store, "user", "course", reservation.session_id)
+    new_id, reusable = service._acquire(user_id="user", course_id="course", mode="quiz")
+    assert reusable is None
+    assert new_id != reservation.session_id
+
+    allow_probe.set()
+    with pytest.raises(MagicClassProtocolError, match="预占所有权已丢失"):
+        await task
+    assert not submitted
+    current = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    assert current.session_id == new_id
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_failure_during_submit_records_unknown_outcome(tmp_path):
+    import threading
+
+    from app.services.magicclass.errors import MagicClassProtocolError
+
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    pulse = asyncio.Event()
+    submitted = asyncio.Event()
+    touch_failed = threading.Event()
+    submit_cancelled = asyncio.Event()
+    original_touch = store.touch_reservation
+    touch_calls = 0
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def fail_touch(**_kwargs):
+        nonlocal touch_calls
+        touch_calls += 1
+        if touch_calls == 1:
+            return original_touch(**_kwargs)
+        touch_failed.set()
+        raise OSError("controlled heartbeat failure")
+
+    async def submit(_payload):
+        submitted.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            submit_cancelled.set()
+
+    store.touch_reservation = fail_touch
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = lambda _client: asyncio.sleep(0, result={})
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(submitted.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    pulse.set()
+    assert await asyncio.to_thread(touch_failed.wait, 2)
+    with pytest.raises(MagicClassProtocolError, match="无法确认上游结果"):
+        await asyncio.wait_for(task, timeout=2)
+
+    assert submit_cancelled.is_set()
+    session = await asyncio.to_thread(
+        store.get_session,
+        user_id="user",
+        course_id="course",
+        session_id=reservation.session_id,
+    )
+    assert session.status == "failed"
+    assert session.error_code == "SUBMISSION_OUTCOME_UNKNOWN"
+    assert store.read_reservation(user_id="user", course_id="course") is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_after_submit_task_success_captures_job_before_cleanup(
+    tmp_path, monkeypatch
+):
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    wait_ready = asyncio.Event()
+    hold_wait = asyncio.Event()
+    original_wait = asyncio.wait
+
+    async def submit(_payload):
+        return SimpleNamespace(job_id="upstream_job", status="queued", step="queued")
+
+    async def controlled_wait(tasks, *, return_when):
+        result = await original_wait(tasks, return_when=return_when)
+        wait_ready.set()
+        await hold_wait.wait()
+        return result
+
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(), store=store, client=client
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = lambda _client: asyncio.sleep(0, result={})
+    monkeypatch.setattr(asyncio, "wait", controlled_wait)
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(wait_ready.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    saved = await asyncio.to_thread(
+        store.get_session,
+        user_id="user",
+        course_id="course",
+        session_id=reservation.session_id,
+    )
+    current = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    assert saved.job_id == "upstream_job"
+    assert saved.status == "queued"
+    assert current.job_id == "upstream_job"
+    assert current.session_id == reservation.session_id
+
+
+@pytest.mark.asyncio
+async def test_lost_heartbeat_cancel_suppressed_submit_result_is_preserved(tmp_path):
+    import threading
+
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    pulse = asyncio.Event()
+    submitted = asyncio.Event()
+    submit_cancelling = asyncio.Event()
+    allow_submit_result = asyncio.Event()
+    touch_failed = threading.Event()
+    original_touch = store.touch_reservation
+    touch_calls = 0
+    from app.services.magicclass.errors import MagicClassProtocolError
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def fail_after_precheck(**kwargs):
+        nonlocal touch_calls
+        touch_calls += 1
+        if touch_calls == 1:
+            return original_touch(**kwargs)
+        touch_failed.set()
+        raise OSError("controlled heartbeat failure")
+
+    async def submit(_payload):
+        submitted.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            submit_cancelling.set()
+            await allow_submit_result.wait()
+            return SimpleNamespace(
+                job_id="upstream_job", status="queued", step="queued"
+            )
+
+    store.touch_reservation = fail_after_precheck
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = lambda _client: asyncio.sleep(0, result={})
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(submitted.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    pulse.set()
+    assert await asyncio.to_thread(touch_failed.wait, 2)
+    await asyncio.wait_for(submit_cancelling.wait(), timeout=2)
+    allow_submit_result.set()
+    with pytest.raises(MagicClassProtocolError, match="无法确认上游结果"):
+        await asyncio.wait_for(task, timeout=2)
+
+    saved = await asyncio.to_thread(
+        store.get_session,
+        user_id="user",
+        course_id="course",
+        session_id=reservation.session_id,
+    )
+    current = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    assert saved.job_id == "upstream_job"
+    assert saved.status == "queued"
+    assert current.job_id == "upstream_job"
+    assert current.session_id == reservation.session_id
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_lost_heartbeat_child_join_preserves_known_job(tmp_path):
+    import threading
+
+    store = MagicClassResultStore(tmp_path)
+    client = SimpleNamespace()
+    pulse = asyncio.Event()
+    submitted = asyncio.Event()
+    submit_cancelling = asyncio.Event()
+    allow_submit_result = asyncio.Event()
+    touch_failed = threading.Event()
+    original_touch = store.touch_reservation
+    touch_calls = 0
+
+    async def sleeper(_delay):
+        await pulse.wait()
+        pulse.clear()
+
+    def fail_after_precheck(**kwargs):
+        nonlocal touch_calls
+        touch_calls += 1
+        if touch_calls == 1:
+            return original_touch(**kwargs)
+        touch_failed.set()
+        raise OSError("controlled heartbeat failure")
+
+    async def submit(_payload):
+        submitted.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            submit_cancelling.set()
+            await allow_submit_result.wait()
+            return SimpleNamespace(
+                job_id="upstream_job", status="queued", step="queued"
+            )
+
+    store.touch_reservation = fail_after_precheck
+    client.submit = submit
+    service = MagicClassClassroomService(
+        settings=_test_settings(magicclass_reservation_ttl_seconds=30),
+        store=store,
+        client=client,
+        sleeper=sleeper,
+    )
+    service._require_compatible_client = lambda: asyncio.sleep(0, result=client)
+    service._health_capabilities = lambda _client: asyncio.sleep(0, result={})
+    context = SimpleNamespace(text="course context", material_text="", signals=None)
+    task = asyncio.create_task(
+        service.generate(
+            user_id="user", course_id="course", context=context, mode="review"
+        )
+    )
+
+    await asyncio.wait_for(submitted.wait(), timeout=2)
+    reservation = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    pulse.set()
+    assert await asyncio.to_thread(touch_failed.wait, 2)
+    await asyncio.wait_for(submit_cancelling.wait(), timeout=2)
+    task.cancel()
+    await asyncio.sleep(0)
+    allow_submit_result.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    saved = await asyncio.to_thread(
+        store.get_session,
+        user_id="user",
+        course_id="course",
+        session_id=reservation.session_id,
+    )
+    current = await asyncio.to_thread(
+        store.read_reservation, user_id="user", course_id="course"
+    )
+    assert saved.job_id == "upstream_job"
+    assert saved.status == "queued"
+    assert current.job_id == "upstream_job"
+    assert current.session_id == reservation.session_id
+
+
 def probe_not_found_response() -> httpx.Response:
     """契约指纹 P3 的真实期望：格式合法但不存在的 jobId → 404 INVALID_REQUEST。"""
     return httpx.Response(
@@ -787,7 +1338,9 @@ def _health_handler(caps=None, **extra):
     caps = caps if caps is not None else {}
 
     def handler(request: httpx.Request):
-        return httpx.Response(200, json={"success": True, **extra, "capabilities": caps})
+        return httpx.Response(
+            200, json={"success": True, **extra, "capabilities": caps}
+        )
 
     return handler
 
@@ -827,14 +1380,20 @@ def test_build_requirement_includes_mode_and_objective():
 
 def test_build_input_payload_does_not_leak_credentials():
     caps = {"webSearch": True, "tts": False}
-    payload = build_input_payload(
-        requirement="req", capabilities=caps, pdf_text="ctx"
-    )
+    payload = build_input_payload(requirement="req", capabilities=caps, pdf_text="ctx")
     assert payload["agentMode"] == "generate"
     assert payload["enableWebSearch"] is True
     assert payload["enableTTS"] is False
     body = json.dumps(payload)
-    for forbidden in ("apiKey", "api_key", "Authorization", "password", "cookie", "token", "jwt"):
+    for forbidden in (
+        "apiKey",
+        "api_key",
+        "Authorization",
+        "password",
+        "cookie",
+        "token",
+        "jwt",
+    ):
         assert forbidden.lower() not in body.lower()
 
 
@@ -1025,13 +1584,16 @@ def test_status_safe_degrade_when_not_configured():
     container = reset_container_for_tests(_test_settings(magicclass_enabled=False))
     seed_demo_data(container, force=True)
     login = client.post(
-        "/api/v1/auth/login", json={"username": "student_demo", "password": "Demo123456"}
+        "/api/v1/auth/login",
+        json={"username": "student_demo", "password": "Demo123456"},
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     courses = client.get("/api/v1/courses", headers=headers).json()["items"]
     assert courses, "demo 学生应有课程"
     cid = courses[0]["id"]
-    resp = client.get(f"/api/v1/courses/{cid}/interactive-classroom/status", headers=headers)
+    resp = client.get(
+        f"/api/v1/courses/{cid}/interactive-classroom/status", headers=headers
+    )
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
     # 生成在未启用时应 503
@@ -1048,13 +1610,13 @@ def test_status_safe_degrade_when_not_configured():
 
 
 def _setup_routes(tmp_path, handler, **settings_overrides):
-    container = reset_container_for_tests(
-        _test_settings(**settings_overrides)
-    )
+    container = reset_container_for_tests(_test_settings(**settings_overrides))
     seed_demo_data(container, force=True)
     # 课堂会话/预占是磁盘状态，必须落在每个用例独立的临时目录，
     # 否则会写进仓库 data/ 并在多次运行之间互相污染。
-    container.magicclass_result_store = MagicClassResultStore(tmp_path / "magicclass_classrooms")
+    container.magicclass_result_store = MagicClassResultStore(
+        tmp_path / "magicclass_classrooms"
+    )
     container.magicclass_classroom_service = MagicClassClassroomService(
         container.settings, container.magicclass_result_store
     )
@@ -1062,7 +1624,8 @@ def _setup_routes(tmp_path, handler, **settings_overrides):
     container.magicclass_classroom_service._client = _client_with(handler)
     client = TestClient(create_app())
     login = client.post(
-        "/api/v1/auth/login", json={"username": "student_demo", "password": "Demo123456"}
+        "/api/v1/auth/login",
+        json={"username": "student_demo", "password": "Demo123456"},
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     courses = client.get("/api/v1/courses", headers=headers).json()["items"]
@@ -1087,7 +1650,9 @@ def _success_handler(requests: list):
             )
         if is_probe_request(request):
             return probe_not_found_response()
-        if request.method == "POST" and request.url.path.endswith("/api/generate-classroom"):
+        if request.method == "POST" and request.url.path.endswith(
+            "/api/generate-classroom"
+        ):
             return httpx.Response(202, json={"success": True, "jobId": "job_success"})
         return httpx.Response(
             200,
@@ -1160,7 +1725,8 @@ def test_generate_rebinds_submit_only_to_configured_payload(tmp_path):
     )
     # 提交体不应包含密钥/认证
     submit = next(
-        c for c in calls
+        c
+        for c in calls
         if c.method == "POST" and c.url.path.endswith("/api/generate-classroom")
     )
     body = submit.content.decode()
@@ -1176,7 +1742,9 @@ def test_generate_rebinds_submit_only_to_configured_payload(tmp_path):
 
 def test_nonexistent_course_rejected(tmp_path):
     _, client, headers, _ = _setup_routes(tmp_path, _success_handler([]))
-    resp = client.get("/api/v1/courses/no_such_course/interactive-classroom/status", headers=headers)
+    resp = client.get(
+        "/api/v1/courses/no_such_course/interactive-classroom/status", headers=headers
+    )
     assert resp.status_code in (404, 403)
 
 
@@ -1251,7 +1819,8 @@ def _cpm_unit() -> tuple[TestClient, object, dict]:
     seed_demo_data(container, force=True)
     client = TestClient(create_app())
     login = client.post(
-        "/api/v1/auth/login", json={"username": "student_demo", "password": "Demo123456"}
+        "/api/v1/auth/login",
+        json={"username": "student_demo", "password": "Demo123456"},
     )
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
     courses = client.get("/api/v1/courses", headers=headers).json()["items"]

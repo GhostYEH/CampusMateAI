@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import re
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -33,6 +33,7 @@ class ChaoxingResourceProxy:
     }
 
     STREAMING_KINDS = {"video", "audio"}
+    CACHE_DOWNLOAD_ATTEMPTS = 3
 
     def __init__(self, *, settings, repository, credentials: dict) -> None:
         self.settings = settings
@@ -185,7 +186,10 @@ class ChaoxingResourceProxy:
     async def get_file(self, *, item) -> tuple[Path, str | None, str]:
         cache_dir = self.settings.chaoxing_cache_dir
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cached = self.repository.get_cache(item_id=item.id, user_id=item.user_id)
+        current_item, cached = self.repository.get_item_and_cache(
+            item.id, user_id=item.user_id
+        )
+        item = current_item or item
         if cached:
             path = (cache_dir / cached["relative_path"]).resolve()
             mime_type = (cached.get("mime_type") or "").lower()
@@ -206,99 +210,145 @@ class ChaoxingResourceProxy:
                 and valid_expiry
             ):
                 return path, cached.get("mime_type"), self.safe_filename(item.title)
-            stale_relative_path = self.repository.delete_cache(
-                item_id=item.id, user_id=item.user_id
-            )
-            if stale_relative_path:
-                stale_path = (cache_dir / stale_relative_path).resolve()
-                if (
-                    cache_dir.resolve() in stale_path.parents
-                    and not self.repository.cache_path_is_referenced(
-                        stale_relative_path
-                    )
-                ):
-                    stale_path.unlink(missing_ok=True)
-
-        current_url = await self._resolve_download_url(item)
-        max_bytes = int(self.settings.chaoxing_cache_file_max_mb) * 1024 * 1024
-        client = httpx.AsyncClient(
-            cookies=self.credentials,
-            timeout=httpx.Timeout(60, connect=10),
-            headers={
-                "Referer": item.source_url or "https://mooc1.chaoxing.com/",
-                "User-Agent": self._mobile_ua(),
-            },
-        )
-        tmp_path = cache_dir / f".{item.id}.{os.getpid()}.part"
-        digest = hashlib.sha256()
-        size = 0
-        try:
-            for _ in range(6):
-                async with client.stream(
-                    "GET", current_url, follow_redirects=False
-                ) as response:
-                    if response.status_code in (301, 302, 303, 307, 308):
-                        location = response.headers.get("location")
-                        if not location:
-                            raise CourseResourceProxyError("resource_redirect_invalid")
-                        current_url = self.validate_url(urljoin(current_url, location))
-                        continue
-                    if response.status_code in (401, 403):
-                        raise CourseResourceProxyError("chaoxing_session_expired")
-                    if response.status_code == 404:
-                        raise CourseResourceProxyError("resource_not_found")
-                    response.raise_for_status()
-                    content_type = (response.headers.get("content-type") or "").lower()
+            with self.repository.cache_write_lock():
+                stale_relative_path = self.repository.delete_cache_if_matches(
+                    item_id=item.id,
+                    user_id=item.user_id,
+                    relative_path=cached["relative_path"],
+                    content_hash=cached["content_hash"],
+                    cached_at=cached["cached_at"],
+                    expires_at=cached["expires_at"],
+                )
+                if stale_relative_path:
+                    stale_path = (cache_dir / stale_relative_path).resolve()
                     if (
-                        "application/json" in content_type
-                        or "text/html" in content_type
+                        cache_dir.resolve() in stale_path.parents
+                        and not self.repository.cache_path_is_referenced(
+                            stale_relative_path
+                        )
                     ):
-                        raise CourseResourceProxyError("resource_invalid_payload")
-                    length = response.headers.get("content-length")
-                    if length and int(length) > max_bytes:
-                        raise CourseResourceProxyError("resource_too_large")
-                    with tmp_path.open("wb") as output:
-                        async for chunk in response.aiter_bytes():
-                            size += len(chunk)
-                            if size > max_bytes:
-                                raise CourseResourceProxyError("resource_too_large")
-                            digest.update(chunk)
-                            output.write(chunk)
-                    content_hash = digest.hexdigest()
-                    final_path = cache_dir / content_hash[:2] / content_hash
-                    final_path.parent.mkdir(parents=True, exist_ok=True)
-                    if not final_path.exists():
-                        tmp_path.replace(final_path)
-                    else:
-                        tmp_path.unlink(missing_ok=True)
-                    mime_type = response.headers.get("content-type")
-                    relative_path = final_path.relative_to(cache_dir).as_posix()
-                    self.repository.upsert_cache(
-                        item_id=item.id,
-                        user_id=item.user_id,
-                        course_id=item.course_id,
-                        relative_path=relative_path,
-                        content_hash=content_hash,
-                        mime_type=mime_type,
-                        file_size=size,
-                    )
-                    max_cache_bytes = (
-                        int(self.settings.chaoxing_cache_max_mb) * 1024 * 1024
-                    )
-                    for stale_relative_path in self.repository.prune_cache(
-                        max_bytes=max_cache_bytes
-                    ):
-                        stale_path = (cache_dir / stale_relative_path).resolve()
-                        if cache_dir.resolve() in stale_path.parents:
-                            stale_path.unlink(missing_ok=True)
-                    return (
-                        final_path,
-                        mime_type,
-                        self.safe_filename(item.title, mime_type),
-                    )
-            raise CourseResourceProxyError("resource_redirect_limit")
-        except httpx.RequestError as error:
-            raise CourseResourceProxyError("resource_network_error") from error
-        finally:
-            tmp_path.unlink(missing_ok=True)
-            await client.aclose()
+                        stale_path.unlink(missing_ok=True)
+
+        max_bytes = int(self.settings.chaoxing_cache_file_max_mb) * 1024 * 1024
+        for attempt in range(self.CACHE_DOWNLOAD_ATTEMPTS):
+            item = self.repository.get_item(item.id, user_id=item.user_id) or item
+            expected_identity = (
+                item.remote_object_id,
+                item.source_url,
+                item.file_size,
+                item.mime_type,
+            )
+            current_url = await self._resolve_download_url(item)
+            client = httpx.AsyncClient(
+                cookies=self.credentials,
+                timeout=httpx.Timeout(60, connect=10),
+                headers={
+                    "Referer": item.source_url or "https://mooc1.chaoxing.com/",
+                    "User-Agent": self._mobile_ua(),
+                },
+            )
+            tmp_path = cache_dir / f".{item.id}.{uuid.uuid4().hex}.part"
+            digest = hashlib.sha256()
+            size = 0
+            try:
+                for _ in range(6):
+                    async with client.stream(
+                        "GET", current_url, follow_redirects=False
+                    ) as response:
+                        if response.status_code in (301, 302, 303, 307, 308):
+                            location = response.headers.get("location")
+                            if not location:
+                                raise CourseResourceProxyError(
+                                    "resource_redirect_invalid"
+                                )
+                            current_url = self.validate_url(
+                                urljoin(current_url, location)
+                            )
+                            continue
+                        if response.status_code in (401, 403):
+                            raise CourseResourceProxyError("chaoxing_session_expired")
+                        if response.status_code == 404:
+                            raise CourseResourceProxyError("resource_not_found")
+                        response.raise_for_status()
+                        content_type = (
+                            response.headers.get("content-type") or ""
+                        ).lower()
+                        if (
+                            "application/json" in content_type
+                            or "text/html" in content_type
+                        ):
+                            raise CourseResourceProxyError("resource_invalid_payload")
+                        length = response.headers.get("content-length")
+                        if length and int(length) > max_bytes:
+                            raise CourseResourceProxyError("resource_too_large")
+                        with tmp_path.open("wb") as output:
+                            async for chunk in response.aiter_bytes():
+                                size += len(chunk)
+                                if size > max_bytes:
+                                    raise CourseResourceProxyError("resource_too_large")
+                                digest.update(chunk)
+                                output.write(chunk)
+                        content_hash = digest.hexdigest()
+                        final_path = cache_dir / content_hash[:2] / content_hash
+                        final_path.parent.mkdir(parents=True, exist_ok=True)
+                        mime_type = response.headers.get("content-type")
+                        relative_path = final_path.relative_to(cache_dir).as_posix()
+                        with self.repository.cache_write_lock():
+                            if not final_path.exists():
+                                tmp_path.replace(final_path)
+                            else:
+                                tmp_path.unlink(missing_ok=True)
+                            published = self.repository.upsert_cache_for_item_identity(
+                                item_id=item.id,
+                                user_id=item.user_id,
+                                course_id=item.course_id,
+                                relative_path=relative_path,
+                                content_hash=content_hash,
+                                mime_type=mime_type,
+                                file_size=size,
+                                expected_identity=expected_identity,
+                            )
+                            if not published:
+                                if not self.repository.cache_path_is_referenced(
+                                    relative_path
+                                ):
+                                    final_path.unlink(missing_ok=True)
+                            else:
+                                max_cache_bytes = (
+                                    int(self.settings.chaoxing_cache_max_mb)
+                                    * 1024
+                                    * 1024
+                                )
+                                for stale_relative_path in self.repository.prune_cache(
+                                    max_bytes=max_cache_bytes
+                                ):
+                                    stale_path = (
+                                        cache_dir / stale_relative_path
+                                    ).resolve()
+                                    if cache_dir.resolve() in stale_path.parents:
+                                        stale_path.unlink(missing_ok=True)
+                        if not published:
+                            latest_item = self.repository.get_item(
+                                item.id, user_id=item.user_id
+                            )
+                            if latest_item is None:
+                                raise CourseResourceProxyError(
+                                    "resource_metadata_error"
+                                )
+                            item = latest_item
+                            break
+                        return (
+                            final_path,
+                            mime_type,
+                            self.safe_filename(item.title, mime_type),
+                        )
+                else:
+                    raise CourseResourceProxyError("resource_redirect_limit")
+            except httpx.RequestError as error:
+                raise CourseResourceProxyError("resource_network_error") from error
+            finally:
+                tmp_path.unlink(missing_ok=True)
+                await client.aclose()
+            if attempt + 1 == self.CACHE_DOWNLOAD_ATTEMPTS:
+                break
+        raise CourseResourceProxyError("resource_metadata_error")

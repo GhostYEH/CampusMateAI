@@ -151,7 +151,7 @@ recent_tasks 仅表示当前用户的 PersonalTask，后端重新读取权威字
 
 先读取 `/agent-runtime/capabilities` 与 `/skills`；创建 `/agent-jobs` 得到关联 job/run，然后读取 job/runs/run 与事件。运行终态为 `SUCCEEDED/PARTIAL/FAILED/CANCELLED`，其他状态和阶段见 RunStatus/RunPhase；`PAUSED` 与 `AWAITING_APPROVAL` 不表示任务完成。`WAITING_FOR_APPROVAL` 是 phase，不能作为 status 使用。
 
-过期租约的恢复会先领取执行权，无法恢复的运行进入 `FAILED`；`RUN_RECOVERY_STARTED` 作为普通事件消费。审批过期与用户决定并发时保留先落定的状态，客户端按幂等重放、409 冲突和 410 过期处理，详见 [运行时并发契约](12-agents.md#并发工具调用与执行归属)。
+过期租约的恢复会先领取执行权，无法恢复的运行进入 `FAILED`；`RUN_RECOVERY_STARTED` 作为普通事件消费。审批过期与用户决定并发时保留先落定的状态，决定落库时已达到 expires_at 则返回 410，不以请求发出时间延长有效期。客户端按幂等重放、409 冲突和 410 过期处理，详见 [运行时并发契约](12-agents.md#并发工具调用与执行归属)。
 
 <a id="agent-input"></a>
 ### 创建任务的嵌套输入与可用入口
@@ -211,7 +211,7 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 经典课堂：status → 只读 plan → generate（202）→ jobs/{session_id} 轮询 → composition 回读实际内容 → 历史与 retry。意图 adaptive/explain/quiz/simulation/visualization/mindmap/coding/pbl/review 是生成需求，不能保证每种 widget 都出现，实际以 composition 为准。
 
-提交取消或遗留预占被接管时，尚无已知上游 job 的旧会话可能返回 `SUBMISSION_CANCELLED` / `SUBMISSION_OUTCOME_UNKNOWN` 失败码。提交活跃但尚无 job_id 的 queued 会话继续等待，已有上游 job 的任务继续轮询；结果未知时先提示用户确认再重试，避免上游重复课堂，详见 [经典课堂恢复说明](14-magicclass.md#经典课堂提交与恢复)。
+经典课堂从获取预占开始续租，并在发送上游请求前再次核验归属。提交取消、提交期间续租失效或遗留预占被接管时，尚无已知上游 job 的旧会话可能返回 `SUBMISSION_CANCELLED` / `SUBMISSION_OUTCOME_UNKNOWN` 失败码。提交活跃但尚无 job_id 的 queued 会话继续等待，已有上游 job 的任务继续轮询；请求取消时已完成提交中的有效 job_id 仍保存。结果未知时先提示用户确认再重试，避免上游重复课堂，详见 [经典课堂恢复说明](14-magicclass.md#经典课堂提交与恢复)。
 
 受管工作台：fusion/status 与 providers → course magicclass-context → 文件夹、workspaces → stages → 生成 job → 轮询 job/events → 获取 stage、outline、playback 和 scene → 播放、编辑、测验、讲解与圆桌。状态四态 disabled/unavailable/degraded/ready；仅 ready 时 capabilities 非空，缺配置不应显示空内容冒充成功。
 
@@ -240,7 +240,7 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 教务两条入口：已知学校 detect/bind/binding/sync；未知网址 discovery/probe → connections/from-url → challenge（验证码）→ authenticate → connection sync → 读取 schedule/grade/exam items。需要额外验证时展示接口 action/status，不自动假定绑定完成。解绑与删除连接不同，按实际模型处理；来源未同步、失败或 stale 状态应可辨识。
 
-课表同步包含时间和地点等完整内容的比较，字段变化会计入 `updated`；旧摘要首次刷新可能计入一次更新。课程资源内容重复同步保留有效缓存，远端资源身份变化后旧缓存失效并在下次下载重新获取；请求和响应字段不需迁移。
+课表同步包含时间和地点等完整内容的比较，字段变化会计入 `updated`；旧摘要首次刷新可能计入一次更新。课程资源内容重复同步保留有效缓存，远端资源身份变化后旧缓存失效并在下次下载重新获取。非流式下载途中被替换的资源最多尝试 3 次，旧下载不得作为新资源有效缓存；耗尽时按既有 502 `HTTP_ERROR` / `resource_metadata_error` 处理，稍后刷新内容再重试。请求和响应字段不需迁移。
 
 `/academic/*` 是兼容路径；academic/bind 当前直接拒绝，用 `/edu/bind` 或 connections 流程。大学选择用 `/profile/university`，个人资料编辑使用 `/auth/me`。
 

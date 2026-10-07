@@ -144,6 +144,8 @@ stats 的整数计数：courses_fetched/courses_created/courses_updated/teachers
 
 课程资源 open 返回 `{url:string,mode:"external"}`，URL 经过服务端校验；download 是文件 / 转发流，mime_type 与 Content-Disposition 由实际资源决定，外部授权过期会失败，不应要求前端抓取私有 Cookie。
 
+非流式课程文件下载与内容同步交错时，缓存发布再次核对资源身份，最多尝试 3 次；持续变更导致耗尽时返回 HTTP 502 `{code:"HTTP_ERROR",message:"resource_metadata_error",details:null,request_id}`。客户端先检查状态和 Content-Type，错误 JSON 不作为文件保存；已有流式音视频和 Range 契约不变。
+
 ## 教务动态响应与兼容接口
 
 `GET /edu/schedule/items`、`/grade/items`、`/exam/items` 返回 `{semester,items_count,items}`。semester 可空；items_count 为当前列表长度。完整条目字段直接列在外部连接模块的返回构造式中：

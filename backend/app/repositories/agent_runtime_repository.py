@@ -1742,19 +1742,39 @@ class AgentRuntimeRepository:
         必须用这个而不是 `resolve_approval`：后者是无条件 UPDATE，
         "先读后写"的调用方在并发下会出现 lost update —— 并发的 approve 与 reject
         可以双双通过 PENDING 检查，最终谁后写谁生效，而两边都返回成功。
+        用户决定在取得写锁后重新检查期限；到期时原子落定为 EXPIRED 并返回 False。
         """
-        now = _now()
-        conn = self._conn()
-        try:
+        with self._db.transaction(immediate=True) as conn:
+            now = _now()
+            settled_status = status
+            if status in {"APPROVED", "REJECTED"}:
+                row = conn.execute(
+                    "SELECT expires_at FROM agent_approvals "
+                    "WHERE approval_id = ? AND status = 'PENDING'",
+                    (approval_id,),
+                ).fetchone()
+                if row is None:
+                    return False
+                try:
+                    expires = datetime.fromisoformat(row["expires_at"])
+                    if expires.tzinfo is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                    expired = expires <= datetime.fromisoformat(now)
+                except (TypeError, ValueError):
+                    expired = True
+                if expired:
+                    settled_status = "EXPIRED"
             cursor = conn.execute(
                 "UPDATE agent_approvals SET status = ?, resolved_at = ?, decision_reason = ? "
                 "WHERE approval_id = ? AND status = 'PENDING'",
-                (status, now, decision_reason, approval_id),
+                (
+                    settled_status,
+                    now,
+                    decision_reason if settled_status == status else None,
+                    approval_id,
+                ),
             )
-            conn.commit()
-            return cursor.rowcount == 1
-        finally:
-            self._release(conn)
+            return cursor.rowcount == 1 and settled_status == status
 
     def expire_approvals(self, now: Optional[str] = None) -> int:
         """过期审批。过期绝不等于批准。返回过期条数。"""

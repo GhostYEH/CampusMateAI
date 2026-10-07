@@ -8,6 +8,8 @@
 
 课程内容重复同步保留既有条目 ID、创建时间和有效下载缓存。标题等描述字段更新不会强制下载；远端对象 ID、来源 URL、文件大小或 MIME 类型发生变化（包括清空）时，旧缓存失效，内容列表的缓存标记不再显示为有效，下一次下载重新读取远端内容。下载仍需当前用户权限及有效学习通绑定，文件、Range 和错误协议不变。Web、Android、HarmonyOS 的相关调用已核对，微信小程序当前未消费课程局部同步与资源下载；本次未进行移动端构建或真机验证。
 
+非流式文件下载会在发布缓存时再次核验上述资源身份。下载途中资源被替换时，旧下载不能登记为新资源的有效缓存；服务端读取最新资源后重试，单次请求最多尝试 3 次。资源持续变化而耗尽尝试时，沿用 HTTP 502 错误信封 `code=HTTP_ERROR`、`message=resource_metadata_error`，客户端稍后刷新课程内容再重试，不把错误 JSON 保存为文件。缓存清理保留仍被其他条目引用的同内容文件。
+
 ## 接口索引
 
 | 方法 | 完整路径 | 用途 |
@@ -1326,6 +1328,12 @@ Web 封装：`openCourseResource`（[webreact/src/data/api.js](../../webreact/sr
 Web 封装：`downloadCourseResource`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
 
 音视频流支持可选 **Range** 请求头并转发上游；返回 **200 / 206**，范围错误可返回 **416**（http_error_416）。Content-Range、Accept-Ranges、Content-Length 等以实际上游结果为准。必须按二进制解析，并携带本站登录态与有效学习通绑定。
+
+非流式文件在同步替换与下载交错时有界重抓最新资源，最多尝试 3 次；耗尽时返回以下既有错误结构。流式音视频仍按请求开始时获取的上游资源转发，不对已经开始传输的流切换文件。
+
+```json
+{"code":"HTTP_ERROR","message":"resource_metadata_error","details":null,"request_id":"req_example"}
+```
 
 参数：
 
