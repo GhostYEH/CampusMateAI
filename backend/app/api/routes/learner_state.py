@@ -388,7 +388,7 @@ def list_snapshot_evidence(
         user_id=user.id, snapshot_id=snapshot_id
     )
     if family is None:
-        result = container.learner_state_service.project_user(
+        container.learner_state_service.project_user(
             user.id, as_of=datetime.now(timezone.utc), trigger="api_read"
         )
         family = container.learner_state_repository.get_snapshot_projection_family(

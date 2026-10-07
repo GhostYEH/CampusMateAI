@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from adaptive_intervention_helpers import StubStateService, scenario_a, scenario_b, scenario_c
+from adaptive_intervention_helpers import StubStateService
 from app.core.config import Settings
 from app.core.security import hash_password
 from app.services.adaptive_agent.intervention_service import AdaptiveInterventionService

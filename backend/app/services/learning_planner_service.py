@@ -712,8 +712,6 @@ class LearningPlannerService:
         plan = self.repository.get_plan(plan_id, user_id=user_id)
         if plan is None:
             raise NotFoundError()
-        from ..services.learner_state_service import _parse as parse_state_time
-        baseline = _parse(plan.run.as_of) or parse_state_time(plan.run.as_of)
         evaluated = datetime.now(timezone.utc)
         action_rows = self.repository.list_actions(plan_id=plan_id, user_id=user_id)
         planned = len(plan.items)

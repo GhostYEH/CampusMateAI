@@ -2,6 +2,7 @@
 
 集中管理各 service 的依赖关系，避免在每个路由里重复构造。
 """
+
 from __future__ import annotations
 
 from ..core.logging import logger
@@ -31,6 +32,7 @@ from ..repositories.personal_hub_repository import (
 from ..repositories.study_session_repository import StudySessionRepository
 from ..repositories.study_goal_repository import StudyGoalRepository
 from ..repositories.student_goal_repository import StudentGoalRepository
+from ..repositories.student_exam_repository import StudentExamRepository
 from ..repositories.study_checkin_repository import StudyCheckinRepository
 from ..repositories.chaoxing_repository import ChaoxingRepository
 from ..repositories.notice_repository import NoticeRepository
@@ -115,7 +117,9 @@ from ..services.adaptive_agent.outcome_evaluator import InterventionOutcomeEvalu
 from ..services.adaptive_agent.replanning_worker import AdaptiveReplanningWorker
 from ..services.adaptive_agent.state_analyzer import StudentStateAnalyzer
 from ..services.adaptive_agent.strategy_policy import StrategyPolicy
-from ..repositories.adaptive_intervention_repository import AdaptiveInterventionRepository
+from ..repositories.adaptive_intervention_repository import (
+    AdaptiveInterventionRepository,
+)
 from ..services.learning_agent_tools import LearningAgentToolRegistry
 from ..services.model_capability_registry import ModelCapabilityRegistry
 from ..services.model_shadow_runner import ModelShadowRunner
@@ -128,7 +132,12 @@ from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
 from ..services.task_breakdown_service import TaskBreakdownService
 from ..services.tts import MiMoTtsClient
-from ..services.edu import EduConnectorService, SchoolRegistry, SystemDetector, SessionManager
+from ..services.edu import (
+    EduConnectorService,
+    SchoolRegistry,
+    SystemDetector,
+    SessionManager,
+)
 from ..services.edu.encrypted_session_store import EncryptedSqliteEduSessionStore
 
 
@@ -156,6 +165,7 @@ class ServiceContainer:
     submission_repository: SubmissionRepository
     # 个人待办仓库(学生从通知抽取生成的任务)
     personal_task_repository: PersonalTaskRepository
+    student_exam_repository: StudentExamRepository
     # 个人中心仓库(用户私有文件 / 跨模块收藏)
     personal_file_repository: PersonalFileRepository
     favorite_repository: FavoriteRepository
@@ -229,7 +239,9 @@ class ServiceContainer:
     # EduConnector
     edu_repository: EduRepository
     edu_connector: EduConnectorService
-    started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    started_at: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
     def ensure_index(self) -> int:
         """确保索引就绪(若 stale 则重建)。返回 chunk 数。"""
@@ -254,7 +266,9 @@ def _magicclass_store_dir(settings: Settings) -> Path:
 def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
     # 数据源策略在模型与学习服务构造前就绪，依赖通过构造参数显式传递。
     learner_control_repository = LearnerControlRepository(db)
-    learner_model_source_policy = LearnerModelSourcePolicy(control_repository=learner_control_repository)
+    learner_model_source_policy = LearnerModelSourcePolicy(
+        control_repository=learner_control_repository
+    )
     repo = DocumentRepository(db)
     retrieval = RetrievalService(repo)
     ingestion = KnowledgeIngestionService(repo, retrieval, settings)
@@ -268,17 +282,27 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             timeout=settings.campusmate_lm_timeout_ms / 1000,
             # 候选服务与通用 LLM 可能是不同服务、不同中间件：显式设置时只作用于候选，
             # 留空时沿用通用 LLM 的值以保持与历史行为一致。
-            tls_max_version=(settings.campusmate_lm_tls_max_version
-                             or settings.llm_tls_max_version or None),
+            tls_max_version=(
+                settings.campusmate_lm_tls_max_version
+                or settings.llm_tls_max_version
+                or None
+            ),
         )
     model_shadow_runner = ModelShadowRunner(
-        registry=ModelCapabilityRegistry(), candidate_llm=candidate_llm,
-        enabled=settings.campusmate_lm_enabled, sample_rate=settings.campusmate_lm_shadow_sample_rate,
-        concurrency_limit=settings.campusmate_lm_concurrency_limit, timeout_ms=settings.campusmate_lm_timeout_ms,
-        max_tokens=settings.campusmate_lm_max_tokens, temperature=settings.campusmate_lm_temperature,
-        seed=settings.campusmate_lm_seed, circuit_breaker_threshold=settings.campusmate_lm_circuit_breaker_threshold,
+        registry=ModelCapabilityRegistry(),
+        candidate_llm=candidate_llm,
+        enabled=settings.campusmate_lm_enabled,
+        sample_rate=settings.campusmate_lm_shadow_sample_rate,
+        concurrency_limit=settings.campusmate_lm_concurrency_limit,
+        timeout_ms=settings.campusmate_lm_timeout_ms,
+        max_tokens=settings.campusmate_lm_max_tokens,
+        temperature=settings.campusmate_lm_temperature,
+        seed=settings.campusmate_lm_seed,
+        circuit_breaker_threshold=settings.campusmate_lm_circuit_breaker_threshold,
         circuit_breaker_cooldown_seconds=settings.campusmate_lm_circuit_breaker_cooldown_seconds,
-        repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+        repository=ModelShadowRepository(
+            db, retention_days=settings.campusmate_lm_data_retention_days
+        ),
         source_policy=learner_model_source_policy,
     )
     tts = (
@@ -304,7 +328,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     personal_file_repo = PersonalFileRepository(db)
     favorite_repo = FavoriteRepository(db)
     # StudySessionRepository 注入 PersonalTaskRepository 用于校验 related_task_id
-    study_session_repo = StudySessionRepository(db, personal_task_repo=personal_task_repo)
+    study_session_repo = StudySessionRepository(
+        db, personal_task_repo=personal_task_repo
+    )
     study_goal_repo = StudyGoalRepository(db)
     student_goal_repo = StudentGoalRepository(db)
     study_checkin_repo = StudyCheckinRepository(db)
@@ -350,10 +376,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     learning_plan_repository = LearningPlanRepository(db)
     learning_planner_service = LearningPlannerService(
-        repository=learning_plan_repository, state_service=learner_state_service,
+        repository=learning_plan_repository,
+        state_service=learner_state_service,
         state_repository=learner_state_repository,
         task_repository=personal_task_repo,
-        content_repository=course_content_repository, llm=llm,
+        content_repository=course_content_repository,
+        llm=llm,
         source_policy=learner_model_source_policy,
         student_goal_repository=student_goal_repo,
         notice_repository=notice_repository,
@@ -363,7 +391,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     learner_control_service = LearnerControlService(
         repository=learner_control_repository,
         state_repository=learner_state_repository,
-        shadow_repository=ModelShadowRepository(db, retention_days=settings.campusmate_lm_data_retention_days),
+        shadow_repository=ModelShadowRepository(
+            db, retention_days=settings.campusmate_lm_data_retention_days
+        ),
         settings=settings,
         source_policy=learner_model_source_policy,
         model_shadow_runner=model_shadow_runner,
@@ -442,7 +472,8 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     )
     agent_handler_registry.register(
         LearningGoalHandler(
-            learning_planner_service, agent_event_store,
+            learning_planner_service,
+            agent_event_store,
             intervention_service=adaptive_intervention_service,
         )
     )
@@ -460,7 +491,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     # 注册完成后才冻结目录,保证运行期只读。
     agent_handler_registry.register(FinalReviewPlanActivateHandler(agent_tool_gateway))
     agent_handler_registry.register(FinalReviewAdjustApplyHandler(agent_tool_gateway))
-    agent_handler_registry.register(InteractiveClassroomGenerateHandler(agent_tool_gateway))
+    agent_handler_registry.register(
+        InteractiveClassroomGenerateHandler(agent_tool_gateway)
+    )
     agent_handler_registry.freeze()
     # 能力目录在启动时一次性交叉校验 Agent/Role/Skill/Handler/Tool;
     # 清单损坏或已发布语义被改动时直接抛错,阻止 runtime 启动。
@@ -494,7 +527,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_repository=learner_state_repository,
         learning_plan_repository=learning_plan_repository,
     )
-    school_registry = SchoolRegistry(university_repo=UniversityRepository(db), edu_repo=edu_repo)
+    school_registry = SchoolRegistry(
+        university_repo=UniversityRepository(db), edu_repo=edu_repo
+    )
     system_detector = SystemDetector(registry=school_registry)
     if settings.effective_edu_session_store == "encrypted_sqlite":
         session_manager = EncryptedSqliteEduSessionStore(
@@ -520,7 +555,11 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         max_results=settings.magicclass_max_results_per_course,
     )
     quiz_attempt_store = QuizAttemptStore(
-        (settings.database_path.parent if settings.database_path is not None else Path(__file__).resolve().parents[2] / "data")
+        (
+            settings.database_path.parent
+            if settings.database_path is not None
+            else Path(__file__).resolve().parents[2] / "data"
+        )
         / "magicclass_quiz_attempts"
     )
     magicclass_classroom_service = MagicClassClassroomService(
@@ -554,18 +593,21 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         student_goal_repository=student_goal_repo,
         study_checkin_repository=study_checkin_repo,
         chaoxing_repository=chaoxing_repository,
-        chaoxing_sync_service=ChaoxingSyncService(ChaoxingSyncDependencies(
-            course_repository=course_repo,
-            personal_task_repository=personal_task_repo,
-            chaoxing_repository=chaoxing_repository,
-            notice_repository=notice_repository,
-            notice_extraction=notice,
-            learner_event_service=learner_event_service,
-        )),
+        chaoxing_sync_service=ChaoxingSyncService(
+            ChaoxingSyncDependencies(
+                course_repository=course_repo,
+                personal_task_repository=personal_task_repo,
+                chaoxing_repository=chaoxing_repository,
+                notice_repository=notice_repository,
+                notice_extraction=notice,
+                learner_event_service=learner_event_service,
+            )
+        ),
         notice_repository=notice_repository,
         university_repository=UniversityRepository(db),
         community_repository=CommunityRepository(db),
         learning_room_repository=LearningRoomRepository(db),
+        student_exam_repository=StudentExamRepository(db),
         home_banner_repository=home_banner_repository,
         academic_repository=AcademicRepository(db),
         notice_automation_repository=NoticeAutomationRepository(db),
@@ -577,7 +619,6 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         learner_state_service=learner_state_service,
         forecast_service=forecast_service,
         simulation_service=simulation_service,
-
         learning_plan_repository=learning_plan_repository,
         learning_planner_service=learning_planner_service,
         adaptive_intervention_repository=adaptive_intervention_repository,
@@ -615,7 +656,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         agent_provider_registry=agent_provider_registry,
         agent_model_router=agent_model_router,
         final_review_repository=final_review_repository,
-        final_review_service=FinalReviewService(final_review_repository, personal_task_repo),
+        final_review_service=FinalReviewService(
+            final_review_repository, personal_task_repo
+        ),
         course_research_repository=course_research_repository,
         course_research_pipeline=CourseResearchPipeline(
             repository=course_research_repository,
@@ -649,7 +692,9 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
     try:
         retrieval.rebuild()
     except Exception as exc:
-        logger.warning("retrieval_startup_rebuild_failed error_type={}", type(exc).__name__)
+        logger.warning(
+            "retrieval_startup_rebuild_failed error_type={}", type(exc).__name__
+        )
     # 容器已构造完成：把延迟引用绑定到真实实例，互动课堂工具才能执行。
     interactive_classroom_ref.bind(container)
     return container
@@ -686,4 +731,9 @@ def reset_container_for_tests(settings: Optional[Settings] = None) -> ServiceCon
         return container
 
 
-__all__ = ["ServiceContainer", "build_container", "get_container", "reset_container_for_tests"]
+__all__ = [
+    "ServiceContainer",
+    "build_container",
+    "get_container",
+    "reset_container_for_tests",
+]

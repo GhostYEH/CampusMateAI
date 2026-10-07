@@ -7,6 +7,7 @@
 - 不在日志中记录 token 或密码明文。
 - 错误响应中不泄露用户名是否存在。
 """
+
 from __future__ import annotations
 
 import base64
@@ -30,11 +31,14 @@ hashed_secret = hashlib.sha256(settings.jwt_secret.encode()).digest()
 fernet_key = base64.urlsafe_b64encode(hashed_secret)
 fernet = Fernet(fernet_key)
 
+
 def encrypt(data: str) -> str:
     return fernet.encrypt(data.encode()).decode()
 
+
 def decrypt(token: str) -> str:
     return fernet.decrypt(token.encode()).decode()
+
 
 # ===== 文件名 / 路径穿越校验 =====
 
@@ -113,6 +117,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
     )
     return hmac.compare_digest(derived, expected)
 
+
 # ===== JWT (HS256) =====
 # 仅使用标准库实现 HS256，避免引入 PyJWT。
 # Token 结构: <header_b64>.<payload_b64>.<signature_b64> (均 urlsafe_base64, 无 padding)
@@ -161,6 +166,7 @@ def _b64url_decode(s: str) -> bytes:
 
 
 _HEADER = {"alg": "HS256", "typ": "JWT"}
+_JWT_SEGMENT = re.compile(r"[A-Za-z0-9_-]+={0,2}")
 
 
 def encode_jwt(payload: TokenPayload, secret: str) -> str:
@@ -169,7 +175,9 @@ def encode_jwt(payload: TokenPayload, secret: str) -> str:
         json.dumps(_HEADER, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     )
     payload_b64 = _b64url_encode(
-        json.dumps(payload.to_dict(), separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        json.dumps(payload.to_dict(), separators=(",", ":"), ensure_ascii=False).encode(
+            "utf-8"
+        )
     )
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
     signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
@@ -186,11 +194,13 @@ def decode_jwt(token: str, secret: str) -> TokenPayload:
     if not token or not isinstance(token, str):
         raise JWTError("token 为空")
     parts = token.split(".")
-    if len(parts) != 3:
+    if len(parts) != 3 or any(_JWT_SEGMENT.fullmatch(part) is None for part in parts):
         raise JWTError("token 格式错误")
     header_b64, payload_b64, sig_b64 = parts
     signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-    expected_sig = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+    expected_sig = hmac.new(
+        secret.encode("utf-8"), signing_input, hashlib.sha256
+    ).digest()
     try:
         given_sig = _b64url_decode(sig_b64)
     except Exception as e:

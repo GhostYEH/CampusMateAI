@@ -7,7 +7,6 @@
 """
 from __future__ import annotations
 
-import pytest
 
 from app.schemas.agent_contract_enums import AcademicPolicy, AssistanceMode
 from app.services.course_research.policy import (

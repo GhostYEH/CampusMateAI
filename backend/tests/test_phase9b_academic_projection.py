@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 from app.database.sqlite_db import Database
 from app.repositories.learner_state_repository import LearnerStateRepository

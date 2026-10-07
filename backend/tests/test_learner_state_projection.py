@@ -4,7 +4,6 @@ import pytest
 
 from app.core.config import Settings
 from app.database.sqlite_db import Database
-from app.repositories.learner_event_repository import LearnerEventRepository
 from app.schemas.learner_event import EvidenceReference, LearnerEventCreate
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data

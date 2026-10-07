@@ -8,12 +8,17 @@ verification_status 设为 UNVERIFIED，需经 verify_edu_systems.py 实时验�
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from discover_edu_systems import EduSystemCandidate, add_candidate, load_candidates, save_candidates, load_universities
+from discover_edu_systems import (
+    EduSystemCandidate,
+    add_candidate,
+    load_candidates as load_candidates,
+    save_candidates as save_candidates,
+    load_universities,
+)
 
 
 def build_school_code_map() -> dict[str, dict]:

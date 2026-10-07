@@ -785,7 +785,7 @@ class EduConnectorService:
 
         # 创建会话
         await run_in_threadpool(self._sessions.destroy_user_sessions, user_id)
-        session = await run_in_threadpool(self._sessions.create_session,
+        await run_in_threadpool(self._sessions.create_session,
             user_id=user_id,
             university_id=university_id,
             provider=adapter.provider,

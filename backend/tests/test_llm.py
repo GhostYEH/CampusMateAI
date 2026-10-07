@@ -4,10 +4,8 @@
 """
 import asyncio
 
-import pytest
 
 from app.services.llm.base import (
-    LLMClient,
     LLMConfigError,
     LLMError,
     LLMResponse,

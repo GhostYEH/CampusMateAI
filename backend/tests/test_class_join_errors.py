@@ -4,12 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from app.api.routes.classes import join_class
-from app.core.exceptions import AlreadyEnrolled
 from app.schemas.multi_role import ClassJoinRequest
 
 
 def _context(enroll_error):
-    active = SimpleNamespace(status="active")
     enrollment_repository = SimpleNamespace(
         get_enrollment=lambda class_id, user_id: None,
         count_members=lambda class_id: 0,

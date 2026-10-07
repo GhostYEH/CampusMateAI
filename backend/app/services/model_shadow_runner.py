@@ -320,7 +320,7 @@ class ModelShadowRunner:
                 safe_output = self.registry.validate_output(
                     request.capability_name, candidate_output, input_payload=payload,
                 )
-            except CapabilityValidationError as exc:
+            except CapabilityValidationError:
                 self._record_failure(request.capability_name, generation=generation)
                 # Policy violations are reported separately from malformed JSON.
                 return self._persist(request, self._fallback(request, payload, "MODEL_POLICY_VIOLATION", started, policy_valid=False))

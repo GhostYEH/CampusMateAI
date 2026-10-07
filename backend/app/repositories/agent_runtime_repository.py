@@ -3,6 +3,7 @@
 封装 agent_jobs/runs/steps/events/traces/snapshots/memories/approvals/citations 的 CRUD。
 不保存敏感数据(prompt、隐藏推理、凭据)。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -129,7 +130,9 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def find_job_by_idempotency(self, user_id: str, idempotency_key: str) -> Optional[dict]:
+    def find_job_by_idempotency(
+        self, user_id: str, idempotency_key: str
+    ) -> Optional[dict]:
         conn = self._conn()
         try:
             row = conn.execute(
@@ -142,7 +145,9 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def list_jobs(self, user_id: str, *, page: int = 1, page_size: int = 50) -> list[dict]:
+    def list_jobs(
+        self, user_id: str, *, page: int = 1, page_size: int = 50
+    ) -> list[dict]:
         offset = max(page - 1, 0) * page_size
         conn = self._conn()
         try:
@@ -199,9 +204,18 @@ class AgentRuntimeRepository:
             "role, summary, progress_json, artifact_id, approval_id, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                event_id, run_id, sequence, type, status, phase, role, summary,
+                event_id,
+                run_id,
+                sequence,
+                type,
+                status,
+                phase,
+                role,
+                summary,
                 json.dumps(progress, ensure_ascii=False) if progress else None,
-                artifact_id, approval_id, _now(),
+                artifact_id,
+                approval_id,
+                _now(),
             ),
         )
         return event_id, sequence
@@ -223,7 +237,10 @@ class AgentRuntimeRepository:
         return dict(row) if row else None
 
     def _load_claim(
-        self, conn: sqlite3.Connection, user_id: str, idempotency_key: str,
+        self,
+        conn: sqlite3.Connection,
+        user_id: str,
+        idempotency_key: str,
         scope: str = IDEMPOTENCY_SCOPE_AGENT_JOB,
     ) -> Optional[dict]:
         row = conn.execute(
@@ -285,8 +302,13 @@ class AgentRuntimeRepository:
                 "INSERT INTO agent_jobs (job_id, user_id, job_kind, status, idempotency_key, "
                 "input_ref_json, created_at, updated_at) VALUES (?, ?, ?, 'QUEUED', ?, ?, ?, ?)",
                 (
-                    job_id, user_id, job_kind, idempotency_key,
-                    json.dumps(input_ref or {}, ensure_ascii=False), now, now,
+                    job_id,
+                    user_id,
+                    job_kind,
+                    idempotency_key,
+                    json.dumps(input_ref or {}, ensure_ascii=False),
+                    now,
+                    now,
                 ),
             )
             run_id = _uuid("run")
@@ -295,11 +317,25 @@ class AgentRuntimeRepository:
                 "idempotency_key, handler_code, handler_version, attempt_no, next_attempt_at, "
                 "created_at, updated_at) "
                 "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, 0, ?, ?, ?)",
-                (run_id, job_id, user_id, request_id, idempotency_key, handler_code, handler_version,
-                 now, now, now),
+                (
+                    run_id,
+                    job_id,
+                    user_id,
+                    request_id,
+                    idempotency_key,
+                    handler_code,
+                    handler_version,
+                    now,
+                    now,
+                    now,
+                ),
             )
             event_id, sequence = self._insert_event(
-                conn, run_id=run_id, type="RUN_QUEUED", status="QUEUED", phase="IDLE",
+                conn,
+                run_id=run_id,
+                type="RUN_QUEUED",
+                status="QUEUED",
+                phase="IDLE",
                 summary="任务已加入队列，等待执行",
             )
             if idempotency_key:
@@ -351,19 +387,26 @@ class AgentRuntimeRepository:
         with self._db.transaction() as conn:
             run = self._fetch_run(conn, run_id)
             if run is None:
-                raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
-            if expected_statuses is not None and run["status"] not in set(expected_statuses):
+                raise AgentRuntimeError(
+                    "Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404
+                )
+            if expected_statuses is not None and run["status"] not in set(
+                expected_statuses
+            ):
                 raise AgentRuntimeError(
                     f"Run 当前状态({run['status']})不允许本次转换",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             if lease_owner is not None and run["lease_owner"] != lease_owner:
                 raise AgentRuntimeError(
                     "Run 的租约不属于当前执行者",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             assignments = [
-                "status = ?", "updated_at = ?",
+                "status = ?",
+                "updated_at = ?",
             ]
             params: list[Any] = [to_status, now]
             if phase is not None:
@@ -394,12 +437,14 @@ class AgentRuntimeRepository:
                 params.append(now)
             params.append(run_id)
             cursor = conn.execute(
-                f"UPDATE agent_runs SET {', '.join(assignments)} WHERE run_id = ?", params
+                f"UPDATE agent_runs SET {', '.join(assignments)} WHERE run_id = ?",
+                params,
             )
             if cursor.rowcount != 1:
                 raise AgentRuntimeError(
                     "Run 状态已被并发修改，放弃本次转换",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             conn.execute(
                 "UPDATE agent_jobs SET status = ?, updated_at = ? WHERE job_id = ?",
@@ -407,10 +452,16 @@ class AgentRuntimeRepository:
             )
             if event_type:
                 self._insert_event(
-                    conn, run_id=run_id, type=event_type,
-                    status=event_status or to_status, phase=event_phase or phase or run["phase"],
-                    role=event_role, summary=event_summary, progress=event_progress,
-                    artifact_id=event_artifact_id, approval_id=event_approval_id,
+                    conn,
+                    run_id=run_id,
+                    type=event_type,
+                    status=event_status or to_status,
+                    phase=event_phase or phase or run["phase"],
+                    role=event_role,
+                    summary=event_summary,
+                    progress=event_progress,
+                    artifact_id=event_artifact_id,
+                    approval_id=event_approval_id,
                 )
         self._notify(run_id)
         return self.get_run(run_id) or {}
@@ -443,20 +494,27 @@ class AgentRuntimeRepository:
         with self._db.transaction() as conn:
             run = self._fetch_run(conn, run_id)
             if run is None:
-                raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
-            if expected_statuses is not None and run["status"] not in set(expected_statuses):
+                raise AgentRuntimeError(
+                    "Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404
+                )
+            if expected_statuses is not None and run["status"] not in set(
+                expected_statuses
+            ):
                 raise AgentRuntimeError(
                     f"Run 当前状态({run['status']})不允许本次转换",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             if lease_owner is not None and run["lease_owner"] != lease_owner:
                 raise AgentRuntimeError(
                     "Run 的租约不属于当前执行者",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             if patch:
                 row = conn.execute(
-                    "SELECT input_ref_json FROM agent_jobs WHERE job_id = ?", (run["job_id"],)
+                    "SELECT input_ref_json FROM agent_jobs WHERE job_id = ?",
+                    (run["job_id"],),
                 ).fetchone()
                 current: dict = {}
                 if row and row["input_ref_json"]:
@@ -470,15 +528,25 @@ class AgentRuntimeRepository:
                 conn.execute(
                     "UPDATE agent_jobs SET input_ref_json = ?, status = ?, updated_at = ? "
                     "WHERE job_id = ?",
-                    (json.dumps(current, ensure_ascii=False), to_status, now, run["job_id"]),
+                    (
+                        json.dumps(current, ensure_ascii=False),
+                        to_status,
+                        now,
+                        run["job_id"],
+                    ),
                 )
             else:
                 conn.execute(
                     "UPDATE agent_jobs SET status = ?, updated_at = ? WHERE job_id = ?",
                     (to_status, now, run["job_id"]),
                 )
-            assignments = ["status = ?", "finished_at = ?", "updated_at = ?",
-                           "lease_owner = NULL", "lease_expires_at = NULL"]
+            assignments = [
+                "status = ?",
+                "finished_at = ?",
+                "updated_at = ?",
+                "lease_owner = NULL",
+                "lease_expires_at = NULL",
+            ]
             params: list[Any] = [to_status, now, now]
             if phase is not None:
                 assignments.append("phase = ?")
@@ -494,17 +562,25 @@ class AgentRuntimeRepository:
                 params.append(error_message)
             params.append(run_id)
             cursor = conn.execute(
-                f"UPDATE agent_runs SET {', '.join(assignments)} WHERE run_id = ?", params
+                f"UPDATE agent_runs SET {', '.join(assignments)} WHERE run_id = ?",
+                params,
             )
             if cursor.rowcount != 1:
                 raise AgentRuntimeError(
                     "Run 状态已被并发修改，放弃本次完成",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             self._insert_event(
-                conn, run_id=run_id, type=event_type, status=to_status,
-                phase=phase or run["phase"], role=event_role, summary=event_summary,
-                progress=event_progress, artifact_id=event_artifact_id,
+                conn,
+                run_id=run_id,
+                type=event_type,
+                status=to_status,
+                phase=phase or run["phase"],
+                role=event_role,
+                summary=event_summary,
+                progress=event_progress,
+                artifact_id=event_artifact_id,
             )
         self._notify(run_id)
         return self.get_run(run_id) or {}
@@ -565,6 +641,64 @@ class AgentRuntimeRepository:
                     return claimed
         return None
 
+    def claim_expired_run_for_recovery(
+        self,
+        run_id: str,
+        *,
+        previous_owner: str,
+        now: str,
+        owner: str,
+        lease_expires_at: str,
+        expected_status: str,
+    ) -> Optional[dict]:
+        """Atomically take over a still-expired lease before running recovery.
+
+        A recovery scan is only a hint: the previous owner may renew the lease,
+        or another worker may claim it, between the scan and this call. The
+        conditional update verifies the scanned owner, expiration boundary,
+        and status so neither race can be overwritten.
+        """
+        if expected_status not in {"RUNNING", "QUEUED"}:
+            return None
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE agent_runs SET status = 'RUNNING', lease_owner = ?, "
+                "lease_expires_at = ?, heartbeat_at = ?, phase = 'RECOVERY_CHECKING', "
+                "updated_at = ? WHERE run_id = ? AND status = ? "
+                "AND lease_owner = ? AND lease_expires_at IS NOT NULL "
+                "AND lease_expires_at <= ?",
+                (
+                    owner,
+                    lease_expires_at,
+                    now,
+                    now,
+                    run_id,
+                    expected_status,
+                    previous_owner,
+                    now,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return None
+            run = self._fetch_run(conn, run_id)
+            if run is None:
+                return None
+            conn.execute(
+                "UPDATE agent_jobs SET status = 'RUNNING', updated_at = ? WHERE job_id = ?",
+                (now, run["job_id"]),
+            )
+            self._insert_event(
+                conn,
+                run_id=run_id,
+                type="RUN_RECOVERY_STARTED",
+                status="RUNNING",
+                phase="RECOVERY_CHECKING",
+                role="runtime",
+                summary="检测到执行中断，正在检查安全恢复点",
+            )
+        self._notify(run_id)
+        return self.get_run(run_id) or {}
+
     def renew_run_lease(
         self, run_id: str, owner: str, *, heartbeat_at: str, lease_expires_at: str
     ) -> dict:
@@ -578,7 +712,8 @@ class AgentRuntimeRepository:
             if cursor.rowcount != 1:
                 raise AgentRuntimeError(
                     "租约已失效或不属于当前执行者",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             return self._fetch_run(conn, run_id) or {}
 
@@ -599,21 +734,35 @@ class AgentRuntimeRepository:
                     "lease_expires_at = ?, updated_at = ? "
                     "WHERE run_id = ? AND lease_owner = ? AND status = 'RUNNING' "
                     "AND (lease_expires_at IS NULL OR lease_expires_at >= ?)",
-                    (json.dumps(checkpoint, ensure_ascii=False), heartbeat_at,
-                     lease_expires_at, heartbeat_at, run_id, owner, heartbeat_at),
+                    (
+                        json.dumps(checkpoint, ensure_ascii=False),
+                        heartbeat_at,
+                        lease_expires_at,
+                        heartbeat_at,
+                        run_id,
+                        owner,
+                        heartbeat_at,
+                    ),
                 )
             else:
                 cursor = conn.execute(
                     "UPDATE agent_runs SET checkpoint_json = ?, heartbeat_at = ?, updated_at = ? "
                     "WHERE run_id = ? AND lease_owner = ? AND status = 'RUNNING' "
                     "AND (lease_expires_at IS NULL OR lease_expires_at >= ?)",
-                    (json.dumps(checkpoint, ensure_ascii=False), heartbeat_at,
-                     heartbeat_at, run_id, owner, heartbeat_at),
+                    (
+                        json.dumps(checkpoint, ensure_ascii=False),
+                        heartbeat_at,
+                        heartbeat_at,
+                        run_id,
+                        owner,
+                        heartbeat_at,
+                    ),
                 )
             if cursor.rowcount != 1:
                 raise AgentRuntimeError(
                     "租约已失效，无法写入恢复点",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             return self._fetch_run(conn, run_id) or {}
 
@@ -628,7 +777,8 @@ class AgentRuntimeRepository:
             if cursor.rowcount != 1:
                 raise AgentRuntimeError(
                     "租约已失效或不属于当前执行者",
-                    code="AGENT_INVALID_STATE", http_status=409,
+                    code="AGENT_INVALID_STATE",
+                    http_status=409,
                 )
             return self._fetch_run(conn, run_id) or {}
 
@@ -663,7 +813,9 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def observability_model_calls(self, *, since: str, limit: int = 20000) -> list[dict]:
+    def observability_model_calls(
+        self, *, since: str, limit: int = 20000
+    ) -> list[dict]:
         conn = self._conn()
         try:
             rows = conn.execute(
@@ -795,15 +947,29 @@ class AgentRuntimeRepository:
                 "INSERT INTO agent_runs (run_id, job_id, user_id, status, phase, request_id, "
                 "idempotency_key, retry_of, handler_code, handler_version, created_at, updated_at) "
                 "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?, ?, ?)",
-                (run_id, job_id, user_id, request_id, idempotency_key, retry_of,
-                 handler_code, handler_version, now, now),
+                (
+                    run_id,
+                    job_id,
+                    user_id,
+                    request_id,
+                    idempotency_key,
+                    retry_of,
+                    handler_code,
+                    handler_version,
+                    now,
+                    now,
+                ),
             )
             conn.execute(
                 "UPDATE agent_jobs SET status = 'QUEUED', updated_at = ? WHERE job_id = ?",
                 (now, job_id),
             )
             self._insert_event(
-                conn, run_id=run_id, type="RUN_QUEUED", status="QUEUED", phase="IDLE",
+                conn,
+                run_id=run_id,
+                type="RUN_QUEUED",
+                status="QUEUED",
+                phase="IDLE",
                 summary="任务已加入队列，等待执行",
             )
         return run_id
@@ -861,7 +1027,9 @@ class AgentRuntimeRepository:
         params.append(run_id)
         conn = self._conn()
         try:
-            conn.execute(f"UPDATE agent_runs SET {', '.join(fields)} WHERE run_id = ?", params)
+            conn.execute(
+                f"UPDATE agent_runs SET {', '.join(fields)} WHERE run_id = ?", params
+            )
             conn.commit()
         finally:
             self._release(conn)
@@ -889,7 +1057,9 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def list_runs_for_user(self, user_id: str, *, page: int = 1, page_size: int = 50) -> list[dict]:
+    def list_runs_for_user(
+        self, user_id: str, *, page: int = 1, page_size: int = 50
+    ) -> list[dict]:
         offset = max(page - 1, 0) * page_size
         conn = self._conn()
         try:
@@ -902,7 +1072,9 @@ class AgentRuntimeRepository:
         finally:
             self._release(conn)
 
-    def find_run_by_idempotency(self, user_id: str, idempotency_key: str) -> Optional[dict]:
+    def find_run_by_idempotency(
+        self, user_id: str, idempotency_key: str
+    ) -> Optional[dict]:
         conn = self._conn()
         try:
             row = conn.execute(
@@ -948,13 +1120,23 @@ class AgentRuntimeRepository:
                 "INSERT OR IGNORE INTO agent_idempotency_claims "
                 "(scope, user_id, idempotency_key, request_hash, resource_id, created_at) "
                 "VALUES (?, ?, ?, '', ?, ?)",
-                (IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY, user_id, idempotency_key, run_id, now),
+                (
+                    IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY,
+                    user_id,
+                    idempotency_key,
+                    run_id,
+                    now,
+                ),
             )
             source = self._fetch_run(conn, run_id)
             if source is None:
-                raise AgentRuntimeError("Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404)
+                raise AgentRuntimeError(
+                    "Run 不存在", code="AGENT_RUN_NOT_FOUND", http_status=404
+                )
             if source["user_id"] != user_id:
-                raise AgentRuntimeError("无权控制此运行", code="AGENT_PERMISSION_DENIED", http_status=403)
+                raise AgentRuntimeError(
+                    "无权控制此运行", code="AGENT_PERMISSION_DENIED", http_status=403
+                )
 
             control = None
             if record_control:
@@ -971,7 +1153,8 @@ class AgentRuntimeRepository:
                 if source["status"] not in {"FAILED", "PARTIAL", "CANCELLED"}:
                     raise AgentRuntimeError(
                         f"Run 当前状态({source['status']})不可重试",
-                        code="AGENT_INVALID_STATE", http_status=409,
+                        code="AGENT_INVALID_STATE",
+                        http_status=409,
                     )
 
                 existing = conn.execute(
@@ -989,11 +1172,17 @@ class AgentRuntimeRepository:
                         "next_attempt_at, created_at, updated_at) "
                         "VALUES (?, ?, ?, 'QUEUED', 'IDLE', ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                         (
-                            retry_run_id, source["job_id"], source["user_id"],
-                            source.get("request_id"), idempotency_key, run_id,
+                            retry_run_id,
+                            source["job_id"],
+                            source["user_id"],
+                            source.get("request_id"),
+                            idempotency_key,
+                            run_id,
                             handler_code or source.get("handler_code"),
                             handler_version or source.get("handler_version"),
-                            now, now, now,
+                            now,
+                            now,
+                            now,
                         ),
                     )
                     conn.execute(
@@ -1001,8 +1190,12 @@ class AgentRuntimeRepository:
                         (now, source["job_id"]),
                     )
                     self._insert_event(
-                        conn, run_id=retry_run_id, type="RUN_QUEUED", status="QUEUED",
-                        phase="IDLE", summary="任务已加入队列，等待执行",
+                        conn,
+                        run_id=retry_run_id,
+                        type="RUN_QUEUED",
+                        status="QUEUED",
+                        phase="IDLE",
+                        summary="任务已加入队列，等待执行",
                     )
                     retry = self._fetch_run(conn, retry_run_id) or {}
                     notify_run_id = retry_run_id
@@ -1011,8 +1204,10 @@ class AgentRuntimeRepository:
                     "UPDATE agent_idempotency_claims SET resource_id = ? "
                     "WHERE scope = ? AND user_id = ? AND idempotency_key = ?",
                     (
-                        retry["run_id"], IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY,
-                        user_id, idempotency_key,
+                        retry["run_id"],
+                        IDEMPOTENCY_SCOPE_AGENT_RUN_RETRY,
+                        user_id,
+                        idempotency_key,
                     ),
                 )
                 if record_control:
@@ -1020,7 +1215,14 @@ class AgentRuntimeRepository:
                         "INSERT INTO agent_run_controls "
                         "(command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at) "
                         "VALUES (?, ?, ?, 'retry', ?, ?, ?)",
-                        (_uuid("cmd"), run_id, user_id, idempotency_key, retry["status"], now),
+                        (
+                            _uuid("cmd"),
+                            run_id,
+                            user_id,
+                            idempotency_key,
+                            retry["status"],
+                            now,
+                        ),
                     )
                 result = {"run": retry, "replayed": False}
 
@@ -1028,8 +1230,15 @@ class AgentRuntimeRepository:
             self._notify(notify_run_id)
         return result
 
-    def record_control(self, *, run_id: str, user_id: str, action: str,
-                       idempotency_key: str, resulting_status: str) -> dict:
+    def record_control(
+        self,
+        *,
+        run_id: str,
+        user_id: str,
+        action: str,
+        idempotency_key: str,
+        resulting_status: str,
+    ) -> dict:
         command_id = _uuid("cmd")
         conn = self._conn()
         try:
@@ -1037,7 +1246,15 @@ class AgentRuntimeRepository:
                 "INSERT OR IGNORE INTO agent_run_controls "
                 "(command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (command_id, run_id, user_id, action, idempotency_key, resulting_status, _now()),
+                (
+                    command_id,
+                    run_id,
+                    user_id,
+                    action,
+                    idempotency_key,
+                    resulting_status,
+                    _now(),
+                ),
             )
             row = conn.execute(
                 "SELECT command_id, run_id, user_id, action, idempotency_key, resulting_status, created_at "
@@ -1123,14 +1340,23 @@ class AgentRuntimeRepository:
         """
         with self._db.transaction() as conn:
             result = self._insert_event(
-                conn, run_id=run_id, type=type, status=status, phase=phase, role=role,
-                summary=summary, progress=progress, artifact_id=artifact_id,
+                conn,
+                run_id=run_id,
+                type=type,
+                status=status,
+                phase=phase,
+                role=role,
+                summary=summary,
+                progress=progress,
+                artifact_id=artifact_id,
                 approval_id=approval_id,
             )
         self._notify(run_id)
         return result
 
-    def list_events(self, run_id: str, after_sequence: int = 0, limit: int = 100) -> list[dict]:
+    def list_events(
+        self, run_id: str, after_sequence: int = 0, limit: int = 100
+    ) -> list[dict]:
         conn = self._conn()
         try:
             rows = conn.execute(
@@ -1163,7 +1389,15 @@ class AgentRuntimeRepository:
                 "INSERT INTO agent_tool_calls (call_id, run_id, step_id, tool_name, "
                 "idempotency_key, request_hash, status, started_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
-                (call_id, run_id, step_id, tool_name, idempotency_key, request_hash, now),
+                (
+                    call_id,
+                    run_id,
+                    step_id,
+                    tool_name,
+                    idempotency_key,
+                    request_hash,
+                    now,
+                ),
             )
             conn.commit()
             return call_id
@@ -1198,7 +1432,15 @@ class AgentRuntimeRepository:
                 "INSERT INTO agent_tool_calls (call_id, run_id, step_id, tool_name, "
                 "idempotency_key, request_hash, status, started_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
-                (call_id, run_id, step_id, tool_name, idempotency_key, request_hash, now),
+                (
+                    call_id,
+                    run_id,
+                    step_id,
+                    tool_name,
+                    idempotency_key,
+                    request_hash,
+                    now,
+                ),
             )
         return call_id, True
 
@@ -1329,14 +1571,18 @@ class AgentRuntimeRepository:
                 "FROM agent_model_calls WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
-            return dict(row) if row is not None else {
-                "calls": 0,
-                "total_tokens": 0,
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "cached_tokens": 0,
-                "latency_ms": 0,
-            }
+            return (
+                dict(row)
+                if row is not None
+                else {
+                    "calls": 0,
+                    "total_tokens": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "cached_tokens": 0,
+                    "latency_ms": 0,
+                }
+            )
         finally:
             self._release(conn)
 

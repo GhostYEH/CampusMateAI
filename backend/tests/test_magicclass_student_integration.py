@@ -21,7 +21,7 @@ import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple
 
 import httpx
 import pytest

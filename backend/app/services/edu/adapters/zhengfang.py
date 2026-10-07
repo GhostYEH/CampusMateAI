@@ -368,7 +368,7 @@ class ZhengfangAdapter(EduAdapter):
         if school is None:
             raise AdapterNotImplemented(self.provider, "login: missing base_url in config")
         _ensure_configured_origin(school)
-        login_path = _validated_protocol_request_path(school, school.effective_login_url)
+        _validated_protocol_request_path(school, school.effective_login_url)
 
         if school.login_execution_mode == LOGIN_EXEC_CLIENT_WEBVIEW:
             raise NeedUserAction(

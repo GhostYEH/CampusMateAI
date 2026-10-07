@@ -286,7 +286,6 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
     相对时间(本周五/下周一/第X周)统一标记 year_missing=True 以触发人工确认。
     """
     now = now_override or datetime.now(timezone.utc).astimezone()
-    text_norm = text.replace(" ", "")
 
     def _has_non_deadline_context(match_start: int) -> bool:
         """检查匹配位置前 12 字符是否出现"开始时间"/"公示日"等非截止上下文。"""
@@ -430,8 +429,8 @@ def _timedelta(days: int):
 
 
 def _rule_parse_materials(text: str) -> List[MaterialItem]:
-    text_norm = text.replace(" ", "")
     materials: List[MaterialItem] = []
+    text_norm = text.replace(" ", "")
     matched_spans: List[tuple[int, int]] = []  # 已匹配区间的 (start, end)
     for kw in _MATERIAL_PATTERNS:
         start = 0
@@ -483,7 +482,6 @@ def _rule_parse_materials(text: str) -> List[MaterialItem]:
 
 def _rule_parse_submit_method(text: str) -> Optional[str]:
     methods = []
-    text_norm = text.replace(" ", "")
     for pat, kind in _SUBMIT_PATTERNS:
         m = pat.search(text)
         if not m:

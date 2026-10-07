@@ -4,7 +4,6 @@ import asyncio
 import random
 from pathlib import Path
 
-import pytest
 
 from app.models.model_capability import ModelCapabilityRequest
 from app.services.llm.base import LLMResponse

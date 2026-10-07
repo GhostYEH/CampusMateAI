@@ -5,7 +5,6 @@ from dataclasses import replace
 
 import pytest
 
-from app.core.exceptions import AppException
 from app.models.model_capability import ModelCapabilityRequest
 from app.services.model_capability_registry import ModelCapabilityRegistry
 from app.services.model_shadow_runner import ModelShadowRunner

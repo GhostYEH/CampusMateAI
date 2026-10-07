@@ -4,6 +4,7 @@
 支持幂等同步：基于唯一键 upsert，未在本次 batch 出现的旧数据标记 is_stale=1（软删除）。
 返回 inserted / updated / unchanged / removed 统计。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -24,7 +25,7 @@ def _short_id(prefix: str, *parts: str) -> str:
 
 def _source_hash(**fields) -> str:
     raw = "|".join(f"{k}={fields.get(k)}" for k in sorted(fields.keys()))
-    return hashlib.md5(raw.encode('utf-8')).hexdigest()
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
 
 @dataclass
@@ -37,7 +38,9 @@ class SyncStats:
 
     @property
     def total(self) -> int:
-        return self.inserted + self.updated + self.unchanged + self.removed + self.failed
+        return (
+            self.inserted + self.updated + self.unchanged + self.removed + self.failed
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -153,24 +156,26 @@ class EduDataRepository:
                     stats.failed += 1
                     continue
                 item_semester = item.semester or semester
-                teachers_json = json.dumps(item.teachers, ensure_ascii=False) if item.teachers else None
-                extra_info_json = json.dumps(item.extra_info, ensure_ascii=False) if item.extra_info else None
-                source_hash = _source_hash(
-                    course_code=item.course_code or "",
-                    course_name=item.course_name,
-                    teacher=item.teacher or "",
-                    teachers=teachers_json or "",
-                    location=item.location or "",
-                    weekday=item.weekday,
-                    start_section=item.start_section,
-                    end_section=item.end_section,
-                    weeks=item.weeks or "",
-                    credit=item.credit,
-                    course_nature=item.course_nature or "",
-                    teaching_class=item.teaching_class or "",
-                    assessment_method=item.assessment_method or "",
-                    extra_info=extra_info_json or "",
+                # This single normalized mapping drives both the digest and SQL
+                # writes, so every persisted schedule field participates in
+                # change detection without maintaining separate field lists.
+                schedule_values = item.model_dump()
+                schedule_values["semester"] = item_semester
+                schedule_values["teachers"] = (
+                    json.dumps(schedule_values["teachers"], ensure_ascii=False)
+                    if schedule_values["teachers"]
+                    else None
                 )
+                schedule_values["extra_info"] = (
+                    json.dumps(
+                        schedule_values["extra_info"],
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                    if schedule_values["extra_info"]
+                    else None
+                )
+                source_hash = _source_hash(**schedule_values)
                 item_id = _short_id(
                     "edu_sch",
                     user_id,
@@ -188,73 +193,69 @@ class EduDataRepository:
                     (item_id,),
                 ).fetchone()
                 if existing is None:
+                    schedule_columns = list(schedule_values)
+                    columns = [
+                        "id",
+                        "user_id",
+                        "edu_system_id",
+                        "university_id",
+                        *schedule_columns,
+                        "provider",
+                        "source",
+                        "source_hash",
+                        "last_seen_at",
+                        "sync_batch_id",
+                        "is_stale",
+                        "created_at",
+                        "updated_at",
+                    ]
+                    values = [
+                        item_id,
+                        user_id,
+                        edu_system_id,
+                        university_id,
+                        *(schedule_values[column] for column in schedule_columns),
+                        binding.provider,
+                        "edu_connector",
+                        source_hash,
+                        now,
+                        sync_batch_id,
+                        0,
+                        now,
+                        now,
+                    ]
                     conn.execute(
-                        """
-                        INSERT INTO edu_schedule_items (
-                            id, user_id, edu_system_id, university_id, semester,
-                            course_code, course_name, teacher, teachers, location,
-                            campus, building, classroom,
-                            weekday, start_section, end_section, start_time, end_time,
-                            weeks, week_text, credit,
-                            course_nature, course_category, course_type,
-                            teaching_class, class_name, college, department,
-                            assessment_method, exam_type,
-                            total_hours, theory_hours, practice_hours,
-                            language, note, semester_id, extra_info,
-                            provider, source, source_hash, last_seen_at, sync_batch_id,
-                            is_stale, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            item_id, user_id, edu_system_id, university_id, item_semester,
-                            item.course_code, item.course_name, item.teacher, teachers_json, item.location,
-                            item.campus, item.building, item.classroom,
-                            item.weekday, item.start_section, item.end_section,
-                            item.start_time, item.end_time,
-                            item.weeks, item.week_text, item.credit,
-                            item.course_nature, item.course_category, item.course_type,
-                            item.teaching_class, item.class_name, item.college, item.department,
-                            item.assessment_method, item.exam_type,
-                            item.total_hours, item.theory_hours, item.practice_hours,
-                            item.language, item.note, item.semester_id, extra_info_json,
-                            binding.provider, "edu_connector", source_hash, now, sync_batch_id,
-                            0, now, now,
-                        ),
+                        f"INSERT INTO edu_schedule_items ({', '.join(columns)}) "
+                        f"VALUES ({', '.join('?' for _ in columns)})",
+                        values,
                     )
                     stats.inserted += 1
                 else:
-                    if existing["is_stale"] == 1 or existing["source_hash"] != source_hash:
+                    if (
+                        existing["is_stale"] == 1
+                        or existing["source_hash"] != source_hash
+                    ):
+                        assignments = [
+                            f"{column} = ?"
+                            if column != "semester"
+                            else "semester = COALESCE(?, semester)"
+                            for column in schedule_values
+                        ]
                         conn.execute(
-                            """
-                            UPDATE edu_schedule_items SET
-                                course_name = ?, teacher = ?, teachers = ?, location = ?,
-                                campus = ?, building = ?, classroom = ?,
-                                weekday = ?, start_section = ?, end_section = ?,
-                                start_time = ?, end_time = ?,
-                                weeks = ?, week_text = ?, credit = ?,
-                                course_nature = ?, course_category = ?, course_type = ?,
-                                teaching_class = ?, class_name = ?, college = ?, department = ?,
-                                assessment_method = ?, exam_type = ?,
-                                total_hours = ?, theory_hours = ?, practice_hours = ?,
-                                language = ?, note = ?, semester_id = ?, extra_info = ?,
-                                semester = COALESCE(?, semester),
-                                source_hash = ?, last_seen_at = ?, sync_batch_id = ?,
-                                is_stale = 0, updated_at = ?
-                            WHERE id = ?
-                            """,
-                            (
-                                item.course_name, item.teacher, teachers_json, item.location,
-                                item.campus, item.building, item.classroom,
-                                item.weekday, item.start_section, item.end_section,
-                                item.start_time, item.end_time,
-                                item.weeks, item.week_text, item.credit,
-                                item.course_nature, item.course_category, item.course_type,
-                                item.teaching_class, item.class_name, item.college, item.department,
-                                item.assessment_method, item.exam_type,
-                                item.total_hours, item.theory_hours, item.practice_hours,
-                                item.language, item.note, item.semester_id, extra_info_json,
-                                item_semester, source_hash, now, sync_batch_id, now, item_id,
-                            ),
+                            f"UPDATE edu_schedule_items SET {', '.join(assignments)}, "
+                            "source_hash = ?, last_seen_at = ?, sync_batch_id = ?, "
+                            "is_stale = 0, updated_at = ? WHERE id = ?",
+                            [
+                                *(
+                                    schedule_values[column]
+                                    for column in schedule_values
+                                ),
+                                source_hash,
+                                now,
+                                sync_batch_id,
+                                now,
+                                item_id,
+                            ],
                         )
                         stats.updated += 1
                     else:
@@ -265,7 +266,9 @@ class EduDataRepository:
                         stats.unchanged += 1
 
             if seen_ids and edu_system_id:
-                seen_semesters = {it.semester or semester for it in schedule.items if it.course_name}
+                seen_semesters = {
+                    it.semester or semester for it in schedule.items if it.course_name
+                }
                 if seen_semesters:
                     sem_placeholders = ",".join("?" for _ in seen_semesters)
                     id_placeholders = ",".join("?" for _ in seen_ids)
@@ -308,14 +311,18 @@ class EduDataRepository:
                     WHERE user_id = ? AND semester = ? AND is_stale <= ?
                     ORDER BY weekday ASC, start_section ASC
                 """
-                rows = conn.execute(sql, (user_id, semester, 1 if include_stale else 0)).fetchall()
+                rows = conn.execute(
+                    sql, (user_id, semester, 1 if include_stale else 0)
+                ).fetchall()
             else:
                 sql = """
                     SELECT * FROM edu_schedule_items
                     WHERE user_id = ? AND is_stale <= ?
                     ORDER BY semester DESC, weekday ASC, start_section ASC
                 """
-                rows = conn.execute(sql, (user_id, 1 if include_stale else 0)).fetchall()
+                rows = conn.execute(
+                    sql, (user_id, 1 if include_stale else 0)
+                ).fetchall()
         return [self._row_to_schedule_item(r) for r in rows]
 
     def list_semesters_with_schedule(self, user_id: str) -> list[str]:
@@ -350,8 +357,10 @@ class EduDataRepository:
                     extra_dict = None
             except (TypeError, ValueError):
                 extra_dict = None
+
         def _g(key: str) -> Any:
             return row[key] if key in row.keys() else None
+
         return PersistedScheduleItem(
             id=row["id"],
             user_id=row["user_id"],
@@ -448,15 +457,33 @@ class EduDataRepository:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                         """,
                         (
-                            item_id, user_id, edu_system_id, university_id, item_semester,
-                            item.course_code, item.course_name, item.credit, item.score, item.grade_point,
-                            item.category, item.status, binding.provider, "edu_connector", source_hash,
-                            now, sync_batch_id, now, now,
+                            item_id,
+                            user_id,
+                            edu_system_id,
+                            university_id,
+                            item_semester,
+                            item.course_code,
+                            item.course_name,
+                            item.credit,
+                            item.score,
+                            item.grade_point,
+                            item.category,
+                            item.status,
+                            binding.provider,
+                            "edu_connector",
+                            source_hash,
+                            now,
+                            sync_batch_id,
+                            now,
+                            now,
                         ),
                     )
                     stats.inserted += 1
                 else:
-                    if existing["is_stale"] == 1 or existing["source_hash"] != source_hash:
+                    if (
+                        existing["is_stale"] == 1
+                        or existing["source_hash"] != source_hash
+                    ):
                         conn.execute(
                             """
                             UPDATE edu_grades SET
@@ -468,9 +495,18 @@ class EduDataRepository:
                             WHERE id = ?
                             """,
                             (
-                                item.course_name, item.credit, item.score, item.grade_point,
-                                item.category, item.status, item_semester,
-                                source_hash, now, sync_batch_id, now, item_id,
+                                item.course_name,
+                                item.credit,
+                                item.score,
+                                item.grade_point,
+                                item.category,
+                                item.status,
+                                item_semester,
+                                source_hash,
+                                now,
+                                sync_batch_id,
+                                now,
+                                item_id,
                             ),
                         )
                         stats.updated += 1
@@ -482,7 +518,9 @@ class EduDataRepository:
                         stats.unchanged += 1
 
             if seen_ids and edu_system_id:
-                seen_semesters = {it.semester or semester for it in grade.items if it.course_name}
+                seen_semesters = {
+                    it.semester or semester for it in grade.items if it.course_name
+                }
                 if seen_semesters:
                     sem_placeholders = ",".join("?" for _ in seen_semesters)
                     id_placeholders = ",".join("?" for _ in seen_ids)
@@ -514,14 +552,18 @@ class EduDataRepository:
                     WHERE user_id = ? AND semester = ? AND is_stale <= ?
                     ORDER BY course_name ASC
                 """
-                rows = conn.execute(sql, (user_id, semester, 1 if include_stale else 0)).fetchall()
+                rows = conn.execute(
+                    sql, (user_id, semester, 1 if include_stale else 0)
+                ).fetchall()
             else:
                 sql = """
                     SELECT * FROM edu_grades
                     WHERE user_id = ? AND is_stale <= ?
                     ORDER BY semester DESC, course_name ASC
                 """
-                rows = conn.execute(sql, (user_id, 1 if include_stale else 0)).fetchall()
+                rows = conn.execute(
+                    sql, (user_id, 1 if include_stale else 0)
+                ).fetchall()
         return [self._row_to_grade_item(r) for r in rows]
 
     def list_semesters_with_grades(self, user_id: str) -> list[str]:
@@ -612,15 +654,32 @@ class EduDataRepository:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                         """,
                         (
-                            item_id, user_id, edu_system_id, university_id, item_semester,
-                            item.course_code, item.course_name, item.exam_type, item.location,
-                            item.seat, item.starts_at, item.ends_at, item.notes,
-                            binding.provider, "edu_connector", source_hash,
-                            now, sync_batch_id, now, now,
+                            item_id,
+                            user_id,
+                            edu_system_id,
+                            university_id,
+                            item_semester,
+                            item.course_code,
+                            item.course_name,
+                            item.exam_type,
+                            item.location,
+                            item.seat,
+                            item.starts_at,
+                            item.ends_at,
+                            item.notes,
+                            binding.provider,
+                            "edu_connector",
+                            source_hash,
+                            now,
+                            sync_batch_id,
+                            now,
+                            now,
                         ),
                     )
                     stats.inserted += 1
-                elif existing["is_stale"] == 1 or existing["source_hash"] != source_hash:
+                elif (
+                    existing["is_stale"] == 1 or existing["source_hash"] != source_hash
+                ):
                     conn.execute(
                         """
                         UPDATE edu_exam_items SET
@@ -631,9 +690,19 @@ class EduDataRepository:
                         WHERE id = ?
                         """,
                         (
-                            item.course_name, item.exam_type, item.location, item.seat,
-                            item.starts_at, item.ends_at, item.notes, item_semester,
-                            source_hash, now, sync_batch_id, now, item_id,
+                            item.course_name,
+                            item.exam_type,
+                            item.location,
+                            item.seat,
+                            item.starts_at,
+                            item.ends_at,
+                            item.notes,
+                            item_semester,
+                            source_hash,
+                            now,
+                            sync_batch_id,
+                            now,
+                            item_id,
                         ),
                     )
                     stats.updated += 1
@@ -645,7 +714,9 @@ class EduDataRepository:
                     stats.unchanged += 1
 
             if seen_ids and edu_system_id:
-                seen_semesters = {it.semester or semester for it in exam.items if it.course_name}
+                seen_semesters = {
+                    it.semester or semester for it in exam.items if it.course_name
+                }
                 if seen_semesters:
                     sem_placeholders = ",".join("?" for _ in seen_semesters)
                     id_placeholders = ",".join("?" for _ in seen_ids)

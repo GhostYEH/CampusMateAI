@@ -574,7 +574,7 @@ def test_unique_constraint_rejects_duplicate_insert():
     db = _make_db()
     try:
         _add_user(db, "user1")
-        event = _valid_event()
+        _valid_event()
         with db.transaction() as conn:
             conn.execute(
                 "INSERT INTO learner_events (event_id, user_id, occurred_at, received_at, "

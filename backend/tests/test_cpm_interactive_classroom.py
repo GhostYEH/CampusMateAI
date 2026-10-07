@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import List
 
 import httpx
-import pytest
 
 from app.services.agent_runtime.handlers.interactive_classroom import (
     GENERATE_TOOL,

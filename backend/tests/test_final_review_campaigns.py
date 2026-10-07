@@ -4,8 +4,6 @@
 """
 from __future__ import annotations
 
-import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes.final_review import router as final_review_router

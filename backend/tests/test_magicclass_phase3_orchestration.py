@@ -7,11 +7,9 @@
 """
 from __future__ import annotations
 
-import json
 from typing import Any, Callable, Dict, List
 
 import httpx
-import pytest
 
 from app.services.magicclass.client import PROBE_JOB_ID
 from app.services.magicclass.composition import (
@@ -23,7 +21,6 @@ from test_magicclass_student_integration import (
     BASE,
     _bootstrap,
     _first_course,
-    _login,
     _probe_not_found,
     _recording_handler,
 )
@@ -366,8 +363,6 @@ def test_complete_generation_is_not_marked_partial(tmp_path):
 
 
 def test_failed_generation_exposes_error_code_and_retryable(tmp_path):
-    recorder: List[httpx.Request] = []
-
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/api/health"):
             return httpx.Response(

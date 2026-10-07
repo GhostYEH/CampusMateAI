@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 
 import pytest
 
@@ -25,13 +24,9 @@ from app.schemas.agent_contract_enums import (
     RunStatus,
 )
 from app.services.agent_runtime.agent_registry import AgentRegistry
-from app.services.agent_runtime.approval_gate import ApprovalGate
 from app.services.agent_runtime.artifact_manager import ArtifactManager
-from app.services.agent_runtime.context_manager import ContextManager
 from app.services.agent_runtime.event_store import AgentEventStore
 from app.services.agent_runtime.executor import AgentExecutor
-from app.services.agent_runtime.memory_manager import MemoryManager
-from app.services.agent_runtime.risk_engine import RiskEngine
 from app.services.agent_runtime.run_manager import RunManager
 from app.services.agent_runtime.tool_registry import ToolRegistry
 from app.services.course_research.citation_verifier import CitationVerifier
@@ -362,7 +357,6 @@ class TestIdempotency:
 class TestCancellation:
     async def test_cancel_before_execute(self, env):
         """取消未执行的 run,pipeline 仍可被调用但状态已终态。"""
-        cr_repo = env["cr_repo"]
         runtime_repo = env["runtime_repo"]
         run_manager = env["run_manager"]
         _, run_id = _create_run(env)

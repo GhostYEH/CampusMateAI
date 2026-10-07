@@ -18,17 +18,19 @@
 - exchange 原子迁移 CONFIRMED -> CONSUMED，防重放。
 - trusted-device token 通过 HttpOnly Cookie 传递。
 """
+
 from __future__ import annotations
 
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Optional
+from typing import Annotated, NoReturn, Optional
 
 from fastapi import APIRouter, Body, Depends, Request, Response
 
 from ...core.config import Settings
 from ...core.exceptions import (
+    AppException,
     QrAlreadyConfirmed,
     QrAlreadyConsumed,
     QrAlreadyScanned,
@@ -83,7 +85,9 @@ def _now_iso() -> str:
     return _now().isoformat()
 
 
-def _parse_user_agent(ua: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _parse_user_agent(
+    ua: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """从 User-Agent 解析 browser_name / os_name / device_label。
 
     轻量解析，不引入 user-agents 库。
@@ -113,7 +117,11 @@ def _parse_user_agent(ua: Optional[str]) -> tuple[Optional[str], Optional[str], 
         os_name = "Android"
     elif "iphone" in ua_lower or "ipad" in ua_lower:
         os_name = "iOS"
-    device_label = f"{browser_name} · {os_name}" if browser_name and os_name else (browser_name or os_name)
+    device_label = (
+        f"{browser_name} · {os_name}"
+        if browser_name and os_name
+        else (browser_name or os_name)
+    )
     return browser_name, os_name, device_label
 
 
@@ -150,6 +158,15 @@ def _clear_trusted_device_cookie(response: Response, cookie_name: str) -> None:
     )
 
 
+def _reject_trusted_device(
+    response: Response, cookie_name: str, error: AppException
+) -> NoReturn:
+    """Carry the deletion header onto the final structured error response."""
+    _clear_trusted_device_cookie(response, cookie_name)
+    error.headers["Set-Cookie"] = response.headers["set-cookie"]
+    raise error
+
+
 # ===== QR Create =====
 
 
@@ -158,7 +175,9 @@ def _clear_trusted_device_cookie(response: Response, cookie_name: str) -> None:
     response_model=QrCreateResponse,
     summary="创建扫码登录会话",
     responses={
-        429: {"description": "创建过于频繁（QR_RATE_LIMITED）；Retry-After 表示等待秒数"},
+        429: {
+            "description": "创建过于频繁（QR_RATE_LIMITED）；Retry-After 表示等待秒数"
+        },
         200: {
             "description": "创建成功，返回会话标识、二维码内容与浏览器凭据",
             "content": {
@@ -223,7 +242,9 @@ def qr_create(
         raise QrRateLimited(exc.retry_after) from exc
     # 简单防刷：同一 device_id 在窗口期内限制创建次数
     if req.device_id:
-        window_start = (now - timedelta(seconds=settings.qr_create_rate_window_seconds)).isoformat()
+        window_start = (
+            now - timedelta(seconds=settings.qr_create_rate_window_seconds)
+        ).isoformat()
         recent = qr_repo.count_recent_by_device(req.device_id, window_start)
         if recent >= settings.qr_create_rate_max:
             raise QrRateLimited()
@@ -244,7 +265,11 @@ def qr_create(
     browser_name = req.browser_name or browser_name
     os_name = req.os_name or os_name
     if not device_label:
-        device_label = f"{browser_name} · {os_name}" if browser_name and os_name else (browser_name or os_name)
+        device_label = (
+            f"{browser_name} · {os_name}"
+            if browser_name and os_name
+            else (browser_name or os_name)
+        )
     expires_at = (now + timedelta(seconds=settings.qr_login_expire_seconds)).isoformat()
     session = qr_repo.create_session(
         scan_token_hash=scan_token_hash,
@@ -459,7 +484,9 @@ def qr_confirm(
     if session.user_id != user.id:
         raise QrUserMismatch()
     # SCANNED -> CONFIRMED
-    updated = qr_repo.mark_confirmed(session.id, user_id=user.id, trust_device=req.trust_device)
+    updated = qr_repo.mark_confirmed(
+        session.id, user_id=user.id, trust_device=req.trust_device
+    )
     if updated is None:
         raise QrInvalid("状态迁移失败，二维码可能已被其他操作修改。")
     return QrConfirmResponse(
@@ -740,8 +767,13 @@ def _establish_trusted_device(
     trusted_token = secrets.token_urlsafe(32)
     token_hash = hash_token(trusted_token)
     # device_id：优先用 session.device_id，否则用 user_id + browser 派生
-    device_id = session.device_id or f"web_{hashlib.sha256((user.id + (session.browser_name or '') + (session.os_name or '')).encode()).hexdigest()[:16]}"
-    expires_at = (_now() + timedelta(days=settings.trusted_device_expire_days)).isoformat()
+    device_id = (
+        session.device_id
+        or f"web_{hashlib.sha256((user.id + (session.browser_name or '') + (session.os_name or '')).encode()).hexdigest()[:16]}"
+    )
+    expires_at = (
+        _now() + timedelta(days=settings.trusted_device_expire_days)
+    ).isoformat()
     # 若已存在同 user + device 的有效记录，先撤销旧的再建新的
     existing = trusted_repo.get_active_by_user_and_device(user.id, device_id)
     if existing:
@@ -842,18 +874,16 @@ def trusted_device_auto_login(
     token_hash = hash_token(trusted_token)
     device = trusted_repo.get_by_token_hash(token_hash)
     if device is None:
-        _clear_trusted_device_cookie(response, cookie_name)
-        raise TrustedDeviceInvalid()
+        _reject_trusted_device(response, cookie_name, TrustedDeviceInvalid())
     if device.revoked_at is not None:
-        _clear_trusted_device_cookie(response, cookie_name)
-        raise TrustedDeviceRevoked()
+        _reject_trusted_device(response, cookie_name, TrustedDeviceRevoked())
     if _is_expired(device.expires_at):
-        _clear_trusted_device_cookie(response, cookie_name)
-        raise TrustedDeviceExpired()
+        _reject_trusted_device(response, cookie_name, TrustedDeviceExpired())
     user = container.user_repository.get_user_by_id(device.user_id)
     if user is None or not user.is_active:
-        _clear_trusted_device_cookie(response, cookie_name)
-        raise Unauthorized("用户不存在或已停用")
+        _reject_trusted_device(
+            response, cookie_name, Unauthorized("用户不存在或已停用")
+        )
     # 更新 last_used_at
     trusted_repo.update_last_used(device.id)
     # 签发正常 TokenPair
@@ -908,7 +938,6 @@ def list_trusted_devices(
     - 仅返回未撤销且未过期的记录，按创建时间倒序。
     - 与当前浏览器 Cookie 匹配的设备 is_current 为 true。
     """
-    trusted_repo = container.trusted_device_repository
     # 查询当前用户所有未删除的可信设备
     now = _now_iso()
     with container.db.query() as conn:
@@ -923,6 +952,7 @@ def list_trusted_devices(
         rows = cur.fetchall()
     # 判断哪个是当前浏览器（通过 cookie token hash 匹配）
     from ...models.qr_auth import TrustedDeviceRow
+
     current_token_hash = None
     cookie_token = request.cookies.get(settings.trusted_device_cookie_name)
     if cookie_token:
@@ -930,17 +960,22 @@ def list_trusted_devices(
     items = []
     for row in rows:
         dev = TrustedDeviceRow.from_row(row)
-        items.append(TrustedDeviceListItem(
-            id=dev.id,
-            device_id=dev.device_id,
-            device_name=dev.device_name,
-            browser_name=dev.browser_name,
-            os_name=dev.os_name,
-            created_at=dev.created_at,
-            last_used_at=dev.last_used_at,
-            expires_at=dev.expires_at,
-            is_current=(current_token_hash is not None and dev.token_hash == current_token_hash),
-        ))
+        items.append(
+            TrustedDeviceListItem(
+                id=dev.id,
+                device_id=dev.device_id,
+                device_name=dev.device_name,
+                browser_name=dev.browser_name,
+                os_name=dev.os_name,
+                created_at=dev.created_at,
+                last_used_at=dev.last_used_at,
+                expires_at=dev.expires_at,
+                is_current=(
+                    current_token_hash is not None
+                    and dev.token_hash == current_token_hash
+                ),
+            )
+        )
     return TrustedDeviceListResponse(devices=items)
 
 

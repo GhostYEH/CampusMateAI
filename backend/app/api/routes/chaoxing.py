@@ -9,19 +9,22 @@ from starlette.concurrency import run_in_threadpool
 from ...core.logging import logger
 
 from ...services.chaoxing.ChaoxingClient import ChaoxingClient, _auth_error
+from ...services.chaoxing import session_cache as _session_cache
 from ...services.chaoxing.session_cache import (
     forget as _forget_status,
     get_cached as _get_cached_status,
     set_cached as _set_cached_status,
-    status_cache as _status_cache,
 )
 from ...services.chaoxing.sync_facts import last_chaoxing_sync_at
 # Kept as a compatibility import for the existing deadline contract tests.
-from ...services.chaoxing.sync_service import _normalize_deadline
+from ...services.chaoxing import sync_service as _sync_service
 from ..deps import require_role
 from ...models.multi_role import UserRow
 from ...schemas.chaoxing import ChaoxingLoginRequest, ChaoxingSyncStatus
 from ...services.container import ServiceContainer, get_container
+
+_status_cache = _session_cache.status_cache
+_normalize_deadline = _sync_service._normalize_deadline
 
 router = APIRouter(tags=["学习通"])
 

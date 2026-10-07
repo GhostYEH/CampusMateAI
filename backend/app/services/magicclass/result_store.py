@@ -19,6 +19,7 @@
 - 每用户每课程最多保留 `max_results` 条记录；超出时只裁剪**最早的终态记录**，
   进行中的记录永不删除。
 """
+
 from __future__ import annotations
 
 import json
@@ -250,7 +251,9 @@ class MagicClassResultStore:
         )
         self._prune(session.user_id, session.course_id)
 
-    def _read_session_file(self, path: Path, *, user_id: str, course_id: str) -> Optional[MagicClassSession]:
+    def _read_session_file(
+        self, path: Path, *, user_id: str, course_id: str
+    ) -> Optional[MagicClassSession]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
@@ -281,7 +284,9 @@ class MagicClassResultStore:
             # 预占文件是隐藏文件，不属于历史记录
             if path.name.startswith("."):
                 continue
-            session = self._read_session_file(path, user_id=user_id, course_id=course_id)
+            session = self._read_session_file(
+                path, user_id=user_id, course_id=course_id
+            )
             if session is not None:
                 sessions.append(session)
         sessions.sort(key=lambda s: s.created_at)
@@ -316,7 +321,10 @@ class MagicClassResultStore:
                 # 否则该文件不属于这门课（手工搬动 / 跨用户或跨课程复制）。
                 if data.get("user_id") != user_id:
                     continue
-                if not isinstance(course_id, str) or self._safe(course_id) != course_dir.name:
+                if (
+                    not isinstance(course_id, str)
+                    or self._safe(course_id) != course_dir.name
+                ):
                     continue
                 sessions.append(MagicClassSession.from_dict(data))
         return sessions
@@ -338,7 +346,10 @@ class MagicClassResultStore:
             except OSError as exc:
                 logger.warning(
                     "magicclass prune session unlink failed user_id={} course_id={} session_id={} reason={}",
-                    user_id, course_id, session.session_id, type(exc).__name__,
+                    user_id,
+                    course_id,
+                    session.session_id,
+                    type(exc).__name__,
                 )
 
     # ===== 预占(跨进程原子) =====
@@ -434,19 +445,87 @@ class MagicClassResultStore:
         course_id: str,
         session_id: str,
         job_id: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         """提交成功/续租时刷新预占。只更新仍属于该 session 的预占。"""
         with self._reservation_guard(user_id, course_id):
             path = self._reservation_path(user_id, course_id)
             current = self.read_reservation(user_id=user_id, course_id=course_id)
             if current is None or current.session_id != session_id:
-                return
+                return False
             current.job_id = job_id if job_id is not None else current.job_id
             current.updated_at = _now()
             self._write_json_atomic(path, current.to_dict())
+            return True
 
-    def touch_reservation(self, *, user_id: str, course_id: str, session_id: str) -> None:
-        self.update_reservation(
+    def persist_submission(
+        self,
+        session: MagicClassSession,
+        *,
+        job_id: str,
+    ) -> bool:
+        """Atomically bind a known upstream job to its owning session and lease."""
+        with self._reservation_guard(session.user_id, session.course_id):
+            path = self._reservation_path(session.user_id, session.course_id)
+            current = self.read_reservation(
+                user_id=session.user_id, course_id=session.course_id
+            )
+            if current is None or current.session_id != session.session_id:
+                return False
+            current.job_id = job_id
+            current.updated_at = _now()
+            self._write_json_atomic(path, current.to_dict())
+            self.save(session)
+            return True
+
+    def resolve_missing_job_for_poll(
+        self, session: MagicClassSession, *, ttl_seconds: float
+    ) -> str:
+        """Resolve a queued session without a job id under its reservation lock.
+
+        Returns ``active`` while the matching lease is live, ``job`` when its
+        job id was recorded and copied onto the session, ``closed`` when a
+        matching stale pre-submit lease is atomically closed, or ``unowned``
+        when another/missing lease prevents a safe state change.
+        """
+        with self._reservation_guard(session.user_id, session.course_id):
+            path = self._reservation_path(session.user_id, session.course_id)
+            current = self.read_reservation(
+                user_id=session.user_id, course_id=session.course_id
+            )
+            if current is None or current.session_id != session.session_id:
+                return "unowned"
+            if current.job_id:
+                session.job_id = current.job_id
+                self.save(session)
+                return "job"
+            if not self.reservation_is_stale(current, ttl_seconds):
+                return "active"
+
+            session.status = "failed"
+            session.step = "failed"
+            session.progress = 100
+            session.error_code = "SUBMISSION_OUTCOME_UNKNOWN"
+            session.error = "提交任务编号尚未记录，无法确认上游结果"
+            session.message = "提交结果未知，请确认后再重试"
+            session.updated_at = _now()
+            self.save(session)
+            try:
+                os.unlink(path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning(
+                    "magicclass stale reservation release failed session_id={} reason={}",
+                    session.session_id,
+                    type(exc).__name__,
+                )
+            return "closed"
+
+    def touch_reservation(
+        self, *, user_id: str, course_id: str, session_id: str
+    ) -> bool:
+        """续租仍由指定 session 持有的预占；丢失所有权时返回 False。"""
+        return self.update_reservation(
             user_id=user_id, course_id=course_id, session_id=session_id, job_id=None
         )
 
@@ -466,15 +545,23 @@ class MagicClassResultStore:
                 # 预占残留会让该课程一直被锁住，必须留痕。
                 logger.warning(
                     "magicclass reservation release unlink failed user_id={} course_id={} reason={}",
-                    user_id, course_id, type(exc).__name__,
+                    user_id,
+                    course_id,
+                    type(exc).__name__,
                 )
 
     @staticmethod
-    def reservation_is_stale(reservation: MagicClassReservation, ttl_seconds: float) -> bool:
-        updated = _parse_iso(reservation.updated_at) or _parse_iso(reservation.created_at)
+    def reservation_is_stale(
+        reservation: MagicClassReservation, ttl_seconds: float
+    ) -> bool:
+        updated = _parse_iso(reservation.updated_at) or _parse_iso(
+            reservation.created_at
+        )
         if updated is None:
             return True
-        return (datetime.now(timezone.utc) - updated).total_seconds() > float(ttl_seconds)
+        return (datetime.now(timezone.utc) - updated).total_seconds() > float(
+            ttl_seconds
+        )
 
 
 __all__ = [

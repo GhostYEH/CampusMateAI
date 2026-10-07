@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from app.api.routes import magicclass_quiz
 from test_magicclass_workspaces import _setup
 
 

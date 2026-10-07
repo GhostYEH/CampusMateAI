@@ -10,6 +10,7 @@
 - 不向 CampusMate 客户端返回任何 magicclass 凭据/Provider Key；访问码仅由后端
   magicclassClient 用于服务间认证。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,6 +61,7 @@ from .result_store import (
     new_session_id,
 )
 from ...core.config import Settings
+from ...core.logging import logger
 
 if TYPE_CHECKING:  # 避免与 course_context 形成导入环
     from .course_context import LearningContext
@@ -92,6 +94,8 @@ class MagicClassClassroomService:
         settings: Settings,
         store: MagicClassResultStore,
         client: Optional[MagicClassClient] = None,
+        *,
+        sleeper: Callable[[float], Any] = asyncio.sleep,
     ) -> None:
         self._settings = settings
         self._store = store
@@ -104,9 +108,112 @@ class MagicClassClassroomService:
                 probe_timeout_seconds=settings.magicclass_health_timeout_seconds,
             )
         self._client = client
+        self._sleeper = sleeper
         # 契约指纹探测缓存：(过期时刻, 结果)。成功按 MAGICCLASS_PROBE_TTL_SECONDS
         # 缓存；失败只缓存很短时间，避免服务刚恢复仍被判不可用。
         self._probe_cache: Optional[tuple[float, MagicClassProbeResult]] = None
+
+    async def _heartbeat_reservation(
+        self, *, user_id: str, course_id: str, session_id: str
+    ) -> None:
+        """Keep the submission reservation live while the upstream accepts work."""
+        interval = max(0.05, self._ttl / 3)
+        while True:
+            await self._sleeper(interval)
+            try:
+                owned = await asyncio.to_thread(
+                    self._store.touch_reservation,
+                    user_id=user_id,
+                    course_id=course_id,
+                    session_id=session_id,
+                )
+            except Exception as exc:  # noqa: BLE001 - heartbeat must not mask submit outcome
+                logger.warning(
+                    "magicclass reservation heartbeat failed session_id={} exception_type={}",
+                    session_id,
+                    type(exc).__name__,
+                )
+                return
+            if not owned:
+                return
+
+    def _persist_closed_submission(
+        self, session: MagicClassSession, *, user_id: str, course_id: str
+    ) -> None:
+        """Persist a closed submission, then always release its reservation."""
+        try:
+            self._store.save(session)
+        except Exception as exc:  # noqa: BLE001 - release must still run
+            logger.warning(
+                "magicclass closed session save failed session_id={} exception_type={}",
+                session.session_id,
+                type(exc).__name__,
+            )
+        finally:
+            try:
+                self._store.release_reservation(
+                    user_id=user_id,
+                    course_id=course_id,
+                    session_id=session.session_id,
+                )
+            except Exception as exc:  # noqa: BLE001 - cancellation remains primary
+                logger.warning(
+                    "magicclass closed reservation release failed session_id={} exception_type={}",
+                    session.session_id,
+                    type(exc).__name__,
+                )
+
+    def _persist_known_submission(self, session: MagicClassSession) -> None:
+        """Preserve a known upstream job without releasing it for resubmission."""
+        try:
+            stored = self._store.persist_submission(session, job_id=session.job_id)
+            if not stored:
+                # The lease may have been replaced, but this session must still
+                # retain the known job id so callers can continue polling it.
+                self._store.save(session)
+                logger.warning(
+                    "magicclass known job lost reservation ownership session_id={}",
+                    session.session_id,
+                )
+        except Exception as exc:  # noqa: BLE001 - never release a known upstream job
+            logger.warning(
+                "magicclass known job persistence failed session_id={} exception_type={}",
+                session.session_id,
+                type(exc).__name__,
+            )
+            try:
+                self._store.save(session)
+            except Exception as save_exc:  # noqa: BLE001 - lease may still carry job id
+                logger.warning(
+                    "magicclass known job session save failed session_id={} exception_type={}",
+                    session.session_id,
+                    type(save_exc).__name__,
+                )
+
+    @staticmethod
+    async def _wait_for_cleanup(
+        cleanup: asyncio.Task, *, log_cancelled_task: bool = True
+    ) -> None:
+        """Finish cleanup despite repeated cancellation of the request task."""
+        while True:
+            try:
+                await asyncio.shield(cleanup)
+                return
+            except asyncio.CancelledError:
+                if cleanup.done():
+                    if cleanup.cancelled() and log_cancelled_task:
+                        logger.warning(
+                            "magicclass cancellation cleanup task was cancelled"
+                        )
+                    return
+                # A cancellation of this request must not interrupt cleanup.
+                continue
+            except Exception as exc:  # noqa: BLE001 - preserve cancellation, report safely
+                logger.warning(
+                    "magicclass cancellation cleanup task failed exception_type={}",
+                    type(exc).__name__,
+                )
+                return
 
     @property
     def enabled(self) -> bool:
@@ -184,7 +291,9 @@ class MagicClassClassroomService:
             "embed_origin": public_origin if configured else None,
             "browser_embed_available": False,
             "browser_embed_reason": None,
-            "external_3d_available": bool(self._settings.magicclass_external_3d_available),
+            "external_3d_available": bool(
+                self._settings.magicclass_external_3d_available
+            ),
             "poll_interval_ms": self._settings.magicclass_poll_interval_ms,
             "poll_max_seconds": self._settings.magicclass_poll_max_seconds,
             "checked_at": _now_iso(),
@@ -281,9 +390,24 @@ class MagicClassClassroomService:
             user_id=user_id, course_id=course_id, session_id=reservation.session_id
         )
         if session is not None:
-            return None if session.is_terminal else session
+            if session.is_terminal:
+                return None
+            # Once the upstream job is known it remains authoritative, even if a
+            # quiet classroom has not been polled within the reservation TTL.
+            # A stale pre-submit session has no such proof and can be recovered.
+            if reservation.job_id and not session.job_id:
+                # The reservation is updated before the session file after a
+                # successful submit. Recover that narrow crash/cancel window.
+                session.job_id = reservation.job_id
+            if session.job_id or not self._store.reservation_is_stale(
+                reservation, self._ttl
+            ):
+                return session
+            return None
         # 预占存在但会话文件缺失：租约未过期时视为"提交中"，返回占位会话
-        if self._store.reservation_is_stale(reservation, self._ttl):
+        if not reservation.job_id and self._store.reservation_is_stale(
+            reservation, self._ttl
+        ):
             return None
         return MagicClassSession(
             session_id=reservation.session_id,
@@ -299,13 +423,17 @@ class MagicClassClassroomService:
             updated_at=reservation.updated_at,
         )
 
-    def _acquire(self, *, user_id: str, course_id: str, mode: str) -> tuple[str, Optional[MagicClassSession]]:
+    def _acquire(
+        self, *, user_id: str, course_id: str, mode: str
+    ) -> tuple[str, Optional[MagicClassSession]]:
         """原子预占。返回 (session_id, 需复用的会话)。
 
         复用会话非 None 时表示本次请求不是提交者，应直接返回该会话。
         """
         for _ in range(3):
-            reservation = self._store.read_reservation(user_id=user_id, course_id=course_id)
+            reservation = self._store.read_reservation(
+                user_id=user_id, course_id=course_id
+            )
             if reservation is not None:
                 reusable = self._reserved_session(
                     user_id=user_id, course_id=course_id, reservation=reservation
@@ -322,6 +450,30 @@ class MagicClassClassroomService:
                         mode=mode,
                         expected=reservation,
                     ):
+                        # Persist an explicit terminal record for an abandoned
+                        # pre-submit attempt. The upstream may have accepted it
+                        # before the process died, so state the uncertainty
+                        # instead of leaving a queued session with no job id.
+                        abandoned = self._store.get_session(
+                            user_id=user_id,
+                            course_id=course_id,
+                            session_id=reservation.session_id,
+                        )
+                        if (
+                            abandoned is not None
+                            and not abandoned.is_terminal
+                            and not abandoned.job_id
+                        ):
+                            abandoned.status = "failed"
+                            abandoned.step = "failed"
+                            abandoned.progress = 100
+                            abandoned.error_code = "SUBMISSION_OUTCOME_UNKNOWN"
+                            abandoned.error = (
+                                "进程在记录上游任务编号前退出，结果无法确认"
+                            )
+                            abandoned.message = "提交结果未知，请确认后再重试"
+                            abandoned.updated_at = _now_iso()
+                            self._store.save(abandoned)
                         return session_id, None
                 else:
                     self._store.release_reservation(
@@ -356,14 +508,15 @@ class MagicClassClassroomService:
         if requested == "adaptive":
             signals = replace(
                 context.signals,
-                external_3d_available=bool(self._settings.magicclass_external_3d_available),
+                external_3d_available=bool(
+                    self._settings.magicclass_external_3d_available
+                ),
             )
             resolved, adaptive_reason = choose_adaptive_mode(signals)
 
         # 1) 跨进程原子预占：并发时只有一个请求成为提交者
         session_id, reusable = await asyncio.to_thread(
-            self._acquire,
-            user_id=user_id, course_id=course_id, mode=resolved
+            self._acquire, user_id=user_id, course_id=course_id, mode=resolved
         )
         if reusable is not None:
             # 复用已有任务 —— 必须返回任务真实 mode，而不是本次请求的 mode
@@ -389,6 +542,7 @@ class MagicClassClassroomService:
         )
         await asyncio.to_thread(self._store.save, session)
 
+        heartbeat: Optional[asyncio.Task] = None
         try:
             capabilities = await self._health_capabilities(client)
             requirement = build_requirement(
@@ -399,15 +553,68 @@ class MagicClassClassroomService:
                 enable_image=bool(capabilities.get("imageGeneration")),
                 enable_video=bool(capabilities.get("videoGeneration")),
                 enable_tts=bool(capabilities.get("tts")),
-                external_3d_available=bool(self._settings.magicclass_external_3d_available),
+                external_3d_available=bool(
+                    self._settings.magicclass_external_3d_available
+                ),
             )
             payload = build_input_payload(
                 requirement=requirement,
                 capabilities=capabilities,
                 pdf_text=context.material_text or context.text,
             )
+            heartbeat = asyncio.create_task(
+                self._heartbeat_reservation(
+                    user_id=user_id, course_id=course_id, session_id=session_id
+                )
+            )
             result = await client.submit(payload)
+
+            session.job_id = result.job_id
+            # Keep the lease alive until both the job id and local session are
+            # persisted; otherwise the submit window can expire after acceptance.
+            session.status = result.status
+            session.step = _public_step(result.step, result.status)
+            session.message = "课堂生成任务已提交"
+            persisted = await asyncio.to_thread(
+                self._store.persist_submission, session, job_id=result.job_id
+            )
+            if not persisted:
+                raise MagicClassProtocolError("互动课堂提交成功，但预占所有权已变化")
+        except asyncio.CancelledError:
+            if session.job_id:
+                cleanup = asyncio.create_task(
+                    asyncio.to_thread(self._persist_known_submission, session)
+                )
+                await self._wait_for_cleanup(cleanup)
+                raise
+            # Cancellation can land after the upstream accepted the request but
+            # before we recorded its job id. Close the local reservation so it
+            # cannot remain stuck forever; the failed session makes the outcome
+            # explicit and preserves the request snapshot for a deliberate retry.
+            session.status = "failed"
+            session.step = "failed"
+            session.progress = 0
+            session.error_code = "SUBMISSION_CANCELLED"
+            session.error = "提交被取消，无法确认上游是否已受理"
+            session.message = "提交已取消，可重试"
+            session.updated_at = _now_iso()
+            cleanup = asyncio.create_task(
+                asyncio.to_thread(
+                    self._persist_closed_submission,
+                    session,
+                    user_id=user_id,
+                    course_id=course_id,
+                )
+            )
+            await self._wait_for_cleanup(cleanup)
+            raise
         except Exception as exc:  # noqa: BLE001 - 提交失败必须释放预占，允许重试
+            if session.job_id:
+                cleanup = asyncio.create_task(
+                    asyncio.to_thread(self._persist_known_submission, session)
+                )
+                await self._wait_for_cleanup(cleanup)
+                raise
             session.status = "failed"
             session.step = "failed"
             session.progress = 0
@@ -415,23 +622,20 @@ class MagicClassClassroomService:
             session.error = f"提交课堂生成任务失败: {type(exc).__name__}"
             session.message = "提交失败，可重试"
             session.updated_at = _now_iso()
-            await asyncio.to_thread(self._store.save, session)
-            await asyncio.to_thread(
-                self._store.release_reservation,
-                user_id=user_id, course_id=course_id, session_id=session_id
+            cleanup = asyncio.create_task(
+                asyncio.to_thread(
+                    self._persist_closed_submission,
+                    session,
+                    user_id=user_id,
+                    course_id=course_id,
+                )
             )
+            await self._wait_for_cleanup(cleanup)
             raise
-
-        session.job_id = result.job_id
-        # 真实契约：提交后任务仍是 queued，step 也来自 202 响应，不臆测"已开始运行"
-        session.status = result.status
-        session.step = _public_step(result.step, result.status)
-        session.message = "课堂生成任务已提交"
-        await asyncio.to_thread(
-            self._store.update_reservation,
-            user_id=user_id, course_id=course_id, session_id=session_id, job_id=result.job_id
-        )
-        await asyncio.to_thread(self._store.save, session)
+        finally:
+            if heartbeat is not None:
+                heartbeat.cancel()
+                await self._wait_for_cleanup(heartbeat, log_cancelled_task=False)
         return session
 
     async def poll(self, session: MagicClassSession) -> MagicClassSession:
@@ -439,17 +643,13 @@ class MagicClassClassroomService:
             return session
         client = self._require_client()
         if not session.job_id:
-            session.status = "failed"
-            session.step = "failed"
-            session.error = "缺少 jobId，无法轮询"
-            session.progress = 100
-            session.updated_at = _now_iso()
-            await asyncio.to_thread(self._store.save, session)
-            await asyncio.to_thread(
-                self._store.release_reservation,
-                user_id=session.user_id, course_id=session.course_id, session_id=session.session_id
+            resolution = await asyncio.to_thread(
+                self._store.resolve_missing_job_for_poll,
+                session,
+                ttl_seconds=self._ttl,
             )
-            return session
+            if resolution != "job":
+                return session
 
         try:
             result = await client.poll(session.job_id)
@@ -477,7 +677,9 @@ class MagicClassClassroomService:
         session.progress = result.progress
         # 上游的 message / error 是**不可信自由文本**：可能包含内部地址或凭据，
         # 下发前必须脱敏。
-        session.message = redact_public_text(result.message, self._settings) or session.message
+        session.message = (
+            redact_public_text(result.message, self._settings) or session.message
+        )
         session.status = result.status
         session.step = _public_step(result.step, result.status)
 
@@ -563,8 +765,12 @@ class MagicClassClassroomService:
             external_3d_available=external_3d,
         )
 
-    def get_session(self, *, user_id: str, course_id: str, session_id: str) -> Optional[MagicClassSession]:
-        return self._store.get_session(user_id=user_id, course_id=course_id, session_id=session_id)
+    def get_session(
+        self, *, user_id: str, course_id: str, session_id: str
+    ) -> Optional[MagicClassSession]:
+        return self._store.get_session(
+            user_id=user_id, course_id=course_id, session_id=session_id
+        )
 
     def list_sessions(self, *, user_id: str, course_id: str) -> List[MagicClassSession]:
         return sorted(
@@ -602,23 +808,25 @@ class MagicClassClassroomService:
             if course_name is None:
                 continue
             url, reason = project_session_url(self._settings, session)
-            rows.append({
-                "kind": "classroom",
-                "id": session.session_id,
-                "course_id": session.course_id,
-                "course_name": course_name,
-                "title": _safe_mode_label(session.mode),
-                "mode": session.mode,
-                "status": session.status,
-                "scenes_count": session.scenes_count,
-                # 站内深链：回到课程详情的智能辅导栏目，并带上要打开的课堂。
-                # 参数名与 Agent Runtime 的 `input_ref.deep_link` 保持一致。
-                "href": f"/courses/{session.course_id}?tab=mentoring&session={session.session_id}",
-                "classroom_url": url,
-                "classroom_url_unavailable_reason": reason,
-                "created_at": session.created_at,
-                "updated_at": session.updated_at or session.created_at,
-            })
+            rows.append(
+                {
+                    "kind": "classroom",
+                    "id": session.session_id,
+                    "course_id": session.course_id,
+                    "course_name": course_name,
+                    "title": _safe_mode_label(session.mode),
+                    "mode": session.mode,
+                    "status": session.status,
+                    "scenes_count": session.scenes_count,
+                    # 站内深链：回到课程详情的智能辅导栏目，并带上要打开的课堂。
+                    # 参数名与 Agent Runtime 的 `input_ref.deep_link` 保持一致。
+                    "href": f"/courses/{session.course_id}?tab=mentoring&session={session.session_id}",
+                    "classroom_url": url,
+                    "classroom_url_unavailable_reason": reason,
+                    "created_at": session.created_at,
+                    "updated_at": session.updated_at or session.created_at,
+                }
+            )
         rows.sort(
             key=lambda row: (row["updated_at"], row["created_at"], row["id"]),
             reverse=True,
@@ -638,15 +846,17 @@ class MagicClassClassroomService:
             if s.status != "succeeded":
                 continue
             url, reason = project_session_url(self._settings, s)
-            out.append({
-                "session_id": s.session_id,
-                "classroom_id": s.classroom_id,
-                "url": url,
-                "url_unavailable_reason": reason,
-                "mode": s.mode,
-                "scenes_count": s.scenes_count,
-                "created_at": s.created_at,
-            })
+            out.append(
+                {
+                    "session_id": s.session_id,
+                    "classroom_id": s.classroom_id,
+                    "url": url,
+                    "url_unavailable_reason": reason,
+                    "mode": s.mode,
+                    "scenes_count": s.scenes_count,
+                    "created_at": s.created_at,
+                }
+            )
         return out
 
 

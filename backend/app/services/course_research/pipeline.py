@@ -435,7 +435,7 @@ class CourseResearchPipeline:
                 "verified": [s.source_id for s in ctx.verified_sources],
                 "unverified": [s.source_id for s in ctx.unverified_sources],
             }
-            citation_artifact_id = self._artifacts.create(
+            self._artifacts.create(
                 run_id=ctx.run_id,
                 user_id=ctx.user_id,
                 artifact_type=ArtifactType.CITATION_BUNDLE.value,
@@ -462,7 +462,7 @@ class CourseResearchPipeline:
     def _build_report_markdown(self, ctx: _StageContext) -> str:
         """生成带引用的 Markdown 报告。"""
         lines: list[str] = []
-        lines.append(f"# 课程研究报告\n")
+        lines.append("# 课程研究报告\n")
         lines.append(f"**问题**: {ctx.question}\n")
         lines.append(f"**辅助模式**: {ctx.effective.effective_mode.value}")
         if ctx.effective.degraded:

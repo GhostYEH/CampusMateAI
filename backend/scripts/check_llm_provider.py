@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import ssl
 import sys
 import time
@@ -90,8 +89,6 @@ async def _test_chat(llm: LLMClient) -> tuple[str, float, str, str]:
     - rate_limited:   HTTP 429
     - timeout:        超时
     """
-    import ssl as _ssl
-
     test_messages = [
         {"role": "system", "content": "你是测试助手,只回复 'OK' 两个字。"},
         {"role": "user", "content": "ping"},

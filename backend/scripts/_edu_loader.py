@@ -43,5 +43,5 @@ def load_discovery_constants():
 
 
 def load_provider_detector():
-    dc = load_discovery_constants()
+    load_discovery_constants()
     return _load_module(_EDU_DIR / "provider_detector.py", "services.edu.provider_detector", "services.edu")

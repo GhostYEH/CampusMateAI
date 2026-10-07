@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import io
 import json
+import asyncio
+import threading
 import zipfile
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -71,6 +74,52 @@ def create(client, headers):
     response = client.post(f"{BASE}/rooms", headers=headers, data={"title": "共同学习", "stage_id": "stage-test"}, files={"file": ("classroom.maic.zip", classroom_zip(), "application/zip")})
     assert response.status_code == 201, response.text
     return response.json()["id"]
+
+
+def test_archive_validation_and_database_write_do_not_block_event_loop(setup, monkeypatch):
+    container, client, ((_, headers), *_) = setup
+    lock_acquired = threading.Event()
+    create_started = threading.Event()
+    release = threading.Event()
+    original_create = container.learning_room_repository.create
+
+    def observe_create(*args, **kwargs):
+        create_started.set()
+        return original_create(*args, **kwargs)
+
+    def hold_write_lock():
+        with container.db.transaction(immediate=True):
+            lock_acquired.set()
+            assert release.wait(timeout=5)
+
+    monkeypatch.setattr(container.learning_room_repository, "create", observe_create)
+
+    async def exercise():
+        transport = httpx.ASGITransport(app=client.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as async_client:
+            lock = asyncio.create_task(asyncio.to_thread(hold_write_lock))
+            assert await asyncio.to_thread(lock_acquired.wait, 2)
+            upload = asyncio.create_task(
+                async_client.post(
+                    f"{BASE}/rooms",
+                    headers=headers,
+                    data={"title": "共同学习", "stage_id": "stage-test"},
+                    files={"file": ("classroom.maic.zip", classroom_zip(), "application/zip")},
+                )
+            )
+            assert await asyncio.to_thread(create_started.wait, 2)
+            # The upload is blocked on SQLite's write lock, while the ASGI event
+            # loop still schedules its other coroutines.
+            await asyncio.wait_for(asyncio.sleep(0.1), timeout=0.5)
+            release.set()
+            created = await upload
+            assert created.status_code == 201, created.text
+            await lock
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        release.set()
 
 
 def joined(setup):

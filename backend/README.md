@@ -67,12 +67,17 @@ Docker 镜像仅分发 `data/universities.json`、`data/edu_system_candidates.js
 
 用户、会话、课程、班级、选课、公告、作业和提交仓库分别维护在 `app/repositories/` 的对应领域模块中；`multi_role_repository.py` 仅保留旧导入的兼容入口。调整数据访问时优先修改对应领域模块。
 
+个人考试的请求模型维护在 `app/schemas/student_exam.py`，用户隔离的数据访问维护在 `app/repositories/student_exam_repository.py`，路由与复习上下文复用同一仓库。状态分析按工作量、学习行为、目标、预测与证据质量拆分规则，入口负责按固定顺序编排。新增代码继续复用这些职责边界，避免在路由中重复 SQL 或复制分析规则。
+
 ```powershell
 cd backend
-pytest
+python -m ruff check .
+python -m pytest
 ```
 
 学习通同步需要可用的外部登录态；LLM 回答和课堂生成需要相应服务配置。自动化测试中的假提供方与演示资料只验证代码路径，不代表已连接真实学校或已完成移动设备验收。
+
+Ruff 启用 `E9` 与完整 `F` 规则，检查语法、未定义变量、重复定义和未使用导入等问题。不要用全局忽略绕过检查；兼容导出应显式声明，删除未使用变量时保留原有初始化或写入副作用。修改的 Python 模块使用 `python -m ruff format <文件>` 统一格式，再运行相关测试；接口行为变更同时维护 `docs/api/` 并执行根目录的文档同步与检查脚本。
 
 ## 反向代理限流
 

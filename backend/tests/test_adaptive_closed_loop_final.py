@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.services.adaptive_agent.replan_policy import ReplanDecision
 from app.services.adaptive_agent.replanning_worker import AdaptiveReplanningWorker
 from app.services.adaptive_agent.state_outcome_comparator import StateOutcomeComparator
 from app.services.learner_event_service import LearnerEventService

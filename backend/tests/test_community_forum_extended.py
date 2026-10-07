@@ -32,7 +32,7 @@ def _headers(client: TestClient, username: str = "stu_forum") -> dict[str, str]:
 
 def test_categories_endpoint_returns_all_meta() -> None:
     client, _ = _setup()
-    h = _headers(client)
+    _headers(client)
     resp = client.get("/api/v1/community/posts/categories")
     assert resp.status_code == 200, resp.text
     keys = {c["key"] for c in resp.json()["items"]}
@@ -54,7 +54,7 @@ def test_hot_sort_ranks_by_interactions() -> None:
     client, _ = _setup()
     h = _headers(client)
     hot_id = client.post("/api/v1/community/posts", headers=h, json={"title": "Hot", "content": "liked", "category": "campus"}).json()["id"]
-    cold_id = client.post("/api/v1/community/posts", headers=h, json={"title": "Cold", "content": "no interactions", "category": "campus"}).json()["id"]
+    _cold_id = client.post("/api/v1/community/posts", headers=h, json={"title": "Cold", "content": "no interactions", "category": "campus"}).json()["id"]
     client.post(f"/api/v1/community/posts/{hot_id}/like", headers=h)
     client.post(f"/api/v1/community/posts/{hot_id}/comments", headers=h, json={"content": "comment"})
     feed = client.get("/api/v1/community/posts?sort=hot", headers=h).json()

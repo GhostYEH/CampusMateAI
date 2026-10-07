@@ -72,6 +72,16 @@ class _Clock:
         self.value += timedelta(seconds=seconds)
 
 
+class _RecoveryRaises(_Handler):
+    async def recover(self, context: HandlerContext) -> RecoveryDecision:
+        raise RuntimeError("recovery failed")
+
+
+class _RecoveryFails(_Handler):
+    async def recover(self, context: HandlerContext) -> RecoveryDecision:
+        return RecoveryDecision(action=RecoveryAction.FAIL, error_code="RECOVERY_UNSAFE")
+
+
 @pytest.fixture
 def runtime():
     db = reset_db_for_tests()
@@ -103,6 +113,25 @@ def _worker(repo, handler, clock, *, mode="worker"):
         repo, registry, AgentEventStore(repo), mode=mode, clock=clock,
         lease_seconds=30, heartbeat_seconds=10, poll_interval_seconds=0,
     )
+
+
+def _worker_without_handler(repo, clock):
+    registry = JobHandlerRegistry()
+    registry.freeze()
+    return AgentWorker(
+        repo, registry, AgentEventStore(repo), clock=clock,
+        lease_seconds=30, heartbeat_seconds=10, poll_interval_seconds=0,
+    )
+
+
+def _expired_running(repo, clock, owner="old-worker", *, expires_at=None):
+    run_id = _queued(repo)
+    expires = expires_at or (clock() - timedelta(seconds=1))
+    repo.claim_next_run(
+        owner=owner, now=(clock() - timedelta(seconds=30)).isoformat(),
+        lease_expires_at=expires.isoformat(),
+    )
+    return run_id, owner
 
 
 @pytest.mark.asyncio
@@ -223,6 +252,100 @@ async def test_worker_recovers_legacy_naive_lease_without_mixed_timezone_compari
     assert handler.recoveries == 1
     assert (await worker.run_once()).action == "executed"
     assert runtime.get_run(run_id)["status"] == "SUCCEEDED"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("handler_kind", "expected_code"),
+    [
+        ("missing", "AGENT_CAPABILITY_DISABLED"),
+        ("raises", "AGENT_INVALID_STATE"),
+        ("fails", "RECOVERY_UNSAFE"),
+    ],
+)
+async def test_expired_recovery_failure_is_closed_once(runtime, handler_kind, expected_code):
+    clock = _Clock()
+    run_id, _ = _expired_running(runtime, clock)
+    if handler_kind == "missing":
+        worker = _worker_without_handler(runtime, clock)
+    else:
+        handler = _RecoveryRaises() if handler_kind == "raises" else _RecoveryFails()
+        worker = _worker(runtime, handler, clock)
+
+    report = await worker.run_once()
+    run = runtime.get_run(run_id)
+    assert report.action == "recovered"
+    assert run["status"] == "FAILED"
+    assert run["error_code"] == expected_code
+    assert run["lease_owner"] is None
+    assert [e["type"] for e in runtime.list_events(run_id)].count("RUN_FAILED") == 1
+    assert (await worker.run_once()).action == "idle"
+    assert [e["type"] for e in runtime.list_events(run_id)].count("RUN_FAILED") == 1
+
+
+@pytest.mark.asyncio
+async def test_recovery_does_not_take_over_lease_renewed_after_scan(runtime, monkeypatch):
+    clock = _Clock()
+    run_id, old_owner = _expired_running(runtime, clock)
+    handler = _Handler()
+    worker = _worker(runtime, handler, clock)
+    original_claim = runtime.claim_expired_run_for_recovery
+
+    def renew_then_claim(*args, **kwargs):
+        runtime.renew_run_lease(
+            run_id, old_owner,
+            heartbeat_at=clock().isoformat(),
+            lease_expires_at=(clock() + timedelta(seconds=30)).isoformat(),
+        )
+        return original_claim(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "claim_expired_run_for_recovery", renew_then_claim)
+    assert (await worker.run_once()).action == "idle"
+    run = runtime.get_run(run_id)
+    assert run["status"] == "RUNNING"
+    assert run["lease_owner"] == old_owner
+    assert handler.recoveries == 0
+
+
+@pytest.mark.asyncio
+async def test_recovery_does_not_overwrite_another_workers_takeover(runtime, monkeypatch):
+    clock = _Clock()
+    run_id, old_owner = _expired_running(runtime, clock)
+    handler = _Handler()
+    worker = _worker(runtime, handler, clock)
+    other_owner = "other-recovery-worker"
+    original_claim = runtime.claim_expired_run_for_recovery
+
+    def other_worker_claims_first(*args, **kwargs):
+        claimed = original_claim(
+            run_id, previous_owner=old_owner, now=clock().isoformat(),
+            owner=other_owner,
+            lease_expires_at=(clock() + timedelta(seconds=30)).isoformat(),
+            expected_status="RUNNING",
+        )
+        assert claimed is not None
+        return original_claim(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "claim_expired_run_for_recovery", other_worker_claims_first)
+    assert (await worker.run_once()).action == "idle"
+    run = runtime.get_run(run_id)
+    assert run["status"] == "RUNNING"
+    assert run["lease_owner"] == other_owner
+    assert handler.recoveries == 0
+
+
+@pytest.mark.asyncio
+async def test_recovery_accepts_lease_expiring_exactly_at_observed_time(runtime):
+    clock = _Clock()
+    run_id, _ = _expired_running(runtime, clock, expires_at=clock())
+    handler = _Handler()
+    worker = _worker(runtime, handler, clock)
+
+    report = await worker.run_once()
+
+    assert report.action == "recovered"
+    assert handler.recoveries == 1
+    assert runtime.get_run(run_id)["status"] == "QUEUED"
 
 
 @pytest.mark.asyncio

@@ -16,7 +16,6 @@ import pytest
 
 from app.core.exceptions import AgentSourcePolicyViolation
 from app.database.sqlite_db import reset_db_for_tests
-from app.models.course_research import CourseResearchSourceRow
 from app.repositories.agent_artifact_repository import AgentArtifactRepository
 from app.repositories.agent_runtime_repository import AgentRuntimeRepository
 from app.repositories.course_research_repository import CourseResearchRepository

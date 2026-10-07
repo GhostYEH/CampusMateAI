@@ -950,7 +950,6 @@ class LearnerStateProjectionService:
                 })
 
         # 1. academic_course_load
-        semesters = {item.get("semester") for item in schedule_items if item.get("semester")}
         current_sem_count = len({item.get("course_code") for item in schedule_items if item.get("course_code")})
         credit_load = sum(float(item.get("credit") or 0) for item in schedule_items)
         add_academic(

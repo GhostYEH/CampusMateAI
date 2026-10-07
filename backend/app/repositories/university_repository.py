@@ -59,8 +59,8 @@ class UniversityRepository:
         # 避免"北大"把"东北大学"排在"北京大学"前面这类 LIKE 子串误匹配。
         if q:
             order = (
-                f" ORDER BY (name = ?) DESC, (short_name = ?) DESC, "
-                f"is_demo ASC, name COLLATE NOCASE ASC LIMIT ? OFFSET ?"
+                " ORDER BY (name = ?) DESC, (short_name = ?) DESC, "
+                "is_demo ASC, name COLLATE NOCASE ASC LIMIT ? OFFSET ?"
             )
             order_params = [*params, q, q, page_size, offset]
         else:

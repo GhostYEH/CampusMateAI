@@ -9,6 +9,7 @@
 - 只允许当前 student 访问自己的 campaign
 - 写请求支持 Idempotency-Key
 """
+
 from __future__ import annotations
 
 from starlette.concurrency import run_in_threadpool
@@ -63,36 +64,34 @@ def _repo(container: ServiceContainer) -> FinalReviewRepository:
     return container.final_review_repository
 
 
-def _settle_waiting_run(container: ServiceContainer, approval_id: Optional[str], status: str) -> None:
+def _settle_waiting_run(
+    container: ServiceContainer, approval_id: Optional[str], status: str
+) -> None:
     """把等待该审批的 Run 收口到指定终态(仅用于拒绝/取消,不产生领域副作用)。"""
     if not approval_id:
         return
     approval = container.agent_runtime_repository.get_approval(approval_id)
-    run = container.agent_runtime_repository.get_run(approval.run_id) if approval else None
+    run = (
+        container.agent_runtime_repository.get_run(approval.run_id)
+        if approval
+        else None
+    )
     if run and run["status"] == "AWAITING_APPROVAL":
         container.agent_run_manager.transition(approval.run_id, status, phase="IDLE")
 
 
-def _validate_exam_ids(user_id: str, exam_ids: list[str], container: ServiceContainer) -> None:
+def _validate_exam_ids(
+    user_id: str, exam_ids: list[str], container: ServiceContainer
+) -> None:
     """校验 exam_ids 全部来自 server /student/exams(即 student_exams 表)。"""
     if not exam_ids:
         raise ValidationFailed("至少需要一个 exam_id")
-    # student_exams 表由容器启动时的迁移保证存在(见 student_exams_migration)
-    conn = container.db._connect()
-    try:
-        placeholders = ",".join("?" for _ in exam_ids)
-        rows = conn.execute(
-            f"SELECT id FROM student_exams WHERE user_id = ? AND id IN ({placeholders})",
-            [user_id, *exam_ids],
-        ).fetchall()
-    finally:
-        container.db._release(conn)
-    found_ids = {r["id"] for r in rows}
+    found_ids = container.student_exam_repository.owned_ids(
+        user_id=user_id, exam_ids=exam_ids
+    )
     missing = set(exam_ids) - found_ids
     if missing:
-        raise ValidationFailed(
-            f"exam_id 不存在或不属于当前用户: {sorted(missing)}"
-        )
+        raise ValidationFailed(f"exam_id 不存在或不属于当前用户: {sorted(missing)}")
 
 
 def _campaign_to_out(row) -> FinalReviewCampaignOut:
@@ -142,7 +141,9 @@ def _proposal_to_out(row) -> AdjustmentProposalOut:
 
 
 def _request_hash(payload: dict) -> str:
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -374,7 +375,11 @@ def get_campaign(
                                 "version": 1,
                                 "plan": {
                                     "sessions": [
-                                        {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                        {
+                                            "session_index": 1,
+                                            "course_name": "线性代数",
+                                            "minutes": 60,
+                                        }
                                     ],
                                     "intensity": "medium",
                                 },
@@ -416,14 +421,18 @@ async def generate_plan(
     effective_key = body.idempotency_key or idempotency_key
     request_ref = {
         "campaign_id": campaign_id,
-        "request_hash": _request_hash({
-            "campaign_id": campaign_id,
-            "user_edits": body.user_edits,
-        }),
+        "request_hash": _request_hash(
+            {
+                "campaign_id": campaign_id,
+                "user_edits": body.user_edits,
+            }
+        ),
     }
     runtime_repo = container.agent_runtime_repository
     if effective_key:
-        existing_job = await run_in_threadpool(runtime_repo.find_job_by_idempotency, user.id, effective_key)
+        existing_job = await run_in_threadpool(
+            runtime_repo.find_job_by_idempotency, user.id, effective_key
+        )
         if existing_job:
             existing_ref = json.loads(existing_job.get("input_ref_json") or "{}")
             if (
@@ -431,11 +440,16 @@ async def generate_plan(
                 or existing_ref.get("request_hash") != request_ref["request_hash"]
             ):
                 raise AgentIdempotencyConflict()
-            existing_run = await run_in_threadpool(runtime_repo.get_run_by_job, existing_job["job_id"])
+            existing_run = await run_in_threadpool(
+                runtime_repo.get_run_by_job, existing_job["job_id"]
+            )
             existing_version = existing_ref.get("version")
             if existing_run and existing_version:
-                existing_plan = await run_in_threadpool(repo.get_plan_version,
-                    campaign_id, int(existing_version), user_id=user.id
+                existing_plan = await run_in_threadpool(
+                    repo.get_plan_version,
+                    campaign_id,
+                    int(existing_version),
+                    user_id=user.id,
                 )
                 if existing_plan:
                     return PlanGenerateOut(
@@ -450,7 +464,8 @@ async def generate_plan(
                 "幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409
             )
 
-    created = await run_in_threadpool(runtime_repo.create_job_with_run_and_event,
+    created = await run_in_threadpool(
+        runtime_repo.create_job_with_run_and_event,
         user_id=user.id,
         job_kind="final_review_plan_generate",
         input_ref=request_ref,
@@ -459,10 +474,15 @@ async def generate_plan(
         request_hash=request_ref["request_hash"],
     )
     if created["replayed"]:
-        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+        raise AgentRuntimeError(
+            "幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409
+        )
     job_id, run_id = created["job_id"], created["run_id"]
-    await run_in_threadpool(container.agent_run_manager.transition,
-        run_id, "RUNNING", phase="WAITING_FOR_MODEL"
+    await run_in_threadpool(
+        container.agent_run_manager.transition,
+        run_id,
+        "RUNNING",
+        phase="WAITING_FOR_MODEL",
     )
 
     # 构建上下文
@@ -474,8 +494,8 @@ async def generate_plan(
         context_manager=container.agent_context_manager,
         db=container.db,
     )
-    snapshot_id, facts = await run_in_threadpool(ctx_builder.build,
-        user_id=user.id, campaign_id=campaign_id
+    snapshot_id, facts = await run_in_threadpool(
+        ctx_builder.build, user_id=user.id, campaign_id=campaign_id
     )
 
     # 生成计划
@@ -500,7 +520,8 @@ async def generate_plan(
     version = plan_row.version
     approval_id = plan_row.approval_id
     risk_level = plan_row.risk_level
-    artifact_id = await run_in_threadpool(container.agent_artifact_manager.create,
+    artifact_id = await run_in_threadpool(
+        container.agent_artifact_manager.create,
         run_id=run_id,
         user_id=user.id,
         artifact_type="FINAL_REVIEW_PLAN",
@@ -514,7 +535,8 @@ async def generate_plan(
         mime_type="application/json",
         version=version,
     )
-    await run_in_threadpool(container.agent_event_store.append,
+    await run_in_threadpool(
+        container.agent_event_store.append,
         run_id=run_id,
         type="ARTIFACT_CREATED",
         status="RUNNING",
@@ -523,17 +545,20 @@ async def generate_plan(
         summary="复习计划制品已生成",
         artifact_id=artifact_id,
     )
-    await run_in_threadpool(runtime_repo.update_job_input_ref,
+    await run_in_threadpool(
+        runtime_repo.update_job_input_ref,
         job_id,
         {**request_ref, "version": version, "approval_id": approval_id},
     )
-    await run_in_threadpool(container.agent_run_manager.transition,
+    await run_in_threadpool(
+        container.agent_run_manager.transition,
         run_id,
         "AWAITING_APPROVAL",
         phase="WAITING_FOR_APPROVAL",
         risk_level=risk_level,
     )
-    await run_in_threadpool(container.agent_event_store.append,
+    await run_in_threadpool(
+        container.agent_event_store.append,
         run_id=run_id,
         type="APPROVAL_REQUIRED",
         status="AWAITING_APPROVAL",
@@ -570,7 +595,11 @@ async def generate_plan(
                                     "version": 1,
                                     "plan": {
                                         "sessions": [
-                                            {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                            {
+                                                "session_index": 1,
+                                                "course_name": "线性代数",
+                                                "minutes": 60,
+                                            }
                                         ]
                                     },
                                     "source_snapshot_id": "snap_1001",
@@ -616,7 +645,11 @@ def list_plan_versions(
                                 "version": 1,
                                 "plan": {
                                     "sessions": [
-                                        {"session_index": 1, "course_name": "线性代数", "minutes": 60}
+                                        {
+                                            "session_index": 1,
+                                            "course_name": "线性代数",
+                                            "minutes": 60,
+                                        }
                                     ]
                                 },
                                 "source_snapshot_id": "snap_1001",
@@ -886,10 +919,12 @@ def complete_item(
     if not result:
         raise NotFoundError("item 不存在")
     from datetime import datetime, timezone
+
     return CompleteItemOut(
         item_id=item_id,
         status=result["status"],
-        completed_at=result.get("completed_at") or datetime.now(timezone.utc).isoformat(),
+        completed_at=result.get("completed_at")
+        or datetime.now(timezone.utc).isoformat(),
     )
 
 
@@ -1013,14 +1048,21 @@ async def analyze_adjustments(
 
     # 收集 evidence
     from datetime import datetime, timezone
+
     today = datetime.now(timezone.utc).date().isoformat()
-    agenda = await run_in_threadpool(repo.get_agenda_by_date,
-        campaign_id, campaign.active_version, today, user_id=user.id
+    agenda = await run_in_threadpool(
+        repo.get_agenda_by_date,
+        campaign_id,
+        campaign.active_version,
+        today,
+        user_id=user.id,
     )
     missed_items = []
     completed_items = []
     if agenda:
-        items = await run_in_threadpool(repo.list_items, agenda.agenda_id, user_id=user.id)
+        items = await run_in_threadpool(
+            repo.list_items, agenda.agenda_id, user_id=user.id
+        )
         for it in items:
             if it.status == "pending":
                 missed_items.append({"item_id": it.item_id, "title": it.title})
@@ -1040,7 +1082,9 @@ async def analyze_adjustments(
         "request_hash": _request_hash({"campaign_id": campaign_id}),
     }
     if effective_key:
-        existing_job = await run_in_threadpool(runtime_repo.find_job_by_idempotency, user.id, effective_key)
+        existing_job = await run_in_threadpool(
+            runtime_repo.find_job_by_idempotency, user.id, effective_key
+        )
         if existing_job:
             existing_ref = json.loads(existing_job.get("input_ref_json") or "{}")
             if (
@@ -1048,9 +1092,15 @@ async def analyze_adjustments(
                 or existing_ref.get("request_hash") != request_ref["request_hash"]
             ):
                 raise AgentIdempotencyConflict()
-            existing_run = await run_in_threadpool(runtime_repo.get_run_by_job, existing_job["job_id"])
+            existing_run = await run_in_threadpool(
+                runtime_repo.get_run_by_job, existing_job["job_id"]
+            )
             proposal_id = existing_ref.get("proposal_id")
-            proposal = await run_in_threadpool(repo.get_proposal, proposal_id, user_id=user.id) if proposal_id else None
+            proposal = (
+                await run_in_threadpool(repo.get_proposal, proposal_id, user_id=user.id)
+                if proposal_id
+                else None
+            )
             if existing_run and proposal:
                 return AdjustmentAnalyzeOut(
                     run_id=existing_run["run_id"],
@@ -1059,9 +1109,13 @@ async def analyze_adjustments(
                     requires_approval=bool(proposal.approval_id),
                     approval_id=proposal.approval_id,
                 )
-            raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+            raise AgentRuntimeError(
+                "幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409
+            )
 
-    checkins = await run_in_threadpool(repo.list_checkin_evidence, campaign_id, user_id=user.id)
+    checkins = await run_in_threadpool(
+        repo.list_checkin_evidence, campaign_id, user_id=user.id
+    )
     evidence["checkins"] = checkins
     evidence["difficulty_notes"] = [
         item["difficulty_notes"] for item in checkins if item["difficulty_notes"]
@@ -1069,7 +1123,8 @@ async def analyze_adjustments(
     evidence["insufficient_time"] = evidence["insufficient_time"] or any(
         item["insufficient_time"] for item in checkins
     )
-    created = await run_in_threadpool(runtime_repo.create_job_with_run_and_event,
+    created = await run_in_threadpool(
+        runtime_repo.create_job_with_run_and_event,
         user_id=user.id,
         job_kind="final_review_adjustment",
         input_ref=request_ref,
@@ -1078,10 +1133,15 @@ async def analyze_adjustments(
         request_hash=request_ref["request_hash"],
     )
     if created["replayed"]:
-        raise AgentRuntimeError("幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409)
+        raise AgentRuntimeError(
+            "幂等请求仍在处理中", code="AGENT_INVALID_STATE", http_status=409
+        )
     job_id, run_id = created["job_id"], created["run_id"]
-    await run_in_threadpool(container.agent_run_manager.transition,
-        run_id, "RUNNING", phase="WAITING_FOR_MODEL"
+    await run_in_threadpool(
+        container.agent_run_manager.transition,
+        run_id,
+        "RUNNING",
+        phase="WAITING_FOR_MODEL",
     )
 
     from ...services.final_review.adjustment_service import AdjustmentAnalyzer
@@ -1103,11 +1163,11 @@ async def analyze_adjustments(
     approval_id = None
     if result["requires_approval"]:
         # 创建 approval 记录
-        from datetime import timedelta
         from ...services.agent_runtime.handlers.final_review import ADJUST_APPLY_TOOL
         from ...services.agent_runtime.tool_gateway import build_request_hash
 
-        approval_id = await run_in_threadpool(container.agent_approval_gate.require,
+        approval_id = await run_in_threadpool(
+            container.agent_approval_gate.require,
             run_id=run_id,
             user_id=user.id,
             risk_level=RiskLevel.CONFIRM_REQUIRED,
@@ -1123,10 +1183,14 @@ async def analyze_adjustments(
             ),
         )
         # 将 approval_id 关联到 proposal(不改变 status)
-        await run_in_threadpool(repo.attach_approval,
-            result["proposal_id"], user_id=user.id, approval_id=approval_id,
+        await run_in_threadpool(
+            repo.attach_approval,
+            result["proposal_id"],
+            user_id=user.id,
+            approval_id=approval_id,
         )
-        await run_in_threadpool(runtime_repo.update_job_input_ref,
+        await run_in_threadpool(
+            runtime_repo.update_job_input_ref,
             job_id,
             {
                 **request_ref,
@@ -1134,18 +1198,22 @@ async def analyze_adjustments(
                 "approval_id": approval_id,
             },
         )
-        await run_in_threadpool(container.agent_run_manager.transition,
+        await run_in_threadpool(
+            container.agent_run_manager.transition,
             run_id,
             "AWAITING_APPROVAL",
             phase="WAITING_FOR_APPROVAL",
             risk_level=result["risk_level"],
         )
     else:
-        await run_in_threadpool(runtime_repo.update_job_input_ref,
+        await run_in_threadpool(
+            runtime_repo.update_job_input_ref,
             job_id,
             {**request_ref, "proposal_id": result["proposal_id"]},
         )
-        await run_in_threadpool(container.agent_run_manager.transition, run_id, "SUCCEEDED", phase="IDLE")
+        await run_in_threadpool(
+            container.agent_run_manager.transition, run_id, "SUCCEEDED", phase="IDLE"
+        )
 
     return AdjustmentAnalyzeOut(
         run_id=run_id,
@@ -1174,7 +1242,10 @@ async def analyze_adjustments(
                                     "source_version": 1,
                                     "proposal": {
                                         "changes": [
-                                            {"action": "reduce_minutes", "course_name": "线性代数"}
+                                            {
+                                                "action": "reduce_minutes",
+                                                "course_name": "线性代数",
+                                            }
                                         ],
                                         "reason": "连续两天未完成",
                                     },
@@ -1268,11 +1339,17 @@ def proposal_decision(
                 reason=body.reason,
                 user_id=user.id,
             )
-        elif approved and approval is not None and approval.status != ApprovalStatus.APPROVED.value:
+        elif (
+            approved
+            and approval is not None
+            and approval.status != ApprovalStatus.APPROVED.value
+        ):
             raise AgentRuntimeError(
                 f"审批未通过({approval.status})，不能执行该调整",
                 code="AGENT_INVALID_STATE",
-                http_status=410 if approval.status == ApprovalStatus.EXPIRED.value else 409,
+                http_status=410
+                if approval.status == ApprovalStatus.EXPIRED.value
+                else 409,
             )
 
     if not approved:
@@ -1307,14 +1384,19 @@ def proposal_decision(
         job_kind=handler.job_kind,
         input_ref=input_ref,
         idempotency_key=(
-            body.idempotency_key or idempotency_key or f"{_ADJUST_APPLY_JOB_KIND}:{proposal_id}"
+            body.idempotency_key
+            or idempotency_key
+            or f"{_ADJUST_APPLY_JOB_KIND}:{proposal_id}"
         ),
         request_hash=build_request_hash(handler.job_kind, input_ref),
         handler_code=handler.code,
         handler_version=handler.version,
     )
     return AdjustmentDecisionOut(
-        proposal_id=proposal_id, status="pending", pending=True, run_id=created["run_id"]
+        proposal_id=proposal_id,
+        status="pending",
+        pending=True,
+        run_id=created["run_id"],
     )
 
 

@@ -1,4 +1,5 @@
 """统一异常处理与结构化错误响应。"""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -28,6 +29,7 @@ class AppException(Exception):
         code: Optional[str] = None,
         http_status: Optional[int] = None,
         details: Optional[Any] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> None:
         if message is not None:
             self.message = message
@@ -37,6 +39,7 @@ class AppException(Exception):
             self.http_status = http_status
         if details is not None:
             self.details = details
+        self.headers = dict(headers or {})
         super().__init__(self.message)
 
 
@@ -124,6 +127,7 @@ class EmptyQuestion(AppException):
 
 
 # ===== 鉴权与权限 =====
+
 
 class Unauthorized(AppException):
     code = "UNAUTHORIZED"
@@ -468,7 +472,9 @@ class QrRateLimited(AppException):
         if retry_after is not None:
             self.retry_after = int(retry_after)
         super().__init__(
-            details={"retry_after_seconds": int(retry_after)} if retry_after is not None else None
+            details={"retry_after_seconds": int(retry_after)}
+            if retry_after is not None
+            else None
         )
 
 
@@ -618,10 +624,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def _app_exception_handler(request: Request, exc: AppException):
         request_id = getattr(request.state, "request_id", None)
+        headers = dict(exc.headers)
+        if hasattr(exc, "retry_after"):
+            headers["Retry-After"] = str(exc.retry_after)
         return JSONResponse(
             status_code=exc.http_status,
             content=_build_error_body(exc.code, exc.message, exc.details, request_id),
-            headers={"Retry-After": str(exc.retry_after)} if hasattr(exc, "retry_after") else None,
+            headers=headers,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -631,14 +640,18 @@ def register_exception_handlers(app: FastAPI) -> None:
         # Validation errors must never echo untrusted request values (extra fields
         # may contain source code, tokens, or other private material).
         raw_details = jsonable_encoder(exc.errors(), custom_encoder={Exception: str})
-        details = [
-            {
-                key: item[key]
-                for key in ("type", "loc", "msg", "ctx")
-                if key in item and key != "ctx"
-            }
-            for item in raw_details
-        ] if isinstance(raw_details, list) else None
+        details = (
+            [
+                {
+                    key: item[key]
+                    for key in ("type", "loc", "msg", "ctx")
+                    if key in item and key != "ctx"
+                }
+                for item in raw_details
+            ]
+            if isinstance(raw_details, list)
+            else None
+        )
         request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
             status_code=422,
@@ -656,7 +669,11 @@ def register_exception_handlers(app: FastAPI) -> None:
         code_map = {404: "NOT_FOUND", 405: "METHOD_NOT_ALLOWED", 500: "INTERNAL_ERROR"}
         # Keep the long-standing TTS unavailable payload stable for existing
         # clients; the request id remains available in the response header.
-        request_id = None if request.url.path.endswith("/assistant/tts") and exc.status_code == 503 else getattr(request.state, "request_id", None)
+        request_id = (
+            None
+            if request.url.path.endswith("/assistant/tts") and exc.status_code == 503
+            else getattr(request.state, "request_id", None)
+        )
         content = _build_error_body(
             code_map.get(exc.status_code, "HTTP_ERROR"),
             str(exc.detail) if exc.detail else "请求错误",
@@ -672,8 +689,16 @@ def register_exception_handlers(app: FastAPI) -> None:
         request_id = getattr(request.state, "request_id", None)
         # Record frame locations without exception text or local values, which
         # can contain upstream credentials or private request content.
-        frames = [(frame.filename, frame.lineno, frame.name) for frame in traceback.extract_tb(exc.__traceback__)]
-        logger.error("unhandled_exception request_id={} error_type={} frames={}", request_id, type(exc).__name__, frames)
+        frames = [
+            (frame.filename, frame.lineno, frame.name)
+            for frame in traceback.extract_tb(exc.__traceback__)
+        ]
+        logger.error(
+            "unhandled_exception request_id={} error_type={} frames={}",
+            request_id,
+            type(exc).__name__,
+            frames,
+        )
         return JSONResponse(
             status_code=500,
             content=_build_error_body(

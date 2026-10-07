@@ -36,7 +36,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 import time
 from pathlib import Path
@@ -46,26 +45,27 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edu_candidate_store import (
     EduCandidate,
-    load_universities,
+    load_universities as load_universities,
     build_university_index,
     build_university_name_index,
-    load_candidates,
-    save_candidates,
+    load_candidates as load_candidates,
+    save_candidates as save_candidates,
     upsert_candidate,
-    update_candidate,
-    list_candidates,
-    compute_stats,
+    update_candidate as update_candidate,
+    list_candidates as list_candidates,
+    compute_stats as compute_stats,
     print_stats,
     generate_discovery_queue,
     save_queue,
     is_intranet_url,
-    is_likely_guessed_url,
-    now_local_label,
+    is_likely_guessed_url as is_likely_guessed_url,
+    now_local_label as now_local_label,
     PRIORITY_SCHOOL_CODES,
 )
 
 # 引入 ProviderDetector 与常量（通过 _edu_loader 按文件路径加载）
 from _edu_loader import load_discovery_constants as _ldc, load_provider_detector as _lpd
+
 _dc = _ldc()
 PROVIDER_UNKNOWN = _dc.PROVIDER_UNKNOWN
 STATUS_CANDIDATE = _dc.STATUS_CANDIDATE

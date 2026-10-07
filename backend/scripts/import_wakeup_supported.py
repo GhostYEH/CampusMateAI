@@ -23,23 +23,22 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edu_candidate_store import (
     EduCandidate,
     load_universities,
-    build_university_index,
     build_university_name_index,
     load_candidates,
     save_candidates,
-    upsert_candidate,
-    update_candidate,
-    list_candidates,
+    upsert_candidate as upsert_candidate,
+    update_candidate as update_candidate,
+    list_candidates as list_candidates,
     WAKEUP_FILE,
-    now_local_label,
+    now_local_label as now_local_label,
 )
 from _edu_loader import load_discovery_constants as _ldc
+
 _dc = _ldc()
 PROVIDER_UNKNOWN = _dc.PROVIDER_UNKNOWN
 STATUS_CANDIDATE = _dc.STATUS_CANDIDATE
@@ -135,7 +134,6 @@ def match_to_universities(school_names: list[str]) -> dict:
             "unmatched": [wakeup_name, ...],
         }
     """
-    uni_index = build_university_index()
     name_index = build_university_name_index()
     universities = load_universities()
 

@@ -22,7 +22,6 @@ from app.services.agent_runtime.event_store import AgentEventStore
 from app.services.agent_runtime.handlers.final_review import PLAN_ACTIVATE_TOOL
 from app.services.agent_runtime.run_manager import RunManager
 from app.services.agent_runtime.tool_gateway import (
-    ToolInvocationGateway,
     ToolInvocationRequest,
 )
 from app.services.container import reset_container_for_tests

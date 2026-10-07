@@ -89,6 +89,8 @@ __all__ = [
     "MagicClassReservation",
     "assert_course_access",
     "build_course_context",
+    "build_input_payload",
+    "build_requirement",
     "build_cpm_course_block",
     "GENERATION_STEPS",
     "JOB_STEP_VALUES",

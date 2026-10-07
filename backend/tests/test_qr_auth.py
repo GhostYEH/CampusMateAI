@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
@@ -646,7 +645,6 @@ def test_qr_create_rate_limit() -> None:
 
 def _shared_app() -> tuple:
     """创建一个共享 app + 已登录学生 headers，用于多 TestClient 场景。"""
-    from fastapi import FastAPI
 
     settings = Settings(
         app_env="test",

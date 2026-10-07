@@ -75,7 +75,6 @@ class MockChaoxingClient:
 @pytest.fixture
 def test_container():
     # Setup a fresh container with an in-memory DB for tests
-    from app.services.container import ServiceContainer
     from app.core.config import Settings
     from app.database.sqlite_db import Database
 
@@ -530,7 +529,6 @@ async def test_chaoxing_concurrent_sync(mock_container: ServiceContainer, user_i
     user_row = UserRow(id=user_id, username="chaoxing_user", password_hash="123", role="student")
 
     # Run sync twice concurrently
-    import asyncio
     results = await asyncio.gather(
         sync_chaoxing(user=user_row, container=mock_container),
         sync_chaoxing(user=user_row, container=mock_container),
@@ -823,7 +821,6 @@ async def test_notice_completed_review_no_task(mock_container: ServiceContainer,
 async def test_rule_fallback_completion_no_task(mock_container: ServiceContainer, monkeypatch):
     """规则降级模式: 完成状态不应识别为 actionable"""
     from app.services.notice_extraction_service import NoticeExtractionService
-    from app.schemas.notice import NoticeExtractRequest
 
     # Create a service without LLM to force rules fallback
     svc = NoticeExtractionService(llm=None, settings=mock_container.settings)

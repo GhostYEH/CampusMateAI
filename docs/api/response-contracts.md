@@ -8,6 +8,8 @@
 
 认证和匿名聊天限流返回 `429 {code:"RATE_LIMITED",message,details:{retry_after_seconds},request_id}`，并带 `Retry-After` 头；必须在 SSE 建立前按普通 HTTP 错误处理。测验保存冲突返回 `409 {code:"QUIZ_ATTEMPT_CONFLICT",message,details:null,request_id}`，不再返回裸 detail。社区普通用户访问他校资源返回 404 `NOT_FOUND`；管理接口已移除。意外 500 的 body.request_id 与响应头一致，允许的 Origin 可收到 CORS 响应头；内部异常文本不会回传。
 
+非法 access token 在受保护 HTTP 接口返回 401 `UNAUTHORIZED`，实时语音 WebSocket 关闭码为 1008。可信设备自动登录的无效、撤销、过期和用户停用分支在既有 401 JSON 信封之外，附带删除原 Cookie 的 `Set-Cookie`（默认 `campus_trusted_device`、`Path=/api/v1/auth`、`Max-Age=0`）；错误码见 [认证模块](01-auth.md#post-apiv1authtrusted-deviceauto-login)。
+
 ## 普通对象与空响应
 
 | 接口 | 实际成功响应 |
@@ -189,6 +191,8 @@ history 返回 `{items:object[],pagination:object,...}`，常见 pagination 为 
 本接口未出现在 OpenAPI，但已由后端注册：`WS /api/v1/focus/realtime-voice/ws/{session_id}?access_token=<access token>`。完整收发协议来自后端 [focus_realtime_voice.py](../../backend/app/api/routes/focus_realtime_voice.py)，本次未查看其他客户端。
 
 先 `POST /focus/realtime-voice/sessions`，201 返回 session_id 和相对 websocket_path，当前该字段不含 `/api/v1`；按基础路径拼接，并将 http/https Origin 转为 ws/wss。只能连接本用户创建的会话，无登录或不归属本用户在握手前关闭 code=1008。会话仅保存在单后端进程内，重启后丢失。
+
+非 ASCII、非法 Base64URL 或缺失分段的 access_token 同样在握手前关闭 code=1008，不建立语音会话。
 
 结束时先停止采集与播放，向已连接的 WebSocket 发送 `{"type":"stop"}` 或主动关闭连接；中继结束时会清理会话登记。`DELETE /focus/realtime-voice/sessions/{session_id}` 只删除内存会话登记、阻止后续握手，不会主动断开已经连接的 WebSocket，不能仅调用 DELETE 就认为音频传输已停止。DELETE 成功返回 200 `{session_id,stopped:true}`；会话已经清理、不存在或不属于本人时返回 404 `NOT_FOUND`，关闭后的清理请求可按已结束处理。
 

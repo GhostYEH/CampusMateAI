@@ -5,7 +5,6 @@ from legacy_user_helpers import create_legacy_user
 from datetime import datetime, timedelta, timezone
 
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings

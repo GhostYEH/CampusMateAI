@@ -10,10 +10,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings

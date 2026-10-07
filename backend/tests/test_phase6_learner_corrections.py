@@ -38,7 +38,7 @@ def _setup():
 def _ensure_snapshot(container, user_id):
     """触发状态投影，返回一个 snapshot_id。"""
     as_of = datetime.now(timezone.utc).replace(microsecond=0)
-    result = container.learner_state_service.project_user(
+    container.learner_state_service.project_user(
         user_id, as_of=as_of, trigger="test"
     )
     snapshots, _ = container.learner_state_repository.list_snapshots(

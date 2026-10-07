@@ -9,12 +9,10 @@
 """
 from __future__ import annotations
 
-import sqlite3
 
 import pytest
 
 from app.core.config import Settings
-from app.database.sqlite_db import reset_db_for_tests
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import (
     AGENT_DEMO_CAMPAIGN_ID,

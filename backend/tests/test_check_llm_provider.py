@@ -4,7 +4,6 @@
 """
 import asyncio
 
-import pytest
 
 from app.core.config import Settings
 from scripts.check_llm_provider import run_check, _mask_api_key, _check_config, _STATUS_LABELS
@@ -103,7 +102,6 @@ def test_status_labels_coverage():
 
 def test_run_check_classifies_ssl_error_as_network_error():
     """TLS/SSL 错误应归类为 network_error,而不是 server_error。"""
-    import ssl
     from app.services.llm.base import LLMError
 
     class _SslFailingLLM:

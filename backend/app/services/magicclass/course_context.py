@@ -578,7 +578,7 @@ def build_learning_context(
         [
             _clip(course.name, 200),
             *(
-                [f"章节: " + "、".join(_chapter_lines(chapters, limit=limits.chapters, title_chars=limits.chapter_title_chars))]
+                ["章节: " + "、".join(_chapter_lines(chapters, limit=limits.chapters, title_chars=limits.chapter_title_chars))]
                 if chapters
                 else []
             ),

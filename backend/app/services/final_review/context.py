@@ -7,13 +7,16 @@
 
 复用 container.agent_context_manager(ContextManager)持久化快照。
 """
+
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from ...repositories.final_review_repository import FinalReviewRepository
+from ...repositories.student_exam_repository import StudentExamRepository
 from ..agent_runtime.context_manager import ContextManager
 
 
@@ -34,6 +37,7 @@ class ContextSnapshotBuilder:
         self._repo = final_review_repo
         self._ctx_mgr = context_manager
         self._db = db
+        self._exams = StudentExamRepository(db)
 
     def build(
         self,
@@ -84,44 +88,26 @@ class ContextSnapshotBuilder:
 
     def _load_exams(self, user_id: str, exam_ids: list[str]) -> list[dict]:
         """从 student_exams 表读取考试详情。只返回存在的 exam_id。"""
-        if not exam_ids:
-            return []
-        placeholders = ",".join("?" for _ in exam_ids)
-        conn = self._db._connect()
         try:
-            rows = conn.execute(
-                f"SELECT id, course_name, exam_date, start_time, end_time, "
-                f"location, exam_type, notes FROM student_exams "
-                f"WHERE user_id = ? AND id IN ({placeholders}) "
-                f"ORDER BY exam_date ASC",
-                [user_id, *exam_ids],
-            ).fetchall()
-            return [dict(r) for r in rows]
+            return self._exams.list_for_context(user_id=user_id, exam_ids=exam_ids)
         except sqlite3.Error:
             return []
-        finally:
-            self._db._release(conn)
 
     def _load_pending_tasks(self, user_id: str) -> list[dict]:
         """读取近期未完成的个人任务(最多 20 条)。"""
-        conn = self._db._connect()
         try:
-            rows = conn.execute(
-                "SELECT id, title, deadline, priority, status, course_id "
-                "FROM personal_tasks "
-                "WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL "
-                "ORDER BY CASE WHEN deadline IS NULL THEN 1 ELSE 0 END, deadline ASC "
-                "LIMIT 20",
-                (user_id,),
-            ).fetchall()
+            with self._db.query() as conn:
+                rows = conn.execute(
+                    "SELECT id, title, deadline, priority, status, course_id "
+                    "FROM personal_tasks "
+                    "WHERE user_id = ? AND status = 'pending' AND deleted_at IS NULL "
+                    "ORDER BY CASE WHEN deadline IS NULL THEN 1 ELSE 0 END, deadline ASC "
+                    "LIMIT 20",
+                    (user_id,),
+                ).fetchall()
             return [dict(r) for r in rows]
         except sqlite3.Error:
             return []
-        finally:
-            self._db._release(conn)
 
-
-# 延迟导入避免循环依赖
-import sqlite3  # noqa: E402
 
 __all__ = ["ContextSnapshotBuilder"]

@@ -3,11 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from pydantic import ValidationError
 
 from app.database.sqlite_db import Database
-from app.repositories.learner_event_repository import LearnerEventRepository, LearnerEventConflict
-from app.schemas.learner_event import LearnerEventCreate, SOURCE_EVENT_TYPES
+from app.repositories.learner_event_repository import LearnerEventRepository
+from app.schemas.learner_event import SOURCE_EVENT_TYPES
 from app.services.learner_event_service import LearnerEventService
 
 

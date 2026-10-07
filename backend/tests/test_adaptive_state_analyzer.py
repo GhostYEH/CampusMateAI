@@ -13,7 +13,6 @@ from adaptive_intervention_helpers import (
     analyze_scenario,
     scenario_a,
     scenario_b,
-    scenario_c,
     snapshot,
     ProjectionStub,
 )

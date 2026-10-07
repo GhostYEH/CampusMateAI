@@ -75,53 +75,134 @@ class CourseContentRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
-    def upsert_item(self, *, user_id: str, course_id: str, kind: str,
-                    external_id: str, title: str, provider: str = "chaoxing",
-                    **fields) -> CourseContentItemRow:
+    def upsert_item(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        kind: str,
+        external_id: str,
+        title: str,
+        provider: str = "chaoxing",
+        **fields,
+    ) -> CourseContentItemRow:
         now = _now()
         allowed = {
-            "parent_external_id", "description", "author_name", "position", "depth",
-            "status", "starts_at", "deadline", "published_at", "mime_type", "file_size",
-            "remote_object_id", "source_url", "last_synced_at", "is_stale",
+            "parent_external_id",
+            "description",
+            "author_name",
+            "position",
+            "depth",
+            "status",
+            "starts_at",
+            "deadline",
+            "published_at",
+            "mime_type",
+            "file_size",
+            "remote_object_id",
+            "source_url",
+            "last_synced_at",
+            "is_stale",
         }
         values = {key: fields.get(key) for key in allowed}
         values["position"] = values["position"] or 0
         values["depth"] = values["depth"] or 0
         values["status"] = values["status"] or "unknown"
         values["is_stale"] = int(bool(values["is_stale"]))
-        metadata_json = json.dumps(fields.get("metadata"), ensure_ascii=False) if fields.get("metadata") is not None else None
+        metadata_json = (
+            json.dumps(fields.get("metadata"), ensure_ascii=False)
+            if fields.get("metadata") is not None
+            else None
+        )
         with self._db.transaction() as conn:
             existing = conn.execute(
-                "SELECT id, created_at FROM course_content_items WHERE user_id=? AND provider=? AND course_id=? AND kind=? AND external_id=?",
+                "SELECT id, created_at, remote_object_id, source_url, file_size, mime_type "
+                "FROM course_content_items WHERE user_id=? AND provider=? AND course_id=? AND kind=? AND external_id=?",
                 (user_id, provider, course_id, kind, external_id),
             ).fetchone()
             item_id = existing["id"] if existing else _id("cci")
             created_at = existing["created_at"] if existing else now
+            if existing is not None and any(
+                existing[column] != values[column]
+                for column in (
+                    "remote_object_id",
+                    "source_url",
+                    "file_size",
+                    "mime_type",
+                )
+            ):
+                # Keep the path and size reachable for cleanup/quota accounting,
+                # while preventing a replacement resource from serving old bytes.
+                conn.execute(
+                    "UPDATE course_resource_cache SET expires_at=? WHERE item_id=? AND user_id=?",
+                    (now, item_id, user_id),
+                )
             conn.execute(
-                """INSERT OR REPLACE INTO course_content_items
+                """INSERT INTO course_content_items
                    (id,user_id,course_id,provider,external_id,parent_external_id,kind,title,
                     description,author_name,position,depth,status,starts_at,deadline,published_at,
                     mime_type,file_size,remote_object_id,source_url,metadata_json,is_stale,
                     last_synced_at,created_at,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (item_id,user_id,course_id,provider,external_id,values["parent_external_id"],kind,title,
-                 values["description"],values["author_name"],values["position"],values["depth"],
-                 values["status"],values["starts_at"],values["deadline"],values["published_at"],
-                 values["mime_type"],values["file_size"],values["remote_object_id"],values["source_url"],
-                 metadata_json,values["is_stale"],values["last_synced_at"] or now,created_at,now),
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(user_id,provider,course_id,kind,external_id) DO UPDATE SET
+                     parent_external_id=excluded.parent_external_id,
+                     title=excluded.title,description=excluded.description,
+                     author_name=excluded.author_name,position=excluded.position,
+                     depth=excluded.depth,status=excluded.status,
+                     starts_at=excluded.starts_at,deadline=excluded.deadline,
+                     published_at=excluded.published_at,mime_type=excluded.mime_type,
+                     file_size=excluded.file_size,remote_object_id=excluded.remote_object_id,
+                     source_url=excluded.source_url,metadata_json=excluded.metadata_json,
+                     is_stale=excluded.is_stale,last_synced_at=excluded.last_synced_at,
+                     updated_at=excluded.updated_at""",
+                (
+                    item_id,
+                    user_id,
+                    course_id,
+                    provider,
+                    external_id,
+                    values["parent_external_id"],
+                    kind,
+                    title,
+                    values["description"],
+                    values["author_name"],
+                    values["position"],
+                    values["depth"],
+                    values["status"],
+                    values["starts_at"],
+                    values["deadline"],
+                    values["published_at"],
+                    values["mime_type"],
+                    values["file_size"],
+                    values["remote_object_id"],
+                    values["source_url"],
+                    metadata_json,
+                    values["is_stale"],
+                    values["last_synced_at"] or now,
+                    created_at,
+                    now,
+                ),
             )
         return self.get_item(item_id, user_id=user_id)  # type: ignore[return-value]
 
     def get_item(self, item_id: str, *, user_id: str) -> Optional[CourseContentItemRow]:
         with self._db.query() as conn:
             row = conn.execute(
-                "SELECT * FROM course_content_items WHERE id=? AND user_id=?", (item_id, user_id)
+                "SELECT * FROM course_content_items WHERE id=? AND user_id=?",
+                (item_id, user_id),
             ).fetchone()
         return CourseContentItemRow.from_row(row) if row else None
 
-    def list_items(self, *, user_id: str, course_id: str, kind: Optional[str] = None,
-                   include_stale: bool = False, page: int = 1,
-                   page_size: int = 100) -> list[CourseContentItemRow]:
+    def list_items(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        kind: Optional[str] = None,
+        include_stale: bool = False,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> list[CourseContentItemRow]:
         conditions = ["user_id=?", "course_id=?"]
         params: list[Any] = [user_id, course_id]
         if kind:
@@ -136,20 +217,33 @@ class CourseContentRepository:
             ).fetchall()
         return [CourseContentItemRow.from_row(row) for row in rows]
 
-    def count_items(self, *, user_id: str, course_id: str, kind: Optional[str] = None) -> int:
+    def count_items(
+        self, *, user_id: str, course_id: str, kind: Optional[str] = None
+    ) -> int:
         conditions = ["user_id=?", "course_id=?", "is_stale=0"]
         params: list[Any] = [user_id, course_id]
         if kind:
             conditions.append("kind=?")
             params.append(kind)
         with self._db.query() as conn:
-            return int(conn.execute(
-                f"SELECT COUNT(*) AS n FROM course_content_items WHERE {' AND '.join(conditions)}", params
-            ).fetchone()["n"])
+            return int(
+                conn.execute(
+                    f"SELECT COUNT(*) AS n FROM course_content_items WHERE {' AND '.join(conditions)}",
+                    params,
+                ).fetchone()["n"]
+            )
 
-    def upsert_section_status(self, *, user_id: str, course_id: str, section: str,
-                              status: str, item_count: int, error_code: Optional[str] = None,
-                              error_message: Optional[str] = None) -> CourseSyncSectionRow:
+    def upsert_section_status(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        section: str,
+        status: str,
+        item_count: int,
+        error_code: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> CourseSyncSectionRow:
         now = _now()
         # last_synced_at 记录"最近一次尝试"，每次都要刷新；
         # last_success_at 只在这次确实抓到数据(complete/partial)时才前进，
@@ -171,20 +265,31 @@ class CourseContentRepository:
                        ELSE course_sync_sections.last_success_at END,
                      error_code=excluded.error_code,
                      error_message=excluded.error_message""",
-                (user_id, course_id, section, status, item_count, now,
-                 now if succeeded else None, error_code, error_message),
+                (
+                    user_id,
+                    course_id,
+                    section,
+                    status,
+                    item_count,
+                    now,
+                    now if succeeded else None,
+                    error_code,
+                    error_message,
+                ),
             )
             row = conn.execute(
                 "SELECT * FROM course_sync_sections WHERE user_id=? AND course_id=? AND section=?",
-                (user_id,course_id,section),
+                (user_id, course_id, section),
             ).fetchone()
         return CourseSyncSectionRow.from_row(row)
 
-    def list_section_statuses(self, *, user_id: str, course_id: str) -> list[CourseSyncSectionRow]:
+    def list_section_statuses(
+        self, *, user_id: str, course_id: str
+    ) -> list[CourseSyncSectionRow]:
         with self._db.query() as conn:
             rows = conn.execute(
                 "SELECT * FROM course_sync_sections WHERE user_id=? AND course_id=? ORDER BY section",
-                (user_id,course_id),
+                (user_id, course_id),
             ).fetchall()
         return [CourseSyncSectionRow.from_row(row) for row in rows]
 
@@ -217,8 +322,9 @@ class CourseContentRepository:
         join = "course_content_items i JOIN course_sync_sections s ON s.user_id=i.user_id AND s.course_id=i.course_id"
         with self._db.query() as conn:
             total = int(
-                conn.execute(f"SELECT COUNT(*) AS n FROM {join}{where}", params)
-                .fetchone()["n"]
+                conn.execute(
+                    f"SELECT COUNT(*) AS n FROM {join}{where}", params
+                ).fetchone()["n"]
             )
             rows = conn.execute(
                 f"SELECT i.* FROM {join}{where} ORDER BY i.user_id ASC, i.course_id ASC, i.id ASC LIMIT ? OFFSET ?",
@@ -226,8 +332,14 @@ class CourseContentRepository:
             ).fetchall()
         return [CourseContentItemRow.from_row(row) for row in rows], total
 
-    def mark_section_stale_except(self, *, user_id: str, course_id: str,
-                                  kinds: set[str], external_keys: set[tuple[str, str]]) -> None:
+    def mark_section_stale_except(
+        self,
+        *,
+        user_id: str,
+        course_id: str,
+        kinds: set[str],
+        external_keys: set[tuple[str, str]],
+    ) -> None:
         if not kinds:
             return
         placeholders = ",".join("?" for _ in kinds)
@@ -263,8 +375,9 @@ class CourseContentRepository:
         now = _now()
         with self._db.transaction() as conn:
             rows = conn.execute(
-                f"SELECT item_id FROM course_resource_cache WHERE user_id=? AND item_id IN ({marks})",
-                [user_id, *item_ids],
+                f"SELECT item_id FROM course_resource_cache WHERE user_id=? AND item_id IN ({marks}) "
+                "AND (expires_at IS NULL OR julianday(expires_at) > julianday(?))",
+                [user_id, *item_ids, now],
             ).fetchall()
             cached_ids = {str(row["item_id"]) for row in rows}
             if cached_ids:
@@ -274,6 +387,17 @@ class CourseContentRepository:
                     [now, user_id, *cached_ids],
                 )
         return cached_ids
+
+    def cache_path_is_referenced(self, relative_path: str) -> bool:
+        """Content-addressed files may still belong to another cache record."""
+        with self._db.query() as conn:
+            return (
+                conn.execute(
+                    "SELECT 1 FROM course_resource_cache WHERE relative_path=? LIMIT 1",
+                    (relative_path,),
+                ).fetchone()
+                is not None
+            )
 
     def delete_cache(self, *, item_id: str, user_id: str) -> Optional[str]:
         """Remove one cache record and return its relative file path."""
@@ -307,9 +431,18 @@ class CourseContentRepository:
                 removed.append(str(row["relative_path"]))
         return removed
 
-    def upsert_cache(self, *, item_id: str, user_id: str, course_id: str,
-                     relative_path: str, content_hash: str, mime_type: Optional[str],
-                     file_size: int, expires_at: Optional[str] = None) -> dict:
+    def upsert_cache(
+        self,
+        *,
+        item_id: str,
+        user_id: str,
+        course_id: str,
+        relative_path: str,
+        content_hash: str,
+        mime_type: Optional[str],
+        file_size: int,
+        expires_at: Optional[str] = None,
+    ) -> dict:
         now = _now()
         with self._db.transaction() as conn:
             conn.execute(
@@ -321,6 +454,17 @@ class CourseContentRepository:
                      mime_type=excluded.mime_type,file_size=excluded.file_size,
                      cached_at=excluded.cached_at,last_accessed_at=excluded.last_accessed_at,
                      expires_at=excluded.expires_at""",
-                (item_id,user_id,course_id,relative_path,content_hash,mime_type,file_size,now,now,expires_at),
+                (
+                    item_id,
+                    user_id,
+                    course_id,
+                    relative_path,
+                    content_hash,
+                    mime_type,
+                    file_size,
+                    now,
+                    now,
+                    expires_at,
+                ),
             )
         return self.get_cache(item_id=item_id, user_id=user_id) or {}

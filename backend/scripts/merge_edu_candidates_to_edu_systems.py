@@ -19,15 +19,14 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edu_candidate_store import (
     load_candidates,
     load_universities,
     build_university_index,
-    now_local_label,
-    CANDIDATES_FILE,
+    now_local_label as now_local_label,
+    CANDIDATES_FILE as CANDIDATES_FILE,
 )
 
 from _edu_loader import load_discovery_constants as _ldc

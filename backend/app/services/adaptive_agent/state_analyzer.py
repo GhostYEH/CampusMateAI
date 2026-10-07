@@ -15,6 +15,7 @@
 7. evidence refs 只保存安全引用（run/snapshot/state_type/scope/质量），
    对 USER 级快照不写出 scope_id，避免把内部 user_id 落进任何序列化结果。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,7 +46,9 @@ _QUALITY_KEYS = ("verified", "partial", "stale", "unavailable")
 
 
 def _digest(value: Any) -> str:
-    raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    raw = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -93,6 +96,7 @@ class _Collector:
     """收集 findings / reasons / evidence refs，保证三者始终同步。"""
 
     def __init__(self) -> None:
+        self.features: dict[str, float | int | str | None] = {}
         self.problems: list[str] = []
         self.strengths: list[str] = []
         self.risks: list[StateRiskSignal] = []
@@ -100,14 +104,23 @@ class _Collector:
         self.refs: list[StateEvidenceRef] = []
         self.warnings: list[str] = []
 
-    def problem(self, code: str, *, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]) -> None:
+    def problem(
+        self, code: str, *, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]
+    ) -> None:
         self._finding(code, self.problems, reasons=reasons, refs=refs)
 
-    def strength(self, code: str, *, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]) -> None:
+    def strength(
+        self, code: str, *, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]
+    ) -> None:
         self._finding(code, self.strengths, reasons=reasons, refs=refs)
 
     def _finding(
-        self, code: str, bucket: list[str], *, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]
+        self,
+        code: str,
+        bucket: list[str],
+        *,
+        reasons: Sequence[str],
+        refs: Sequence[StateEvidenceRef],
     ) -> None:
         if code in bucket:
             return
@@ -116,7 +129,12 @@ class _Collector:
         self.refs.extend(refs)
 
     def risk(
-        self, code: str, *, severity: str, reasons: Sequence[str], refs: Sequence[StateEvidenceRef]
+        self,
+        code: str,
+        *,
+        severity: str,
+        reasons: Sequence[str],
+        refs: Sequence[StateEvidenceRef],
     ) -> None:
         if any(existing.code == code for existing in self.risks):
             return
@@ -132,6 +150,58 @@ class _Collector:
     def warn(self, code: str) -> None:
         if code not in self.warnings:
             self.warnings.append(code)
+
+
+def _find_snapshot(snapshots: Sequence[Any], state_type: str) -> Any | None:
+    for snapshot in snapshots:
+        if getattr(snapshot, "state_type", None) == state_type:
+            return snapshot
+    return None
+
+
+def _usable_snapshot(snapshot: Any) -> bool:
+    return (
+        snapshot is not None
+        and getattr(snapshot, "data_quality", "unavailable") != "unavailable"
+    )
+
+
+def _evidence_ref(
+    code: str,
+    *,
+    projection_kind: str,
+    snapshot: Any = None,
+    state_type: str | None = None,
+    scope_type: str | None = None,
+    scope_id: str | None = None,
+    data_quality: str | None = None,
+    confidence: float | None = None,
+) -> StateEvidenceRef:
+    if snapshot is not None:
+        snapshot_scope = getattr(snapshot, "scope_type", None)
+        return StateEvidenceRef(
+            code=code,
+            projection_kind=projection_kind,  # type: ignore[arg-type]
+            run_id=getattr(snapshot, "run_id", None) or None,
+            snapshot_id=getattr(snapshot, "snapshot_id", None) or None,
+            state_type=getattr(snapshot, "state_type", None) or state_type,
+            scope_type=snapshot_scope,
+            # USER 级快照的 scope_id 就是内部 user_id，不写入任何可序列化结果。
+            scope_id=None
+            if snapshot_scope == "USER"
+            else getattr(snapshot, "scope_id", None),
+            data_quality=getattr(snapshot, "data_quality", None),
+            confidence=_as_float(getattr(snapshot, "confidence", None)),
+        )
+    return StateEvidenceRef(
+        code=code,
+        projection_kind=projection_kind,  # type: ignore[arg-type]
+        state_type=state_type,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        data_quality=data_quality,  # type: ignore[arg-type]
+        confidence=confidence,
+    )
 
 
 class StudentStateAnalyzer:
@@ -150,7 +220,11 @@ class StudentStateAnalyzer:
         forecasts: Iterable[Any] = (),
         goal: Any = None,
     ) -> StudentStateAssessment:
-        as_of_utc = as_of.astimezone(timezone.utc) if as_of.tzinfo else as_of.replace(tzinfo=timezone.utc)
+        as_of_utc = (
+            as_of.astimezone(timezone.utc)
+            if as_of.tzinfo
+            else as_of.replace(tzinfo=timezone.utc)
+        )
         collector = _Collector()
 
         core_snapshots = list(getattr(core, "snapshots", None) or [])
@@ -165,61 +239,80 @@ class StudentStateAnalyzer:
         forecast_list = list(forecasts)
 
         quality, quality_counts = _aggregate_quality(all_snapshots)
-        features: dict[str, float | int | str | None] = {
-            "verified_snapshot_count": quality_counts["verified"],
-            "partial_snapshot_count": quality_counts["partial"],
-            "stale_snapshot_count": quality_counts["stale"],
-            "unavailable_snapshot_count": quality_counts["unavailable"],
-        }
+        collector.features.update(
+            {
+                "verified_snapshot_count": quality_counts["verified"],
+                "partial_snapshot_count": quality_counts["partial"],
+                "stale_snapshot_count": quality_counts["stale"],
+                "unavailable_snapshot_count": quality_counts["unavailable"],
+            }
+        )
 
-        def find(snapshots: Sequence[Any], state_type: str) -> Any | None:
-            for snapshot in snapshots:
-                if getattr(snapshot, "state_type", None) == state_type:
-                    return snapshot
-            return None
+        pressure_band = self._analyze_workload_and_schedule(
+            world_snapshots,
+            academic_snapshots,
+            collector,
+        )
+        self._analyze_learning_behavior(world_snapshots, academic_snapshots, collector)
+        goal_id = self._analyze_goal(goal, world_snapshots, as_of_utc, collector)
+        self._analyze_forecasts(forecast_list, pressure_band, collector)
+        overall_confidence = self._apply_quality_findings(
+            all_snapshots,
+            kind_by_id,
+            quality,
+            quality_counts,
+            collector,
+        )
+        overall_confidence = self._apply_readiness_and_fallback(
+            quality, overall_confidence, collector
+        )
 
-        def usable(snapshot: Any) -> bool:
-            return snapshot is not None and getattr(snapshot, "data_quality", "unavailable") != "unavailable"
+        assessment_id = _assessment_id(
+            user_id=user_id,
+            goal_id=goal_id,
+            core=core,
+            academic=academic,
+            world=world,
+            problems=collector.problems,
+            strengths=collector.strengths,
+            risks=[risk.code for risk in collector.risks],
+            features=collector.features,
+        )
+        return StudentStateAssessment(
+            assessment_id=assessment_id,
+            user_id=user_id,
+            goal_id=str(goal_id) if goal_id else None,
+            as_of=as_of_utc.replace(microsecond=0).isoformat(),
+            core_run_id=getattr(core, "run_id", None) or None,
+            academic_run_id=getattr(academic, "run_id", None) or None,
+            world_run_id=getattr(world, "run_id", None) or None,
+            problem_types=collector.problems,  # type: ignore[arg-type]
+            strengths=collector.strengths,  # type: ignore[arg-type]
+            risk_signals=collector.risks,
+            state_features=collector.features,
+            overall_confidence=overall_confidence,
+            data_quality=quality,
+            evidence_refs=collector.refs[:64],
+            reason_codes=collector.reasons,  # type: ignore[arg-type]
+            warning_codes=collector.warnings,
+            analyzer_version=self.version,
+        )
 
-        def ref(
-            code: str,
-            *,
-            projection_kind: str,
-            snapshot: Any = None,
-            state_type: str | None = None,
-            scope_type: str | None = None,
-            scope_id: str | None = None,
-            data_quality: str | None = None,
-            confidence: float | None = None,
-        ) -> StateEvidenceRef:
-            if snapshot is not None:
-                snapshot_scope = getattr(snapshot, "scope_type", None)
-                return StateEvidenceRef(
-                    code=code,
-                    projection_kind=projection_kind,  # type: ignore[arg-type]
-                    run_id=getattr(snapshot, "run_id", None) or None,
-                    snapshot_id=getattr(snapshot, "snapshot_id", None) or None,
-                    state_type=getattr(snapshot, "state_type", None) or state_type,
-                    scope_type=snapshot_scope,
-                    # USER 级快照的 scope_id 就是内部 user_id，不写入任何可序列化结果。
-                    scope_id=None if snapshot_scope == "USER" else getattr(snapshot, "scope_id", None),
-                    data_quality=getattr(snapshot, "data_quality", None),
-                    confidence=_as_float(getattr(snapshot, "confidence", None)),
-                )
-            return StateEvidenceRef(
-                code=code,
-                projection_kind=projection_kind,  # type: ignore[arg-type]
-                state_type=state_type,
-                scope_type=scope_type,
-                scope_id=scope_id,
-                data_quality=data_quality,  # type: ignore[arg-type]
-                confidence=confidence,
-            )
-
+    def _analyze_workload_and_schedule(
+        self,
+        world_snapshots: Sequence[Any],
+        academic_snapshots: Sequence[Any],
+        collector: _Collector,
+    ) -> str | None:
+        features = collector.features
         # ---- 工作量压力 -------------------------------------------------
-        pressure = find(world_snapshots, "workload_pressure")
-        pressure_band = _as_band(_value_of(pressure).get("pressure_band")) if usable(pressure) else None
-        if usable(pressure):
+        pressure = _find_snapshot(world_snapshots, "workload_pressure")
+        pressure_band = (
+            _as_band(_value_of(pressure).get("pressure_band"))
+            if _usable_snapshot(pressure)
+            else None
+        )
+        if _usable_snapshot(pressure):
             pressure_value = _value_of(pressure)
             features["workload_pressure_band"] = pressure_band
             features["upcoming_task_count"] = _as_int(pressure_value.get("task_count"))
@@ -229,26 +322,56 @@ class StudentStateAnalyzer:
                 if pressure_band == "VERY_HIGH":
                     reasons.append("workload_pressure_very_high")
                 collector.problem(
-                    "WORKLOAD_PRESSURE_HIGH", reasons=reasons,
-                    refs=[ref("WORKLOAD_PRESSURE_HIGH", projection_kind="WORLD", snapshot=pressure)],
+                    "WORKLOAD_PRESSURE_HIGH",
+                    reasons=reasons,
+                    refs=[
+                        _evidence_ref(
+                            "WORKLOAD_PRESSURE_HIGH",
+                            projection_kind="WORLD",
+                            snapshot=pressure,
+                        )
+                    ],
                 )
                 collector.risk(
                     "DEADLINE_CONCENTRATION",
                     severity="HIGH" if pressure_band == "VERY_HIGH" else "MODERATE",
                     reasons=reasons,
-                    refs=[ref("DEADLINE_CONCENTRATION", projection_kind="WORLD", snapshot=pressure)],
+                    refs=[
+                        _evidence_ref(
+                            "DEADLINE_CONCENTRATION",
+                            projection_kind="WORLD",
+                            snapshot=pressure,
+                        )
+                    ],
                 )
             elif pressure_band == "LOW":
                 collector.strength(
-                    "WORKLOAD_MANAGEABLE", reasons=["workload_manageable"],
-                    refs=[ref("WORKLOAD_MANAGEABLE", projection_kind="WORLD", snapshot=pressure)],
+                    "WORKLOAD_MANAGEABLE",
+                    reasons=["workload_manageable"],
+                    refs=[
+                        _evidence_ref(
+                            "WORKLOAD_MANAGEABLE",
+                            projection_kind="WORLD",
+                            snapshot=pressure,
+                        )
+                    ],
                 )
             concentrated = pressure_value.get("concentrated_dates")
-            if isinstance(concentrated, list) and len(concentrated) >= CONCENTRATED_DATE_MIN:
+            if (
+                isinstance(concentrated, list)
+                and len(concentrated) >= CONCENTRATED_DATE_MIN
+            ):
                 collector.risk(
-                    "DEADLINE_CONCENTRATION", severity="MODERATE",
+                    "DEADLINE_CONCENTRATION",
+                    severity="MODERATE",
                     reasons=["deadline_concentration_observed"],
-                    refs=[ref("DEADLINE_CONCENTRATION", projection_kind="WORLD", snapshot=pressure)],
+                    refs=[
+                        _evidence_ref(
+                            "DEADLINE_CONCENTRATION",
+                            projection_kind="WORLD",
+                            snapshot=pressure,
+                        )
+                    ],
                 )
         else:
             features["workload_pressure_band"] = None
@@ -257,26 +380,36 @@ class StudentStateAnalyzer:
             collector.warn("workload_pressure_unavailable")
 
         # ---- 考试暴露 ---------------------------------------------------
-        exam = find(academic_snapshots, "exam_exposure")
-        if usable(exam):
+        exam = _find_snapshot(academic_snapshots, "exam_exposure")
+        if _usable_snapshot(exam):
             exam_value = _value_of(exam)
             upcoming_exams = _as_int(exam_value.get("upcoming_exam_count"))
             buckets = exam_value.get("time_bucket_distribution")
-            within_7d = _as_int(buckets.get("within_7d")) if isinstance(buckets, dict) else None
+            within_7d = (
+                _as_int(buckets.get("within_7d")) if isinstance(buckets, dict) else None
+            )
             features["exam_within_7d_count"] = within_7d
             if upcoming_exams:
                 collector.risk(
                     "UPCOMING_EXAM_DENSE",
-                    severity="HIGH" if (within_7d or 0) >= EXAM_DENSE_WITHIN_7D else "MODERATE",
+                    severity="HIGH"
+                    if (within_7d or 0) >= EXAM_DENSE_WITHIN_7D
+                    else "MODERATE",
                     reasons=["upcoming_exam_exposure"],
-                    refs=[ref("UPCOMING_EXAM_DENSE", projection_kind="ACADEMIC", snapshot=exam)],
+                    refs=[
+                        _evidence_ref(
+                            "UPCOMING_EXAM_DENSE",
+                            projection_kind="ACADEMIC",
+                            snapshot=exam,
+                        )
+                    ],
                 )
         else:
             features["exam_within_7d_count"] = None
 
         # ---- 时间冲突 ---------------------------------------------------
-        conflict = find(world_snapshots, "schedule_conflict")
-        if usable(conflict):
+        conflict = _find_snapshot(world_snapshots, "schedule_conflict")
+        if _usable_snapshot(conflict):
             conflict_value = _value_of(conflict)
             conflict_count = _as_int(conflict_value.get("conflict_count"))
             windows = _as_int(conflict_value.get("available_window_count"))
@@ -284,27 +417,56 @@ class StudentStateAnalyzer:
             features["available_window_count"] = windows
             if conflict_count:
                 collector.problem(
-                    "SCHEDULE_CONFLICT_PRESENT", reasons=["schedule_conflict_observed"],
-                    refs=[ref("SCHEDULE_CONFLICT_PRESENT", projection_kind="WORLD", snapshot=conflict)],
+                    "SCHEDULE_CONFLICT_PRESENT",
+                    reasons=["schedule_conflict_observed"],
+                    refs=[
+                        _evidence_ref(
+                            "SCHEDULE_CONFLICT_PRESENT",
+                            projection_kind="WORLD",
+                            snapshot=conflict,
+                        )
+                    ],
                 )
                 if windows is not None and windows <= LOW_AVAILABLE_WINDOW:
                     collector.risk(
-                        "SCHEDULE_DENSITY_HIGH", severity="MODERATE",
+                        "SCHEDULE_DENSITY_HIGH",
+                        severity="MODERATE",
                         reasons=["schedule_density_high"],
-                        refs=[ref("SCHEDULE_DENSITY_HIGH", projection_kind="WORLD", snapshot=conflict)],
+                        refs=[
+                            _evidence_ref(
+                                "SCHEDULE_DENSITY_HIGH",
+                                projection_kind="WORLD",
+                                snapshot=conflict,
+                            )
+                        ],
                     )
             elif windows is not None:
                 collector.strength(
-                    "SCHEDULE_ROOM_AVAILABLE", reasons=["schedule_room_available"],
-                    refs=[ref("SCHEDULE_ROOM_AVAILABLE", projection_kind="WORLD", snapshot=conflict)],
+                    "SCHEDULE_ROOM_AVAILABLE",
+                    reasons=["schedule_room_available"],
+                    refs=[
+                        _evidence_ref(
+                            "SCHEDULE_ROOM_AVAILABLE",
+                            projection_kind="WORLD",
+                            snapshot=conflict,
+                        )
+                    ],
                 )
         else:
             features["schedule_conflict_count"] = None
             features["available_window_count"] = None
+        return pressure_band
 
+    def _analyze_learning_behavior(
+        self,
+        world_snapshots: Sequence[Any],
+        academic_snapshots: Sequence[Any],
+        collector: _Collector,
+    ) -> None:
+        features = collector.features
         # ---- 执行一致性 -------------------------------------------------
-        execution = find(world_snapshots, "execution_consistency")
-        if usable(execution):
+        execution = _find_snapshot(world_snapshots, "execution_consistency")
+        if _usable_snapshot(execution):
             execution_value = _value_of(execution)
             band = _as_band(execution_value.get("consistency_band"))
             ratio = _as_float(execution_value.get("consistency_ratio"))
@@ -315,17 +477,37 @@ class StudentStateAnalyzer:
             # "no_plan" 代表没有任何可执行观测，是证据不足而不是执行差。
             if band in {"low", "none"} and (planned > 0 or executed > 0):
                 collector.problem(
-                    "EXECUTION_CONSISTENCY_LOW", reasons=["execution_consistency_low"],
-                    refs=[ref("EXECUTION_CONSISTENCY_LOW", projection_kind="WORLD", snapshot=execution)],
+                    "EXECUTION_CONSISTENCY_LOW",
+                    reasons=["execution_consistency_low"],
+                    refs=[
+                        _evidence_ref(
+                            "EXECUTION_CONSISTENCY_LOW",
+                            projection_kind="WORLD",
+                            snapshot=execution,
+                        )
+                    ],
                 )
                 collector.risk(
-                    "EXECUTION_GAP", severity="MODERATE", reasons=["execution_consistency_low"],
-                    refs=[ref("EXECUTION_GAP", projection_kind="WORLD", snapshot=execution)],
+                    "EXECUTION_GAP",
+                    severity="MODERATE",
+                    reasons=["execution_consistency_low"],
+                    refs=[
+                        _evidence_ref(
+                            "EXECUTION_GAP", projection_kind="WORLD", snapshot=execution
+                        )
+                    ],
                 )
             elif band == "high":
                 collector.strength(
-                    "EXECUTION_CONSISTENCY_HIGH", reasons=["execution_consistency_high"],
-                    refs=[ref("EXECUTION_CONSISTENCY_HIGH", projection_kind="WORLD", snapshot=execution)],
+                    "EXECUTION_CONSISTENCY_HIGH",
+                    reasons=["execution_consistency_high"],
+                    refs=[
+                        _evidence_ref(
+                            "EXECUTION_CONSISTENCY_HIGH",
+                            projection_kind="WORLD",
+                            snapshot=execution,
+                        )
+                    ],
                 )
             elif band == "no_plan":
                 collector.warn("execution_baseline_missing")
@@ -335,23 +517,41 @@ class StudentStateAnalyzer:
             collector.warn("execution_consistency_unavailable")
 
         # ---- 节奏稳定性 -------------------------------------------------
-        rhythm = find(world_snapshots, "focus_rhythm")
-        if usable(rhythm):
+        rhythm = _find_snapshot(world_snapshots, "focus_rhythm")
+        if _usable_snapshot(rhythm):
             stability = _as_band(_value_of(rhythm).get("rhythm_stability"))
             features["rhythm_stability"] = stability
             if stability == "variable":
                 collector.problem(
-                    "ROUTINE_UNSTABLE", reasons=["rhythm_unstable"],
-                    refs=[ref("ROUTINE_UNSTABLE", projection_kind="WORLD", snapshot=rhythm)],
+                    "ROUTINE_UNSTABLE",
+                    reasons=["rhythm_unstable"],
+                    refs=[
+                        _evidence_ref(
+                            "ROUTINE_UNSTABLE", projection_kind="WORLD", snapshot=rhythm
+                        )
+                    ],
                 )
                 collector.risk(
-                    "RHYTHM_VARIABILITY", severity="MODERATE", reasons=["rhythm_unstable"],
-                    refs=[ref("RHYTHM_VARIABILITY", projection_kind="WORLD", snapshot=rhythm)],
+                    "RHYTHM_VARIABILITY",
+                    severity="MODERATE",
+                    reasons=["rhythm_unstable"],
+                    refs=[
+                        _evidence_ref(
+                            "RHYTHM_VARIABILITY",
+                            projection_kind="WORLD",
+                            snapshot=rhythm,
+                        )
+                    ],
                 )
             elif stability == "stable":
                 collector.strength(
-                    "ROUTINE_STABLE", reasons=["rhythm_stable"],
-                    refs=[ref("ROUTINE_STABLE", projection_kind="WORLD", snapshot=rhythm)],
+                    "ROUTINE_STABLE",
+                    reasons=["rhythm_stable"],
+                    refs=[
+                        _evidence_ref(
+                            "ROUTINE_STABLE", projection_kind="WORLD", snapshot=rhythm
+                        )
+                    ],
                 )
             elif stability == "unknown":
                 collector.warn("rhythm_unknown")
@@ -359,8 +559,8 @@ class StudentStateAnalyzer:
             features["rhythm_stability"] = None
 
         # ---- 知识掌握观测（只作观测，不作能力结论） ----------------------
-        knowledge = find(academic_snapshots, "knowledge_mastery_observation")
-        if usable(knowledge):
+        knowledge = _find_snapshot(academic_snapshots, "knowledge_mastery_observation")
+        if _usable_snapshot(knowledge):
             knowledge_value = _value_of(knowledge)
             own = _as_float(knowledge_value.get("own_mastery_rate"))
             gap = _as_float(knowledge_value.get("mastery_gap_vs_class"))
@@ -368,22 +568,57 @@ class StudentStateAnalyzer:
             features["knowledge_own_mastery_rate"] = own
             features["knowledge_mastery_gap_vs_class"] = gap
             features["knowledge_point_count"] = points
-            if own is not None and (own < KNOWLEDGE_WEAK_MASTERY_THRESHOLD or (gap is not None and gap < KNOWLEDGE_GAP_THRESHOLD)):
+            if own is not None and (
+                own < KNOWLEDGE_WEAK_MASTERY_THRESHOLD
+                or (gap is not None and gap < KNOWLEDGE_GAP_THRESHOLD)
+            ):
                 reasons = ["knowledge_evidence_available"]
-                reasons.append("knowledge_mastery_low" if own < KNOWLEDGE_WEAK_MASTERY_THRESHOLD else "knowledge_mastery_below_class")
+                reasons.append(
+                    "knowledge_mastery_low"
+                    if own < KNOWLEDGE_WEAK_MASTERY_THRESHOLD
+                    else "knowledge_mastery_below_class"
+                )
                 collector.problem(
-                    "KNOWLEDGE_FOUNDATION_WEAK", reasons=reasons,
-                    refs=[ref("KNOWLEDGE_FOUNDATION_WEAK", projection_kind="ACADEMIC", snapshot=knowledge)],
+                    "KNOWLEDGE_FOUNDATION_WEAK",
+                    reasons=reasons,
+                    refs=[
+                        _evidence_ref(
+                            "KNOWLEDGE_FOUNDATION_WEAK",
+                            projection_kind="ACADEMIC",
+                            snapshot=knowledge,
+                        )
+                    ],
                 )
                 collector.risk(
-                    "KNOWLEDGE_GAP_OBSERVED", severity="MODERATE", reasons=reasons,
-                    refs=[ref("KNOWLEDGE_GAP_OBSERVED", projection_kind="ACADEMIC", snapshot=knowledge)],
+                    "KNOWLEDGE_GAP_OBSERVED",
+                    severity="MODERATE",
+                    reasons=reasons,
+                    refs=[
+                        _evidence_ref(
+                            "KNOWLEDGE_GAP_OBSERVED",
+                            projection_kind="ACADEMIC",
+                            snapshot=knowledge,
+                        )
+                    ],
                 )
-            elif own is not None and own >= KNOWLEDGE_STRONG_MASTERY_THRESHOLD and (gap is None or gap >= 0):
+            elif (
+                own is not None
+                and own >= KNOWLEDGE_STRONG_MASTERY_THRESHOLD
+                and (gap is None or gap >= 0)
+            ):
                 collector.strength(
                     "KNOWLEDGE_MASTERY_RELATIVELY_STRONG",
-                    reasons=["knowledge_mastery_strong", "knowledge_evidence_available"],
-                    refs=[ref("KNOWLEDGE_MASTERY_RELATIVELY_STRONG", projection_kind="ACADEMIC", snapshot=knowledge)],
+                    reasons=[
+                        "knowledge_mastery_strong",
+                        "knowledge_evidence_available",
+                    ],
+                    refs=[
+                        _evidence_ref(
+                            "KNOWLEDGE_MASTERY_RELATIVELY_STRONG",
+                            projection_kind="ACADEMIC",
+                            snapshot=knowledge,
+                        )
+                    ],
                 )
             else:
                 collector.warn("knowledge_observation_inconclusive")
@@ -394,37 +629,85 @@ class StudentStateAnalyzer:
             collector.warn("knowledge_evidence_missing")
 
         # ---- 目标推进 ---------------------------------------------------
+
+    def _analyze_goal(
+        self,
+        goal: Any,
+        world_snapshots: Sequence[Any],
+        as_of_utc: datetime,
+        collector: _Collector,
+    ) -> Any:
+        features = collector.features
         goal_id = getattr(goal, "goal_id", None)
         goal_refs: list[StateEvidenceRef] = []
         if goal_id:
-            goal_refs.append(ref("GOAL_FACT", projection_kind="GOAL", state_type="student_goal",
-                                 scope_type="GOAL", scope_id=str(goal_id), data_quality="verified", confidence=1.0))
-        progress = _as_float(getattr(goal, "progress_percent", None)) if goal is not None else None
+            goal_refs.append(
+                _evidence_ref(
+                    "GOAL_FACT",
+                    projection_kind="GOAL",
+                    state_type="student_goal",
+                    scope_type="GOAL",
+                    scope_id=str(goal_id),
+                    data_quality="verified",
+                    confidence=1.0,
+                )
+            )
+        progress = (
+            _as_float(getattr(goal, "progress_percent", None))
+            if goal is not None
+            else None
+        )
         days_remaining = _days_remaining(getattr(goal, "target_date", None), as_of_utc)
         features["goal_progress_percent"] = progress
         features["goal_days_remaining"] = days_remaining
         if goal is not None and progress is not None:
-            goal_snapshot = find(world_snapshots, "goal_progress")
+            goal_snapshot = _find_snapshot(world_snapshots, "goal_progress")
             goal_reasons: list[str] = []
-            if days_remaining is not None and days_remaining <= GOAL_STALL_DAYS and progress < GOAL_STALL_PROGRESS:
+            if (
+                days_remaining is not None
+                and days_remaining <= GOAL_STALL_DAYS
+                and progress < GOAL_STALL_PROGRESS
+            ):
                 goal_reasons = ["goal_progress_stalled"]
                 if days_remaining <= GOAL_STALL_DAYS:
                     goal_reasons.append("goal_deadline_near")
                 collector.problem(
-                    "GOAL_PROGRESS_STALLED", reasons=goal_reasons,
+                    "GOAL_PROGRESS_STALLED",
+                    reasons=goal_reasons,
                     refs=_attach_code(goal_refs, "GOAL_PROGRESS_STALLED")
-                    + ([ref("GOAL_PROGRESS_STALLED", projection_kind="WORLD", snapshot=goal_snapshot)] if usable(goal_snapshot) else []),
+                    + (
+                        [
+                            _evidence_ref(
+                                "GOAL_PROGRESS_STALLED",
+                                projection_kind="WORLD",
+                                snapshot=goal_snapshot,
+                            )
+                        ]
+                        if _usable_snapshot(goal_snapshot)
+                        else []
+                    ),
                 )
                 collector.risk(
-                    "GOAL_STAGNATION", severity="MODERATE", reasons=goal_reasons,
+                    "GOAL_STAGNATION",
+                    severity="MODERATE",
+                    reasons=goal_reasons,
                     refs=_attach_code(goal_refs, "GOAL_STAGNATION"),
                 )
             elif progress >= GOAL_ON_TRACK_PROGRESS:
                 collector.strength(
-                    "GOAL_PROGRESS_ON_TRACK", reasons=["goal_progress_on_track"],
+                    "GOAL_PROGRESS_ON_TRACK",
+                    reasons=["goal_progress_on_track"],
                     refs=_attach_code(goal_refs, "GOAL_PROGRESS_ON_TRACK"),
                 )
+        return goal_id
 
+    def _analyze_forecasts(
+        self,
+        forecast_list: Sequence[Any],
+        pressure_band: str | None,
+        collector: _Collector,
+    ) -> None:
+        features = collector.features
         # ---- 预测（可选增强） -------------------------------------------
         forecast_pressure = None
         forecast_deadline_risk = None
@@ -433,60 +716,121 @@ class StudentStateAnalyzer:
             if getattr(forecast, "data_quality", "unavailable") == "unavailable":
                 continue
             if forecast_type == "UPCOMING_WORKLOAD":
-                forecast_pressure = _as_band(_forecast_value(forecast).get("pressure_band"))
+                forecast_pressure = _as_band(
+                    _forecast_value(forecast).get("pressure_band")
+                )
             elif forecast_type == "DEADLINE_COMPLETION_RISK":
-                forecast_deadline_risk = _as_band(_forecast_value(forecast).get("risk_band"))
+                forecast_deadline_risk = _as_band(
+                    _forecast_value(forecast).get("risk_band")
+                )
         features["forecast_workload_pressure_band"] = forecast_pressure
         features["forecast_deadline_risk_band"] = forecast_deadline_risk
         if pressure_band is None and forecast_pressure in {"HIGH", "VERY_HIGH"}:
             # 投影不可用时，预测可以补上压力信号，但不能反过来把预测当零值。
             source = next(
-                (f for f in forecast_list if getattr(f, "forecast_type", None) == "UPCOMING_WORKLOAD"),
+                (
+                    f
+                    for f in forecast_list
+                    if getattr(f, "forecast_type", None) == "UPCOMING_WORKLOAD"
+                ),
                 None,
             )
             collector.problem(
                 "WORKLOAD_PRESSURE_HIGH",
                 reasons=["forecast_pressure_high", "workload_pressure_high"],
-                refs=[ref("WORKLOAD_PRESSURE_HIGH", projection_kind="FORECAST", snapshot=source)],
+                refs=[
+                    _evidence_ref(
+                        "WORKLOAD_PRESSURE_HIGH",
+                        projection_kind="FORECAST",
+                        snapshot=source,
+                    )
+                ],
             )
-        if forecast_deadline_risk in {"HIGH", "VERY_HIGH"} and "DEADLINE_CONCENTRATION" not in {
-            risk.code for risk in collector.risks
-        }:
+        if forecast_deadline_risk in {
+            "HIGH",
+            "VERY_HIGH",
+        } and "DEADLINE_CONCENTRATION" not in {risk.code for risk in collector.risks}:
             source = next(
-                (f for f in forecast_list if getattr(f, "forecast_type", None) == "DEADLINE_COMPLETION_RISK"),
+                (
+                    f
+                    for f in forecast_list
+                    if getattr(f, "forecast_type", None) == "DEADLINE_COMPLETION_RISK"
+                ),
                 None,
             )
             collector.risk(
-                "DEADLINE_CONCENTRATION", severity="MODERATE",
+                "DEADLINE_CONCENTRATION",
+                severity="MODERATE",
                 reasons=["forecast_deadline_risk_high"],
-                refs=[ref("DEADLINE_CONCENTRATION", projection_kind="FORECAST", snapshot=source,
-                          state_type="DEADLINE_COMPLETION_RISK")],
+                refs=[
+                    _evidence_ref(
+                        "DEADLINE_CONCENTRATION",
+                        projection_kind="FORECAST",
+                        snapshot=source,
+                        state_type="DEADLINE_COMPLETION_RISK",
+                    )
+                ],
             )
 
+    def _apply_quality_findings(
+        self,
+        all_snapshots: Sequence[Any],
+        kind_by_id: dict[int, str],
+        quality: str,
+        quality_counts: dict[str, int],
+        collector: _Collector,
+    ) -> float:
         # ---- 质量降级与证据不足 -----------------------------------------
         if quality in {"stale", "unavailable"} or quality_counts["partial"] > 0:
             collector.warn("data_quality_degraded")
         if quality_counts["stale"] > 0:
             collector.risk(
-                "DATA_QUALITY_DEGRADED", severity="MODERATE", reasons=["data_quality_degraded"],
-                refs=_weak_refs(all_snapshots, kind_by_id, "DATA_QUALITY_DEGRADED", {"stale"}),
+                "DATA_QUALITY_DEGRADED",
+                severity="MODERATE",
+                reasons=["data_quality_degraded"],
+                refs=_weak_refs(
+                    all_snapshots, kind_by_id, "DATA_QUALITY_DEGRADED", {"stale"}
+                ),
             )
 
-        overall_confidence = _overall_confidence(all_snapshots, collector.refs, quality_counts)
-        if quality == "unavailable" or overall_confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_CEILING:
+        overall_confidence = _overall_confidence(
+            all_snapshots, collector.refs, quality_counts
+        )
+        if (
+            quality == "unavailable"
+            or overall_confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_CEILING
+        ):
             reasons = ["evidence_insufficient"]
             if quality == "unavailable":
                 reasons.append("state_unavailable")
             collector.warn("insufficient_evidence")
             collector.problem(
-                "INSUFFICIENT_EVIDENCE", reasons=reasons,
-                refs=_weak_refs(all_snapshots, kind_by_id, "INSUFFICIENT_EVIDENCE",
-                                {"unavailable", "stale", "partial"}) or [
-                    ref("INSUFFICIENT_EVIDENCE", projection_kind="GOAL", state_type="no_server_state",
-                        data_quality="unavailable", confidence=0.0)
+                "INSUFFICIENT_EVIDENCE",
+                reasons=reasons,
+                refs=_weak_refs(
+                    all_snapshots,
+                    kind_by_id,
+                    "INSUFFICIENT_EVIDENCE",
+                    {"unavailable", "stale", "partial"},
+                )
+                or [
+                    _evidence_ref(
+                        "INSUFFICIENT_EVIDENCE",
+                        projection_kind="GOAL",
+                        state_type="no_server_state",
+                        data_quality="unavailable",
+                        confidence=0.0,
+                    )
                 ],
             )
+        return overall_confidence
 
+    def _apply_readiness_and_fallback(
+        self,
+        quality: str,
+        overall_confidence: float,
+        collector: _Collector,
+    ) -> float:
         # ---- 挑战准备度（需要可靠质量 + 三重正向信号） --------------------
         ready = (
             "READY_FOR_CHALLENGE" not in collector.problems
@@ -501,48 +845,49 @@ class StudentStateAnalyzer:
         )
         if ready:
             supporting = [
-                ref for ref in collector.refs
-                if ref.code in {"EXECUTION_CONSISTENCY_HIGH", "KNOWLEDGE_MASTERY_RELATIVELY_STRONG", "WORKLOAD_MANAGEABLE"}
+                ref
+                for ref in collector.refs
+                if ref.code
+                in {
+                    "EXECUTION_CONSISTENCY_HIGH",
+                    "KNOWLEDGE_MASTERY_RELATIVELY_STRONG",
+                    "WORKLOAD_MANAGEABLE",
+                }
             ]
             collector.problem(
                 "READY_FOR_CHALLENGE",
-                reasons=["execution_consistency_high", "knowledge_mastery_strong", "workload_manageable"],
-                refs=[StateEvidenceRef(**{**ref.model_dump(), "code": "READY_FOR_CHALLENGE"}) for ref in supporting],
+                reasons=[
+                    "execution_consistency_high",
+                    "knowledge_mastery_strong",
+                    "workload_manageable",
+                ],
+                refs=[
+                    StateEvidenceRef(
+                        **{**ref.model_dump(), "code": "READY_FOR_CHALLENGE"}
+                    )
+                    for ref in supporting
+                ],
             )
 
         if not collector.problems and not collector.strengths:
             collector.warn("insufficient_evidence")
             collector.problem(
-                "INSUFFICIENT_EVIDENCE", reasons=["evidence_insufficient"],
-                refs=[ref("INSUFFICIENT_EVIDENCE", projection_kind="GOAL", state_type="no_server_state",
-                          data_quality="unavailable", confidence=0.0)],
+                "INSUFFICIENT_EVIDENCE",
+                reasons=["evidence_insufficient"],
+                refs=[
+                    _evidence_ref(
+                        "INSUFFICIENT_EVIDENCE",
+                        projection_kind="GOAL",
+                        state_type="no_server_state",
+                        data_quality="unavailable",
+                        confidence=0.0,
+                    )
+                ],
             )
-            overall_confidence = min(overall_confidence, INSUFFICIENT_EVIDENCE_CONFIDENCE_CEILING)
-
-        assessment_id = _assessment_id(
-            user_id=user_id, goal_id=goal_id, core=core, academic=academic, world=world,
-            problems=collector.problems, strengths=collector.strengths,
-            risks=[risk.code for risk in collector.risks], features=features,
-        )
-        return StudentStateAssessment(
-            assessment_id=assessment_id,
-            user_id=user_id,
-            goal_id=str(goal_id) if goal_id else None,
-            as_of=as_of_utc.replace(microsecond=0).isoformat(),
-            core_run_id=getattr(core, "run_id", None) or None,
-            academic_run_id=getattr(academic, "run_id", None) or None,
-            world_run_id=getattr(world, "run_id", None) or None,
-            problem_types=collector.problems,  # type: ignore[arg-type]
-            strengths=collector.strengths,  # type: ignore[arg-type]
-            risk_signals=collector.risks,
-            state_features=features,
-            overall_confidence=overall_confidence,
-            data_quality=quality,
-            evidence_refs=collector.refs[:64],
-            reason_codes=collector.reasons,  # type: ignore[arg-type]
-            warning_codes=collector.warnings,
-            analyzer_version=self.version,
-        )
+            overall_confidence = min(
+                overall_confidence, INSUFFICIENT_EVIDENCE_CONFIDENCE_CEILING
+            )
+        return overall_confidence
 
 
 def _attach_code(refs: Sequence[StateEvidenceRef], code: str) -> list[StateEvidenceRef]:
@@ -588,7 +933,9 @@ def _overall_confidence(
         usable = [value for value in usable if value is not None]
         base = sum(usable) / len(usable) if usable else 0.0
     total = max(1, len(snapshots))
-    degradation = 1.0 - 0.5 * (counts["unavailable"] / total) - 0.25 * (counts["stale"] / total)
+    degradation = (
+        1.0 - 0.5 * (counts["unavailable"] / total) - 0.25 * (counts["stale"] / total)
+    )
     return round(max(0.0, min(1.0, base * max(0.0, degradation))), 4)
 
 
@@ -603,23 +950,34 @@ def _weak_refs(
     refs: list[StateEvidenceRef] = []
     for snapshot in ordered:
         scope_type = getattr(snapshot, "scope_type", None)
-        refs.append(StateEvidenceRef(
-            code=code,
-            projection_kind=kind_by_id.get(id(snapshot), "CORE"),  # type: ignore[arg-type]
-            run_id=getattr(snapshot, "run_id", None) or None,
-            snapshot_id=getattr(snapshot, "snapshot_id", None) or None,
-            state_type=getattr(snapshot, "state_type", None),
-            scope_type=scope_type,
-            scope_id=None if scope_type == "USER" else getattr(snapshot, "scope_id", None),
-            data_quality=getattr(snapshot, "data_quality", None),
-            confidence=_as_float(getattr(snapshot, "confidence", None)),
-        ))
+        refs.append(
+            StateEvidenceRef(
+                code=code,
+                projection_kind=kind_by_id.get(id(snapshot), "CORE"),  # type: ignore[arg-type]
+                run_id=getattr(snapshot, "run_id", None) or None,
+                snapshot_id=getattr(snapshot, "snapshot_id", None) or None,
+                state_type=getattr(snapshot, "state_type", None),
+                scope_type=scope_type,
+                scope_id=None
+                if scope_type == "USER"
+                else getattr(snapshot, "scope_id", None),
+                data_quality=getattr(snapshot, "data_quality", None),
+                confidence=_as_float(getattr(snapshot, "confidence", None)),
+            )
+        )
     return refs
 
 
 def _assessment_id(
-    *, user_id: str, goal_id: Any, core: Any, academic: Any, world: Any,
-    problems: Sequence[str], strengths: Sequence[str], risks: Sequence[str],
+    *,
+    user_id: str,
+    goal_id: Any,
+    core: Any,
+    academic: Any,
+    world: Any,
+    problems: Sequence[str],
+    strengths: Sequence[str],
+    risks: Sequence[str],
     features: dict[str, Any],
 ) -> str:
     payload = {

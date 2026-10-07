@@ -144,16 +144,16 @@ def test_cross_user_404():
     """跨用户资源返回 404。"""
     settings = Settings(app_env="test", database_url="sqlite:///:memory:")
     container = reset_container_for_tests(settings)
-    s1 = container.user_repository.create_user(
+    _s1 = container.user_repository.create_user(
         username="s1", password_hash=hash_password("Demo123456"), role="student", display_name="S1"
     )
-    s2 = container.user_repository.create_user(
+    _s2 = container.user_repository.create_user(
         username="s2", password_hash=hash_password("Demo123456"), role="student", display_name="S2"
     )
     client = TestClient(create_app())
     r1 = client.post("/api/v1/auth/login", json={"username": "s1", "password": "Demo123456"})
     r2 = client.post("/api/v1/auth/login", json={"username": "s2", "password": "Demo123456"})
-    auth1 = {"Authorization": f"Bearer {r1.json()['access_token']}"}
+    _auth1 = {"Authorization": f"Bearer {r1.json()['access_token']}"}
     auth2 = {"Authorization": f"Bearer {r2.json()['access_token']}"}
     resp = client.get("/api/v1/learner-state/corrections", headers=auth2)
     assert resp.status_code == 200

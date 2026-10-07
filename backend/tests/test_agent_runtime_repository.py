@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.database.sqlite_db import Database, reset_db_for_tests
+from app.database.sqlite_db import reset_db_for_tests
 from app.repositories.agent_runtime_repository import AgentRuntimeRepository
 from app.repositories.agent_artifact_repository import AgentArtifactRepository
 

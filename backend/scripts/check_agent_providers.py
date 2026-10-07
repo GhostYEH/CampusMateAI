@@ -8,8 +8,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from typing import Optional
-
 from app.core.config import get_settings
 from app.services.llm.provider_registry import ProviderRegistry
 

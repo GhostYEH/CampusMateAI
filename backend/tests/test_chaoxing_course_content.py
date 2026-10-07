@@ -95,6 +95,35 @@ def test_course_content_upsert_is_idempotent_and_isolated_by_user(db: Database):
     assert repository.count_items(user_id="user2", course_id=second_course.id) == 1
 
 
+def test_course_content_upsert_preserves_downloaded_cache(db: Database, tmp_path: Path):
+    course = _course(db, "user1", "11_22")
+    repository = CourseContentRepository(db)
+    item = repository.upsert_item(
+        user_id="user1", course_id=course.id, kind="document",
+        external_id="downloaded-file", title="讲义.pdf", file_size=4,
+    )
+    downloaded_file = tmp_path / "讲义.pdf"
+    downloaded_file.write_bytes(b"pdf!")
+    repository.upsert_cache(
+        item_id=item.id, user_id="user1", course_id=course.id,
+        relative_path=downloaded_file.name, content_hash="stable-hash",
+        mime_type="application/pdf", file_size=downloaded_file.stat().st_size,
+    )
+
+    synced = repository.upsert_item(
+        user_id="user1", course_id=course.id, kind="document",
+        external_id="downloaded-file", title="讲义.pdf", file_size=4,
+    )
+
+    cache = repository.get_cache(item_id=item.id, user_id="user1")
+    assert synced.id == item.id
+    assert synced.created_at == item.created_at
+    assert cache is not None
+    assert cache["relative_path"] == downloaded_file.name
+    assert cache["content_hash"] == "stable-hash"
+    assert downloaded_file.read_bytes() == b"pdf!"
+
+
 def test_course_sync_section_upsert_distinguishes_empty_from_failure(db: Database):
     course = _course(db, "user1", "11_22")
     repository = CourseContentRepository(db)

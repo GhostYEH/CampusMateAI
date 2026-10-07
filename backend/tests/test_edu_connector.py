@@ -38,7 +38,6 @@ from app.models.edu import (
     LOGIN_EXEC_BACKEND_HTTP,
     LOGIN_EXEC_CLIENT_WEBVIEW,
     SESSION_CLIENT_COOKIE,
-    SYSTEM_KEY_UNDERGRADUATE_MAIN,
     URL_NOT_DISCOVERED,
 )
 from app.services.container import reset_container_for_tests
@@ -277,7 +276,7 @@ def test_detect_returns_explicit_provider_after_provisioning() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     response = _provision_edu_fixture('config', university_id, {"university_id": university_id, "provider": "zhengfang"})
     assert response.status_code == 200, response.text
     assert response.json()["provider"] == "zhengfang"
@@ -315,7 +314,7 @@ def test_provisioned_config_does_not_fabricate_urls() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     response = _provision_edu_fixture('config', university_id, {
             "university_id": university_id,
             "provider": "zhengfang",
@@ -353,7 +352,7 @@ def test_config_upsert_is_idempotent() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     r1 = client.get(f"/api/v1/edu/config/{university_id}", headers=headers).json()
     r2 = client.get(f"/api/v1/edu/config/{university_id}", headers=headers).json()
     assert r1["id"] == r2["id"]
@@ -371,7 +370,7 @@ def test_university_can_have_multiple_edu_systems() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     r1 = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "zhengfang", "system_type": "undergrad"})
     assert r1.status_code == 200, r1.text
     r2 = _provision_edu_fixture('system', university_id, {"system_key": "graduate-main", "provider": "qiangzhi", "system_type": "postgrad"})
@@ -388,7 +387,7 @@ def test_system_key_unique_per_university() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     r1 = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "zhengfang"})
     r2 = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "qiangzhi"})
     assert r1.json()["id"] == r2.json()["id"]
@@ -398,8 +397,8 @@ def test_system_key_unique_per_university() -> None:
 def test_different_universities_can_have_same_system_key() -> None:
     """不同学校可以有相同 system_key。"""
     client = _client()
-    admin_headers = _admin_headers(client)
-    headers = _headers(client)
+    _admin_headers(client)
+    _headers(client)
     universities = client.get("/api/v1/universities").json()["items"]
     if len(universities) < 2:
         return
@@ -693,7 +692,7 @@ def test_real_adapter_not_implemented_never_falls_back_to_mock() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     _provision_edu_fixture('config', university_id, {"university_id": university_id, "provider": "zhengfang"})
     response = client.post(
         "/api/v1/edu/bind",
@@ -712,7 +711,7 @@ def test_connection_flow_creates_and_advances() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     r = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "mock"})
     assert r.status_code == 200, r.text
     system_id = r.json()["id"]
@@ -870,7 +869,7 @@ def test_backend_http_first_credential_continue_connects() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     sys_resp = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"})
     system_id = sys_resp.json()["id"]
     conn = client.post(
@@ -1211,7 +1210,7 @@ def test_client_webview_first_cookie_continue_connects() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     sys_resp = _provision_edu_fixture('system', university_id, {
             "system_key": "undergraduate-main",
             "provider": "mock",
@@ -1274,7 +1273,7 @@ def test_client_webview_complete_without_cookies_stays_waiting() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     sys_resp = _provision_edu_fixture('system', university_id, {
             "system_key": "undergraduate-main",
             "provider": "mock",
@@ -1300,7 +1299,7 @@ def test_connection_details_and_continue_are_owner_scoped() -> None:
     client = _client()
     owner_headers = _headers(client, "student_demo")
     university_id = _select_demo_university(client, owner_headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     system = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "mock", "login_execution_mode": "backend_http"}).json()
     connection = client.post(
         "/api/v1/edu/connections",
@@ -1324,7 +1323,7 @@ def test_connection_details_and_continue_are_owner_scoped() -> None:
 def test_from_url_does_not_overwrite_unverified_public_system(monkeypatch) -> None:
     client = _client()
     headers = _headers(client)
-    university_id = _select_demo_university(client, headers)
+    _select_demo_university(client, headers)
     portal_url = "https://temporary.example.edu/jwglxt"
     monkeypatch.setattr(
         EduConnectorService,
@@ -1434,7 +1433,7 @@ def test_from_url_reuses_verified_public_system(monkeypatch) -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers(client)
+    _admin_headers(client)
     portal_url = "https://verified.example.edu/jwglxt/"
     system_response = _provision_edu_fixture('system', university_id, {
             "system_key": "undergraduate-main",
@@ -1469,7 +1468,7 @@ def test_from_url_reuses_verified_public_system(monkeypatch) -> None:
 def test_from_url_rejects_other_university(monkeypatch) -> None:
     client = _client()
     headers = _headers(client)
-    current_university_id = _select_demo_university(client, headers)
+    _select_demo_university(client, headers)
     other_university_id = "uni_not_current"
     monkeypatch.setattr(
         EduConnectorService,
@@ -1508,7 +1507,7 @@ def test_cookies_not_persisted_in_sync_records() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     sys_resp = _provision_edu_fixture('system', university_id, {
             "system_key": "undergraduate-main",
             "provider": "mock",
@@ -1546,7 +1545,7 @@ def test_password_not_in_connection_response() -> None:
     client = _client()
     headers = _headers(client)
     university_id = _select_demo_university(client, headers)
-    admin_headers = _admin_headers_for(client)
+    _admin_headers_for(client)
     sys_resp = _provision_edu_fixture('system', university_id, {"system_key": "undergraduate-main", "provider": "mock"})
     system_id = sys_resp.json()["id"]
     conn = client.post(

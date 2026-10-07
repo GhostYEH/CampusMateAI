@@ -3,6 +3,7 @@
 为需要确认的动作创建过期审批记录。过期绝不等于批准。
 production 不能自动审批高风险动作。
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -104,12 +105,34 @@ class ApprovalGate:
         now = datetime.now(timezone.utc)
         expires = datetime.fromisoformat(apv.expires_at)
         if now > expires:
-            self._repo.resolve_approval(approval_id, status=ApprovalStatus.EXPIRED.value)
+            if not self._repo.resolve_approval_if_pending(
+                approval_id, status=ApprovalStatus.EXPIRED.value
+            ):
+                # A decision may have won after our initial read. Preserve it
+                # and apply the same replay/conflict behavior as the settled
+                # approval branch above.
+                again = self._repo.get_approval(approval_id)
+                settled = again.status if again else ApprovalStatus.EXPIRED.value
+                if settled == target:
+                    return {
+                        "approval_id": approval_id,
+                        "status": settled,
+                        "replayed": True,
+                    }
+                if settled != ApprovalStatus.EXPIRED.value:
+                    raise AgentRuntimeError(
+                        f"审批已被其他请求处理({settled})",
+                        code="AGENT_APPROVAL_CONFLICT",
+                        http_status=409,
+                    )
             raise AgentRuntimeError(
                 "审批已过期", code="AGENT_INVALID_STATE", http_status=410
             )
         # MANUAL_ONLY 不能自动审批
-        if apv.risk_level == RiskLevel.MANUAL_ONLY.value and decision == ApprovalStatus.APPROVED.value:
+        if (
+            apv.risk_level == RiskLevel.MANUAL_ONLY.value
+            and decision == ApprovalStatus.APPROVED.value
+        ):
             if reason and reason.startswith("auto:"):
                 raise AgentRuntimeError(
                     "MANUAL_ONLY 动作不能自动审批",
@@ -130,5 +153,6 @@ class ApprovalGate:
                 http_status=409,
             )
         return {"approval_id": approval_id, "status": target, "replayed": False}
+
 
 __all__ = ["ApprovalGate"]

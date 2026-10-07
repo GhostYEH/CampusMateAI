@@ -1425,7 +1425,7 @@ async def continue_connection(
         )
     if conn.user_id != user.id:
         raise Forbidden()
-    new_state = await container.edu_connector.continue_connection(
+    await container.edu_connector.continue_connection(
         connection_id=connection_id,
         username=request.username,
         password=request.password.get_secret_value() if request.password else None,

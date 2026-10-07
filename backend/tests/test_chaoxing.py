@@ -8,7 +8,6 @@ from app.repositories.multi_role_repository import CourseRepository
 from app.repositories.notice_repository import NoticeRepository
 from app.database.sqlite_db import Database
 from app.api.routes.chaoxing import disconnect_chaoxing, get_chaoxing_status, sync_chaoxing, _status_cache
-from app.schemas.chaoxing import ChaoxingSyncStatus
 from app.models.multi_role import UserRow
 import httpx
 import fastapi

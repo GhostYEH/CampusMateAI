@@ -17,7 +17,6 @@ from typing import List
 import httpx
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
 from app.main import create_app
 from app.services.demo_seeder import seed_demo_data
 from app.services.magicclass.classroom_service import MagicClassClassroomService

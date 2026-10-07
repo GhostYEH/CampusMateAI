@@ -152,3 +152,42 @@ class TestApprovalGate:
     def test_nonexistent_approval_raises(self, approval_gate):
         with pytest.raises(AgentRuntimeError):
             approval_gate.resolve("nonexistent", decision="APPROVED")
+
+    @pytest.mark.parametrize(
+        ("decision", "expected_status", "expected_http_status", "replayed"),
+        [
+            ("APPROVED", "APPROVED", None, True),
+            ("REJECTED", "APPROVED", 409, None),
+        ],
+    )
+    def test_expiry_race_preserves_competing_approval(
+        self, approval_gate, monkeypatch, decision, expected_status,
+        expected_http_status, replayed,
+    ):
+        aid = approval_gate.require(
+            run_id="r1", user_id="u1", risk_level=RiskLevel.CONFIRM_REQUIRED,
+            action_summary="过期竞争测试", ttl_minutes=-1,
+        )
+        repo = approval_gate._repo
+        original = repo.resolve_approval_if_pending
+
+        def approve_before_expiration_cas(approval_id, *, status, decision_reason=None):
+            if approval_id == aid and status == "EXPIRED":
+                assert original(approval_id, status="APPROVED") is True
+                return False
+            return original(
+                approval_id, status=status, decision_reason=decision_reason
+            )
+
+        monkeypatch.setattr(repo, "resolve_approval_if_pending", approve_before_expiration_cas)
+        if expected_http_status:
+            with pytest.raises(AgentRuntimeError) as exc:
+                approval_gate.resolve(aid, decision=decision, user_id="u1")
+            assert exc.value.http_status == expected_http_status
+            assert exc.value.code == "AGENT_APPROVAL_CONFLICT"
+        else:
+            result = approval_gate.resolve(aid, decision=decision, user_id="u1")
+            assert result == {
+                "approval_id": aid, "status": expected_status, "replayed": replayed
+            }
+        assert repo.get_approval(aid).status == expected_status

@@ -232,7 +232,7 @@ def test_legacy_database_is_migrated_idempotently(tmp_path: Path) -> None:
     assert _table_exists(path, "adaptive_interventions")  # 再开一次仍然幂等
 
 
-def test_migrated_table_has_the_expected_columns(tmp_path: Path) -> None:
+def test_migrated_table_has_the_base_columns(tmp_path: Path) -> None:
     path = tmp_path / "old_app.db"
     db = Database(path)
     with db.transaction() as conn:

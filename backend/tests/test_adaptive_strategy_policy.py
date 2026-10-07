@@ -9,7 +9,6 @@ from adaptive_intervention_helpers import (
     GoalStub,
     analyze_scenario,
     sample_strategy,
-    scenario_a,
     scenario_b,
     select_for,
 )

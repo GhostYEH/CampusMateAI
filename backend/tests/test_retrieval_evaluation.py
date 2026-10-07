@@ -6,7 +6,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from app.database.sqlite_db import Database
 from app.models.document import ChunkRow, DocumentRow, RetrievedChunk

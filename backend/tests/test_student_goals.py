@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 
-import pytest
 
 from app.core.config import Settings
 from app.services.container import reset_container_for_tests

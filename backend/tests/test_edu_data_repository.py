@@ -524,6 +524,42 @@ def test_sync_schedule_update_on_field_change(repo, binding):
     assert it.teachers == ["张三", "李四"]
 
 
+@pytest.mark.parametrize(
+    ("field", "old_value", "new_value"),
+    [
+        ("start_time", "08:00", "08:10"),
+        ("end_time", "09:40", "09:50"),
+        ("campus", "老校区", "新校区"),
+        ("building", "一教", "二教"),
+        ("classroom", "101", "202"),
+        ("note", "原备注", "新备注"),
+    ],
+)
+def test_sync_schedule_updates_every_persisted_field(repo, binding, field, old_value, new_value):
+    base = {
+        "course_name": "高数", "course_code": "MATH101", "weekday": 1,
+        "start_section": 1, "end_section": 2, "weeks": "1-16",
+        field: old_value,
+    }
+    repo.sync_schedule_items(
+        binding=binding,
+        schedule=EduSchedule(semester="2024-2025秋季", items=[EduScheduleItem(**base)]),
+        sync_batch_id="b1",
+    )
+    changed = {**base, field: new_value}
+
+    stats = repo.sync_schedule_items(
+        binding=binding,
+        schedule=EduSchedule(semester="2024-2025秋季", items=[EduScheduleItem(**changed)]),
+        sync_batch_id="b2",
+    )
+
+    assert stats.updated == 1
+    assert stats.unchanged == 0
+    item = repo.list_schedule_items(user_id=binding.user_id, semester="2024-2025秋季")[0]
+    assert getattr(item, field) == new_value
+
+
 def test_sync_schedule_empty_fields_safe(repo, binding):
     """无教师/无地点/无学分等空字段必须正常保存与展示，不报错。"""
     schedule = EduSchedule(

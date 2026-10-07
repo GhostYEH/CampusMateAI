@@ -36,10 +36,8 @@ from ...schemas.course_research import (
     SourcePolicyOut,
 )
 from ...services.agent_runtime.run_manager import RunManager
-from ...services.course_research.citation_verifier import CitationVerifier
 from ...services.course_research.pipeline import CourseResearchPipeline
 from ...services.course_research.policy import SourcePolicy, build_effective_policy
-from ...services.course_research.source_fetcher import ControlledSourceFetcher
 from ..deps import ServiceContainer, current_user, get_container, student_only
 
 router = APIRouter(prefix="/course-research", tags=["课程研究"])
@@ -484,7 +482,6 @@ def cancel_run(
         raise AgentRuntimeError(
             "无权取消", code="AGENT_PERMISSION_DENIED", http_status=403,
         )
-    from ...services.agent_runtime.run_manager import RunManager
     manager = RunManager(runtime_repo)
     manager.cancel(run_id, reason=body.reason)
     repo.update_session(

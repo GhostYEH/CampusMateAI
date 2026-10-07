@@ -140,7 +140,7 @@ def test_nested_repository_transaction_rolls_back_with_outer_failure(db, monkeyp
 
 
 def test_repository_failure_rolls_back_without_partial_write(db):
-    user = UserRepository(db).create_user(username="attachment-owner", password_hash="x")
+    _user = UserRepository(db).create_user(username="attachment-owner", password_hash="x")
     repo = SubmissionRepository(db)
 
     with pytest.raises(SubmissionNotFound):

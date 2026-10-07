@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import re
 import sys
 from dataclasses import dataclass, field
@@ -47,16 +46,17 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from edu_candidate_store import (
-    EduCandidate,
+    EduCandidate as EduCandidate,
     load_candidates,
-    save_candidates,
+    save_candidates as save_candidates,
     update_candidate,
-    list_candidates,
+    list_candidates as list_candidates,
     is_intranet_url,
-    now_local_label,
+    now_local_label as now_local_label,
 )
 
 from _edu_loader import load_discovery_constants as _ldc, load_provider_detector as _lpd
+
 _dc = _ldc()
 PROVIDER_UNKNOWN = _dc.PROVIDER_UNKNOWN
 STATUS_VERIFIED_OFFICIAL = _dc.STATUS_VERIFIED_OFFICIAL

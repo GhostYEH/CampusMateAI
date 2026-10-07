@@ -18,7 +18,7 @@ from ..core.exceptions import Forbidden, Unauthorized
 from ..core.security import JWTError, decode_jwt
 from ..core.rate_limit import check_request_rate
 from ..models.multi_role import UserRow
-from ..services.container import ServiceContainer, get_container
+from ..services.container import ServiceContainer as ServiceContainer, get_container
 
 _bearer = HTTPBearer(auto_error=False)
 

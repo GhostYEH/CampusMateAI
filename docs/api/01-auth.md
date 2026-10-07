@@ -1,6 +1,6 @@
 # 认证、账号与扫码登录
 
-> 对照日期：2026-10-05。本模块共 15 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-07。本模块共 15 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -13,6 +13,10 @@
 ```
 
 客户端应按 `Retry-After` 等待后再允许重试，不将 429 当作密码错误或注销凭据。Web、Android、HarmonyOS、微信小程序的登录调用已核对，通用错误流程可处理失败；专门的倒计时提示尚未适配，各移动端本次未编译或真机验证。无需修改成功响应字段。
+
+## 无效认证凭据
+
+受保护 HTTP 接口收到包含非 ASCII 字符、非法 Base64URL 字符或缺失分段的 access token 时，返回 401 `UNAUTHORIZED` 统一错误信封。实时语音 WebSocket 握手使用同一校验，非法 token 关闭码为 1008。合法 token 的编码和响应字段保持兼容；Web、Android、HarmonyOS、微信小程序继续使用既有认证错误处理，无需迁移字段。本次未进行移动端构建或真机验证。
 
 ## 角色与兼容性
 
@@ -707,6 +711,8 @@ Web 封装：`trustedDeviceAutoLogin`（[webreact/src/data/http/authEndpoints.js
 | 401 | TRUSTED_DEVICE_REVOKED | 可信设备已被撤销。 |
 | 401 | TRUSTED_DEVICE_EXPIRED | 可信设备凭据已过期。 |
 | 401 | UNAUTHORIZED | '用户不存在或已停用' |
+
+无效、撤销、过期的可信设备凭据以及用户已停用时，401 响应同时带删除 Cookie 的 `Set-Cookie`，默认 Cookie 名为 `campus_trusted_device`，`Path=/api/v1/auth`、`Max-Age=0`。浏览器收到该响应后停止复用旧凭据；缺少 Cookie 时仍返回 `TRUSTED_DEVICE_INVALID`，无需清除不存在的凭据。Web 自动登录封装已接受 401，继续使用 `withCredentials` 即可；其他三端没有该浏览器 Cookie 自动登录调用，本次未进行端侧验收。
 
 ### `GET /api/v1/auth/trusted-devices`
 

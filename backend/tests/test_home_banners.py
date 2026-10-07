@@ -63,7 +63,7 @@ def test_public_feed_contains_global_seed_banners_in_display_order() -> None:
 
 
 def test_public_schedule_compares_equivalent_instants_across_timezones() -> None:
-    client = _setup()
+    _setup()
     repository = get_container().home_banner_repository
     row = repository.create({**_draft_payload("跨时区生效"), "starts_at": "2026-08-26T08:00:00+08:00"})
     repository.set_status(row.id, "PUBLISHED")

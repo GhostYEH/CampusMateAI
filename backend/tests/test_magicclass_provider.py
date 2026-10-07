@@ -1,7 +1,7 @@
 """Providers 状态路由测试：只转发能力布尔，永不透传任意字段。"""
 from __future__ import annotations
 
-from app.api.routes import magicclass_provider, magicclass_workspaces
+from app.api.routes import magicclass_provider
 from app.services.magicclass.fusion_client import MagicClassFusionClient
 
 from test_magicclass_workspaces import _setup

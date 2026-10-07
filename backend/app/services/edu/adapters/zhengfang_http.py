@@ -438,7 +438,7 @@ class ZhengfangHttpClient:
         if status in (401, 403):
             raise EduAdapterError("AUTH_FAILED", f"认证失败或会话过期 (HTTP {status})", http_status=status)
         if status == 404:
-            raise EduAdapterError("SYSTEM_UNAVAILABLE", f"接口不存在 (HTTP 404)", http_status=status)
+            raise EduAdapterError("SYSTEM_UNAVAILABLE", "接口不存在 (HTTP 404)", http_status=status)
         if status == 429:
             raise EduAdapterError("RATE_LIMITED", "请求过于频繁，已被限流", http_status=status)
         if status >= 500:

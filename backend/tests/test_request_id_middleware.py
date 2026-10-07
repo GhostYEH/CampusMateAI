@@ -67,7 +67,7 @@ def test_request_id_is_attached_to_request_logs(capsys, monkeypatch):
         )
         assert any(
             f"request_id=request-log-{marker}" in line
-            and f"http_request method=GET path=/request-log-test status=200 headers_duration_ms=" in line
+            and "http_request method=GET path=/request-log-test status=200 headers_duration_ms=" in line
             and "app.main:" in line
             for line in lines
         )

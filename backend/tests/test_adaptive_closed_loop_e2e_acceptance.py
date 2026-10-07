@@ -12,11 +12,9 @@ mock 掉之后这条用例就只剩自证。跨用户隔离与内部标识不泄
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
 from app.core.security import hash_password
 from app.main import create_app
 from app.services.adaptive_agent.replanning_worker import AdaptiveReplanningWorker

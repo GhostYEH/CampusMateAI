@@ -12,7 +12,6 @@ from app.schemas.simulation import (
     PauseDataSourceIntervention,
     ReduceDailyLoadIntervention,
     RescheduleTaskIntervention,
-    SimulationRequest,
 )
 from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
@@ -127,7 +126,7 @@ def test_scenario_1_allocate_focus_minutes_changes_deadline_risk():
     )
     assert response.data_quality in ("verified", "partial", "stale", "unavailable")
     assert isinstance(response.changed_forecasts, list)
-    deadline_change = next(
+    _deadline_change = next(
         (f for f in response.changed_forecasts if f.forecast_type == "DEADLINE_COMPLETION_RISK"),
         None,
     )
@@ -511,7 +510,7 @@ def test_simulation_api_allows_ordinary_content_owner():
 
 def test_simulation_api_cross_user_baseline_returns_404():
     container, client = _client()
-    student_a_headers = _login(client, "student_demo")
+    _student_a_headers = _login(client, "student_demo")
     student_b_headers = _login(client, "student_demo_01")
     container.learner_state_service.project_user(
         container.user_repository.get_user_by_username("student_demo").id,

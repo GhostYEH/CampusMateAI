@@ -20,7 +20,6 @@ from app.core.exceptions import (
     AgentRuntimeError,
     AgentToolRejected,
 )
-from app.core.security import hash_password
 from app.database.sqlite_db import reset_db_for_tests
 from app.repositories.agent_runtime_repository import AgentRuntimeRepository
 from app.schemas.agent_contract_enums import RiskLevel

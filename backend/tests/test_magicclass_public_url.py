@@ -130,7 +130,7 @@ def _bootstrap(tmp_path, handler, **overrides) -> Tuple[ServiceContainer, TestCl
     login = tc.post("/api/v1/auth/login", json={"username": "student_demo", "password": "Demo123456"})
     assert login.status_code == 200, login.text
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
-    courses = tc.get("/api/v1/courses", headers=headers).json()["items"]
+    tc.get("/api/v1/courses", headers=headers).json()["items"]
     return container, tc, headers, store
 
 

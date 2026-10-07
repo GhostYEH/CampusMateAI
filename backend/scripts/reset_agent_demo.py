@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json as _json
-import sys
 from typing import Optional
 
 from app.core.config import Settings, get_settings

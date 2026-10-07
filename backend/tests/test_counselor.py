@@ -2,7 +2,6 @@
 
 验证在 LLM_PROVIDER=none 时，counselor 接口仍能返回基于检索摘要的响应。
 """
-import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
