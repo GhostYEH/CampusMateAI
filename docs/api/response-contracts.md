@@ -409,3 +409,12 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 503 | `MAGICCLASS_INCOMPATIBLE` | 互动课堂服务版本不兼容，已暂停生成 |
 | 503 | `MAGICCLASS_NOT_ENABLED` | 互动课堂服务未启用 |
 | 503 | `MAGICCLASS_UNAVAILABLE` | 互动课堂服务不可用，请稍后重试 |
+
+
+## 桌面设备凭据、事件与专用实时语音
+
+设备绑定结果为固定状态 PENDING/CONFIRMED/EXPIRED/REVOKED；只有 CONFIRMED 提供 device_id/device_credential，其他状态值为 null。设备凭据只在 HTTPS 返回，服务端只存哈希，不能当作普通用户 JWT。绑定二维码与独立轮询 token 不可互换；详见[设备协议](15-devices.md)。事件批次回执含 accepted_event_ids 和 duplicate_event_ids，ID 改内容返回409并原子回滚整批；不会用事件改写专注时长或用户事实。
+
+WS /api/v1/devices/me/voice-sessions/{voice_id}/ws 使用 Authorization 设备 bearer 请求头。PCM 输入16kHz/单声道/16bit，输出24kHz/单声道/16bit；文本事件和命令沿用用户语音协议，provider_event 仅透出事件类型名，不透出上游凭据。握手无权关闭1008；活连接每帧和约一秒周期核验设备、账号及专注状态，撤销或会话结束后关闭。上游不可用返回 error 事件并退出。创建会话和重试记录是进程内短时状态，未连接5分钟过期、连接最长4小时，重启后须重新创建。设备应用须支持握手请求头。
+
+学习偏好配置未保存时 configured=false/version=0/updated_at=null，默认值不代表观测到的偏好。更新带 expected_version+idempotency_key，原请求重放返回历史操作响应；409版本冲突应重新读取并由用户处理，不能强制覆盖。计划预算受明确容量进一步限制，配置变化使未执行旧计划失效。接口行为与各端未适配情况见[学习状态协议](11-learner.md)。

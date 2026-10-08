@@ -29,7 +29,9 @@ def _empty_user(container, username: str = "empty_user"):
     if existing:
         return existing.id
     return container.user_repository.create_user(
-        username=username, password_hash="x", role="student",
+        username=username,
+        password_hash="x",
+        role="student",
     ).id
 
 
@@ -89,8 +91,11 @@ def test_world_projection_with_goal_computes_goal_progress():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     container.student_goal_repository.create_goal(
-        user_id=user_id, name="考研", category="academic",
-        initial_progress_percent=30.0, milestone_count=2,
+        user_id=user_id,
+        name="考研",
+        category="academic",
+        initial_progress_percent=30.0,
+        milestone_count=2,
     )
     result = container.learner_state_service.project_world(
         user_id=user_id, as_of=AS_OF, trigger="read"
@@ -132,9 +137,14 @@ def test_world_projection_generates_all_state_types():
     )
     state_types = {snap.state_type for snap in result.snapshots}
     expected = {
-        "workload_pressure", "schedule_conflict", "academic_progress",
-        "focus_rhythm", "goal_progress", "execution_consistency",
-        "growth_momentum", "preference_profile",
+        "workload_pressure",
+        "schedule_conflict",
+        "academic_progress",
+        "focus_rhythm",
+        "goal_progress",
+        "execution_consistency",
+        "growth_momentum",
+        "preference_profile",
     }
     assert expected.issubset(state_types)
 
@@ -142,8 +152,12 @@ def test_world_projection_generates_all_state_types():
 def test_world_projection_is_deterministic():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
-    r1 = container.learner_state_service.project_world(user_id=user_id, as_of=AS_OF, trigger="read")
-    r2 = container.learner_state_service.project_world(user_id=user_id, as_of=AS_OF, trigger="read")
+    r1 = container.learner_state_service.project_world(
+        user_id=user_id, as_of=AS_OF, trigger="read"
+    )
+    r2 = container.learner_state_service.project_world(
+        user_id=user_id, as_of=AS_OF, trigger="read"
+    )
     assert r1.estimator_version == r2.estimator_version
     assert r1.input_digest == r2.input_digest
     assert {s.state_type for s in r1.snapshots} == {s.state_type for s in r2.snapshots}
@@ -159,3 +173,116 @@ def test_world_projection_execution_consistency_does_not_judge_user():
     assert ec is not None
     assert ec["consistency_band"] in {"none", "low", "moderate", "high", "no_plan"}
     assert 0.0 <= ec["consistency_ratio"] <= 1.0
+
+
+def test_world_schedule_conflicts_are_real_overlaps_and_have_source_evidence():
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    inputs = {
+        "tasks": [
+            {
+                "id": "task-1",
+                "status": "pending",
+                "deadline": "2026-09-12T10:00:00+00:00",
+            }
+        ],
+        "sessions": [],
+        "goals": [],
+        "goal_progress": [],
+        "schedule_items": [
+            {
+                "id": "schedule-a",
+                "semester": "2026-fall",
+                "course_code": "A",
+                "weekday": 2,
+                "start_time": "10:00",
+                "end_time": "11:00",
+                "weeks": "1-16",
+            },
+            {
+                "id": "schedule-b",
+                "semester": "2026-fall",
+                "course_code": "B",
+                "weekday": 2,
+                "start_time": "10:30",
+                "end_time": "11:30",
+                "weeks": "1-16",
+            },
+        ],
+        "exam_items": [],
+        "grade_items": [],
+        "events": [],
+        "chaoxing_exam_items": [],
+        "chaoxing_grade_items": [],
+        "preferences": {
+            "configured": True,
+            "timezone": "Asia/Shanghai",
+            "semester_start_dates": {"2026-fall": "2026-09-07"},
+        },
+    }
+    result, _, evidence = container.learner_state_service._compute_world(
+        user_id=user_id,
+        inputs=inputs,
+        as_of=AS_OF,
+        input_digest="test-digest",
+        trigger="test",
+    )
+    conflict = _state_value(result, "schedule_conflict")
+    assert conflict["conflict_count"] == 1
+    assert conflict["conflicts"][0]["overlap_minutes"] == 30
+    schedule_snapshot = _state_snapshot(result, "schedule_conflict")
+    assert any(
+        item["snapshot_id"] == schedule_snapshot.snapshot_id
+        and item["source_id"] == "schedule-a"
+        for item in evidence
+    )
+    assert any(
+        item["snapshot_id"] == schedule_snapshot.snapshot_id
+        and item["source_id"] == "schedule-b"
+        for item in evidence
+    )
+
+
+def test_counterfactual_projection_helper_recomputes_all_layers_without_persisting():
+    from app.services.forecast_service import ForecastInputs
+
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    inputs = ForecastInputs(
+        tasks=[
+            {
+                "id": "sim-task",
+                "status": "pending",
+                "deadline": "2026-09-12T10:00:00+00:00",
+            }
+        ],
+        sessions=[],
+        goals=[],
+        schedule_items=[],
+        exam_items=[],
+        grade_items=[],
+        events=[],
+        truncated=False,
+    )
+    before = {
+        kind: container.learner_state_repository.list_runs(
+            user_id=user_id, projection_kind=kind
+        )[1]
+        for kind in ("CORE", "ACADEMIC", "WORLD")
+    }
+    projections = container.learner_state_service.simulate_from_forecast_inputs(
+        user_id=user_id,
+        inputs=inputs,
+        as_of=AS_OF,
+    )
+    after = {
+        kind: container.learner_state_repository.list_runs(
+            user_id=user_id, projection_kind=kind
+        )[1]
+        for kind in ("CORE", "ACADEMIC", "WORLD")
+    }
+    assert set(projections) == {"CORE", "ACADEMIC", "WORLD"}
+    assert all(
+        snap.state_type for snapshots in projections.values() for snap in snapshots
+    )
+    assert after == before

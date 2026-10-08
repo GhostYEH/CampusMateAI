@@ -1,20 +1,20 @@
 # 六层世界模型：后端完成情况与接口接入
 
-核对日期：2026-10-03。依据[六层世界模型规划](../项目规划书/六层世界模型.md)、当前后端实现及自动化测试。本文面向后端负责人和客户端联调；完整字段表见[学习状态与计划接口](api/11-learner.md)、[字段字典](api/schemas.md)与[OpenAPI JSON](api/openapi.json)。
+核对日期：2026-10-08。依据[六层世界模型规划](../项目规划书/六层世界模型.md)、当前后端实现及自动化测试。本文面向后端负责人和客户端联调；完整字段表见[学习状态与计划接口](api/11-learner.md)、[字段字典](api/schemas.md)与[OpenAPI JSON](api/openapi.json)。
 
 ## 当前结论
 
 按“前端只调用 HTTP 接口写入和读取”的标准，**任务、专注、目标、计划与反馈的主业务链路已经闭环**：写入事实 → 读取状态/预测 → 模拟 → 生成并确认计划 → 执行获得待办 ID → 实际完成并反馈 → 读取新状态/预测 → 重新规划。该链路已由只使用公开 HTTP 业务接口的验收测试覆盖，前端无需调用内部服务、访问数据库或自行生成学习事件。
 
-六层都有确定性规则基线，但所有规划分支尚未完整接通。用户偏好缺少真实写入入口，WORLD/ACADEMIC 纠正不被当前请求模型接受，WORLD 逐项证据仍未接线；真实课表冲突和预测校准也有缺口。**主业务接口闭环成立，不代表六层规划的每个功能均已完成。**
+六层确定性规则基线和主业务闭环已具备；本轮补齐明确偏好读写、WORLD/ACADEMIC 纠正、WORLD 逐项事实证据、真实课表展开和只读重投影。真实数据校准、真实学校及设备端验收仍须后续完成，不把代码测试等同预测效果。
 
 | 层 | 已实现能力 | 完成情况与边界 | 主要实现 |
 | --- | --- | --- | --- |
 | 1 事件 | 统一事件模型、来源与事件组合校验、幂等入库；专注结束、任务完成、学习通/教务同步、目标与反馈等业务接线 | 业务事件链路已具备；部分扩展事件只有服务方法，存在方法不代表每个客户端都有入口 | [learner_event_service.py](../backend/app/services/learner_event_service.py)、[learner_event.py](../backend/app/schemas/learner_event.py) |
 | 2 状态 | CORE、ACADEMIC、WORLD 三类投影、历史运行、状态变化；WORLD 八类状态均可返回 | 基础投影已具备；日程冲突和偏好仍是有限规则，详见剩余工作 | [learner_state_service.py](../backend/app/services/learner_state_service.py)、[learner_state.py](../backend/app/api/routes/learner_state.py) |
-| 3 不确定性与证据 | 置信度、数据质量、观察窗口、有效期、版本、输入摘要；CORE/ACADEMIC 证据查询 | 元信息接口已具备；WORLD 当前未挂接逐项证据，证据列表可能为空，不能把所有判断都描述为可追溯 | [learner_state.py](../backend/app/schemas/learner_state.py)、[learner_state_repository.py](../backend/app/repositories/learner_state_repository.py) |
+| 3 不确定性与证据 | 置信度、数据质量、观察窗口、有效期、版本、输入摘要；CORE/ACADEMIC 证据查询 | CORE/ACADEMIC/WORLD 提供逐项事实证据；不参与判断的记录不会标成支持证据。没有事实时仍为空并降级 | [learner_state.py](../backend/app/schemas/learner_state.py)、[learner_state_repository.py](../backend/app/repositories/learner_state_repository.py) |
 | 4 预测 | 五类规则估计器、解释码、证据计数、质量降级；离线 Brier/ECE 等指标框架 | 已实现规则预测；没有真实结果校准，概率不是经真实学生数据验证的成功率 | [forecast_service.py](../backend/app/services/forecast_service.py)、[forecast_calibration.py](../backend/app/services/forecast_calibration.py) |
-| 5 反事实模拟 | 六类干预白名单；内存比较预测与状态；有效期、局限性和非因果声明 | 已实现只读基线；部分状态变化只是有限规则或模拟标记，调整目标日期不保证预测趋势改变 | [simulation_service.py](../backend/app/services/simulation_service.py)、[simulation.py](../backend/app/schemas/simulation.py) |
+| 5 反事实模拟 | 六类干预白名单；内存比较预测与状态；有效期、局限性和非因果声明 | 从干预副本重新计算 CORE/ACADEMIC/WORLD；按目标日期与预测窗口生效，不生成现实事实 | [simulation_service.py](../backend/app/services/simulation_service.py)、[simulation.py](../backend/app/schemas/simulation.py) |
 | 6 行动闭环 | 生成、接受/拒绝、事务执行、幂等重试、撤销、反馈、评估、阶段总结、重新规划；采纳后进入自适应干预 | 主 HTTP 流程已验证；执行响应直接返回新待办 ID。EXECUTED 只表示计划任务创建成功，实际学习完成另行记录 | [learning_planner_service.py](../backend/app/services/learning_planner_service.py)、[learning_plans.py](../backend/app/api/routes/learning_plans.py) |
 
 ## 本次修复
@@ -32,7 +32,7 @@
 - 状态、预测、模拟和规划读取保留时刻的微秒，修复同一秒内刚结束的专注会话被遗漏的问题；规划的小时缓存桶仍清除微秒，避免相同事实的生成重试出现幂等冲突。
 - 计划采纳与干预观测使用同样的时间精度，保证采纳时引用的基线运行已保存，后续自动评估可以读取真实的前后状态。
 
-预测、模拟与规划器版本分别更新为 `forecast-baseline-v2`、`simulation-baseline-v2`、`campus-companion-plan-v2`。旧版本计划执行会按既有版本校验返回 `LEARNING_PLAN_STALE`，应重新规划。
+预测、模拟与规划器版本分别更新为 `forecast-baseline-v3`、`simulation-baseline-v3`、`campus-companion-plan-v3`。旧版本计划执行会按既有版本校验返回 `LEARNING_PLAN_STALE`，应重新规划。
 
 ## 接入约定
 
@@ -116,14 +116,14 @@
 | `forecast_type` | 可空；未传则返回下面五类预测 |
 | `horizon_days` | 默认 7，范围 1～30 |
 | `goal_id` | 仅目标趋势预测按该目标筛选；不传为全用户目标概况 |
-| `course_id` | 工作负载/日程冲突预测按明确课程关联筛选；教务 course_code 尚未映射到本站 course_id，未知归属排除并降级；其他预测类型仍为 USER 范围 |
+| `course_id` | 工作负载/日程冲突预测按明确课程关联筛选；教务 code+semester 只映射到本人可见课程中的唯一匹配；未知或多匹配归属排除并降级；其他预测类型仍为 USER 范围 |
 | `page/page_size` | 默认 1/20，每页上限 100 |
 
 五类预测为 `DEADLINE_COMPLETION_RISK`、`UPCOMING_WORKLOAD`、`SCHEDULE_CONFLICT_RISK`、`GOAL_PROGRESS_OUTLOOK`、`ROUTINE_CONTINUITY`。
 
 每项包含 `forecast_id/forecast_type/scope_type/scope_id/horizon_start/horizon_end/probability/value/confidence/data_quality/estimator_version/input_digest/as_of/valid_until/explanation_codes/evidence_summary/limitations`。`evidence_summary` 为观测数量，不是逐条事实引用；`probability` 必须结合类型和规则含义解释，不能统一显示成“任务完成率”。
 
-规则示例：未来工作负载按任务数量与考试数量估计分钟数；专注节律使用已结束会话间隔；目标趋势使用当前进度与最近更新时间。目标趋势估计器尚未使用目标截止日期，因此延长日期时趋势可能保持不变。置信度为规则映射，不是训练模型的校准概率。
+规则示例：未来工作负载按任务数量与考试数量估计分钟数；专注节律使用已结束会话间隔；目标趋势使用当前进度、最近更新时间和目标截止日期，调整日期不保证所有聚合状态变化。置信度为规则映射，不是训练模型的校准概率。
 
 ## 反事实模拟
 
@@ -144,8 +144,8 @@
 | `ALLOCATE_FOCUS_MINUTES` | `focus_minutes`，0～480 | 可选带时区 `target_date`；当前时间到预测窗口末端内的增量进入截止风险估计；未来会话不会被计作已经结束的节律观测 |
 | `RESCHEDULE_TASK` | `task_id`、带时区 `new_deadline` | 只修改内存中的对应任务，不写真实截止时间 |
 | `ACCEPT_PLAN` | `plan_id` | 计划须归属本人；不存在为 404，不可模拟/过期状态返回对应 limitations；只模拟接受，不执行 |
-| `REDUCE_DAILY_LOAD` | `reduce_minutes_per_day`，0～480 | 可选 `target_date`；`movable_task_policy` 固定 PERSONAL_ONLY；当前规则只移动无课程关联且非重要的个人任务，尚未精确按 target_date 分配每天负载 |
-| `PAUSE_DATA_SOURCE` | `source_category` | `academic/chaoxing/notice/study_session/manual`；只模拟部分输入过滤，不调用真实数据源开关 |
+| `REDUCE_DAILY_LOAD` | `reduce_minutes_per_day`，0～480 | 可选 `target_date`；`movable_task_policy` 固定 PERSONAL_ONLY；只移动 target_date 当地日期内无课程关联且非重要的个人任务，不对整窗口重复扣减工作量 |
+| `PAUSE_DATA_SOURCE` | `source_category` | `academic/chaoxing/notice/study_session/manual`；按真实来源分类过滤干预副本，不调用真实数据源开关或删除业务数据 |
 | `ADJUST_GOAL_DEADLINE` | `goal_id`、带时区 `new_target_date` | 前后目标趋势使用同一目标；只修改内存，当前趋势规则可能不发生变化 |
 
 顶层可选 `baseline_run_id`、`horizon_days`（1～30，默认 7）、`idempotency_key`（1～128 字符）。历史 `baseline_run_id` 用于归属校验和基线摘要锚定，**事实仍从当前数据库读取，不提供历史时点重放**。
@@ -217,7 +217,7 @@ flowchart LR
 
 | 接口 | 当前边界 |
 | --- | --- |
-| `GET/POST /learner-state/corrections`、`POST /learner-state/corrections/{correction_id}/revoke` | 受控纠正；当前 correction schema 只允许 CORE/KNOWLEDGE，不能拿 WORLD/ACADEMIC 快照直接提交 |
+| `GET/POST /learner-state/corrections`、`POST /learner-state/corrections/{correction_id}/revoke` | 受控纠正支持 CORE/KNOWLEDGE/ACADEMIC/WORLD；请求必须精确匹配本人原快照，不修改历史事实 |
 | `GET /learner-state/data-controls`、`PUT /learner-state/data-controls/{source_key}` | source_key 为 CORE_STUDY/PERSONAL_TASK/CHAOXING/EDU/MODEL_SHADOW/PROACTIVE_SUGGESTIONS；更新请求含 ENABLED 或 PAUSED 及必填幂等键 |
 | `POST /learner-state/delete-request`、`GET /learner-state/delete-status` | 指定范围删除世界模型数据；不等于删除用户全部业务数据，具体范围见字段字典 |
 | `GET /learner-state/data-summary`、`GET /learner-state/model-transparency` | 读取数据概况和真实模型启用情况 |
@@ -240,22 +240,15 @@ flowchart LR
 
 推荐按上文 HTTP 顺序联调。执行响应直接提供新待办的 `execution_task_id`；列表的来源字段用于核对，无需自行搜索同名任务。撤销场景单独使用尚未完成、未被编辑的计划任务验证。
 
-未闭合的扩展接口分支：`preference_profile` 没有真实偏好读写契约；受控纠正仅支持 CORE/KNOWLEDGE；WORLD evidence 路由存在但目前缺少逐项证据。它们不阻断上面的任务/目标主业务循环，但不能作为已完成的客户端能力交付。
+新增 GET/PUT /learner-state/preferences 支持明确时区、每日容量、免打扰配置和学期第一周星期一。未设置配置不再由 preference_updated 事件填造默认画像。幂等、版本冲突、计划失效、来源暂停截止点及迁移说明见[接口契约](api/11-learner.md)。
 
 当前 Web 封装见 [learnerStateApi.js](../webreact/src/data/learnerStateApi.js)：snapshots 已支持 projectionKind；runs/changes 封装尚未透传新增 projection_kind，前端若需 WORLD 历史应按本文新增参数。Android、HarmonyOS 已有部分状态/预测/目标/计划接线；本次不修改客户端，未做设备端验收。
 
-| 后续优先级 | 工作 | 验收标准 |
-| --- | --- | --- |
-| 高 | WORLD 为每项聚合判断补充实际任务、会话、目标与教务证据引用 | 本人 evidence API 可返回相关来源摘要，跨用户 404；数据不足主动降级 |
-| 高 | 将真实课表 weekday、start_time/end_time、weeks 展开到预测窗口 | 重叠课程检出，非重叠课程不误报；当前 WORLD 冲突主要按考试和任务数量粗估，Forecast 课表读取尚不能正确展开真实课表 |
-| 高 | WORLD/ACADEMIC 状态纠正与用户偏好真正接线 | 受控纠正能作用于对应投影；quiet hours、计划容量等来自用户明确设置。当前 preference_profile 由事件存在性填默认值，不能当成用户真实偏好 |
-| 中 | 教务 course_code 与本站 course_id 映射 | 课程预测能同时纳入本人该课程的课表与考试，不混入其他课程 |
-| 中 | 各模拟干预精确作用于相关状态与时间窗口 | 按目标日期/指定日期重新投影；无效任务/目标明确反馈，来源暂停不再只过滤部分输入 |
-| 中 | 真实结果标签、离线回测、Brier/ECE 校准 | 保存预测和实际结果的对齐记录；明确样本量、时间范围、标签来源，合成结果不冒充真实效果 |
+本轮可由后端完成的课表展开、证据、偏好、扩展纠正、唯一课程映射及精确模拟已经补齐。后续重点为真实结果标签、离线回测和 Brier/ECE 校准效果验证；现有校准框架只证明指标计算，真实样本、样本量、时间范围和来源须单独验收，不以合成结果替代。
 
 自动化验证使用测试数据库和演示资料，未验证真实教务账号、真实学校、真实 LLM 或设备权限。测试通过只支持对应代码路径正确，不能代替这些外部验收。
 
-本次相关回归共 **592 项通过**。其中 4 项接口验收见 [test_world_model_http_loop.py](../backend/tests/test_world_model_http_loop.py)：业务数据全部通过公开 HTTP 创建和读取，覆盖有/无原任务的主循环、执行重试、来源关联、撤销、跨用户隔离，以及同一秒内结束会话后的状态/预测/模拟刷新、生成重试和采纳基线持久化。该测试不启动自动干预 worker；后台自动推进由现有 adaptive 测试单独覆盖。
+当前接口闭环验收见 [test_world_model_http_loop.py](../backend/tests/test_world_model_http_loop.py)：业务数据全部通过公开 HTTP 创建和读取，覆盖有/无原任务的主循环、执行重试、来源关联、撤销、跨用户隔离，以及同一秒内结束会话后的状态/预测/模拟刷新、生成重试和采纳基线持久化。该测试不启动自动干预 worker；后台自动推进由现有 adaptive 测试单独覆盖。
 
 本任务定向同步 OpenAPI 中的世界模型契约，保留原文档的其他路由快照和补充模型；本文列出的 HTTP 路径已逐一核对运行时声明。`execution_task_id` 为可空响应字段，不改变原 `task_id` 的含义。可在 `backend/` 使用现有虚拟环境复现相关范围：
 

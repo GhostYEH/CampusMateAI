@@ -4,6 +4,7 @@
 所有输出严格排除内部表名、source_id、任务正文、课程材料正文、
 对话原文、模型 Prompt、凭据和原始异常信息。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -33,8 +34,10 @@ ReasonCode = Literal[
     "OTHER_CONTROLLED_REASON",
 ]
 
-ProjectionKind = Literal["CORE", "KNOWLEDGE"]
-ScopeType = Literal["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"]
+ProjectionKind = Literal["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"]
+ScopeType = Literal[
+    "USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"
+]
 StateType = Literal[
     "observed_learning_activity",
     "task_workload",
@@ -47,20 +50,37 @@ StateType = Literal[
     "exam_exposure",
     "schedule_load",
     "goal_state",
+    "knowledge_mastery_observation",
+    "workload_pressure",
+    "schedule_conflict",
+    "academic_progress",
+    "focus_rhythm",
+    "goal_progress",
+    "execution_consistency",
+    "growth_momentum",
+    "preference_profile",
 ]
 CorrectionStatus = Literal["ACTIVE", "REVOKED"]
 
 
 class CorrectionCreate(BaseModel):
     projection_kind: ProjectionKind = Field(..., description="投影类型")
-    projection_scope: str = Field(..., min_length=1, max_length=128, description="投影范围标识")
+    projection_scope: str = Field(
+        ..., min_length=1, max_length=128, description="投影范围标识"
+    )
     scope_type: ScopeType = Field(..., description="快照 scope 类型")
-    scope_id: str = Field(..., min_length=1, max_length=128, description="快照 scope 标识")
+    scope_id: str = Field(
+        ..., min_length=1, max_length=128, description="快照 scope 标识"
+    )
     state_type: StateType = Field(..., description="被纠正的状态类型")
-    target_snapshot_id: str = Field(..., min_length=1, max_length=128, description="目标快照 ID")
+    target_snapshot_id: str = Field(
+        ..., min_length=1, max_length=128, description="目标快照 ID"
+    )
     correction_type: CorrectionType = Field(..., description="纠正类型")
     reason_code: ReasonCode = Field(..., description="纠正原因码")
-    idempotency_key: str = Field(..., min_length=1, max_length=128, description="幂等键")
+    idempotency_key: str = Field(
+        ..., min_length=1, max_length=128, description="幂等键"
+    )
 
 
 class CorrectionOut(BaseModel):
@@ -88,7 +108,9 @@ class CorrectionPage(BaseModel):
 
 
 class CorrectionRevokeRequest(BaseModel):
-    idempotency_key: str = Field(..., min_length=1, max_length=128, description="幂等键")
+    idempotency_key: str = Field(
+        ..., min_length=1, max_length=128, description="幂等键"
+    )
 
 
 # ===== 数据源控制 =====
@@ -119,7 +141,9 @@ class DataSourceControlList(BaseModel):
 
 class DataSourceControlUpdate(BaseModel):
     status: Literal["ENABLED", "PAUSED"] = Field(..., description="新状态")
-    idempotency_key: str = Field(..., min_length=1, max_length=128, description="幂等键")
+    idempotency_key: str = Field(
+        ..., min_length=1, max_length=128, description="幂等键"
+    )
 
 
 # ===== 世界模型删除 =====
@@ -136,11 +160,14 @@ DeleteScope = Literal[
 
 class DeleteRequestCreate(BaseModel):
     scope: DeleteScope = Field(..., description="删除范围")
-    idempotency_key: str = Field(..., min_length=1, max_length=128, description="幂等键")
+    idempotency_key: str = Field(
+        ..., min_length=1, max_length=128, description="幂等键"
+    )
 
 
 class DeleteCountSummary(BaseModel):
     """表意类别计数，不暴露内部表名。"""
+
     projection_runs: int = 0
     snapshots: int = 0
     evidence: int = 0
@@ -151,7 +178,6 @@ class DeleteCountSummary(BaseModel):
     plan_feedback: int = 0
     plan_evaluations: int = 0
     shadow_runs: int = 0
-
 
 
 class DeleteRequestOut(BaseModel):
@@ -171,6 +197,7 @@ class DeleteStatusOut(BaseModel):
 
 # ===== 安全导出摘要 =====
 
+
 class DataSummaryOut(BaseModel):
     event_count: int
     snapshot_count: int
@@ -189,6 +216,7 @@ class DataSummaryOut(BaseModel):
 
 
 # ===== 模型透明度 =====
+
 
 class ModelCapabilityTransparencyOut(BaseModel):
     capability_name: str

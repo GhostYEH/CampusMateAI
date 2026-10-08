@@ -61,6 +61,8 @@ from ..repositories.qr_auth_repository import (
     QrLoginSessionRepository,
     TrustedDeviceRepository,
 )
+from ..repositories.device_repository import DesktopDeviceRepository
+from ..services.device_service import DesktopDeviceService
 from ..services.knowledge_ingestion_service import KnowledgeIngestionService
 from ..services.learner_event_service import LearnerEventService
 from .chaoxing.sync_service import ChaoxingSyncDependencies, ChaoxingSyncService
@@ -236,6 +238,7 @@ class ServiceContainer:
     # QR 扫码登录与可信设备
     qr_login_session_repository: QrLoginSessionRepository
     trusted_device_repository: TrustedDeviceRepository
+    desktop_device_service: DesktopDeviceService
     # EduConnector
     edu_repository: EduRepository
     edu_connector: EduConnectorService
@@ -265,6 +268,7 @@ def _magicclass_store_dir(settings: Settings) -> Path:
 
 def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer:
     # 数据源策略在模型与学习服务构造前就绪，依赖通过构造参数显式传递。
+    user_repository = UserRepository(db)
     learner_control_repository = LearnerControlRepository(db)
     learner_model_source_policy = LearnerModelSourcePolicy(
         control_repository=learner_control_repository
@@ -373,6 +377,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         student_goal_repository=student_goal_repo,
         edu_data_repository=edu_data_repo,
         learner_event_repository=learner_event_repository,
+        course_repository=course_repo,
     )
     learning_plan_repository = LearningPlanRepository(db)
     learning_planner_service = LearningPlannerService(
@@ -577,7 +582,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         llm=llm,
         model_shadow_runner=model_shadow_runner,
         tts=tts,
-        user_repository=UserRepository(db),
+        user_repository=user_repository,
         refresh_token_repository=RefreshTokenRepository(db),
         course_repository=course_repo,
         class_group_repository=ClassGroupRepository(db),
@@ -684,6 +689,13 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         ),
         qr_login_session_repository=QrLoginSessionRepository(db),
         trusted_device_repository=TrustedDeviceRepository(db),
+        desktop_device_service=DesktopDeviceService(
+            DesktopDeviceRepository(db),
+            study_session_repo,
+            learner_control_repository,
+            learner_event_service,
+            user_repository,
+        ),
         edu_repository=edu_repo,
         edu_connector=edu_connector,
     )

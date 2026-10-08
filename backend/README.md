@@ -20,6 +20,28 @@
 
 完整路径以 [`app/api/router.py`](app/api/router.py) 中实际注册的路由为准；完整请求/响应与接入流程见[接口文档](../docs/api/README.md)，FastAPI `/docs` 和对应 schema 提供声明快照。
 
+## Agent Runtime 运行与故障处理
+
+Agent Runtime 的新 Job 通过 SQLite 持久化后由后台 Worker 执行。运行状态和事件以数据库记录为准；SSE 用于传递事件和断线续接，不负责保存任务。Worker 仅领取绑定了已注册 Handler 的运行；其他既有业务流程按各自的领域路由推进。当前没有管理员观测 API，维护时使用应用日志、健康检查以及用户本人有权读取的 Job/Run 接口，不应依赖管理员页面或跨用户查询。
+
+`backend/.env.example` 中的 Worker 配置如下。修改模式或租约参数后需重启后端进程：
+
+| 配置 | 默认值 | 用途 |
+| --- | --- | --- |
+| `AGENT_RUNTIME_MODE` | `worker` | `worker` 接受新 Job 并处理队列；`drain` 拒绝新 Job、继续处理现有队列；`disabled` 拒绝新 Job 且不领取任务。 |
+| `AGENT_WORKER_CONCURRENCY` | `1` | 单进程并发 Worker 数。 |
+| `AGENT_WORKER_LEASE_SECONDS` | `30` | 单次领取的租约时长。 |
+| `AGENT_WORKER_HEARTBEAT_SECONDS` | `10` | Worker 续租间隔，必须小于租约时长。 |
+| `AGENT_WORKER_POLL_MS` | `500` | 空队列轮询间隔；`0` 表示不等待。 |
+
+排空时先将 `AGENT_RUNTIME_MODE` 设为 `drain` 并重启服务。新建 Job 会得到 `503 AGENT_RUNTIME_UNAVAILABLE`；Worker 仍会处理已有队列。通过 Job/Run 状态确认队列已收口后，再停止服务或部署新版本。若需暂时停止所有领取，使用 `disabled`；已入队任务会保留在数据库中，恢复 `worker` 模式并重启后继续处理。不要删除队列表或手工改状态来“清空”任务。
+
+正常关闭时，Worker 停止领取并等待正在执行的处理器完成当前工作，再退出。若进程被强制终止，运行保留为非终态并保留租约与 checkpoint；租约过期后，后续 Worker 会调用对应 Handler 的恢复决策，从安全 checkpoint 重新排队，或以明确错误码结束。处理器按至少一次语义设计，领域副作用需具备幂等保护；系统不承诺 exactly-once。审批等待状态会释放租约，不会被 Worker 持续占用；审批通过后任务重新入队。
+
+排查单个任务时，使用该用户自己的 `GET /api/v1/agent-jobs/{job_id}`、`GET /api/v1/agent-jobs/{job_id}/runs`、`GET /api/v1/agent-runs/{run_id}/events` 和 `/api/v1/agent-runs/{run_id}/events/stream` 检查状态、错误码及事件序号。遇到客户端断线可在 SSE 请求中用 `Last-Event-ID` 续接；未知或不属于该 Run 的游标会返回 `409 AGENT_CURSOR_INVALID`，客户端应改读事件列表后再续接。检查服务端日志中的 `agent_worker_poll_failed` 等错误时，先确认数据库可读写、Worker 模式有效、租约持续更新，再查看 Run 的稳定错误码。不要通过提高重试次数、清除租约或重放领域写操作来掩盖失败；修复原因后让运行时按租约和 checkpoint 语义恢复。
+
+自动化故障演练可运行 `python -m pytest tests/test_agent_runtime_failure_drills.py tests/test_agent_worker.py tests/test_agent_event_recovery.py -q`。这些测试验证代码对故障的处理，不代表生产灰度已通过；真实发布仍需单独记录连续观察时长、非测试 Run 数量、重复副作用和事件缺失情况。
+
 ## AI 对话的现状
 
 CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。**当前实现还不是纯通用聊天**：Web 和 Android 仍调用 `counselor/chat`，该路由在非问候问题上调用 `RagService.stream_answer()`，后者执行 `RetrievalService.search()`。配置 LLM 后，普通问题可以借助模型知识作答；有检索结果时也会传入校园资料。未配置 LLM 时走 `retrieval_summary` 降级，资料不足时可能提示人工核实。

@@ -4,6 +4,7 @@
 intervention 在内存中应用到 inputs 副本,然后重算预测和状态估计。
 结果是"方案估计,不是因果保证"。
 """
+
 from __future__ import annotations
 
 import copy
@@ -12,6 +13,7 @@ import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from ..core.logging import logger
@@ -27,7 +29,7 @@ from ..schemas.simulation import (
 )
 from .forecast_service import ForecastInputs, ForecastService
 
-SIMULATION_ESTIMATOR_VERSION = "simulation-baseline-v2"
+SIMULATION_ESTIMATOR_VERSION = "simulation-baseline-v3"
 _SIMULATION_TTL = timedelta(hours=1)
 _BASELINE_LIMITATIONS: tuple[SimulationLimitationCode, ...] = (
     "baseline_estimator_only",
@@ -60,7 +62,9 @@ _ALL_FORECAST_TYPES = (
 
 
 def _digest(inputs: dict[str, Any]) -> str:
-    raw = json.dumps(inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    raw = json.dumps(
+        inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -69,7 +73,12 @@ def _confidence(quality: str) -> float:
 
 
 def _risk_band(value: Any) -> str | None:
-    return getattr(value, "risk_band", None) or getattr(value, "pressure_band", None) or getattr(value, "outlook_band", None) or getattr(value, "continuity_band", None)
+    return (
+        getattr(value, "risk_band", None)
+        or getattr(value, "pressure_band", None)
+        or getattr(value, "outlook_band", None)
+        or getattr(value, "continuity_band", None)
+    )
 
 
 def _parse(value: Any) -> datetime | None:
@@ -130,12 +139,16 @@ class SimulationService:
         key = SimulationKey(
             user_id=user_id,
             baseline_run_id=baseline_run_id,
-            intervention_payload=json.dumps(intervention_payload, sort_keys=True, separators=(",", ":")),
+            intervention_payload=json.dumps(
+                intervention_payload, sort_keys=True, separators=(",", ":")
+            ),
             horizon_days=horizon_days,
             idempotency_key=idempotency_key,
         )
         baseline_run = self._resolve_baseline_run(
-            user_id=user_id, baseline_run_id=baseline_run_id, as_of=as_of,
+            user_id=user_id,
+            baseline_run_id=baseline_run_id,
+            as_of=as_of,
         )
         if baseline_run_id is not None and baseline_run is None:
             raise LookupError("baseline run not found")
@@ -150,52 +163,103 @@ class SimulationService:
             if plan is None:
                 raise LookupError("plan not found")
 
-        baseline_inputs = self._forecast_service.collect_inputs(user_id=user_id, as_of=as_of)
-        baseline_digest = self._baseline_digest(user_id=user_id, inputs=baseline_inputs, baseline_run=baseline_run)
+        baseline_inputs = self._forecast_service.collect_inputs(
+            user_id=user_id, as_of=as_of
+        )
+        if intervention.intervention_type == "RESCHEDULE_TASK" and not any(
+            task.get("id") == intervention.task_id and not task.get("deleted_at")
+            for task in baseline_inputs.tasks
+        ):
+            raise LookupError("task not found")
+        if intervention.intervention_type == "ADJUST_GOAL_DEADLINE" and not any(
+            goal.get("goal_id") == intervention.goal_id
+            for goal in baseline_inputs.goals
+        ):
+            raise LookupError("goal not found")
+        baseline_digest = self._baseline_digest(
+            user_id=user_id, inputs=baseline_inputs, baseline_run=baseline_run
+        )
         cache_key = self._cache_key(key)
         if plan is not None:
-            cache_key = _digest({
-                "request": cache_key, "status": plan.status,
-                "valid_until": plan.run.valid_until,
-                "items": [(item.item_id, item.estimated_minutes, item.execution_status) for item in plan.items],
-            })
+            cache_key = _digest(
+                {
+                    "request": cache_key,
+                    "status": plan.status,
+                    "valid_until": plan.run.valid_until,
+                    "items": [
+                        (item.item_id, item.estimated_minutes, item.execution_status)
+                        for item in plan.items
+                    ],
+                }
+            )
         cached = self._cache.get(cache_key)
-        if cached is not None and as_of < cached.expires_at and (
-            idempotency_key is not None or cached.baseline_digest == baseline_digest
+        if (
+            cached is not None
+            and as_of < cached.expires_at
+            and (
+                idempotency_key is not None or cached.baseline_digest == baseline_digest
+            )
         ):
             return cached
 
         horizon_start = as_of
         horizon_end = as_of + timedelta(days=horizon_days)
         baseline_forecasts = self._collect_baseline_forecasts(
-            user_id=user_id, as_of=as_of, horizon_days=horizon_days,
+            user_id=user_id,
+            as_of=as_of,
+            horizon_days=horizon_days,
             goal_id=getattr(intervention, "goal_id", None),
         )
-        baseline_snapshots = self._collect_baseline_snapshots(user_id=user_id, as_of=as_of)
+        baseline_snapshots = self._collect_baseline_snapshots(
+            user_id=user_id, as_of=as_of
+        )
 
         intervention_inputs, intervention_limitations = self._apply_intervention(
-            inputs=baseline_inputs, intervention=intervention, as_of=as_of, plan=plan,
+            inputs=baseline_inputs,
+            intervention=intervention,
+            as_of=as_of,
+            plan=plan,
             horizon_days=horizon_days,
         )
         intervention_forecasts = self._compute_intervention_forecasts(
-            user_id=user_id, inputs=intervention_inputs,
-            horizon_start=horizon_start, horizon_end=horizon_end, as_of=as_of,
+            user_id=user_id,
+            inputs=intervention_inputs,
+            horizon_start=horizon_start,
+            horizon_end=horizon_end,
+            as_of=as_of,
             intervention=intervention,
         )
-        intervention_snapshots = self._apply_intervention_to_snapshots(
-            baseline_snapshots=baseline_snapshots, intervention=intervention, as_of=as_of,
+        reproject = getattr(
+            self._learner_state_service, "simulate_from_forecast_inputs", None
         )
+        if reproject is not None:
+            projected = reproject(
+                user_id=user_id, inputs=intervention_inputs, as_of=as_of
+            )
+            intervention_snapshots = [
+                snap for group in projected.values() for snap in group
+            ]
+        else:
+            intervention_snapshots = self._apply_intervention_to_snapshots(
+                baseline_snapshots=baseline_snapshots,
+                intervention=intervention,
+                as_of=as_of,
+            )
 
         changed_forecasts = self._diff_forecasts(
-            baseline=baseline_forecasts, intervention=intervention_forecasts,
+            baseline=baseline_forecasts,
+            intervention=intervention_forecasts,
         )
         changed_states, unchanged_states = self._diff_snapshots(
-            baseline=baseline_snapshots, intervention=intervention_snapshots,
+            baseline=baseline_snapshots,
+            intervention=intervention_snapshots,
         )
 
         has_baseline_data = bool(
-            baseline_inputs.tasks or baseline_inputs.sessions
-            or baseline_inputs.goals or baseline_inputs.schedule_items
+            baseline_inputs.tasks
+            or baseline_inputs.sessions
+            or baseline_inputs.goals
+            or baseline_inputs.schedule_items
             or baseline_inputs.exam_items
         )
         if not has_baseline_data:
@@ -223,7 +287,8 @@ class SimulationService:
             changed_forecasts=changed_forecasts,
             changed_state_estimates=changed_states,
             unchanged_states=unchanged_states,
-            assumptions=list(_BASELINE_ASSUMPTIONS) + self._extra_assumptions(intervention),
+            assumptions=list(_BASELINE_ASSUMPTIONS)
+            + self._extra_assumptions(intervention),
             limitations=limitations,
             confidence=_confidence(data_quality),
             data_quality=data_quality,
@@ -234,52 +299,83 @@ class SimulationService:
         return response
 
     def _cache_key(self, key: SimulationKey) -> str:
-        return _digest({
-            "user_id": key.user_id,
-            "baseline_run_id": key.baseline_run_id,
-            "intervention": key.intervention_payload,
-            "horizon_days": key.horizon_days,
-            "idempotency_key": key.idempotency_key,
-        })
+        return _digest(
+            {
+                "user_id": key.user_id,
+                "baseline_run_id": key.baseline_run_id,
+                "intervention": key.intervention_payload,
+                "horizon_days": key.horizon_days,
+                "idempotency_key": key.idempotency_key,
+            }
+        )
 
-    def _resolve_baseline_run(self, *, user_id: str, baseline_run_id: str | None, as_of: datetime):
+    def _resolve_baseline_run(
+        self, *, user_id: str, baseline_run_id: str | None, as_of: datetime
+    ):
         if self._learner_state_repository is None:
             return None
         if baseline_run_id is not None:
-            return self._learner_state_repository.get_run(baseline_run_id, user_id=user_id)
+            return self._learner_state_repository.get_run(
+                baseline_run_id, user_id=user_id
+            )
         return self._learner_state_repository.get_current_run(
-            user_id=user_id, projection_kind="CORE", projection_scope="__user__",
+            user_id=user_id,
+            projection_kind="CORE",
+            projection_scope="__user__",
         )
 
-    def _baseline_digest(self, *, user_id: str, inputs: ForecastInputs, baseline_run) -> str:
+    def _baseline_digest(
+        self, *, user_id: str, inputs: ForecastInputs, baseline_run
+    ) -> str:
         payload = {
             "truncated": inputs.truncated,
             "read_failures": inputs.read_failures,
-            "tasks": inputs.tasks, "sessions": inputs.sessions, "goals": inputs.goals,
-            "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
-            "grade_items": inputs.grade_items, "events": inputs.events,
+            "tasks": inputs.tasks,
+            "sessions": inputs.sessions,
+            "goals": inputs.goals,
+            "schedule_items": inputs.schedule_items,
+            "exam_items": inputs.exam_items,
+            "grade_items": inputs.grade_items,
+            "events": inputs.events,
+            "preferences": inputs.preferences,
+            "paused_source_cutoffs": inputs.paused_source_cutoffs,
             "run_id": getattr(baseline_run, "run_id", None) if baseline_run else None,
-            "input_digest": getattr(baseline_run, "input_digest", None) if baseline_run else None,
+            "input_digest": getattr(baseline_run, "input_digest", None)
+            if baseline_run
+            else None,
         }
         return _digest(payload)
 
     def _collect_baseline_forecasts(
-        self, *, user_id: str, as_of: datetime, horizon_days: int,
+        self,
+        *,
+        user_id: str,
+        as_of: datetime,
+        horizon_days: int,
         goal_id: str | None = None,
     ) -> dict[str, ForecastOut]:
         result: dict[str, ForecastOut] = {}
         for ft in _ALL_FORECAST_TYPES:
             try:
                 forecast = self._forecast_service.get_forecast(
-                    user_id=user_id, as_of=as_of, forecast_type=ft, horizon_days=horizon_days,
+                    user_id=user_id,
+                    as_of=as_of,
+                    forecast_type=ft,
+                    horizon_days=horizon_days,
                     goal_id=goal_id if ft == "GOAL_PROGRESS_OUTLOOK" else None,
                 )
                 result[ft] = forecast
             except Exception as exc:
-                logger.warning("simulation_baseline_forecast_failed ft={} err={}", ft, type(exc).__name__)
+                logger.warning(
+                    "simulation_baseline_forecast_failed ft={} err={}",
+                    ft,
+                    type(exc).__name__,
+                )
         return result
 
-    def _collect_baseline_snapshots(self, *, user_id: str, as_of: datetime) -> list[Any]:
+    def _collect_baseline_snapshots(
+        self, *, user_id: str, as_of: datetime
+    ) -> list[Any]:
         """读取当前投影状态,但**不落库**。
 
         反事实模拟是只读操作:调用投影服务时传 persist=False,
@@ -289,19 +385,30 @@ class SimulationService:
         if self._learner_state_service is None:
             return []
         snapshots: list[Any] = []
-        for method_name in ("project_user", "project_world"):
+        for method_name in ("project_user", "project_academic", "project_world"):
             method = getattr(self._learner_state_service, method_name, None)
             if method is None:
                 continue
             try:
-                projection = method(user_id, as_of=as_of, trigger="simulation", persist=False)
+                projection = method(
+                    user_id, as_of=as_of, trigger="simulation", persist=False
+                )
                 snapshots.extend(projection.snapshots)
             except Exception as exc:
-                logger.warning("simulation_baseline_snapshots_failed method={} err={}", method_name, type(exc).__name__)
+                logger.warning(
+                    "simulation_baseline_snapshots_failed method={} err={}",
+                    method_name,
+                    type(exc).__name__,
+                )
         return snapshots
 
     def _apply_intervention(
-        self, *, inputs: ForecastInputs, intervention, as_of: datetime, plan=None,
+        self,
+        *,
+        inputs: ForecastInputs,
+        intervention,
+        as_of: datetime,
+        plan=None,
         horizon_days: int = 7,
     ) -> tuple[ForecastInputs, list[SimulationLimitationCode]]:
         tasks = copy.deepcopy(inputs.tasks)
@@ -321,13 +428,19 @@ class SimulationService:
             target = intervention.target_date or as_of
             if as_of <= target <= as_of + timedelta(days=horizon_days):
                 simulated_focus_minutes = intervention.focus_minutes
-            sessions.append({
-                "id": f"sim_session_{uuid.uuid4().hex[:8]}",
-                "started_at": (target - timedelta(minutes=intervention.focus_minutes)).isoformat(),
-                "ended_at": target.isoformat(),
-                "duration_seconds": intervention.focus_minutes * 60,
-                "status": "completed",
-            })
+                sessions.append(
+                    {
+                        "id": "sim_session_focus",
+                        "started_at": (
+                            target - timedelta(minutes=intervention.focus_minutes)
+                        ).isoformat(),
+                        "ended_at": target.isoformat(),
+                        "duration_seconds": intervention.focus_minutes * 60,
+                        "status": "completed",
+                    }
+                )
+            else:
+                limitations.append("intervention_outside_horizon")
         elif itype == "RESCHEDULE_TASK":
             for task in tasks:
                 if task.get("id") == intervention.task_id:
@@ -336,39 +449,61 @@ class SimulationService:
         elif itype == "ACCEPT_PLAN":
             if plan is None or plan.status not in {"PROPOSED", "ACCEPTED"}:
                 limitations.append("plan_not_simulatable")
-            elif _parse(plan.run.valid_until) is not None and _parse(plan.run.valid_until) <= as_of:
+            elif (
+                _parse(plan.run.valid_until) is not None
+                and _parse(plan.run.valid_until) <= as_of
+            ):
                 limitations.append("plan_expired")
             else:
                 simulated_focus_minutes = sum(
                     int(item.estimated_minutes or 0) for item in plan.items
                 )
                 if simulated_focus_minutes:
-                    sessions.append({
-                        "id": f"sim_plan_{plan.plan_id}",
-                        "started_at": as_of.isoformat(),
-                        "ended_at": (as_of + timedelta(minutes=simulated_focus_minutes)).isoformat(),
-                        "duration_seconds": simulated_focus_minutes * 60,
-                        "status": "completed",
-                    })
+                    sessions.append(
+                        {
+                            "id": f"sim_plan_{plan.plan_id}",
+                            "started_at": as_of.isoformat(),
+                            "ended_at": (
+                                as_of + timedelta(minutes=simulated_focus_minutes)
+                            ).isoformat(),
+                            "duration_seconds": simulated_focus_minutes * 60,
+                            "status": "completed",
+                        }
+                    )
         elif itype == "REDUCE_DAILY_LOAD":
             reduction = intervention.reduce_minutes_per_day
+            target = intervention.target_date or as_of
+            local_zone = ZoneInfo(
+                (inputs.preferences or {}).get("timezone", "Asia/Shanghai")
+            )
+            target_day = target.astimezone(local_zone).date()
             if reduction:
                 candidates = [
-                    task for task in tasks
+                    task
+                    for task in tasks
                     if task.get("status") == "pending"
                     and not task.get("deleted_at")
                     and not task.get("course_id")
-                    and task.get("importance", "unknown") not in {"urgent", "high", "important"}
+                    and task.get("importance", "unknown")
+                    not in {"urgent", "high", "important"}
                     and task.get("deadline")
+                    and _parse(task.get("deadline")) is not None
+                    and _parse(task.get("deadline")).astimezone(local_zone).date()
+                    == target_day
+                    and as_of
+                    <= _parse(task.get("deadline"))
+                    <= as_of + timedelta(days=horizon_days)
                 ]
                 candidates.sort(key=lambda task: _parse(task.get("deadline")) or as_of)
-                for task in candidates[: max(1, reduction // 45)]:
+                for task in candidates[: reduction // 45]:
                     deadline = _parse(task.get("deadline"))
                     if deadline is None:
                         continue
                     task["deadline"] = (deadline + timedelta(days=1)).isoformat()
                     simulated_deferred_task_count += 1
-                simulated_load_reduction = min(reduction, simulated_deferred_task_count * 45)
+                # Moved deadlines already change per-day workload; do not subtract
+                # their cost twice from the forecast's whole-window total.
+                simulated_load_reduction = 0
             if simulated_deferred_task_count == 0:
                 limitations.append("no_movable_tasks")
         elif itype == "PAUSE_DATA_SOURCE":
@@ -377,12 +512,41 @@ class SimulationService:
                 schedule_items = []
                 exam_items = []
                 grade_items = []
+                events = [
+                    e for e in events if e.get("source") not in {"edu", "academic"}
+                ]
             elif category == "chaoxing":
                 events = [e for e in events if e.get("source") != "chaoxing"]
+                tasks = [
+                    t
+                    for t in tasks
+                    if t.get("source") != "chaoxing"
+                    and t.get("source_type") != "chaoxing"
+                ]
+                exam_items = [e for e in exam_items if e.get("source") != "chaoxing"]
+                grade_items = [g for g in grade_items if g.get("source") != "chaoxing"]
             elif category == "notice":
                 events = [e for e in events if e.get("source") != "notice"]
             elif category == "study_session":
                 sessions = []
+                events = [
+                    e
+                    for e in events
+                    if e.get("source") not in {"study", "study_session"}
+                ]
+            elif category == "manual":
+                tasks = [
+                    t
+                    for t in tasks
+                    if (t.get("source_type") or t.get("source") or "manual")
+                    not in {"manual", "personal"}
+                ]
+                goals = []
+                events = [
+                    e
+                    for e in events
+                    if e.get("source") not in {"manual", "personal", "goal"}
+                ]
         elif itype == "ADJUST_GOAL_DEADLINE":
             for goal in goals:
                 if goal.get("goal_id") == intervention.goal_id:
@@ -390,45 +554,85 @@ class SimulationService:
                     break
 
         return ForecastInputs(
-            tasks=tasks, sessions=sessions, goals=goals,
-            schedule_items=schedule_items, exam_items=exam_items,
-            grade_items=grade_items, events=events, truncated=inputs.truncated,
+            tasks=tasks,
+            sessions=sessions,
+            goals=goals,
+            schedule_items=schedule_items,
+            exam_items=exam_items,
+            grade_items=grade_items,
+            events=events,
+            truncated=inputs.truncated,
             read_failures=inputs.read_failures,
+            preferences=inputs.preferences,
+            paused_source_cutoffs=inputs.paused_source_cutoffs,
+            simulated_paused_sources=(
+                (intervention.source_category,)
+                if itype == "PAUSE_DATA_SOURCE"
+                else inputs.simulated_paused_sources
+            ),
             simulated_focus_minutes=simulated_focus_minutes,
             simulated_load_reduction=simulated_load_reduction,
             simulated_deferred_task_count=simulated_deferred_task_count,
         ), limitations
 
     def _compute_intervention_forecasts(
-        self, *, user_id: str, inputs: ForecastInputs,
-        horizon_start: datetime, horizon_end: datetime, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        horizon_start: datetime,
+        horizon_end: datetime,
+        as_of: datetime,
         intervention,
     ) -> dict[str, ForecastOut]:
         result: dict[str, ForecastOut] = {}
         for ft in _ALL_FORECAST_TYPES:
-            goal_id = intervention.goal_id if (ft == "GOAL_PROGRESS_OUTLOOK" and getattr(intervention, "goal_id", None)) else None
+            goal_id = (
+                intervention.goal_id
+                if (
+                    ft == "GOAL_PROGRESS_OUTLOOK"
+                    and getattr(intervention, "goal_id", None)
+                )
+                else None
+            )
             try:
                 forecast = self._forecast_service.compute_forecast_with_inputs(
-                    user_id=user_id, inputs=inputs, forecast_type=ft,
-                    horizon_start=horizon_start, horizon_end=horizon_end, as_of=as_of,
+                    user_id=user_id,
+                    inputs=inputs,
+                    forecast_type=ft,
+                    horizon_start=horizon_start,
+                    horizon_end=horizon_end,
+                    as_of=as_of,
                     goal_id=goal_id,
                 )
                 result[ft] = forecast
             except Exception as exc:
-                logger.warning("simulation_intervention_forecast_failed ft={} err={}", ft, type(exc).__name__)
+                logger.warning(
+                    "simulation_intervention_forecast_failed ft={} err={}",
+                    ft,
+                    type(exc).__name__,
+                )
         return result
 
     def _apply_intervention_to_snapshots(
-        self, *, baseline_snapshots: list[Any], intervention, as_of: datetime,
+        self,
+        *,
+        baseline_snapshots: list[Any],
+        intervention,
+        as_of: datetime,
     ) -> list[Any]:
         adjusted = []
         for snap in baseline_snapshots:
-            adjusted.append(self._adjust_snapshot(snap, intervention=intervention, as_of=as_of))
+            adjusted.append(
+                self._adjust_snapshot(snap, intervention=intervention, as_of=as_of)
+            )
         return adjusted
 
     def _adjust_snapshot(self, snap, *, intervention, as_of: datetime):
         itype = intervention.intervention_type
-        state_type = getattr(snap, "state_type", None) or (snap.get("state_type") if isinstance(snap, dict) else None)
+        state_type = getattr(snap, "state_type", None) or (
+            snap.get("state_type") if isinstance(snap, dict) else None
+        )
         if itype == "PAUSE_DATA_SOURCE" and state_type == "data_source_health":
             category = intervention.source_category
             value = getattr(snap, "value", None)
@@ -436,12 +640,19 @@ class SimulationService:
                 value = snap.get("value")
             if value and isinstance(value, dict):
                 new_value = dict(value)
-                snap_category = new_value.get("source_category") or new_value.get("category")
+                snap_category = new_value.get("source_category") or new_value.get(
+                    "category"
+                )
                 if snap_category == category or category == "academic":
                     new_value["status"] = "paused"
                     new_value["simulated"] = True
-                    return self._clone_snapshot(snap, value=new_value, data_quality="stale")
-        if itype == "ADJUST_GOAL_DEADLINE" and state_type in ("goal_state", "goal_progress"):
+                    return self._clone_snapshot(
+                        snap, value=new_value, data_quality="stale"
+                    )
+        if itype == "ADJUST_GOAL_DEADLINE" and state_type in (
+            "goal_state",
+            "goal_progress",
+        ):
             value = getattr(snap, "value", None)
             if value is None and isinstance(snap, dict):
                 value = snap.get("value")
@@ -451,7 +662,10 @@ class SimulationService:
                 new_value["adjusted_goal_id"] = intervention.goal_id
                 new_value["simulated"] = True
                 return self._clone_snapshot(snap, value=new_value)
-        if itype == "ALLOCATE_FOCUS_MINUTES" and state_type == "observed_learning_activity":
+        if (
+            itype == "ALLOCATE_FOCUS_MINUTES"
+            and state_type == "observed_learning_activity"
+        ):
             value = getattr(snap, "value", None)
             if value is None and isinstance(snap, dict):
                 value = snap.get("value")
@@ -479,6 +693,7 @@ class SimulationService:
                 new["data_quality"] = data_quality
             return new
         from dataclasses import replace
+
         overrides = {}
         if value is not None:
             overrides["value"] = value
@@ -490,7 +705,10 @@ class SimulationService:
             return snap
 
     def _diff_forecasts(
-        self, *, baseline: dict[str, ForecastOut], intervention: dict[str, ForecastOut],
+        self,
+        *,
+        baseline: dict[str, ForecastOut],
+        intervention: dict[str, ForecastOut],
     ) -> list[ChangedForecastSummary]:
         summaries: list[ChangedForecastSummary] = []
         for ft in _ALL_FORECAST_TYPES:
@@ -504,16 +722,24 @@ class SimulationService:
             i_band = _risk_band(i.value) if i else None
             b_value = b.value.model_dump(mode="json") if b else None
             i_value = i.value.model_dump(mode="json") if i else None
-            if b is not None and i is not None and (
-                b.scope_type == i.scope_type and b.scope_id == i.scope_id
-                and b_value == i_value and b_prob == i_prob
-                and b.data_quality == i.data_quality
+            if (
+                b is not None
+                and i is not None
+                and (
+                    b.scope_type == i.scope_type
+                    and b.scope_id == i.scope_id
+                    and b_value == i_value
+                    and b_prob == i_prob
+                    and b.data_quality == i.data_quality
+                )
             ):
                 continue
             delta = {}
             if b_value and i_value:
                 for key in set(b_value) & set(i_value):
-                    if isinstance(b_value[key], (int, float)) and isinstance(i_value[key], (int, float)):
+                    if isinstance(b_value[key], (int, float)) and isinstance(
+                        i_value[key], (int, float)
+                    ):
                         difference = round(i_value[key] - b_value[key], 4)
                         if difference:
                             delta[key] = difference
@@ -528,25 +754,30 @@ class SimulationService:
             else:
                 magnitude = 0.0
                 direction = "unknown"
-            summaries.append(ChangedForecastSummary(
-                forecast_type=ft,
-                scope_type=(i.scope_type if i else b.scope_type),
-                scope_id=(i.scope_id if i else b.scope_id),
-                baseline_probability=b_prob,
-                intervention_probability=i_prob,
-                baseline_risk_band=b_band,
-                intervention_risk_band=i_band,
-                baseline_value=b_value,
-                intervention_value=i_value,
-                delta=delta,
-                direction=direction,
-                magnitude=magnitude,
-                explanation_codes=list((i.explanation_codes if i else []) or []),
-            ))
+            summaries.append(
+                ChangedForecastSummary(
+                    forecast_type=ft,
+                    scope_type=(i.scope_type if i else b.scope_type),
+                    scope_id=(i.scope_id if i else b.scope_id),
+                    baseline_probability=b_prob,
+                    intervention_probability=i_prob,
+                    baseline_risk_band=b_band,
+                    intervention_risk_band=i_band,
+                    baseline_value=b_value,
+                    intervention_value=i_value,
+                    delta=delta,
+                    direction=direction,
+                    magnitude=magnitude,
+                    explanation_codes=list((i.explanation_codes if i else []) or []),
+                )
+            )
         return summaries
 
     def _diff_snapshots(
-        self, *, baseline: list[Any], intervention: list[Any],
+        self,
+        *,
+        baseline: list[Any],
+        intervention: list[Any],
     ) -> tuple[list[ChangedStateEstimateSummary], list[UnchangedStateSummary]]:
         baseline_map = {self._snap_key(s): s for s in baseline}
         intervention_map = {self._snap_key(s): s for s in intervention}
@@ -562,27 +793,46 @@ class SimulationService:
             b_quality = self._snap_quality(b)
             i_quality = self._snap_quality(i)
             if b is None and i is not None:
-                changed.append(ChangedStateEstimateSummary(
-                    state_type=state_type, scope_type=scope_type, scope_id=scope_id,
-                    change_type="added", baseline_value=None, intervention_value=i_value,
-                    baseline_data_quality=None, intervention_data_quality=i_quality,
-                    explanation_codes=["state_added"],
-                ))
+                changed.append(
+                    ChangedStateEstimateSummary(
+                        state_type=state_type,
+                        scope_type=scope_type,
+                        scope_id=scope_id,
+                        change_type="added",
+                        baseline_value=None,
+                        intervention_value=i_value,
+                        baseline_data_quality=None,
+                        intervention_data_quality=i_quality,
+                        explanation_codes=["state_added"],
+                    )
+                )
             elif b is not None and i is None:
-                changed.append(ChangedStateEstimateSummary(
-                    state_type=state_type, scope_type=scope_type, scope_id=scope_id,
-                    change_type="removed", baseline_value=b_value, intervention_value=None,
-                    baseline_data_quality=b_quality, intervention_data_quality=None,
-                    explanation_codes=["state_removed"],
-                ))
+                changed.append(
+                    ChangedStateEstimateSummary(
+                        state_type=state_type,
+                        scope_type=scope_type,
+                        scope_id=scope_id,
+                        change_type="removed",
+                        baseline_value=b_value,
+                        intervention_value=None,
+                        baseline_data_quality=b_quality,
+                        intervention_data_quality=None,
+                        explanation_codes=["state_removed"],
+                    )
+                )
             else:
                 value_changed = b_value != i_value
                 quality_changed = b_quality != i_quality
-                quality_degraded = (
-                    b_quality in ("verified", "partial") and i_quality in ("stale", "unavailable")
-                )
+                quality_degraded = b_quality in (
+                    "verified",
+                    "partial",
+                ) and i_quality in ("stale", "unavailable")
                 if value_changed or quality_changed:
-                    change_type = "degraded" if quality_degraded and not value_changed else "updated"
+                    change_type = (
+                        "degraded"
+                        if quality_degraded and not value_changed
+                        else "updated"
+                    )
                     codes: list[str] = []
                     if quality_changed:
                         codes.append("data_quality_changed")
@@ -590,24 +840,43 @@ class SimulationService:
                         codes.append("observed_value_changed")
                     if not codes:
                         codes.append("observed_value_changed")
-                    changed.append(ChangedStateEstimateSummary(
-                        state_type=state_type, scope_type=scope_type, scope_id=scope_id,
-                        change_type=change_type, baseline_value=b_value, intervention_value=i_value,
-                        baseline_data_quality=b_quality, intervention_data_quality=i_quality,
-                        explanation_codes=codes,
-                    ))
+                    changed.append(
+                        ChangedStateEstimateSummary(
+                            state_type=state_type,
+                            scope_type=scope_type,
+                            scope_id=scope_id,
+                            change_type=change_type,
+                            baseline_value=b_value,
+                            intervention_value=i_value,
+                            baseline_data_quality=b_quality,
+                            intervention_data_quality=i_quality,
+                            explanation_codes=codes,
+                        )
+                    )
                 else:
-                    unchanged.append(UnchangedStateSummary(
-                        state_type=state_type, scope_type=scope_type, scope_id=scope_id,
-                        data_quality=b_quality or "unavailable",
-                    ))
+                    unchanged.append(
+                        UnchangedStateSummary(
+                            state_type=state_type,
+                            scope_type=scope_type,
+                            scope_id=scope_id,
+                            data_quality=b_quality or "unavailable",
+                        )
+                    )
         return changed, unchanged
 
     @staticmethod
     def _snap_key(snap) -> tuple[str, str, str]:
         if isinstance(snap, dict):
-            return (snap.get("state_type", ""), snap.get("scope_type", ""), snap.get("scope_id", ""))
-        return (getattr(snap, "state_type", ""), getattr(snap, "scope_type", ""), getattr(snap, "scope_id", ""))
+            return (
+                snap.get("state_type", ""),
+                snap.get("scope_type", ""),
+                snap.get("scope_id", ""),
+            )
+        return (
+            getattr(snap, "state_type", ""),
+            getattr(snap, "scope_type", ""),
+            getattr(snap, "scope_id", ""),
+        )
 
     @staticmethod
     def _snap_value(snap) -> dict[str, Any] | None:

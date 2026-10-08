@@ -4,6 +4,7 @@
 完全只读：不创建任务、不修改目标、不执行计划、不暂停真实数据源。
 intervention 通过 Pydantic discriminated union 和白名单受控，客户端无法注入任意工具名或参数。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -22,7 +23,9 @@ InterventionType = Literal[
     "ADJUST_GOAL_DEADLINE",
 ]
 
-DataSourceCategory = Literal["academic", "chaoxing", "notice", "study_session", "manual"]
+DataSourceCategory = Literal[
+    "academic", "chaoxing", "notice", "study_session", "manual"
+]
 
 SimulationLimitationCode = Literal[
     "baseline_estimator_only",
@@ -42,6 +45,7 @@ SimulationLimitationCode = Literal[
     "plan_expired",
     "no_movable_tasks",
     "simulation_no_change",
+    "intervention_outside_horizon",
 ]
 
 SimulationAssumptionCode = Literal[
@@ -184,11 +188,21 @@ class SimulationResponse(BaseModel):
     simulation_id: str
     baseline_digest: str
     intervention: Intervention
-    changed_forecasts: list[ChangedForecastSummary] = Field(default_factory=list, max_length=32)
-    changed_state_estimates: list[ChangedStateEstimateSummary] = Field(default_factory=list, max_length=64)
-    unchanged_states: list[UnchangedStateSummary] = Field(default_factory=list, max_length=128)
-    assumptions: list[SimulationAssumptionCode] = Field(default_factory=list, max_length=16)
-    limitations: list[SimulationLimitationCode] = Field(default_factory=list, max_length=16)
+    changed_forecasts: list[ChangedForecastSummary] = Field(
+        default_factory=list, max_length=32
+    )
+    changed_state_estimates: list[ChangedStateEstimateSummary] = Field(
+        default_factory=list, max_length=64
+    )
+    unchanged_states: list[UnchangedStateSummary] = Field(
+        default_factory=list, max_length=128
+    )
+    assumptions: list[SimulationAssumptionCode] = Field(
+        default_factory=list, max_length=16
+    )
+    limitations: list[SimulationLimitationCode] = Field(
+        default_factory=list, max_length=16
+    )
     confidence: float = Field(ge=0, le=1)
     data_quality: SimulationDataQuality
     estimator_version: str

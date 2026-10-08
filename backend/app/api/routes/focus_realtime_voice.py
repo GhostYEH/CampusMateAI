@@ -1,4 +1,5 @@
 """Authenticated CampusMate WebSocket relay for Seeduplex full-duplex voice."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,12 +10,22 @@ import time
 import uuid
 
 import websockets
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 
 from ...core.config import get_settings
 from ...core.security import JWTError, decode_jwt
 from ...models.multi_role import UserRow
-from ...schemas.focus_ai import FocusRealtimeVoiceSessionResponse, FocusRealtimeVoiceStopResponse
+from ...schemas.focus_ai import (
+    FocusRealtimeVoiceSessionResponse,
+    FocusRealtimeVoiceStopResponse,
+)
 from ...services.container import get_container
 from ...services.focus_realtime_voice_service import (
     RealtimeVoiceSessionNotFoundError,
@@ -51,12 +62,16 @@ router = APIRouter(prefix="/focus/realtime-voice", tags=["实时语音"])
         }
     },
 )
-def create_session(user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceSessionResponse:
+def create_session(
+    user: UserRow = Depends(current_user),
+) -> FocusRealtimeVoiceSessionResponse:
     """创建实时语音会话，返回会话标识与 WebSocket 连接路径；实时语音服务未配置时返回 503。"""
     try:
         session = get_focus_realtime_voice_service().create(user.id)
     except RealtimeVoiceUnavailableError:
-        raise HTTPException(status_code=503, detail="实时语音服务尚未配置，请稍后再试。")
+        raise HTTPException(
+            status_code=503, detail="实时语音服务尚未配置，请稍后再试。"
+        )
     return FocusRealtimeVoiceSessionResponse(
         session_id=session.session_id,
         websocket_path=f"focus/realtime-voice/ws/{session.session_id}",
@@ -75,7 +90,10 @@ def create_session(user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceS
                     "examples": {
                         "成功": {
                             "summary": "停止成功",
-                            "value": {"session_id": "rtv_20261006_demo", "stopped": True},
+                            "value": {
+                                "session_id": "rtv_20261006_demo",
+                                "stopped": True,
+                            },
                         }
                     }
                 }
@@ -83,7 +101,9 @@ def create_session(user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceS
         }
     },
 )
-def stop_session(session_id: str, user: UserRow = Depends(current_user)) -> FocusRealtimeVoiceStopResponse:
+def stop_session(
+    session_id: str, user: UserRow = Depends(current_user)
+) -> FocusRealtimeVoiceStopResponse:
     """删除本人实时语音会话的内存登记，阻止后续 WebSocket 握手。
 
     会话不存在时返回 404；中继退出也会清理登记，随后调用可能返回 404，应按已结束处理。
@@ -110,12 +130,21 @@ def _websocket_user(websocket: WebSocket) -> UserRow | None:
 
 
 async def _send_json(websocket: WebSocket, payload: dict) -> None:
-    await websocket.send_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    await websocket.send_text(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    )
 
 
 def _redact_for_log(value: object) -> object:
     """Keep protocol diagnostics useful without writing credentials to logs."""
-    sensitive_keys = {"api_key", "apikey", "authorization", "token", "secret", "password"}
+    sensitive_keys = {
+        "api_key",
+        "apikey",
+        "authorization",
+        "token",
+        "secret",
+        "password",
+    }
     if isinstance(value, dict):
         return {
             key: "***" if key.lower() in sensitive_keys else _redact_for_log(item)
@@ -137,7 +166,16 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
     if user is None or not service.owns(session_id, user.id):
         await websocket.close(code=1008)
         return
+    await relay_authorized(session_id, websocket, user.id)
+
+
+async def relay_authorized(
+    session_id: str, websocket: WebSocket, owner_key: str, still_authorized=None
+) -> None:
+    """Shared PCM relay after transport-specific identity and ownership checks."""
+    service = get_focus_realtime_voice_service()
     await websocket.accept()
+    relay_tasks = set()
     first_audio_at: float | None = None
     commit_sent = False
     response_create_sent = False
@@ -158,7 +196,9 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
             max_size=2**20,
         ) as upstream:
             started = time.monotonic()
-            await upstream.send(json.dumps(service.session_create_event(), ensure_ascii=False))
+            await upstream.send(
+                json.dumps(service.session_create_event(), ensure_ascii=False)
+            )
             logger.info("seeduplex_session_create_sent session=%s", session_id)
             logger.info(
                 "realtime_turn_boundary_config session=%s explicit_commit_sent=%s response_create_sent=%s vad_turn_event_seen=%s",
@@ -173,16 +213,32 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                 nonlocal first_audio_at, commit_sent, audio_append_count
                 while True:
                     message = await websocket.receive()
+                    if still_authorized is not None and not await asyncio.to_thread(
+                        still_authorized
+                    ):
+                        return
                     if message["type"] == "websocket.disconnect":
                         return
                     data = message.get("bytes")
                     if data is not None:
                         if not data:
                             continue
+                        if still_authorized is not None and (
+                            len(data) % 2 or len(data) > 65536
+                        ):
+                            await _send_json(
+                                websocket,
+                                {"type": "error", "message": "PCM 帧格式或长度无效"},
+                            )
+                            return
                         if first_audio_at is None:
                             first_audio_at = time.monotonic()
                             logger.info("first_audio_frame_sent session=%s", session_id)
-                        event = {"type": "input_audio_buffer.append", "event_id": uuid.uuid4().hex, "audio": base64.b64encode(data).decode("ascii")}
+                        event = {
+                            "type": "input_audio_buffer.append",
+                            "event_id": uuid.uuid4().hex,
+                            "audio": base64.b64encode(data).decode("ascii"),
+                        }
                         await upstream.send(json.dumps(event, separators=(",", ":")))
                         audio_append_count += 1
                         if audio_append_count == 1:
@@ -199,7 +255,11 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                         continue
                     command = json.loads(raw)
                     kind = command.get("type")
-                    logger.info("realtime_client_control_received session=%s type=%s", session_id, kind)
+                    logger.info(
+                        "realtime_client_control_received session=%s type=%s",
+                        session_id,
+                        kind,
+                    )
                     if kind in {"response.cancel", "interrupt"}:
                         # CampusMate accepts the legacy local command during migration, but sends
                         # the exact Seeduplex cancel event upstream. Do not close the session or
@@ -207,24 +267,52 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                         await upstream.send(json.dumps({"type": "response.cancel"}))
                         logger.info("response_cancel_sent session=%s", session_id)
                     elif kind == "commit":
-                        await upstream.send(json.dumps({"type": "input_audio_buffer.commit", "event_id": uuid.uuid4().hex}))
+                        await upstream.send(
+                            json.dumps(
+                                {
+                                    "type": "input_audio_buffer.commit",
+                                    "event_id": uuid.uuid4().hex,
+                                }
+                            )
+                        )
                         commit_sent = True
-                        logger.info("realtime_input_audio_commit_sent session=%s", session_id)
+                        logger.info(
+                            "realtime_input_audio_commit_sent session=%s", session_id
+                        )
                     elif kind == "stop":
-                        await upstream.send(json.dumps({"type": "session.close", "event_id": uuid.uuid4().hex}))
+                        await upstream.send(
+                            json.dumps(
+                                {"type": "session.close", "event_id": uuid.uuid4().hex}
+                            )
+                        )
                         logger.info("session_close_sent session=%s", session_id)
                         return
 
             async def upstream_to_android() -> None:
-                nonlocal vad_turn_event_seen, active_response_id, active_item_id, vad_turn_number, audio_append_count
+                nonlocal \
+                    vad_turn_event_seen, \
+                    active_response_id, \
+                    active_item_id, \
+                    vad_turn_number, \
+                    audio_append_count
                 while True:
                     raw = await upstream.recv()
+                    if still_authorized is not None and not await asyncio.to_thread(
+                        still_authorized
+                    ):
+                        return
                     if isinstance(raw, bytes):
                         continue
                     event = json.loads(raw)
                     kind = event.get("type", "")
-                    response = event.get("response") if isinstance(event.get("response"), dict) else {}
-                    item = event.get("item") if isinstance(event.get("item"), dict) else {}
+                    response = (
+                        event.get("response")
+                        if isinstance(event.get("response"), dict)
+                        else {}
+                    )
+                    item = (
+                        event.get("item") if isinstance(event.get("item"), dict) else {}
+                    )
                     direct_response_id = event.get("response_id") or response.get("id")
                     direct_item_id = event.get("item_id") or item.get("id")
                     event_id = event.get("event_id") or event.get("id")
@@ -247,9 +335,17 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                             "seeduplex_session_event session=%s type=%s payload=%s",
                             session_id,
                             kind,
-                            json.dumps(_redact_for_log(event), ensure_ascii=False, separators=(",", ":")),
+                            json.dumps(
+                                _redact_for_log(event),
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
                         )
-                    if "vad" in kind or "speech_started" in kind or "speech_stopped" in kind:
+                    if (
+                        "vad" in kind
+                        or "speech_started" in kind
+                        or "speech_stopped" in kind
+                    ):
                         vad_turn_event_seen = True
                         if kind == "input_audio_buffer.speech_started":
                             vad_turn_number += 1
@@ -277,19 +373,31 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                             )
                             active_response_id = None
                             active_item_id = None
-                            await _send_json(websocket, {
-                                "type": "user_speech_started",
-                                "response_id": interrupted_response_id,
-                            })
+                            await _send_json(
+                                websocket,
+                                {
+                                    "type": "user_speech_started",
+                                    "response_id": interrupted_response_id,
+                                },
+                            )
                         else:
                             # Seeduplex Ogg playback may already be locally buffered after the
                             # upstream response has completed.  Do not forward its acoustic
                             # echo as a fresh barge-in; the next genuine user turn is handled by
                             # normal VAD/transcription.
-                            logger.debug("realtime_speech_start_without_live_response session=%s", session_id)
+                            logger.debug(
+                                "realtime_speech_start_without_live_response session=%s",
+                                session_id,
+                            )
                     if kind == "session.created":
-                        logger.info("seeduplex_session_created session=%s connect_ms=%d", session_id, (time.monotonic() - started) * 1000)
-                        audio_output = event.get("session", {}).get("audio", {}).get("output", {})
+                        logger.info(
+                            "seeduplex_session_created session=%s connect_ms=%d",
+                            session_id,
+                            (time.monotonic() - started) * 1000,
+                        )
+                        audio_output = (
+                            event.get("session", {}).get("audio", {}).get("output", {})
+                        )
                         logger.info(
                             "seeduplex_audio_output_config session=%s format=%s sample_rate=%s channels=%s bits=%s",
                             session_id,
@@ -298,7 +406,9 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                             audio_output.get("channels", "-"),
                             audio_output.get("bits", "-"),
                         )
-                        await _send_json(websocket, {"type": "state", "state": "listening"})
+                        await _send_json(
+                            websocket, {"type": "state", "state": "listening"}
+                        )
                     elif kind == "input_audio_buffer.committed":
                         logger.info(
                             "realtime_turn_event session=%s turn=%s event=audio_committed event_id=%s",
@@ -326,32 +436,69 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                             )
                             # Binary CampusMate frame avoids another Base64 hop to Android.
                             await websocket.send_bytes(base64.b64decode(audio))
-                            logger.info("first_ai_audio_received session=%s", session_id)
-                    elif kind in {"conversation.item.input_audio_transcription.delta", "conversation.item.input_audio_transcription.completed"}:
+                            logger.info(
+                                "first_ai_audio_received session=%s", session_id
+                            )
+                    elif kind in {
+                        "conversation.item.input_audio_transcription.delta",
+                        "conversation.item.input_audio_transcription.completed",
+                    }:
                         text = event.get("delta") or event.get("transcript", "")
-                        logger.info("realtime_transcript_forwarded session=%s completed=%s length=%d event_id=%s item_id=%s", session_id, kind.endswith("completed"), len(text), event_id or "-", item_id or "-")
-                        await _send_json(websocket, {
-                            "type": "user_transcript_done" if kind.endswith("completed") else "user_transcript_delta",
-                            "text": text,
-                            "event_id": event_id or "",
-                            "item_id": item_id or "",
-                        })
-                    elif kind in {"response.output_text.delta", "response.output_text.done"}:
+                        logger.info(
+                            "realtime_transcript_forwarded session=%s completed=%s length=%d event_id=%s item_id=%s",
+                            session_id,
+                            kind.endswith("completed"),
+                            len(text),
+                            event_id or "-",
+                            item_id or "-",
+                        )
+                        await _send_json(
+                            websocket,
+                            {
+                                "type": "user_transcript_done"
+                                if kind.endswith("completed")
+                                else "user_transcript_delta",
+                                "text": text,
+                                "event_id": event_id or "",
+                                "item_id": item_id or "",
+                            },
+                        )
+                    elif kind in {
+                        "response.output_text.delta",
+                        "response.output_text.done",
+                    }:
                         text = event.get("delta") or event.get("text", "")
-                        logger.info("realtime_answer_forwarded session=%s completed=%s length=%d event_id=%s response_id=%s item_id=%s", session_id, kind.endswith("done"), len(text), event_id or "-", response_id or "-", item_id or "-")
-                        await _send_json(websocket, {
-                            "type": "ai_text_done" if kind.endswith("done") else "ai_text_delta",
-                            "text": text,
-                            "response_id": response_id or "",
-                            "item_id": item_id or "",
-                            "event_id": event_id or "",
-                        })
+                        logger.info(
+                            "realtime_answer_forwarded session=%s completed=%s length=%d event_id=%s response_id=%s item_id=%s",
+                            session_id,
+                            kind.endswith("done"),
+                            len(text),
+                            event_id or "-",
+                            response_id or "-",
+                            item_id or "-",
+                        )
+                        await _send_json(
+                            websocket,
+                            {
+                                "type": "ai_text_done"
+                                if kind.endswith("done")
+                                else "ai_text_delta",
+                                "text": text,
+                                "response_id": response_id or "",
+                                "item_id": item_id or "",
+                                "event_id": event_id or "",
+                            },
+                        )
                     elif kind == "response.output_audio.started":
                         logger.info("ai_response_started session=%s", session_id)
-                        await _send_json(websocket, {"type": "state", "state": "speaking"})
+                        await _send_json(
+                            websocket, {"type": "state", "state": "speaking"}
+                        )
                     elif kind in {"response.output_audio.done", "response.done"}:
                         logger.info("ai_response_done session=%s", session_id)
-                        await _send_json(websocket, {"type": "state", "state": "listening"})
+                        await _send_json(
+                            websocket, {"type": "state", "state": "listening"}
+                        )
                         active_response_id = None
                         active_item_id = None
                     elif kind == "session.closed":
@@ -359,27 +506,54 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
                         await _send_json(websocket, {"type": "session_closed"})
                         return
                     elif kind == "error":
-                        logger.warning("seeduplex_error session=%s code=%s", session_id, event.get("code"))
-                        await _send_json(websocket, {"type": "error", "message": "实时语音服务暂时不可用"})
+                        logger.warning(
+                            "seeduplex_error session=%s code=%s",
+                            session_id,
+                            event.get("code"),
+                        )
+                        await _send_json(
+                            websocket,
+                            {"type": "error", "message": "实时语音服务暂时不可用"},
+                        )
                         return
                     else:
                         # Forward only non-sensitive protocol events for future capability expansion.
-                        await _send_json(websocket, {"type": "provider_event", "event": kind})
+                        await _send_json(
+                            websocket, {"type": "provider_event", "event": kind}
+                        )
 
             left = asyncio.create_task(android_to_upstream())
             right = asyncio.create_task(upstream_to_android())
-            done, pending = await asyncio.wait({left, right}, return_when=asyncio.FIRST_COMPLETED)
+            relay_tasks = {left, right}
+            if still_authorized is not None:
+
+                async def watch_authorization():
+                    while await asyncio.to_thread(still_authorized):
+                        await asyncio.sleep(1)
+
+                relay_tasks.add(asyncio.create_task(watch_authorization()))
+            done, pending = await asyncio.wait(
+                relay_tasks, return_when=asyncio.FIRST_COMPLETED
+            )
             for task in pending:
                 task.cancel()
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        logger.warning("seeduplex_relay_failed session=%s type=%s", session_id, type(exc).__name__)
+        logger.warning(
+            "seeduplex_relay_failed session=%s type=%s", session_id, type(exc).__name__
+        )
         try:
-            await _send_json(websocket, {"type": "error", "message": "实时语音连接失败，请稍后重试"})
+            await _send_json(
+                websocket, {"type": "error", "message": "实时语音连接失败，请稍后重试"}
+            )
         except Exception:
             pass
     finally:
+        for task in relay_tasks:
+            task.cancel()
+        if relay_tasks:
+            await asyncio.gather(*relay_tasks, return_exceptions=True)
         logger.info(
             "realtime_turn_boundary_summary session=%s explicit_commit_sent=%s response_create_sent=%s vad_turn_event_seen=%s",
             session_id,
@@ -387,8 +561,8 @@ async def relay(session_id: str, websocket: WebSocket) -> None:
             response_create_sent,
             vad_turn_event_seen,
         )
-        if service.owns(session_id, user.id):
-            service.stop(session_id, user.id)
+        if service.owns(session_id, owner_key):
+            service.stop(session_id, owner_key)
         try:
             await websocket.close()
         except Exception:

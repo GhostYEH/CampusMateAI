@@ -9,6 +9,7 @@ SSE 断线重连、数据库短时锁竞争。
 - 合法游标恢复无事件缺失;
 - 运行不会长期伪装成 RUNNING:要么恢复,要么以稳定错误码明确失败。
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -20,6 +21,9 @@ from pydantic import BaseModel
 from app.core.exceptions import AgentRuntimeError
 from app.database.sqlite_db import reset_db_for_tests
 from app.repositories.agent_runtime_repository import AgentRuntimeRepository
+from app.schemas.agent_contract_enums import RiskLevel
+from app.services.agent_runtime.agent_registry import AgentRegistry
+from app.services.agent_runtime.approval_gate import ApprovalGate
 from app.services.agent_runtime.event_store import AgentEventStore
 from app.services.agent_runtime.handlers.base import (
     HandlerContext,
@@ -28,6 +32,12 @@ from app.services.agent_runtime.handlers.base import (
     RecoveryDecision,
 )
 from app.services.agent_runtime.handlers.registry import JobHandlerRegistry
+from app.services.agent_runtime.risk_engine import RiskEngine
+from app.services.agent_runtime.tool_gateway import (
+    ToolInvocationGateway,
+    ToolInvocationRequest,
+)
+from app.services.agent_runtime.tool_registry import ToolRegistry, ToolSpec
 from app.services.agent_runtime.worker import AgentWorker
 
 TERMINAL = {"SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"}
@@ -35,6 +45,45 @@ TERMINAL = {"SUCCEEDED", "PARTIAL", "FAILED", "CANCELLED"}
 
 class _Input(BaseModel):
     value: str = "ok"
+
+
+class _ToolArgs(BaseModel):
+    user_id: str
+
+
+def _timed_out_tool(_arguments: dict):
+    raise TimeoutError("upstream tool timeout")
+
+
+class _ToolTimeoutHandler:
+    code = "drill"
+    version = "1.0.0"
+    job_kind = "drill"
+    enabled = True
+    input_model = _Input
+    max_attempts = 3
+    tools = ("plan.propose",)
+
+    def __init__(self) -> None:
+        self.gateway: ToolInvocationGateway | None = None
+
+    async def execute(self, context: HandlerContext) -> HandlerResult:
+        assert self.gateway is not None
+        await self.gateway.invoke(
+            ToolInvocationRequest(
+                run_id=context.run_id,
+                role_code="planner",
+                tool_name="plan.propose",
+                arguments={"user_id": context.user_id},
+                idempotency_key=f"tool-timeout-{context.run_id}",
+            )
+        )
+        return HandlerResult(status="SUCCEEDED")
+
+    async def recover(self, context: HandlerContext) -> RecoveryDecision:
+        return RecoveryDecision(
+            action=RecoveryAction.FAIL, error_code="AGENT_INVALID_STATE"
+        )
 
 
 class _DrillHandler:
@@ -60,8 +109,10 @@ class _DrillHandler:
         # 已经拿到恢复点就只补写结果,不再产生第二次领域副作用。
         if context.checkpoint and context.checkpoint.get("done"):
             return HandlerResult(
-                status="SUCCEEDED", job_output_patch={"plan_id": "plan_replayed"},
-                checkpoint=context.checkpoint, summary="从恢复点补写结果",
+                status="SUCCEEDED",
+                job_output_patch={"plan_id": "plan_replayed"},
+                checkpoint=context.checkpoint,
+                summary="从恢复点补写结果",
             )
         self.side_effects += 1
         if self.mode == "handler_error":
@@ -71,7 +122,9 @@ class _DrillHandler:
                 "模型 provider 超时", code="AGENT_PROVIDER_UNAVAILABLE", http_status=503
             )
         if self.mode == "fatal":
-            raise AgentRuntimeError("参数非法", code="AGENT_INVALID_STATE", http_status=409)
+            raise AgentRuntimeError(
+                "参数非法", code="AGENT_INVALID_STATE", http_status=409
+            )
         if self.mode == "approval":
             return HandlerResult(
                 status="AWAITING_APPROVAL",
@@ -88,8 +141,12 @@ class _DrillHandler:
     async def recover(self, context: HandlerContext) -> RecoveryDecision:
         self.recover_calls += 1
         if self.mode == "fatal":
-            return RecoveryDecision(action=RecoveryAction.FAIL, error_code="AGENT_INVALID_STATE")
-        return RecoveryDecision(action=RecoveryAction.REQUEUE, checkpoint=context.checkpoint)
+            return RecoveryDecision(
+                action=RecoveryAction.FAIL, error_code="AGENT_INVALID_STATE"
+            )
+        return RecoveryDecision(
+            action=RecoveryAction.REQUEUE, checkpoint=context.checkpoint
+        )
 
 
 class _Clock:
@@ -120,8 +177,12 @@ def runtime():
 
 def _queued(repo, *, key: str = "hash") -> str:
     return repo.create_job_with_run_and_event(
-        user_id="u1", job_kind="drill", input_ref={"value": "ok"}, request_hash=key,
-        handler_code="drill", handler_version="1.0.0",
+        user_id="u1",
+        job_kind="drill",
+        input_ref={"value": "ok"},
+        request_hash=key,
+        handler_code="drill",
+        handler_version="1.0.0",
     )["run_id"]
 
 
@@ -130,8 +191,15 @@ def _worker(repo, handler, clock, *, worker_id=None, mode="worker"):
     registry.register(handler)
     registry.freeze()
     return AgentWorker(
-        repo, registry, AgentEventStore(repo), mode=mode, worker_id=worker_id, clock=clock,
-        lease_seconds=30, heartbeat_seconds=10, poll_interval_seconds=0,
+        repo,
+        registry,
+        AgentEventStore(repo),
+        mode=mode,
+        worker_id=worker_id,
+        clock=clock,
+        lease_seconds=30,
+        heartbeat_seconds=10,
+        poll_interval_seconds=0,
     )
 
 
@@ -151,7 +219,9 @@ class TestHandlerAndProviderFailures:
         assert "RUN_FAILED" in _event_types(runtime, run_id)
 
     @pytest.mark.asyncio
-    async def test_model_timeout_retries_then_fails_without_stuck_running(self, runtime):
+    async def test_model_timeout_retries_then_fails_without_stuck_running(
+        self, runtime
+    ):
         run_id = _queued(runtime)
         clock = _Clock()
         handler = _DrillHandler(mode="model_timeout")
@@ -164,9 +234,66 @@ class TestHandlerAndProviderFailures:
                 break
 
         run = runtime.get_run(run_id)
-        assert run["status"] == "FAILED", "超过最大尝试次数后必须明确失败,不能长期 RUNNING"
+        assert run["status"] == "FAILED", (
+            "超过最大尝试次数后必须明确失败,不能长期 RUNNING"
+        )
         assert run["error_code"] == "AGENT_PROVIDER_UNAVAILABLE"
         assert "RUN_RETRY_SCHEDULED" in _event_types(runtime, run_id)
+
+    @pytest.mark.asyncio
+    async def test_tool_timeout_fails_call_and_run_without_leaking_details(
+        self, runtime
+    ):
+        """工具超时通过 Gateway 稳定收口，不能留下 RUNNING Run 或泄漏异常文本。"""
+        run_id = _queued(runtime)
+        handler = _ToolTimeoutHandler()
+        registry = JobHandlerRegistry(known_tool_names=("plan.propose",))
+        registry.register(handler)
+        registry.freeze()
+
+        tools = ToolRegistry()
+        tools.register(
+            ToolSpec(
+                tool_code="plan.propose",
+                resource="plan",
+                action="propose",
+                risk_level=RiskLevel.AUTO_SAFE,
+                args_model=_ToolArgs,
+                ownership_field="user_id",
+                executor=_timed_out_tool,
+            )
+        )
+        events = AgentEventStore(runtime)
+        handler.gateway = ToolInvocationGateway(
+            runtime,
+            tools,
+            RiskEngine(),
+            ApprovalGate(runtime),
+            agent_registry=AgentRegistry(),
+            handler_registry=registry,
+            event_store=events,
+        )
+        worker = AgentWorker(
+            runtime,
+            registry,
+            events,
+            clock=_Clock(),
+            poll_interval_seconds=0,
+        )
+
+        await worker.run_once()
+
+        run = runtime.get_run(run_id)
+        assert run["status"] == "FAILED"
+        assert run["error_code"] == "AGENT_INVALID_STATE"
+        calls = runtime.list_tool_calls_by_run(run_id)
+        assert len(calls) == 1
+        assert calls[0]["status"] == "failed"
+        assert calls[0]["error_code"] == "AGENT_INVALID_STATE"
+        events_json = str(_event_types(runtime, run_id)) + str(
+            runtime.list_events(run_id)
+        )
+        assert "upstream tool timeout" not in events_json
 
     @pytest.mark.asyncio
     async def test_non_retryable_error_fails_immediately(self, runtime):
@@ -188,12 +315,15 @@ class TestLeaseInterruption:
         worker_a = _worker(runtime, handler_a, clock, worker_id="worker_a")
 
         claimed = runtime.claim_next_run(
-            owner="worker_a", now=clock().isoformat(),
+            owner="worker_a",
+            now=clock().isoformat(),
             lease_expires_at=(clock() + timedelta(seconds=30)).isoformat(),
         )
         assert claimed["run_id"] == run_id
         runtime.save_checkpoint(
-            run_id, "worker_a", {"stage": "done", "done": True},
+            run_id,
+            "worker_a",
+            {"stage": "done", "done": True},
             heartbeat_at=clock().isoformat(),
         )
         # Worker A 崩溃:不再续租,也不完成运行。
@@ -217,7 +347,8 @@ class TestLeaseInterruption:
         run_id = _queued(runtime)
         clock = _Clock()
         runtime.claim_next_run(
-            owner="worker_a", now=clock().isoformat(),
+            owner="worker_a",
+            now=clock().isoformat(),
             lease_expires_at=(clock() + timedelta(seconds=30)).isoformat(),
         )
         handler = _DrillHandler()
@@ -230,7 +361,9 @@ class TestLeaseInterruption:
 
 class TestApprovalSurvivesRestart:
     @pytest.mark.asyncio
-    async def test_approval_run_is_not_claimed_and_resumes_from_checkpoint(self, runtime):
+    async def test_approval_run_is_not_claimed_and_resumes_from_checkpoint(
+        self, runtime
+    ):
         run_id = _queued(runtime)
         clock = _Clock()
         handler = _DrillHandler(mode="approval")
@@ -250,11 +383,19 @@ class TestApprovalSurvivesRestart:
         # 审批通过后重新排队,并从 checkpoint 继续
         resumed_handler = _DrillHandler()
         runtime.transition_run_with_event(
-            run_id, "QUEUED", expected_statuses=["AWAITING_APPROVAL"],
-            phase="IDLE", clear_lease=True, next_attempt_at=clock().isoformat(),
-            event_type="RUN_RESUMED", event_status="QUEUED", event_phase="IDLE",
+            run_id,
+            "QUEUED",
+            expected_statuses=["AWAITING_APPROVAL"],
+            phase="IDLE",
+            clear_lease=True,
+            next_attempt_at=clock().isoformat(),
+            event_type="RUN_RESUMED",
+            event_status="QUEUED",
+            event_phase="IDLE",
         )
-        resumed_worker = _worker(runtime, resumed_handler, clock, worker_id="worker_resumed")
+        resumed_worker = _worker(
+            runtime, resumed_handler, clock, worker_id="worker_resumed"
+        )
         await resumed_worker.run_once()
         assert runtime.get_run(run_id)["status"] == "SUCCEEDED"
         assert resumed_handler.seen_checkpoints == [{"stage": "awaiting_approval"}], (
@@ -266,12 +407,22 @@ class TestDuplicateRequests:
     @pytest.mark.asyncio
     async def test_duplicate_job_creation_does_not_duplicate_work(self, runtime):
         first = runtime.create_job_with_run_and_event(
-            user_id="u1", job_kind="drill", input_ref={"value": "ok"}, request_hash="same",
-            idempotency_key="idem-1", handler_code="drill", handler_version="1.0.0",
+            user_id="u1",
+            job_kind="drill",
+            input_ref={"value": "ok"},
+            request_hash="same",
+            idempotency_key="idem-1",
+            handler_code="drill",
+            handler_version="1.0.0",
         )
         second = runtime.create_job_with_run_and_event(
-            user_id="u1", job_kind="drill", input_ref={"value": "ok"}, request_hash="same",
-            idempotency_key="idem-1", handler_code="drill", handler_version="1.0.0",
+            user_id="u1",
+            job_kind="drill",
+            input_ref={"value": "ok"},
+            request_hash="same",
+            idempotency_key="idem-1",
+            handler_code="drill",
+            handler_version="1.0.0",
         )
         assert second["replayed"] is True
         assert second["job_id"] == first["job_id"]
@@ -326,7 +477,8 @@ class TestDatabaseContention:
         monkeypatch.setattr(runtime._db, "_connect", flaky_connect)
         with pytest.raises(sqlite3.OperationalError):
             runtime.claim_next_run(
-                owner="worker_x", now="2099-01-01T00:00:00+00:00",
+                owner="worker_x",
+                now="2099-01-01T00:00:00+00:00",
                 lease_expires_at="2099-01-01T00:00:30+00:00",
             )
         # 锁竞争不得留下半更新的运行
@@ -336,14 +488,17 @@ class TestDatabaseContention:
 
         monkeypatch.setattr(runtime._db, "_connect", original)
         claimed = runtime.claim_next_run(
-            owner="worker_x", now="2099-01-01T00:00:00+00:00",
+            owner="worker_x",
+            now="2099-01-01T00:00:00+00:00",
             lease_expires_at="2099-01-01T00:00:30+00:00",
         )
         assert claimed is not None
         assert claimed["status"] == "RUNNING"
 
     @pytest.mark.asyncio
-    async def test_worker_loop_survives_transient_database_error(self, runtime, monkeypatch):
+    async def test_worker_loop_survives_transient_database_error(
+        self, runtime, monkeypatch
+    ):
         """Worker 循环不得因单次数据库错误退出。"""
         _queued(runtime)
         clock = _Clock()

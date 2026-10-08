@@ -276,3 +276,10 @@ Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料�
 共同课堂使用 CampusMate Bearer 认证和本人 UID，按[共同课堂协议](14-magicclass.md#learning-rooms)完成上传 → 邀请 → 接受 → 下载 → 页码/消息轮询 → 离开。该通道属于 /api/v1/magicclass/learning-space，与独立 iframe 内的 /api 是不同服务。
 
 动态对象字段见[实际响应](response-contracts.md#learning-rooms)。成员权限基于 accepted 状态，pending 不具备课件访问权；发起人结束会清空归档并撤销成员关系。客户端须处理 404/410 并停止轮询，204 不解析 JSON，消息重试复用同一 client_id。Web 已有调用封装；其他三端共同课堂流程尚未接入、未验证。
+## 桌面设备与学习偏好接入补充
+
+桌面设备使用[设备协议](15-devices.md)中的独立设备凭据，只能访问 `/devices/me/*`。设备凭据不能调用用户 JWT 接口，也不能作为已有实时语音 WebSocket 的 `access_token`；专用设备语音 WebSocket 使用 Authorization 请求头，流程见设备协议；用户凭据不能代替设备凭据。确认二维码绑定、列出设备和撤销设备由已登录学生执行。后端仅接收允许的结构化观察，不接收相机画面。
+
+后续客户端设置学习偏好时，先 `GET /learner-state/preferences` 读取 `version`，再 `PUT` 完整配置并携带 `expected_version` 和操作唯一 `idempotency_key`。丢失响应时重放原请求和原键；`LEARNER_PREFERENCE_VERSION_CONFLICT` 后重新读取配置并由用户决定覆盖，不能自动用新版本重试覆盖。学期第一周的星期一由用户明确设置，后端不猜测学校校历。`configured=false` 的默认值只用于初始化界面，不能称为已观测用户偏好。
+
+本轮只验证后端。Web、Android、HarmonyOS、微信小程序及桌面设备应用均尚未接入新增协议；旧调用继续兼容。详见[学习状态与计划](11-learner.md)和[设备协议](15-devices.md)。

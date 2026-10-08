@@ -3,6 +3,7 @@
 协调 repository、state service 和 knowledge service，
 实现状态纠正、数据源控制、世界模型删除和安全导出摘要。
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -46,6 +47,23 @@ class LearnerControlService:
         self._shadow_runner = model_shadow_runner
 
     # ===== 状态纠正 =====
+
+    def get_preferences(self, *, user_id: str) -> dict[str, Any]:
+        from ..schemas.learner_preferences import LearnerPreferencesOut
+
+        return self._repo.get_preferences(
+            user_id=user_id
+        ) or LearnerPreferencesOut().model_dump(mode="json")
+
+    def update_preferences(self, *, user_id: str, request) -> dict[str, Any]:
+        return self._repo.update_preferences(
+            user_id=user_id,
+            preferences=request.model_dump(
+                mode="json", exclude={"expected_version", "idempotency_key"}
+            ),
+            expected_version=request.expected_version,
+            idempotency_key=request.idempotency_key,
+        )
 
     def create_correction(
         self,
@@ -107,7 +125,9 @@ class LearnerControlService:
         )
 
     def revoke_correction(self, *, user_id: str, correction_id: str) -> CorrectionRow:
-        return self._repo.revoke_correction(user_id=user_id, correction_id=correction_id)
+        return self._repo.revoke_correction(
+            user_id=user_id, correction_id=correction_id
+        )
 
     def get_active_corrections(self, *, user_id: str) -> list[CorrectionRow]:
         """返回当前用户的所有活跃纠正，供投影服务使用。"""
@@ -136,7 +156,6 @@ class LearnerControlService:
 
     # ===== 世界模型删除 =====
 
-
     def request_deletion(
         self,
         *,
@@ -150,8 +169,12 @@ class LearnerControlService:
         中途任一步骤失败，整体回滚。
         """
         valid_scopes = {
-            "STATE_ONLY", "EVENTS_AND_STATE", "KNOWLEDGE_ONLY",
-            "PLANS_ONLY", "MODEL_SHADOW_ONLY", "ALL_LEARNER_MODEL_DATA",
+            "STATE_ONLY",
+            "EVENTS_AND_STATE",
+            "KNOWLEDGE_ONLY",
+            "PLANS_ONLY",
+            "MODEL_SHADOW_ONLY",
+            "ALL_LEARNER_MODEL_DATA",
         }
         if scope not in valid_scopes:
             raise NotFoundError()
@@ -161,7 +184,9 @@ class LearnerControlService:
             idempotency_key=idempotency_key,
         )
 
-    def list_delete_requests(self, *, user_id: str, limit: int = 10) -> list[DeleteRequestRow]:
+    def list_delete_requests(
+        self, *, user_id: str, limit: int = 10
+    ) -> list[DeleteRequestRow]:
         return self._repo.list_delete_requests(user_id=user_id, limit=limit)
 
     # ===== 数据摘要 =====
@@ -181,7 +206,6 @@ class LearnerControlService:
         enabled = bool(settings and settings.campusmate_lm_enabled)
 
         capability_defs = [
-
             ("learning_summary_v1", "1.0", "evidence_grounded_summary"),
             ("read_only_tool_routing_v1", "1.0", "read_only_allowlist"),
         ]
@@ -194,7 +218,9 @@ class LearnerControlService:
         last_real_inference_at = None
 
         for cap_name, cap_version, prod_method in capability_defs:
-            promo = self._shadow_repo.get_latest_promotion_decision(capability_name=cap_name)
+            promo = self._shadow_repo.get_latest_promotion_decision(
+                capability_name=cap_name
+            )
             if promo is None:
                 campusmate_lm_status = "SHADOW_ONLY"
                 quality_gate_passed = False
@@ -229,7 +255,8 @@ class LearnerControlService:
             if cap_has_shadow:
                 any_shadow_run = True
             if cap_last_real_at and (
-                last_real_inference_at is None or cap_last_real_at > last_real_inference_at
+                last_real_inference_at is None
+                or cap_last_real_at > last_real_inference_at
             ):
                 last_real_inference_at = cap_last_real_at
 
@@ -246,18 +273,21 @@ class LearnerControlService:
             if canary_active:
                 read_only_canary_active = True
 
-            capabilities.append({
-                "capability_name": cap_name,
-                "capability_version": cap_version,
-                "production_method": prod_method,
-                "campusmate_lm_status": campusmate_lm_status,
-                "quality_gate_passed": quality_gate_passed,
-                "performance_gate_passed": performance_gate_passed,
-                "performance_measured": performance_measured,
-                "last_evaluated_at": last_evaluated_at,
-                "uses_real_model_inference": real_inference_observed,
-                "uses_fixed_prediction_file": fixture_only or not real_inference_observed,
-            })
+            capabilities.append(
+                {
+                    "capability_name": cap_name,
+                    "capability_version": cap_version,
+                    "production_method": prod_method,
+                    "campusmate_lm_status": campusmate_lm_status,
+                    "quality_gate_passed": quality_gate_passed,
+                    "performance_gate_passed": performance_gate_passed,
+                    "performance_measured": performance_measured,
+                    "last_evaluated_at": last_evaluated_at,
+                    "uses_real_model_inference": real_inference_observed,
+                    "uses_fixed_prediction_file": fixture_only
+                    or not real_inference_observed,
+                }
+            )
 
         return {
             "capabilities": capabilities,
@@ -288,7 +318,10 @@ class LearnerControlService:
         if settings is None or not settings.campusmate_lm_canary_enabled:
             return {"allowed": False, "reason": "canary_feature_flag_disabled"}
 
-        if self._source_policy is not None and self._source_policy.should_skip_shadow_run(user_id=user_id):
+        if (
+            self._source_policy is not None
+            and self._source_policy.should_skip_shadow_run(user_id=user_id)
+        ):
             return {"allowed": False, "reason": "model_shadow_paused_for_user"}
 
         if settings is None or not settings.campusmate_lm_available:
@@ -298,7 +331,9 @@ class LearnerControlService:
         if capability_name not in read_only_capabilities:
             return {"allowed": False, "reason": "capability_is_not_read_only"}
 
-        promo = self._shadow_repo.get_latest_promotion_decision(capability_name=capability_name)
+        promo = self._shadow_repo.get_latest_promotion_decision(
+            capability_name=capability_name
+        )
         if promo is None:
             return {"allowed": False, "reason": "no_promotion_decision"}
         status = promo["decision"]
@@ -307,12 +342,18 @@ class LearnerControlService:
 
         failed_gates = json.loads(promo["failed_gates_json"] or "[]")
         if failed_gates:
-            return {"allowed": False, "reason": "quality_gates_failed", "failed_gates": failed_gates}
+            return {
+                "allowed": False,
+                "reason": "quality_gates_failed",
+                "failed_gates": failed_gates,
+            }
 
         # 门禁只能用**只读**的熔断查询。用 `_circuit_allows` 会把 half-open 探测权
         # 在这里就消耗掉，真正调用候选模型的 `ModelShadowRunner.run()` 反而拿不到探测权，
         # 于是熔断永远停在 HALF_OPEN —— 探测权唯一由 runner 占用。
-        if self._shadow_runner is not None and not self._shadow_runner.canary_allowed(capability_name):
+        if self._shadow_runner is not None and not self._shadow_runner.canary_allowed(
+            capability_name
+        ):
             return {"allowed": False, "reason": "circuit_breaker_open"}
 
         return {"allowed": True, "reason": None}

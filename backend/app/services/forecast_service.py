@@ -7,6 +7,7 @@
 不得把相关关系表述成因果关系。
 禁止预测心理疾病、人格、退学概率、就业成功率等高风险结论。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -14,9 +15,10 @@ import json
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from threading import Lock
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from ..core.logging import logger
 from ..schemas.forecast import (
@@ -29,8 +31,14 @@ from ..schemas.forecast import (
     ScheduleConflictRiskValue,
     UpcomingWorkloadValue,
 )
+from .edu.schedule_expander import (
+    ScheduleOccurrence,
+    expand_schedule_items,
+    overlapping_schedule_pairs,
+)
+from .learner_model_source_policy import filter_paused_inputs
 
-FORECAST_ESTIMATOR_VERSION = "forecast-baseline-v2"
+FORECAST_ESTIMATOR_VERSION = "forecast-baseline-v3"
 _FORECAST_TTL = timedelta(hours=1)
 _MIN_HORIZON_DAYS = 1
 _MAX_HORIZON_DAYS = 30
@@ -54,7 +62,11 @@ def _parse(value: Any) -> datetime | None:
     if not value:
         return None
     try:
-        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        parsed = (
+            value
+            if isinstance(value, datetime)
+            else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        )
     except (TypeError, ValueError):
         return None
     if parsed.tzinfo is None:
@@ -69,7 +81,9 @@ def _require_utc(value: datetime) -> datetime:
 
 
 def _digest(inputs: dict[str, Any]) -> str:
-    raw = json.dumps(inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    raw = json.dumps(
+        inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -81,7 +95,14 @@ def _clamp_probability(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
-def _bucket_key(*, forecast_type: str, scope_type: str, scope_id: str, horizon_start: datetime, horizon_end: datetime) -> str:
+def _bucket_key(
+    *,
+    forecast_type: str,
+    scope_type: str,
+    scope_id: str,
+    horizon_start: datetime,
+    horizon_end: datetime,
+) -> str:
     return f"{forecast_type}|{scope_type}|{scope_id}|{horizon_start.date().isoformat()}|{horizon_end.date().isoformat()}"
 
 
@@ -99,12 +120,17 @@ class ForecastInputs:
     simulated_load_reduction: int = 0
     simulated_deferred_task_count: int = 0
     read_failures: tuple[str, ...] = ()
+    preferences: dict[str, Any] | None = None
+    paused_source_cutoffs: dict[str, str] | None = None
+    simulated_paused_sources: tuple[str, ...] = ()
 
     @property
     def warning_codes(self) -> list[str]:
         codes = ["input_truncated"] if self.truncated else []
         if self.read_failures:
             codes.append("input_read_failed")
+        if self.paused_source_cutoffs:
+            codes.append("learner_data_source_paused")
         return codes
 
 
@@ -134,6 +160,7 @@ class ForecastService:
         student_goal_repository=None,
         edu_data_repository=None,
         learner_event_repository=None,
+        course_repository=None,
         input_limit: int = 5000,
         cache_max_entries: int = 256,
     ) -> None:
@@ -143,6 +170,7 @@ class ForecastService:
         self._student_goal_repository = student_goal_repository
         self._edu_data_repository = edu_data_repository
         self._learner_event_repository = learner_event_repository
+        self._course_repository = course_repository
         self.input_limit = input_limit
         if cache_max_entries < 1:
             raise ValueError("cache_max_entries must be positive")
@@ -179,15 +207,25 @@ class ForecastService:
         results: list[ForecastOut] = []
         for ft in selected_types:
             scope_type, scope_id = self._resolve_scope(
-                ft, user_id=user_id, goal_id=goal_id, course_id=course_id,
+                ft,
+                user_id=user_id,
+                goal_id=goal_id,
+                course_id=course_id,
             )
             request = ForecastRequest(
-                forecast_type=ft, scope_type=scope_type, scope_id=scope_id,
-                horizon_start=horizon_start, horizon_end=horizon_end,
-                goal_id=goal_id, course_id=course_id,
+                forecast_type=ft,
+                scope_type=scope_type,
+                scope_id=scope_id,
+                horizon_start=horizon_start,
+                horizon_end=horizon_end,
+                goal_id=goal_id,
+                course_id=course_id,
             )
             forecast = self._compute_forecast(
-                user_id=user_id, inputs=inputs, request=request, as_of=as_of,
+                user_id=user_id,
+                inputs=inputs,
+                request=request,
+                as_of=as_of,
                 input_digest=input_digest,
             )
             results.append(forecast)
@@ -212,14 +250,23 @@ class ForecastService:
         horizon_end = as_of + timedelta(days=horizon_days)
         inputs = self._collect_inputs(user_id=user_id, as_of=as_of)
         scope_type, scope_id = self._resolve_scope(
-            forecast_type, user_id=user_id, goal_id=goal_id, course_id=course_id,
+            forecast_type,
+            user_id=user_id,
+            goal_id=goal_id,
+            course_id=course_id,
         )
         request = ForecastRequest(
-            forecast_type=forecast_type, scope_type=scope_type, scope_id=scope_id,
-            horizon_start=horizon_start, horizon_end=horizon_end,
-            goal_id=goal_id, course_id=course_id,
+            forecast_type=forecast_type,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            horizon_start=horizon_start,
+            horizon_end=horizon_end,
+            goal_id=goal_id,
+            course_id=course_id,
         )
-        return self._compute_forecast(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+        return self._compute_forecast(
+            user_id=user_id, inputs=inputs, request=request, as_of=as_of
+        )
 
     def collect_inputs(self, *, user_id: str, as_of: datetime) -> ForecastInputs:
         """公开收集预测输入(只读)。供 SimulationService 在内存中应用 intervention。"""
@@ -243,21 +290,34 @@ class ForecastService:
         """
         as_of = _require_utc(as_of)
         scope_type, scope_id = self._resolve_scope(
-            forecast_type, user_id=user_id, goal_id=goal_id, course_id=course_id,
+            forecast_type,
+            user_id=user_id,
+            goal_id=goal_id,
+            course_id=course_id,
         )
         request = ForecastRequest(
-            forecast_type=forecast_type, scope_type=scope_type, scope_id=scope_id,
-            horizon_start=horizon_start, horizon_end=horizon_end,
-            goal_id=goal_id, course_id=course_id,
+            forecast_type=forecast_type,
+            scope_type=scope_type,
+            scope_id=scope_id,
+            horizon_start=horizon_start,
+            horizon_end=horizon_end,
+            goal_id=goal_id,
+            course_id=course_id,
         )
         try:
-            return self._dispatch(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._dispatch(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         except Exception as exc:
             logger.warning(
                 "simulation_forecast_failed user_id={} forecast_type={} exception_type={}",
-                user_id, forecast_type, type(exc).__name__,
+                user_id,
+                forecast_type,
+                type(exc).__name__,
             )
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of)
+            return self._unavailable_forecast(
+                user_id=user_id, request=request, as_of=as_of
+            )
 
     @staticmethod
     def _validate_horizon(horizon_days: int) -> int:
@@ -269,11 +329,18 @@ class ForecastService:
 
     @staticmethod
     def _resolve_scope(
-        forecast_type: str, *, user_id: str, goal_id: str | None, course_id: str | None,
+        forecast_type: str,
+        *,
+        user_id: str,
+        goal_id: str | None,
+        course_id: str | None,
     ) -> tuple[str, str]:
         if forecast_type == "GOAL_PROGRESS_OUTLOOK" and goal_id:
             return "GOAL", goal_id
-        if forecast_type in ("UPCOMING_WORKLOAD", "SCHEDULE_CONFLICT_RISK") and course_id:
+        if (
+            forecast_type in ("UPCOMING_WORKLOAD", "SCHEDULE_CONFLICT_RISK")
+            and course_id
+        ):
             return "COURSE", course_id
         return "USER", user_id
 
@@ -292,7 +359,8 @@ class ForecastService:
             read_failures.append(source)
             logger.warning(
                 "forecast_input_read_failed source={} exception_type={}",
-                source, type(exc).__name__,
+                source,
+                type(exc).__name__,
             )
 
         if self._personal_task_repository is not None:
@@ -328,25 +396,80 @@ class ForecastService:
         if self._edu_data_repository is not None:
             try:
                 schedule_items = [
-                    {"id": i.id, "course_code": i.course_code, "credit": i.credit,
-                     "weekday": getattr(i, "weekday", None), "starts_at": getattr(i, "starts_at", None),
-                     "ends_at": getattr(i, "ends_at", None)}
+                    {
+                        "id": i.id,
+                        "course_code": i.course_code,
+                        "credit": i.credit,
+                        "semester": i.semester,
+                        "weekday": i.weekday,
+                        "start_time": i.start_time,
+                        "end_time": i.end_time,
+                        "weeks": i.weeks,
+                        "week_text": i.week_text,
+                        "last_seen_at": getattr(i, "last_seen_at", None),
+                    }
                     for i in self._edu_data_repository.list_schedule_items(
                         user_id=user_id, include_stale=False
                     )
                 ]
                 exam_items = [
-                    {"id": i.id, "course_code": i.course_code, "starts_at": i.starts_at}
+                    {
+                        "id": i.id,
+                        "course_code": i.course_code,
+                        "semester": i.semester,
+                        "starts_at": i.starts_at,
+                        "ends_at": getattr(i, "ends_at", None),
+                        "last_seen_at": getattr(i, "last_seen_at", None),
+                    }
                     for i in self._edu_data_repository.list_exam_items(
                         user_id=user_id, include_stale=False
                     )
                 ]
                 grade_items = [
-                    {"id": i.id, "course_code": i.course_code, "credit": i.credit, "score": i.score}
+                    {
+                        "id": i.id,
+                        "course_code": i.course_code,
+                        "credit": i.credit,
+                        "score": i.score,
+                        "last_seen_at": getattr(i, "last_seen_at", None),
+                    }
                     for i in self._edu_data_repository.list_grade_items(
                         user_id=user_id, include_stale=False
                     )
                 ]
+            except Exception as exc:
+                read_failed("academic", exc)
+        if self._course_repository is not None and (schedule_items or exam_items):
+            try:
+                student_courses, total = self._course_repository.list_courses(
+                    student_id=user_id,
+                    status="active",
+                    page=1,
+                    page_size=200,
+                )
+                courses_by_key: dict[tuple[str, str], list[str]] = {}
+                for course in student_courses:
+                    code = self._normalize_course_code(getattr(course, "code", None))
+                    semester = self._normalize_semester(
+                        getattr(course, "semester", None)
+                    )
+                    if code and semester:
+                        courses_by_key.setdefault((code, semester), []).append(
+                            course.id
+                        )
+
+                for row in [*schedule_items, *exam_items]:
+                    key = (
+                        self._normalize_course_code(row.get("course_code")),
+                        self._normalize_semester(row.get("semester")),
+                    )
+                    candidates = courses_by_key.get(key, []) if all(key) else []
+                    if len(candidates) == 1:
+                        row["course_id"] = candidates[0]
+                    else:
+                        row["course_id"] = None
+                if total > 200:
+                    truncated = True
             except Exception as exc:
                 read_failed("academic", exc)
         if self._learner_event_repository is not None:
@@ -360,55 +483,125 @@ class ForecastService:
                     )
                     rows = [*rows, *second_page]
                 events = [
-                    {"event_id": e.event_id, "event_type": e.event_type,
-                     "occurred_at": e.occurred_at, "source": e.source}
+                    {
+                        "event_id": e.event_id,
+                        "event_type": e.event_type,
+                        "occurred_at": e.occurred_at,
+                        "source": e.source,
+                    }
                     for e in rows
                 ]
                 if total > 200:
                     truncated = True
             except Exception as exc:
                 read_failed("events", exc)
+        preferences = None
+        control_repository = getattr(
+            self._learner_state_service, "_control_repository", None
+        )
+        if control_repository is not None:
+            try:
+                preferences = control_repository.get_preferences(user_id=user_id)
+            except Exception as exc:
+                read_failed("preferences", exc)
+        cutoffs = {}
+        policy = getattr(self._learner_state_service, "_source_policy", None)
+        if policy is not None:
+            cutoffs = policy.get_paused_source_cutoffs(user_id=user_id)
+        filtered = filter_paused_inputs(
+            {
+                "tasks": tasks,
+                "sessions": sessions,
+                "goals": goals,
+                "schedule_items": schedule_items,
+                "exam_items": exam_items,
+                "grade_items": grade_items,
+                "events": events,
+            },
+            cutoffs,
+        )
         return ForecastInputs(
-            tasks=tasks, sessions=sessions, goals=goals,
-            schedule_items=schedule_items, exam_items=exam_items,
-            grade_items=grade_items, events=events, truncated=truncated,
+            tasks=filtered["tasks"],
+            sessions=filtered["sessions"],
+            goals=goals,
+            schedule_items=filtered["schedule_items"],
+            exam_items=filtered["exam_items"],
+            grade_items=filtered["grade_items"],
+            events=filtered["events"],
+            truncated=truncated,
             read_failures=tuple(read_failures),
+            preferences=preferences,
+            paused_source_cutoffs=cutoffs,
         )
 
     @staticmethod
     def _task_to_dict(r) -> dict[str, Any]:
         return {
-            "id": r.id, "status": r.status, "deadline": r.deadline,
-            "created_at": r.created_at, "completed_at": getattr(r, "completed_at", None),
+            "id": r.id,
+            "status": r.status,
+            "deadline": r.deadline,
+            "created_at": r.created_at,
+            "completed_at": getattr(r, "completed_at", None),
+            "updated_at": getattr(r, "updated_at", None),
             "deleted_at": getattr(r, "deleted_at", None),
             "course_id": getattr(r, "course_id", None),
             "importance": getattr(r, "importance", "unknown"),
+            "source": getattr(r, "source", None),
+            "external_id": getattr(r, "external_id", None),
         }
+
+    @staticmethod
+    def _normalize_course_code(value: Any) -> str:
+        return " ".join(str(value or "").strip().upper().split())
+
+    @staticmethod
+    def _normalize_semester(value: Any) -> str:
+        return " ".join(str(value or "").strip().casefold().split())
 
     @staticmethod
     def _session_to_dict(r) -> dict[str, Any]:
         return {
-            "id": r.id, "started_at": r.started_at, "ended_at": getattr(r, "ended_at", None),
+            "id": r.id,
+            "started_at": r.started_at,
+            "ended_at": getattr(r, "ended_at", None),
             "duration_seconds": getattr(r, "duration_seconds", 0),
             "status": r.status,
+            "mode": getattr(r, "mode", "focus"),
+            "pause_seconds": getattr(r, "pause_seconds", 0),
+            "related_task_id": getattr(r, "related_task_id", None),
         }
 
     @staticmethod
     def _goal_to_dict(r) -> dict[str, Any]:
         return {
-            "goal_id": r.goal_id, "category": r.category, "status": r.status,
-            "target_date": r.target_date, "progress_percent": r.progress_percent,
-            "milestone_count": r.milestone_count, "updated_at": r.updated_at,
+            "goal_id": r.goal_id,
+            "category": r.category,
+            "status": r.status,
+            "target_date": r.target_date,
+            "progress_percent": r.progress_percent,
+            "milestone_count": r.milestone_count,
+            "updated_at": r.updated_at,
         }
 
     def _compute_forecast(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
         input_digest: str | None = None,
     ) -> ForecastOut:
-        cache_key = self._cache_key(user_id=user_id, request=request, inputs=inputs, input_digest=input_digest)
+        cache_key = self._cache_key(
+            user_id=user_id, request=request, inputs=inputs, input_digest=input_digest
+        )
         with self._cache_lock:
-            expired_keys = [key for key, value in self._cache.items()
-                            if (valid_until := _parse(value.valid_until)) is None or as_of >= valid_until]
+            expired_keys = [
+                key
+                for key, value in self._cache.items()
+                if (valid_until := _parse(value.valid_until)) is None
+                or as_of >= valid_until
+            ]
             for key in expired_keys:
                 del self._cache[key]
             cached = self._cache.get(cache_key)
@@ -416,13 +609,19 @@ class ForecastService:
                 self._cache.move_to_end(cache_key)
                 return cached
         try:
-            forecast = self._dispatch(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            forecast = self._dispatch(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         except Exception as exc:
             logger.warning(
                 "forecast_failed user_id={} forecast_type={} exception_type={}",
-                user_id, request.forecast_type, type(exc).__name__,
+                user_id,
+                request.forecast_type,
+                type(exc).__name__,
             )
-            forecast = self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of)
+            forecast = self._unavailable_forecast(
+                user_id=user_id, request=request, as_of=as_of
+            )
         with self._cache_lock:
             self._cache[cache_key] = forecast
             self._cache.move_to_end(cache_key)
@@ -433,9 +632,15 @@ class ForecastService:
     @staticmethod
     def _inputs_digest(inputs: ForecastInputs) -> str:
         digest_input = {
-            "tasks": inputs.tasks, "sessions": inputs.sessions, "goals": inputs.goals,
-            "schedule_items": inputs.schedule_items, "exam_items": inputs.exam_items,
-            "grade_items": inputs.grade_items, "events": inputs.events,
+            "tasks": inputs.tasks,
+            "sessions": inputs.sessions,
+            "goals": inputs.goals,
+            "schedule_items": inputs.schedule_items,
+            "exam_items": inputs.exam_items,
+            "grade_items": inputs.grade_items,
+            "events": inputs.events,
+            "preferences": inputs.preferences,
+            "paused_source_cutoffs": inputs.paused_source_cutoffs,
             "truncated": inputs.truncated,
             "read_failures": inputs.read_failures,
             "simulated_focus_minutes": inputs.simulated_focus_minutes,
@@ -444,12 +649,23 @@ class ForecastService:
         }
         return _digest(digest_input)
 
-    def _cache_key(self, *, user_id: str, request: ForecastRequest, inputs: ForecastInputs,
-                   input_digest: str | None = None) -> str:
+    def _cache_key(
+        self,
+        *,
+        user_id: str,
+        request: ForecastRequest,
+        inputs: ForecastInputs,
+        input_digest: str | None = None,
+    ) -> str:
         return f"{user_id}|{_bucket_key(forecast_type=request.forecast_type, scope_type=request.scope_type, scope_id=request.scope_id, horizon_start=request.horizon_start, horizon_end=request.horizon_end)}|{input_digest or self._inputs_digest(inputs)}"
 
     def _dispatch(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         ft = request.forecast_type
         if request.scope_type == "COURSE":
@@ -459,25 +675,53 @@ class ForecastService:
             unresolved = any(not row.get("course_id") for row in academic_rows)
             inputs = replace(
                 inputs,
-                tasks=[row for row in inputs.tasks if row.get("course_id") == request.course_id],
-                schedule_items=[row for row in inputs.schedule_items if row.get("course_id") == request.course_id],
-                exam_items=[row for row in inputs.exam_items if row.get("course_id") == request.course_id],
-                read_failures=inputs.read_failures + (("course_mapping_unavailable",) if unresolved else ()),
+                tasks=[
+                    row
+                    for row in inputs.tasks
+                    if row.get("course_id") == request.course_id
+                ],
+                schedule_items=[
+                    row
+                    for row in inputs.schedule_items
+                    if row.get("course_id") == request.course_id
+                ],
+                exam_items=[
+                    row
+                    for row in inputs.exam_items
+                    if row.get("course_id") == request.course_id
+                ],
+                read_failures=inputs.read_failures
+                + (("course_mapping_unavailable",) if unresolved else ()),
             )
         if ft == "DEADLINE_COMPLETION_RISK":
-            return self._deadline_completion_risk(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._deadline_completion_risk(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         if ft == "UPCOMING_WORKLOAD":
-            return self._upcoming_workload(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._upcoming_workload(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         if ft == "SCHEDULE_CONFLICT_RISK":
-            return self._schedule_conflict_risk(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._schedule_conflict_risk(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         if ft == "GOAL_PROGRESS_OUTLOOK":
-            return self._goal_progress_outlook(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._goal_progress_outlook(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         if ft == "ROUTINE_CONTINUITY":
-            return self._routine_continuity(user_id=user_id, inputs=inputs, request=request, as_of=as_of)
+            return self._routine_continuity(
+                user_id=user_id, inputs=inputs, request=request, as_of=as_of
+            )
         raise ValueError(f"unsupported forecast_type: {ft}")
 
     def _deadline_completion_risk(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         horizon_start = request.horizon_start
         horizon_end = request.horizon_end
@@ -496,8 +740,17 @@ class ForecastService:
                 pending.append(task)
         has_data = bool(inputs.tasks)
         if not has_data:
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_tasks")
-        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
+            return self._unavailable_forecast(
+                user_id=user_id,
+                request=request,
+                as_of=as_of,
+                explanation="no_observed_tasks",
+            )
+        quality = (
+            "partial"
+            if inputs.truncated or inputs.read_failures or inputs.paused_source_cutoffs
+            else "verified"
+        )
         pending_count = len(pending)
         if pending_count == 0 and overdue == 0:
             probability = 0.1
@@ -508,7 +761,8 @@ class ForecastService:
                 1.0,
                 max(
                     0.0,
-                    pending_count * 0.15 + overdue * 0.3
+                    pending_count * 0.15
+                    + overdue * 0.3
                     + inputs.simulated_deferred_task_count * 0.05
                     - inputs.simulated_focus_minutes / 1200,
                 ),
@@ -522,7 +776,11 @@ class ForecastService:
                 risk_band = "HIGH"
             else:
                 risk_band = "VERY_HIGH"
-            explanation_codes = ["deadline_within_horizon", "high_pending_density"] if pending_count > 3 else ["deadline_within_horizon"]
+            explanation_codes = (
+                ["deadline_within_horizon", "high_pending_density"]
+                if pending_count > 3
+                else ["deadline_within_horizon"]
+            )
         value = DeadlineCompletionRiskValue(
             pending_task_count=pending_count,
             overdue_task_count=overdue,
@@ -532,13 +790,23 @@ class ForecastService:
             warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
-            user_id=user_id, request=request, as_of=as_of,
-            probability=probability, value=value, quality=quality,
-            explanation_codes=explanation_codes, evidence=self._evidence(inputs),
+            user_id=user_id,
+            request=request,
+            as_of=as_of,
+            probability=probability,
+            value=value,
+            quality=quality,
+            explanation_codes=explanation_codes,
+            evidence=self._evidence(inputs),
         )
 
     def _upcoming_workload(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         horizon_start = request.horizon_start
         horizon_end = request.horizon_end
@@ -556,11 +824,21 @@ class ForecastService:
                 upcoming_exams.append(exam)
         has_data = bool(inputs.tasks or inputs.exam_items)
         if not has_data:
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_tasks")
-        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
+            return self._unavailable_forecast(
+                user_id=user_id,
+                request=request,
+                as_of=as_of,
+                explanation="no_observed_tasks",
+            )
+        quality = (
+            "partial"
+            if inputs.truncated or inputs.read_failures or inputs.paused_source_cutoffs
+            else "verified"
+        )
         estimated_minutes = max(
             0,
-            len(upcoming_tasks) * 45 + len(upcoming_exams) * 120
+            len(upcoming_tasks) * 45
+            + len(upcoming_exams) * 120
             - inputs.simulated_load_reduction,
         )
         total_items = len(upcoming_tasks) + len(upcoming_exams)
@@ -578,7 +856,11 @@ class ForecastService:
                 pressure_band = "HIGH"
             else:
                 pressure_band = "VERY_HIGH"
-            explanation_codes = ["high_pending_density"] if estimated_minutes > 1500 else ["deadline_within_horizon"]
+            explanation_codes = (
+                ["high_pending_density"]
+                if estimated_minutes > 1500
+                else ["deadline_within_horizon"]
+            )
         concentrated: list[str] = []
         for task in upcoming_tasks:
             deadline = _parse(task.get("deadline"))
@@ -595,46 +877,93 @@ class ForecastService:
             warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
-            user_id=user_id, request=request, as_of=as_of,
-            probability=probability, value=value, quality=quality,
-            explanation_codes=explanation_codes, evidence=self._evidence(inputs),
+            user_id=user_id,
+            request=request,
+            as_of=as_of,
+            probability=probability,
+            value=value,
+            quality=quality,
+            explanation_codes=explanation_codes,
+            evidence=self._evidence(inputs),
         )
 
     def _schedule_conflict_risk(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         horizon_start = request.horizon_start
         horizon_end = request.horizon_end
         upcoming_exams = []
+        exam_warnings: set[str] = set()
         for exam in inputs.exam_items:
             starts_at = _parse(exam.get("starts_at"))
+            ends_at = _parse(exam.get("ends_at"))
             if starts_at is not None and horizon_start <= starts_at <= horizon_end:
-                upcoming_exams.append(exam)
-        pending_with_deadline = 0
-        for task in inputs.tasks:
-            if task.get("status") == "pending" and not task.get("deleted_at") and task.get("deadline"):
-                deadline = _parse(task.get("deadline"))
-                if deadline is not None and horizon_start <= deadline <= horizon_end:
-                    pending_with_deadline += 1
-        schedule_overlap = 0
+                if ends_at is not None and ends_at > starts_at:
+                    upcoming_exams.append(exam)
+                else:
+                    exam_warnings.add("exam_end_unavailable")
+        preferences = inputs.preferences or {}
+        semester_starts = preferences.get("semester_start_dates") or {}
+        timezone_name = preferences.get("timezone") or "Asia/Shanghai"
+        expanded_occurrences = []
+        expansion_warnings: set[str] = set()
+        unexpanded_count = 0
+        by_semester: dict[str, list[dict[str, Any]]] = {}
         for item in inputs.schedule_items:
-            starts_at = _parse(item.get("starts_at"))
-            ends_at = _parse(item.get("ends_at"))
-            if starts_at is not None and horizon_start <= starts_at <= horizon_end:
-                for other in inputs.schedule_items:
-                    if item is other:
-                        continue
-                    o_start = _parse(other.get("starts_at"))
-                    o_end = _parse(other.get("ends_at"))
-                    if o_start and ends_at and o_start < ends_at and o_end and starts_at < o_end:
-                        schedule_overlap += 1
-        schedule_overlap = schedule_overlap // 2
-        exam_collision = min(len(upcoming_exams), pending_with_deadline)
+            semester = str(item.get("semester") or "")
+            by_semester.setdefault(semester, []).append(item)
+        for semester, semester_items in by_semester.items():
+            expansion = expand_schedule_items(
+                semester_items,
+                horizon_start=horizon_start,
+                horizon_end=horizon_end,
+                week1_start_date=semester_starts.get(semester),
+                timezone_name=timezone_name,
+            )
+            expanded_occurrences.extend(expansion.occurrences)
+            expansion_warnings.update(expansion.warnings)
+            unexpanded_count += expansion.unexpanded_item_count
+        schedule_overlap = len(overlapping_schedule_pairs(expanded_occurrences))
+        exam_occurrences = [
+            ScheduleOccurrence(
+                item_id=f"exam:{exam.get('id') or index}",
+                starts_at=_parse(exam.get("starts_at")),
+                ends_at=_parse(exam.get("ends_at")),
+                course_code=exam.get("course_code"),
+            )
+            for index, exam in enumerate(upcoming_exams)
+        ]
+        exam_collision = sum(
+            1
+            for first, second in overlapping_schedule_pairs(
+                [*expanded_occurrences, *exam_occurrences]
+            )
+            if first.item_id.startswith("exam:") or second.item_id.startswith("exam:")
+        )
         conflict_count = exam_collision + schedule_overlap
         has_data = bool(inputs.schedule_items or inputs.exam_items or inputs.tasks)
         if not has_data:
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_schedule")
-        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
+            return self._unavailable_forecast(
+                user_id=user_id,
+                request=request,
+                as_of=as_of,
+                explanation="no_observed_schedule",
+            )
+        quality = (
+            "partial"
+            if inputs.truncated
+            or inputs.read_failures
+            or inputs.paused_source_cutoffs
+            or expansion_warnings
+            or unexpanded_count
+            or exam_warnings
+            else "verified"
+        )
         probability = _clamp_probability(min(1.0, conflict_count * 0.2))
         if probability <= 0.25:
             risk_band = "LOW"
@@ -659,34 +988,94 @@ class ForecastService:
             available_window_count=available_windows,
             risk_band=risk_band,
             data_completeness=quality,
-            warning_codes=inputs.warning_codes,
+            warning_codes=sorted(
+                set(inputs.warning_codes) | expansion_warnings | exam_warnings
+            ),
         )
         return self._build_forecast(
-            user_id=user_id, request=request, as_of=as_of,
-            probability=probability, value=value, quality=quality,
-            explanation_codes=explanation_codes, evidence=self._evidence(inputs),
+            user_id=user_id,
+            request=request,
+            as_of=as_of,
+            probability=probability,
+            value=value,
+            quality=quality,
+            explanation_codes=explanation_codes,
+            evidence=self._evidence(inputs),
         )
 
     def _goal_progress_outlook(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         goals = inputs.goals
         if request.goal_id:
             goals = [g for g in goals if g.get("goal_id") == request.goal_id]
         if not goals:
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_goals")
-        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
+            return self._unavailable_forecast(
+                user_id=user_id,
+                request=request,
+                as_of=as_of,
+                explanation="no_observed_goals",
+            )
+        quality = (
+            "partial"
+            if inputs.truncated or inputs.read_failures or inputs.paused_source_cutoffs
+            else "verified"
+        )
         active_goals = [g for g in goals if g.get("status") == "active"]
         recent_threshold = as_of - timedelta(days=14)
         recent_progress = 0
         for g in active_goals:
             updated = _parse(g.get("updated_at"))
-            if updated and updated >= recent_threshold and float(g.get("progress_percent") or 0) > 0:
+            if (
+                updated
+                and updated >= recent_threshold
+                and float(g.get("progress_percent") or 0) > 0
+            ):
                 recent_progress += 1
         if active_goals:
-            avg_progress = sum(float(g.get("progress_percent") or 0) for g in active_goals) / len(active_goals)
+            avg_progress = sum(
+                float(g.get("progress_percent") or 0) for g in active_goals
+            ) / len(active_goals)
         else:
             avg_progress = 0.0
+        deadline_factors: list[float] = []
+        deadline_explanations: set[str] = set()
+        timezone_name = (inputs.preferences or {}).get("timezone") or "Asia/Shanghai"
+        try:
+            goal_timezone = ZoneInfo(timezone_name)
+        except Exception:
+            goal_timezone = timezone.utc
+        for goal in active_goals:
+            target = _parse(goal.get("target_date"))
+            if target is None and goal.get("target_date"):
+                try:
+                    target_date = date.fromisoformat(str(goal["target_date"])[:10])
+                    target = datetime.combine(
+                        target_date, time.min, tzinfo=goal_timezone
+                    ).astimezone(timezone.utc)
+                except ValueError:
+                    target = None
+            if target is None:
+                continue
+            remaining = target - as_of
+            if (
+                remaining <= timedelta(0)
+                and float(goal.get("progress_percent") or 0) < 100
+            ):
+                deadline_factors.append(0.25)
+                deadline_explanations.add("deadline_within_horizon")
+            elif target <= request.horizon_end:
+                deadline_explanations.add("deadline_within_horizon")
+                days_remaining = remaining.total_seconds() / 86400
+                deadline_factors.append(0.55 if days_remaining <= 3 else 0.8)
+            else:
+                deadline_explanations.add("deadline_outside_horizon")
+                deadline_factors.append(1.0)
         if not active_goals:
             outlook_band = "insufficient_data"
             probability = 0.0
@@ -703,6 +1092,11 @@ class ForecastService:
             outlook_band = "steady"
             probability = 0.5
             explanation_codes = ["goal_active"]
+        if deadline_factors:
+            probability = _clamp_probability(
+                probability * (sum(deadline_factors) / len(deadline_factors))
+            )
+            explanation_codes = sorted(set(explanation_codes) | deadline_explanations)
         value = GoalProgressOutlookValue(
             active_goal_count=len(active_goals),
             average_progress_percent=round(avg_progress, 2),
@@ -712,13 +1106,23 @@ class ForecastService:
             warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
-            user_id=user_id, request=request, as_of=as_of,
-            probability=probability, value=value, quality=quality,
-            explanation_codes=explanation_codes, evidence=self._evidence(inputs),
+            user_id=user_id,
+            request=request,
+            as_of=as_of,
+            probability=probability,
+            value=value,
+            quality=quality,
+            explanation_codes=explanation_codes,
+            evidence=self._evidence(inputs),
         )
 
     def _routine_continuity(
-        self, *, user_id: str, inputs: ForecastInputs, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        inputs: ForecastInputs,
+        request: ForecastRequest,
+        as_of: datetime,
     ) -> ForecastOut:
         completed: list[dict[str, Any]] = []
         for row in inputs.sessions:
@@ -728,9 +1132,20 @@ class ForecastService:
             if ended and ended <= as_of:
                 completed.append(row)
         if not completed:
-            return self._unavailable_forecast(user_id=user_id, request=request, as_of=as_of, explanation="no_observed_sessions")
-        quality = "partial" if inputs.truncated or inputs.read_failures else "verified"
-        completed_sorted = sorted(completed, key=lambda r: _parse(r.get("ended_at")) or as_of)
+            return self._unavailable_forecast(
+                user_id=user_id,
+                request=request,
+                as_of=as_of,
+                explanation="no_observed_sessions",
+            )
+        quality = (
+            "partial"
+            if inputs.truncated or inputs.read_failures or inputs.paused_source_cutoffs
+            else "verified"
+        )
+        completed_sorted = sorted(
+            completed, key=lambda r: _parse(r.get("ended_at")) or as_of
+        )
         intervals: list[float] = []
         for i in range(1, len(completed_sorted)):
             prev = _parse(completed_sorted[i - 1].get("ended_at"))
@@ -738,7 +1153,9 @@ class ForecastService:
             if prev and curr:
                 intervals.append((curr - prev).total_seconds() / 3600.0)
         median_interval = sorted(intervals)[len(intervals) // 2] if intervals else 0.0
-        if len(completed) >= 3 and (not intervals or max(intervals) <= median_interval * 2 + 24):
+        if len(completed) >= 3 and (
+            not intervals or max(intervals) <= median_interval * 2 + 24
+        ):
             continuity_band = "stable"
             probability = 0.75
             explanation_codes = ["routine_stable"]
@@ -758,9 +1175,14 @@ class ForecastService:
             warning_codes=inputs.warning_codes,
         )
         return self._build_forecast(
-            user_id=user_id, request=request, as_of=as_of,
-            probability=probability, value=value, quality=quality,
-            explanation_codes=explanation_codes, evidence=self._evidence(inputs),
+            user_id=user_id,
+            request=request,
+            as_of=as_of,
+            probability=probability,
+            value=value,
+            quality=quality,
+            explanation_codes=explanation_codes,
+            evidence=self._evidence(inputs),
         )
 
     @staticmethod
@@ -775,16 +1197,26 @@ class ForecastService:
         )
 
     def _build_forecast(
-        self, *, user_id: str, request: ForecastRequest, as_of: datetime,
-        probability: float, value, quality: str,
-        explanation_codes: list[str], evidence: ForecastEvidenceSummary,
+        self,
+        *,
+        user_id: str,
+        request: ForecastRequest,
+        as_of: datetime,
+        probability: float,
+        value,
+        quality: str,
+        explanation_codes: list[str],
+        evidence: ForecastEvidenceSummary,
     ) -> ForecastOut:
         valid_until = as_of + _FORECAST_TTL
         digest_input = {
             "forecast_type": request.forecast_type,
-            "scope_type": request.scope_type, "scope_id": request.scope_id,
-            "horizon_start": _iso(request.horizon_start), "horizon_end": _iso(request.horizon_end),
-            "probability": probability, "quality": quality,
+            "scope_type": request.scope_type,
+            "scope_id": request.scope_id,
+            "horizon_start": _iso(request.horizon_start),
+            "horizon_end": _iso(request.horizon_end),
+            "probability": probability,
+            "quality": quality,
         }
         return ForecastOut(
             forecast_id=f"fc_{uuid.uuid4().hex[:16]}",
@@ -807,39 +1239,59 @@ class ForecastService:
         )
 
     def _unavailable_forecast(
-        self, *, user_id: str, request: ForecastRequest, as_of: datetime,
+        self,
+        *,
+        user_id: str,
+        request: ForecastRequest,
+        as_of: datetime,
         explanation: str = "projection_failed",
     ) -> ForecastOut:
         valid_until = as_of + _FORECAST_TTL
         ft = request.forecast_type
         if ft == "DEADLINE_COMPLETION_RISK":
             value = DeadlineCompletionRiskValue(
-                pending_task_count=0, overdue_task_count=0, tasks_within_horizon=0,
-                risk_band="LOW", data_completeness="unavailable",
+                pending_task_count=0,
+                overdue_task_count=0,
+                tasks_within_horizon=0,
+                risk_band="LOW",
+                data_completeness="unavailable",
                 warning_codes=["projection_failed"],
             )
         elif ft == "UPCOMING_WORKLOAD":
             value = UpcomingWorkloadValue(
-                task_count=0, exam_count=0, estimated_total_minutes=0,
-                pressure_band="LOW", concentrated_dates=[],
-                data_completeness="unavailable", warning_codes=["projection_failed"],
+                task_count=0,
+                exam_count=0,
+                estimated_total_minutes=0,
+                pressure_band="LOW",
+                concentrated_dates=[],
+                data_completeness="unavailable",
+                warning_codes=["projection_failed"],
             )
         elif ft == "SCHEDULE_CONFLICT_RISK":
             value = ScheduleConflictRiskValue(
-                conflict_count=0, exam_collision_count=0, schedule_overlap_count=0,
-                available_window_count=0, risk_band="LOW",
-                data_completeness="unavailable", warning_codes=["projection_failed"],
+                conflict_count=0,
+                exam_collision_count=0,
+                schedule_overlap_count=0,
+                available_window_count=0,
+                risk_band="LOW",
+                data_completeness="unavailable",
+                warning_codes=["projection_failed"],
             )
         elif ft == "GOAL_PROGRESS_OUTLOOK":
             value = GoalProgressOutlookValue(
-                active_goal_count=0, average_progress_percent=0.0,
-                goals_with_recent_progress=0, outlook_band="insufficient_data",
-                data_completeness="unavailable", warning_codes=["projection_failed"],
+                active_goal_count=0,
+                average_progress_percent=0.0,
+                goals_with_recent_progress=0,
+                outlook_band="insufficient_data",
+                data_completeness="unavailable",
+                warning_codes=["projection_failed"],
             )
         elif ft == "ROUTINE_CONTINUITY":
             value = RoutineContinuityValue(
-                observed_session_count=0, median_interval_hours=0.0,
-                continuity_band="unknown", data_completeness="unavailable",
+                observed_session_count=0,
+                median_interval_hours=0.0,
+                continuity_band="unknown",
+                data_completeness="unavailable",
                 warning_codes=["projection_failed"],
             )
         else:
@@ -865,4 +1317,9 @@ class ForecastService:
         )
 
 
-__all__ = ["ForecastService", "ForecastInputs", "ForecastRequest", "FORECAST_ESTIMATOR_VERSION"]
+__all__ = [
+    "ForecastService",
+    "ForecastInputs",
+    "ForecastRequest",
+    "FORECAST_ESTIMATOR_VERSION",
+]

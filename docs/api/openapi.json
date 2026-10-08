@@ -23627,6 +23627,755 @@
         },
         "description": "accepted 成员主动离开课堂；成功返回 204，无响应体。\n\n发起人离开会结束整个课堂并清空归档。"
       }
+    },
+    "/api/v1/devices/bindings": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "申请桌面设备二维码绑定",
+        "operationId": "create_binding_api_v1_devices_bindings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceBindingCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceBindingCreateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/bindings/{binding_id}/confirm": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "由已登录用户确认桌面设备绑定",
+        "operationId": "confirm_binding_api_v1_devices_bindings__binding_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Binding Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceBindingConfirm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/bindings/{binding_id}/result": {
+      "get": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "设备轮询绑定结果并领取设备凭据",
+        "operationId": "poll_binding_api_v1_devices_bindings__binding_id__result_get",
+        "parameters": [
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Binding Id"
+            }
+          },
+          {
+            "name": "X-Device-Poll-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 32,
+              "maxLength": 128,
+              "title": "X-Device-Poll-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceBindingPollOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "列出当前账号的桌面设备",
+        "operationId": "list_devices_api_v1_devices_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopDeviceListOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "撤销本人桌面设备",
+        "operationId": "revoke_device_api_v1_devices__device_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/heartbeat": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "上报桌面设备心跳和诊断状态",
+        "operationId": "heartbeat_api_v1_devices_me_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceHeartbeat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceHeartbeatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/me/config": {
+      "get": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "读取桌面设备观察配置与用户偏好",
+        "operationId": "get_config_api_v1_devices_me_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceConfigOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/me/focus-sessions": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "由桌面设备开始本人专注会话",
+        "operationId": "create_focus_session_api_v1_devices_me_focus_sessions_post",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceFocusSessionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFocusSessionActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/focus-sessions/{session_id}/pause": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "暂停本人专注会话",
+        "operationId": "pause_focus_session_api_v1_devices_me_focus_sessions__session_id__pause_post",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFocusSessionActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/focus-sessions/{session_id}/resume": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "恢复本人专注会话",
+        "operationId": "resume_focus_session_api_v1_devices_me_focus_sessions__session_id__resume_post",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFocusSessionActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/focus-sessions/{session_id}/finish": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "结束本人专注会话",
+        "operationId": "finish_focus_session_api_v1_devices_me_focus_sessions__session_id__finish_post",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceFocusSessionFinish"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceFocusSessionActionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/events:batch": {
+      "post": {
+        "tags": [
+          "桌面设备"
+        ],
+        "summary": "批量幂等接收端侧结构化事件",
+        "operationId": "append_events_api_v1_devices_me_events_batch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceEventBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceEventBatchOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/devices/me/focus-sessions/{focus_id}/voice-sessions": {
+      "post": {
+        "tags": [
+          "桌面设备语音"
+        ],
+        "summary": "为本设备专注会话创建实时语音连接",
+        "operationId": "create_voice_api_v1_devices_me_focus_sessions__focus_id__voice_sessions_post",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "focus_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Focus Id"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusRealtimeVoiceSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/me/voice-sessions/{voice_id}": {
+      "delete": {
+        "tags": [
+          "桌面设备语音"
+        ],
+        "summary": "停止本设备实时语音会话",
+        "operationId": "stop_voice_api_v1_devices_me_voice_sessions__voice_id__delete",
+        "security": [
+          {
+            "DesktopDeviceBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "voice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Voice Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusRealtimeVoiceStopResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/learner-state/preferences": {
+      "get": {
+        "tags": [
+          "数据控制"
+        ],
+        "summary": "读取本人明确设置的学习偏好",
+        "operationId": "get_preferences_api_v1_learner_state_preferences_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnerPreferencesOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "数据控制"
+        ],
+        "summary": "按版本幂等更新本人学习偏好",
+        "operationId": "update_preferences_api_v1_learner_state_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearnerPreferencesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnerPreferencesOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "LEARNER_PREFERENCE_VERSION_CONFLICT 或 LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -27278,7 +28027,9 @@
             "type": "string",
             "enum": [
               "CORE",
-              "KNOWLEDGE"
+              "KNOWLEDGE",
+              "ACADEMIC",
+              "WORLD"
             ],
             "title": "Projection Kind",
             "description": "投影类型"
@@ -27297,7 +28048,8 @@
               "COURSE",
               "TASK",
               "SOURCE",
-              "KNOWLEDGE_COMPONENT"
+              "KNOWLEDGE_COMPONENT",
+              "SEMESTER"
             ],
             "title": "Scope Type",
             "description": "快照 scope 类型"
@@ -27322,7 +28074,16 @@
               "credit_progress",
               "exam_exposure",
               "schedule_load",
-              "goal_state"
+              "goal_state",
+              "knowledge_mastery_observation",
+              "workload_pressure",
+              "schedule_conflict",
+              "academic_progress",
+              "focus_rhythm",
+              "goal_progress",
+              "execution_consistency",
+              "growth_momentum",
+              "preference_profile"
             ],
             "title": "State Type",
             "description": "被纠正的状态类型"
@@ -27393,7 +28154,9 @@
             "type": "string",
             "enum": [
               "CORE",
-              "KNOWLEDGE"
+              "KNOWLEDGE",
+              "ACADEMIC",
+              "WORLD"
             ],
             "title": "Projection Kind"
           },
@@ -27408,7 +28171,8 @@
               "COURSE",
               "TASK",
               "SOURCE",
-              "KNOWLEDGE_COMPONENT"
+              "KNOWLEDGE_COMPONENT",
+              "SEMESTER"
             ],
             "title": "Scope Type"
           },
@@ -27429,7 +28193,16 @@
               "credit_progress",
               "exam_exposure",
               "schedule_load",
-              "goal_state"
+              "goal_state",
+              "knowledge_mastery_observation",
+              "workload_pressure",
+              "schedule_conflict",
+              "academic_progress",
+              "focus_rhythm",
+              "goal_progress",
+              "execution_consistency",
+              "growth_momentum",
+              "preference_profile"
             ],
             "title": "State Type"
           },
@@ -40369,7 +41142,8 @@
                 "plan_not_simulatable",
                 "plan_expired",
                 "no_movable_tasks",
-                "simulation_no_change"
+                "simulation_no_change",
+                "intervention_outside_horizon"
               ]
             },
             "type": "array",
@@ -44947,10 +45721,1054 @@
         "type": "object",
         "title": "UserProfileUpdate",
         "description": "Editable fields for the authenticated user's own profile."
+      },
+      "BehaviorStableEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "session_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Version"
+          },
+          "event_type": {
+            "type": "string",
+            "const": "behavior_stable",
+            "title": "Event Type"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/BehaviorStablePayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "session_id",
+          "occurred_at",
+          "model_version",
+          "event_type",
+          "payload"
+        ],
+        "title": "BehaviorStableEvent"
+      },
+      "BehaviorStablePayload": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "READ",
+              "WRITE",
+              "PHONE_INTERACTION",
+              "NO_VISIBLE_STUDY",
+              "COMPUTER"
+            ],
+            "title": "Label"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 0.0,
+            "title": "Duration Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "confidence",
+          "duration_seconds"
+        ],
+        "title": "BehaviorStablePayload"
+      },
+      "DesktopDeviceListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DesktopDeviceOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "DesktopDeviceListOut"
+      },
+      "DesktopDeviceOut": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "device_name": {
+            "type": "string",
+            "title": "Device Name"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "bound_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Bound At"
+          },
+          "last_heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Heartbeat At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_id",
+          "device_name",
+          "platform",
+          "status",
+          "created_at",
+          "bound_at"
+        ],
+        "title": "DesktopDeviceOut"
+      },
+      "DeviceBindingConfirm": {
+        "properties": {
+          "bind_token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Bind Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "bind_token"
+        ],
+        "title": "DeviceBindingConfirm"
+      },
+      "DeviceBindingCreate": {
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Device Name"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "android",
+              "linux"
+            ],
+            "title": "Platform"
+          },
+          "hardware_model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hardware Model"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_name",
+          "platform"
+        ],
+        "title": "DeviceBindingCreate"
+      },
+      "DeviceBindingCreateOut": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id"
+          },
+          "qr_payload": {
+            "type": "string",
+            "title": "Qr Payload"
+          },
+          "poll_token": {
+            "type": "string",
+            "title": "Poll Token"
+          },
+          "status": {
+            "type": "string",
+            "const": "PENDING",
+            "title": "Status"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "poll_interval_seconds": {
+            "type": "integer",
+            "title": "Poll Interval Seconds",
+            "default": 2
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "binding_id",
+          "qr_payload",
+          "poll_token",
+          "status",
+          "expires_at"
+        ],
+        "title": "DeviceBindingCreateOut"
+      },
+      "DeviceBindingPollOut": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "CONFIRMED",
+              "EXPIRED",
+              "REVOKED"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "device_credential": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Credential"
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "binding_id",
+          "status",
+          "expires_at"
+        ],
+        "title": "DeviceBindingPollOut"
+      },
+      "DeviceConfigOut": {
+        "properties": {
+          "protocol_version": {
+            "type": "integer",
+            "title": "Protocol Version",
+            "default": 1
+          },
+          "config_version": {
+            "type": "string",
+            "title": "Config Version"
+          },
+          "vision_enabled": {
+            "type": "boolean",
+            "title": "Vision Enabled",
+            "default": true
+          },
+          "behavior_sample_interval_ms": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 250.0,
+            "title": "Behavior Sample Interval Ms"
+          },
+          "expression_enabled": {
+            "type": "boolean",
+            "title": "Expression Enabled",
+            "default": true
+          },
+          "supports_session_control": {
+            "type": "boolean",
+            "title": "Supports Session Control",
+            "default": true
+          },
+          "supports_structured_event_upload": {
+            "type": "boolean",
+            "title": "Supports Structured Event Upload",
+            "default": true
+          },
+          "supports_ota": {
+            "type": "boolean",
+            "title": "Supports Ota",
+            "default": false
+          },
+          "supports_realtime_voice": {
+            "type": "boolean",
+            "title": "Supports Realtime Voice",
+            "default": false
+          },
+          "local_behavior_inference": {
+            "type": "boolean",
+            "title": "Local Behavior Inference"
+          },
+          "local_expression_inference": {
+            "type": "boolean",
+            "title": "Local Expression Inference"
+          },
+          "hardware_acceleration_status": {
+            "type": "string",
+            "const": "unverified",
+            "title": "Hardware Acceleration Status",
+            "default": "unverified"
+          },
+          "preferences_configured": {
+            "type": "boolean",
+            "title": "Preferences Configured",
+            "default": false
+          },
+          "preferences_version": {
+            "type": "integer",
+            "title": "Preferences Version",
+            "default": 0
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "default": "Asia/Shanghai"
+          },
+          "daily_capacity_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Daily Capacity Minutes",
+            "default": 240
+          },
+          "quiet_hours_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours Start"
+          },
+          "quiet_hours_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours End"
+          },
+          "preferences_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences Updated At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "config_version",
+          "behavior_sample_interval_ms",
+          "local_behavior_inference",
+          "local_expression_inference",
+          "updated_at"
+        ],
+        "title": "DeviceConfigOut"
+      },
+      "DeviceEventBatch": {
+        "properties": {
+          "events": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/BehaviorStableEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/PresenceChangedEvent"
+                },
+                {
+                  "$ref": "#/components/schemas/ExpressionStableEvent"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "event_type",
+                "mapping": {
+                  "behavior_stable": "#/components/schemas/BehaviorStableEvent",
+                  "expression_stable": "#/components/schemas/ExpressionStableEvent",
+                  "presence_changed": "#/components/schemas/PresenceChangedEvent"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Events"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "title": "DeviceEventBatch"
+      },
+      "DeviceEventBatchOut": {
+        "properties": {
+          "accepted_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accepted Event Ids"
+          },
+          "duplicate_event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Duplicate Event Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accepted_event_ids",
+          "duplicate_event_ids"
+        ],
+        "title": "DeviceEventBatchOut"
+      },
+      "DeviceFocusSessionActionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "paused_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "planned_duration_seconds": {
+            "type": "integer",
+            "title": "Planned Duration Seconds"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          },
+          "pause_seconds": {
+            "type": "integer",
+            "title": "Pause Seconds"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "mode",
+          "started_at",
+          "planned_duration_seconds",
+          "duration_seconds",
+          "pause_seconds",
+          "status"
+        ],
+        "title": "DeviceFocusSessionActionOut"
+      },
+      "DeviceFocusSessionCreate": {
+        "properties": {
+          "planned_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 14400.0,
+                "minimum": 300.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Duration Seconds"
+          },
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DeviceFocusSessionCreate"
+      },
+      "DeviceFocusSessionFinish": {
+        "properties": {
+          "behavior_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudyBehaviorSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DeviceFocusSessionFinish"
+      },
+      "DeviceHeartbeat": {
+        "properties": {
+          "app_version": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "App Version"
+          },
+          "os_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Os Version"
+          },
+          "network_state": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "limited"
+            ],
+            "title": "Network State"
+          },
+          "temperature_c": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 120.0,
+                "minimum": -20.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature C"
+          },
+          "free_storage_mb": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Storage Mb"
+          },
+          "capabilities": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "maxProperties": 16,
+            "title": "Capabilities"
+          },
+          "model_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "maxProperties": 16,
+            "title": "Model Versions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "app_version",
+          "network_state"
+        ],
+        "title": "DeviceHeartbeat"
+      },
+      "DeviceHeartbeatOut": {
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "title": "Accepted",
+            "default": true
+          },
+          "received_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Received At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "received_at"
+        ],
+        "title": "DeviceHeartbeatOut"
+      },
+      "ExpressionStableEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "session_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Version"
+          },
+          "event_type": {
+            "type": "string",
+            "const": "expression_stable",
+            "title": "Event Type"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ExpressionStablePayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "session_id",
+          "occurred_at",
+          "model_version",
+          "event_type",
+          "payload"
+        ],
+        "title": "ExpressionStableEvent"
+      },
+      "ExpressionStablePayload": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "enum": [
+              "ANGRY",
+              "DISGUST",
+              "FEAR",
+              "HAPPY",
+              "NEUTRAL",
+              "SAD",
+              "SURPRISE",
+              "UNKNOWN",
+              "NO_FACE"
+            ],
+            "title": "Label"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label",
+          "confidence"
+        ],
+        "title": "ExpressionStablePayload"
+      },
+      "LearnerPreferencesOut": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone",
+            "default": "Asia/Shanghai"
+          },
+          "daily_capacity_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Daily Capacity Minutes",
+            "default": 240
+          },
+          "quiet_hours_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours Start"
+          },
+          "quiet_hours_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours End"
+          },
+          "semester_start_dates": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "object",
+            "maxProperties": 20,
+            "title": "Semester Start Dates"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "default": false
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LearnerPreferencesOut"
+      },
+      "LearnerPreferencesUpdate": {
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone",
+            "default": "Asia/Shanghai"
+          },
+          "daily_capacity_minutes": {
+            "type": "integer",
+            "maximum": 720.0,
+            "minimum": 15.0,
+            "title": "Daily Capacity Minutes",
+            "default": 240
+          },
+          "quiet_hours_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours Start"
+          },
+          "quiet_hours_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet Hours End"
+          },
+          "semester_start_dates": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "object",
+            "maxProperties": 20,
+            "title": "Semester Start Dates"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Version"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version",
+          "idempotency_key"
+        ],
+        "title": "LearnerPreferencesUpdate"
+      },
+      "PresenceChangedEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "session_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Session Id"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Model Version"
+          },
+          "event_type": {
+            "type": "string",
+            "const": "presence_changed",
+            "title": "Event Type"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/PresenceChangedPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "event_id",
+          "session_id",
+          "occurred_at",
+          "model_version",
+          "event_type",
+          "payload"
+        ],
+        "title": "PresenceChangedEvent"
+      },
+      "PresenceChangedPayload": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "PRESENT",
+              "OBSERVING",
+              "ABSENT"
+            ],
+            "title": "State"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "confidence"
+        ],
+        "title": "PresenceChangedPayload"
       }
     },
     "securitySchemes": {
       "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "DesktopDeviceBearer": {
         "type": "http",
         "scheme": "bearer"
       }

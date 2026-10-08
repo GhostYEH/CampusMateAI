@@ -499,6 +499,30 @@ class TrustedDeviceRevoked(AppException):
     message = "可信设备已被撤销。"
 
 
+class DeviceBindingInvalid(AppException):
+    code = "DEVICE_BINDING_INVALID"
+    http_status = 401
+    message = "设备绑定凭据无效或已过期。"
+
+
+class DeviceNotFound(AppException):
+    code = "DEVICE_NOT_FOUND"
+    http_status = 404
+    message = "设备不存在或不属于当前账号。"
+
+
+class DeviceEventConflict(AppException):
+    code = "DEVICE_EVENT_ID_CONFLICT"
+    http_status = 409
+    message = "事件标识已用于不同内容。"
+
+
+class DeviceCommandConflict(AppException):
+    code = "DEVICE_COMMAND_ID_CONFLICT"
+    http_status = 409
+    message = "幂等键已用于不同设备会话操作。"
+
+
 # ===== CampusAgentRuntime =====
 # 稳定错误码与 AgentErrorCode 对齐(§9.2)。
 # request_id 由中间件注入,便于跨客户端追踪。
@@ -744,6 +768,10 @@ __all__ = [
     "AttachmentTooLarge",
     "AttachmentTypeNotAllowed",
     "InvalidTransition",
+    "DeviceBindingInvalid",
+    "DeviceNotFound",
+    "DeviceEventConflict",
+    "DeviceCommandConflict",
     "StudySessionNotFound",
     "StudyBreakNotFound",
     "PersonalTaskNotFound",

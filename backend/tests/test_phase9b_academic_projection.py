@@ -6,7 +6,10 @@ from datetime import datetime, timedelta, timezone
 from app.database.sqlite_db import Database
 from app.repositories.learner_state_repository import LearnerStateRepository
 from app.repositories.learner_event_repository import LearnerEventRepository
-from app.services.learner_state_service import LearnerStateProjectionService, ACADEMIC_ESTIMATOR_VERSION
+from app.services.learner_state_service import (
+    LearnerStateProjectionService,
+    ACADEMIC_ESTIMATOR_VERSION,
+)
 
 
 def _now() -> datetime:
@@ -26,16 +29,28 @@ def _add_user(db: Database, user_id: str = "user1") -> None:
         )
 
 
-def _make_service(db: Database, edu_data_repository=None, source_policy=None) -> LearnerStateProjectionService:
+def _make_service(
+    db: Database, edu_data_repository=None, source_policy=None
+) -> LearnerStateProjectionService:
     repo = LearnerStateRepository(db)
     event_repo = LearnerEventRepository(db)
     return LearnerStateProjectionService(
-        repo, edu_data_repository=edu_data_repository,
-        learner_event_repository=event_repo, source_policy=source_policy,
+        repo,
+        edu_data_repository=edu_data_repository,
+        learner_event_repository=event_repo,
+        source_policy=source_policy,
     )
 
 
-def _insert_edu_schedule_item(db, user_id, item_id, semester="2024-2025-1", course_code="CS101", credit=3.0, weekday=1):
+def _insert_edu_schedule_item(
+    db,
+    user_id,
+    item_id,
+    semester="2024-2025-1",
+    course_code="CS101",
+    credit=3.0,
+    weekday=1,
+):
     now = _now().isoformat()
     with db.transaction() as conn:
         conn.execute(
@@ -44,12 +59,35 @@ def _insert_edu_schedule_item(db, user_id, item_id, semester="2024-2025-1", cour
                 credit, weekday, source, source_hash, last_seen_at, sync_batch_id,
                 is_stale, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (item_id, user_id, "uni1", semester, course_code, "Course",
-             credit, weekday, "edu", "hash", now, "batch1", 0, now, now),
+            (
+                item_id,
+                user_id,
+                "uni1",
+                semester,
+                course_code,
+                "Course",
+                credit,
+                weekday,
+                "edu",
+                "hash",
+                now,
+                "batch1",
+                0,
+                now,
+                now,
+            ),
         )
 
 
-def _insert_edu_grade_item(db, user_id, item_id, semester="2024-2025-1", course_code="CS101", credit=3.0, score="85"):
+def _insert_edu_grade_item(
+    db,
+    user_id,
+    item_id,
+    semester="2024-2025-1",
+    course_code="CS101",
+    credit=3.0,
+    score="85",
+):
     now = _now().isoformat()
     with db.transaction() as conn:
         conn.execute(
@@ -58,12 +96,30 @@ def _insert_edu_grade_item(db, user_id, item_id, semester="2024-2025-1", course_
                 credit, score, category, status, is_stale, last_seen_at, sync_batch_id,
                 source_hash, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (item_id, user_id, "uni1", semester, course_code, "Course",
-             credit, score, "exam", "active", 0, now, "batch1", "hash", now, now),
+            (
+                item_id,
+                user_id,
+                "uni1",
+                semester,
+                course_code,
+                "Course",
+                credit,
+                score,
+                "exam",
+                "active",
+                0,
+                now,
+                "batch1",
+                "hash",
+                now,
+                now,
+            ),
         )
 
 
-def _insert_edu_exam_item(db, user_id, item_id, semester="2024-2025-1", course_code="CS101", starts_at=None):
+def _insert_edu_exam_item(
+    db, user_id, item_id, semester="2024-2025-1", course_code="CS101", starts_at=None
+):
     now = _now().isoformat()
     with db.transaction() as conn:
         conn.execute(
@@ -72,8 +128,22 @@ def _insert_edu_exam_item(db, user_id, item_id, semester="2024-2025-1", course_c
                 exam_type, starts_at, is_stale, last_seen_at, sync_batch_id,
                 source_hash, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (item_id, user_id, "uni1", semester, course_code, "Course",
-             "final", starts_at, 0, now, "batch1", "hash", now, now),
+            (
+                item_id,
+                user_id,
+                "uni1",
+                semester,
+                course_code,
+                "Course",
+                "final",
+                starts_at,
+                0,
+                now,
+                "batch1",
+                "hash",
+                now,
+                now,
+            ),
         )
 
 
@@ -87,6 +157,7 @@ def test_academic_projection_creates_expected_snapshots():
     future = (_now() + timedelta(days=5)).isoformat()
     _insert_edu_exam_item(db, "user1", "ex1", starts_at=future)
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -107,6 +178,7 @@ def test_academic_projection_unavailable_when_no_edu_data():
     db = _make_db()
     _add_user(db, "user1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -120,6 +192,7 @@ def test_academic_projection_idempotent():
     _add_user(db, "user1")
     _insert_edu_schedule_item(db, "user1", "sch1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     now = _now()
@@ -134,6 +207,7 @@ def test_academic_projection_cross_user_isolation():
     _add_user(db, "user2")
     _insert_edu_schedule_item(db, "user1", "sch1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     r1 = service.project_academic("user1", as_of=_now())
@@ -147,6 +221,7 @@ def test_academic_projection_estimator_version():
     db = _make_db()
     _add_user(db, "user1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -159,10 +234,13 @@ def test_academic_course_load_value_correctness():
     _insert_edu_schedule_item(db, "user1", "sch1", credit=3.0)
     _insert_edu_schedule_item(db, "user1", "sch2", course_code="CS102", credit=2.0)
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
-    course_load = next(s for s in result.snapshots if s.state_type == "academic_course_load")
+    course_load = next(
+        s for s in result.snapshots if s.state_type == "academic_course_load"
+    )
     assert course_load.value["current_semester_course_count"] == 2
     assert course_load.value["effective_credit_load"] == 5.0
     assert course_load.value["data_completeness"] == "verified"
@@ -175,6 +253,7 @@ def test_grade_observation_value_correctness():
     _insert_edu_grade_item(db, "user1", "g2", course_code="CS102", score="92")
     _insert_edu_grade_item(db, "user1", "g3", course_code="CS103", score="55")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -191,6 +270,7 @@ def test_credit_progress_does_not_fabricate_total():
     _add_user(db, "user1")
     _insert_edu_grade_item(db, "user1", "g1", credit=3.0)
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -203,10 +283,19 @@ def test_exam_exposure_time_buckets():
     db = _make_db()
     _add_user(db, "user1")
     now = _now()
-    _insert_edu_exam_item(db, "user1", "ex1", starts_at=(now + timedelta(days=3)).isoformat())
-    _insert_edu_exam_item(db, "user1", "ex2", course_code="CS102", starts_at=(now + timedelta(days=20)).isoformat())
+    _insert_edu_exam_item(
+        db, "user1", "ex1", starts_at=(now + timedelta(days=3)).isoformat()
+    )
+    _insert_edu_exam_item(
+        db,
+        "user1",
+        "ex2",
+        course_code="CS102",
+        starts_at=(now + timedelta(days=20)).isoformat(),
+    )
     _insert_edu_exam_item(db, "user1", "ex3", course_code="CS103", starts_at=None)
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=now)
@@ -222,6 +311,7 @@ def test_schedule_load_value_correctness():
     _add_user(db, "user1")
     _insert_edu_schedule_item(db, "user1", "sch1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -234,6 +324,7 @@ def test_goal_state_unavailable_without_self_reports():
     db = _make_db()
     _add_user(db, "user1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -247,6 +338,7 @@ def test_academic_projection_no_value_judgments():
     _add_user(db, "user1")
     _insert_edu_grade_item(db, "user1", "g1", score="55")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
@@ -264,22 +356,33 @@ def test_academic_projection_evidence_safe_structure():
     _insert_edu_schedule_item(db, "user1", "sch1")
     _insert_edu_grade_item(db, "user1", "g1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())
     repo = service.repository
     for snap in result.snapshots:
         evidence_rows, _ = repo.list_evidence(
-            user_id="user1", snapshot_id=snap.snapshot_id,
-            page=1, page_size=10, projection_kind="ACADEMIC", projection_scope="__user__",
+            user_id="user1",
+            snapshot_id=snap.snapshot_id,
+            page=1,
+            page_size=10,
+            projection_kind="ACADEMIC",
+            projection_scope="__user__",
         )
         for ev in evidence_rows:
             assert ev.source_category in (
-                "edu_schedule", "edu_grade", "edu_exam", "unknown",
+                "edu_schedule",
+                "edu_grade",
+                "edu_exam",
+                "unknown",
             )
             assert ev.explanation_code in (
-                "edu_schedule_observed", "edu_grade_observed", "edu_exam_observed",
-                "state_observed", "academic_data_unavailable",
+                "edu_schedule_observed",
+                "edu_grade_observed",
+                "edu_exam_observed",
+                "state_observed",
+                "academic_data_unavailable",
             )
 
 
@@ -287,19 +390,29 @@ def test_academic_projection_with_paused_source():
     class MockPolicy:
         def get_paused_sources(self, *, user_id):
             return {"EDU"}
+
+        def get_paused_source_cutoffs(self, *, user_id):
+            # All fixture facts were collected after this pause boundary.
+            return {"EDU": "2000-01-01T00:00:00+00:00"}
+
         def get_projection_warning(self, *, user_id):
             return "learner_data_source_paused"
+
     db = _make_db()
     _add_user(db, "user1")
     _insert_edu_schedule_item(db, "user1", "sch1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
-    service = _make_service(db, edu_data_repository=edu_repo, source_policy=MockPolicy())
+    service = _make_service(
+        db, edu_data_repository=edu_repo, source_policy=MockPolicy()
+    )
     result = service.project_academic("user1", as_of=_now())
     assert "learner_data_source_paused" in result.warnings
     assert all(snapshot.data_quality == "unavailable" for snapshot in result.snapshots)
     course_load = next(
-        snapshot for snapshot in result.snapshots
+        snapshot
+        for snapshot in result.snapshots
         if snapshot.state_type == "academic_course_load"
     )
     assert course_load.value["current_semester_course_count"] == 0
@@ -310,6 +423,7 @@ def test_academic_projection_new_data_triggers_recompute():
     db = _make_db()
     _add_user(db, "user1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     now = _now()
@@ -324,6 +438,7 @@ def test_academic_projection_saves_to_repository():
     _add_user(db, "user1")
     _insert_edu_schedule_item(db, "user1", "sch1")
     from app.repositories.edu_data_repository import EduDataRepository
+
     edu_repo = EduDataRepository(db)
     service = _make_service(db, edu_data_repository=edu_repo)
     result = service.project_academic("user1", as_of=_now())

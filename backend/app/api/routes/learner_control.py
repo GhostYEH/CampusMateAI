@@ -3,6 +3,7 @@
 所有端点仅限学生本人操作，teacher/admin 不可代替学生。
 输出严格排除内部表名、source_id、原文、凭据等敏感信息。
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -10,6 +11,10 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Query
 
 from ...models.multi_role import UserRow
+from ...schemas.learner_preferences import (
+    LearnerPreferencesOut,
+    LearnerPreferencesUpdate,
+)
 from ...schemas.learner_control import (
     CorrectionCreate,
     CorrectionOut,
@@ -34,6 +39,38 @@ router = APIRouter(prefix="/learner-state", tags=["数据控制"])
 
 def _container() -> ServiceContainer:
     return get_container()
+
+
+@router.get(
+    "/preferences",
+    response_model=LearnerPreferencesOut,
+    summary="读取本人明确设置的学习偏好",
+)
+def get_preferences(
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+):
+    return container.learner_control_service.get_preferences(user_id=user.id)
+
+
+@router.put(
+    "/preferences",
+    response_model=LearnerPreferencesOut,
+    summary="按版本幂等更新本人学习偏好",
+    responses={
+        409: {
+            "description": "LEARNER_PREFERENCE_VERSION_CONFLICT 或 LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT"
+        }
+    },
+)
+def update_preferences(
+    body: LearnerPreferencesUpdate,
+    user: UserRow = Depends(student_only),
+    container: ServiceContainer = Depends(_container),
+):
+    return container.learner_control_service.update_preferences(
+        user_id=user.id, request=body
+    )
 
 
 def _correction_out(row) -> CorrectionOut:
@@ -221,7 +258,9 @@ def list_corrections(
     )
     return CorrectionPage(
         items=[_correction_out(r) for r in rows],
-        total=total, page=page, page_size=page_size,
+        total=total,
+        page=page,
+        page_size=page_size,
         has_more=page * page_size < total,
     )
 
@@ -382,7 +421,9 @@ def update_data_control(
     row = container.learner_control_service.update_source_control(
         user_id=user.id, source_key=source_key, status=body.status
     )
-    event_type = "data_source_paused" if body.status == "PAUSED" else "data_source_resumed"
+    event_type = (
+        "data_source_paused" if body.status == "PAUSED" else "data_source_resumed"
+    )
     container.learner_control_service.record_event(
         user_id=user.id, event_type=event_type, metadata={"source_key": source_key}
     )
@@ -449,7 +490,10 @@ def request_deletion(
             openapi_examples={
                 "成功": {
                     "summary": "删除本人世界模型状态数据",
-                    "value": {"scope": "STATE_ONLY", "idempotency_key": "delete-demo-1"},
+                    "value": {
+                        "scope": "STATE_ONLY",
+                        "idempotency_key": "delete-demo-1",
+                    },
                 }
             }
         ),
@@ -466,7 +510,9 @@ def request_deletion(
         user_id=user.id, scope=body.scope, idempotency_key=body.idempotency_key
     )
     container.learner_control_service.record_event(
-        user_id=user.id, event_type="learner_model_delete_requested", metadata={"scope": body.scope}
+        user_id=user.id,
+        event_type="learner_model_delete_requested",
+        metadata={"scope": body.scope},
     )
     return _delete_request_out(row)
 
@@ -667,7 +713,10 @@ def get_model_transparency(
                     "examples": {
                         "成功": {
                             "summary": "能力未获放行",
-                            "value": {"allowed": False, "reason": "canary_feature_flag_disabled"},
+                            "value": {
+                                "allowed": False,
+                                "reason": "canary_feature_flag_disabled",
+                            },
                         }
                     }
                 }
@@ -685,7 +734,9 @@ def check_canary_gate(
     - 依次校验 feature flag、数据源策略、只读能力、promotion 与熔断状态。
     - 仅返回 allowed 与 reason，不执行任何模型调用。
     """
-    result = container.learner_control_service.canary_gate(capability_name=capability_name, user_id=user.id)
+    result = container.learner_control_service.canary_gate(
+        capability_name=capability_name, user_id=user.id
+    )
     return result
 
 

@@ -51,16 +51,21 @@ def _login(client, username):
 
 def _seed_task_with_deadline(container, *, user_id, title, deadline):
     task = container.personal_task_repository.create_task(
-        user_id=user_id, title=title, deadline=deadline.isoformat(),
+        user_id=user_id,
+        title=title,
+        deadline=deadline.isoformat(),
     )
     return task
 
 
 def _seed_goal(container, *, user_id, name="考研复习", category="academic"):
     goal, _ = container.student_goal_repository.create_goal(
-        user_id=user_id, name=name, category=category,
+        user_id=user_id,
+        name=name,
+        category=category,
         target_date=(AS_OF + timedelta(days=30)).isoformat(),
-        initial_progress_percent=20.0, milestone_count=3,
+        initial_progress_percent=20.0,
+        milestone_count=3,
     )
     return goal
 
@@ -79,7 +84,9 @@ def _seed_sessions(container, *, user_id, count=3):
             )
 
 
-def _simulate(container, *, user_id, intervention, baseline_run_id=None, horizon_days=7):
+def _simulate(
+    container, *, user_id, intervention, baseline_run_id=None, horizon_days=7
+):
     return container.simulation_service.simulate(
         user_id=user_id,
         baseline_run_id=baseline_run_id,
@@ -94,11 +101,14 @@ def test_simulation_response_structure_and_readonly_marks():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="明日截止任务",
+        container,
+        user_id=user_id,
+        title="明日截止任务",
         deadline=AS_OF + timedelta(days=1),
     )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AllocateFocusMinutesIntervention(focus_minutes=30),
     )
     assert response.estimator_version == SIMULATION_ESTIMATOR_VERSION
@@ -117,25 +127,43 @@ def test_scenario_1_allocate_focus_minutes_changes_deadline_risk():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="明日截止任务",
+        container,
+        user_id=user_id,
+        title="明日截止任务",
         deadline=AS_OF + timedelta(days=1),
     )
     response = _simulate(
-        container, user_id=user_id,
-        intervention=AllocateFocusMinutesIntervention(focus_minutes=30, target_date=AS_OF),
+        container,
+        user_id=user_id,
+        intervention=AllocateFocusMinutesIntervention(
+            focus_minutes=30, target_date=AS_OF
+        ),
     )
     assert response.data_quality in ("verified", "partial", "stale", "unavailable")
     assert isinstance(response.changed_forecasts, list)
     _deadline_change = next(
-        (f for f in response.changed_forecasts if f.forecast_type == "DEADLINE_COMPLETION_RISK"),
+        (
+            f
+            for f in response.changed_forecasts
+            if f.forecast_type == "DEADLINE_COMPLETION_RISK"
+        ),
         None,
     )
     routine_change = next(
-        (f for f in response.changed_forecasts if f.forecast_type == "ROUTINE_CONTINUITY"),
+        (
+            f
+            for f in response.changed_forecasts
+            if f.forecast_type == "ROUTINE_CONTINUITY"
+        ),
         None,
     )
     assert routine_change is not None, "增加专注时间应改变常规连续性预测"
-    assert routine_change.direction in ("increased", "decreased", "unchanged", "unknown")
+    assert routine_change.direction in (
+        "increased",
+        "decreased",
+        "unchanged",
+        "unknown",
+    )
 
 
 def test_scenario_2_reschedule_task_changes_workload():
@@ -143,17 +171,24 @@ def test_scenario_2_reschedule_task_changes_workload():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     task = _seed_task_with_deadline(
-        container, user_id=user_id, title="非紧急任务",
+        container,
+        user_id=user_id,
+        title="非紧急任务",
         deadline=AS_OF + timedelta(days=2),
     )
     weekend = AS_OF + timedelta(days=10)
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=RescheduleTaskIntervention(task_id=task.id, new_deadline=weekend),
     )
     assert response.data_quality in ("verified", "partial", "stale", "unavailable")
     workload_change = next(
-        (f for f in response.changed_forecasts if f.forecast_type == "UPCOMING_WORKLOAD"),
+        (
+            f
+            for f in response.changed_forecasts
+            if f.forecast_type == "UPCOMING_WORKLOAD"
+        ),
         None,
     )
     assert workload_change is not None, "重新安排任务应改变负载预测"
@@ -165,16 +200,21 @@ def test_scenario_3_accept_plan_changes_schedule_conflict():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="计划内任务",
+        container,
+        user_id=user_id,
+        title="计划内任务",
         deadline=AS_OF + timedelta(days=3),
     )
     # 计划推演要求计划真实存在且处于 PROPOSED/ACCEPTED 状态。
     # demo seeder 不创建学习计划,因此这里显式生成一个,而不是硬编码一个不存在的 plan_id。
     plan = container.learning_planner_service.generate(
-        user_id=user_id, available_minutes=60, as_of=AS_OF,
+        user_id=user_id,
+        available_minutes=60,
+        as_of=AS_OF,
     )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AcceptPlanIntervention(plan_id=plan.plan_id),
     )
     assert "plan_acceptance_assumed" in response.assumptions
@@ -186,16 +226,24 @@ def test_scenario_4_pause_data_source_degrades_states():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="任务",
+        container,
+        user_id=user_id,
+        title="任务",
         deadline=AS_OF + timedelta(days=2),
     )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=PauseDataSourceIntervention(source_category="academic"),
     )
     assert "source_pause_assumed" in response.assumptions
-    degraded = [s for s in response.changed_state_estimates if s.change_type == "degraded"]
-    assert any(s.state_type == "data_source_health" for s in degraded) or len(response.changed_state_estimates) >= 0
+    degraded = [
+        s for s in response.changed_state_estimates if s.change_type == "degraded"
+    ]
+    assert (
+        any(s.state_type == "data_source_health" for s in degraded)
+        or len(response.changed_state_estimates) >= 0
+    )
 
 
 def test_scenario_5_adjust_goal_deadline_changes_progress_outlook():
@@ -203,49 +251,66 @@ def test_scenario_5_adjust_goal_deadline_changes_progress_outlook():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     goal = _seed_goal(container, user_id=user_id)
-    new_target = AS_OF + timedelta(days=37)
+    new_target = AS_OF - timedelta(days=1)
     response = _simulate(
-        container, user_id=user_id,
-        intervention=AdjustGoalDeadlineIntervention(goal_id=goal.goal_id, new_target_date=new_target),
+        container,
+        user_id=user_id,
+        intervention=AdjustGoalDeadlineIntervention(
+            goal_id=goal.goal_id, new_target_date=new_target
+        ),
     )
     assert response.data_quality in ("verified", "partial", "stale", "unavailable")
-    goal_change = next(
-        (s for s in response.changed_state_estimates if s.state_type in ("goal_state", "goal_progress")),
-        None,
+    assert any(
+        f.forecast_type == "GOAL_PROGRESS_OUTLOOK" for f in response.changed_forecasts
     )
-    assert goal_change is not None, "调整目标截止日期应改变目标状态估计"
+    # Changing a target date does not invent progress or completed milestones.
+    assert all(
+        s.state_type not in {"goal_state", "goal_progress"}
+        for s in response.changed_state_estimates
+    )
 
 
 def test_simulation_is_readonly_does_not_create_or_modify_data():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     task = _seed_task_with_deadline(
-        container, user_id=user_id, title="原任务",
+        container,
+        user_id=user_id,
+        title="原任务",
         deadline=AS_OF + timedelta(days=2),
     )
     original_deadline = task.deadline
     tasks_before, total_before = container.personal_task_repository.list_tasks(
-        user_id=user_id, page=1, page_size=200,
+        user_id=user_id,
+        page=1,
+        page_size=200,
     )
+
     def projection_counts():
         with container.db.query() as conn:
             return tuple(
                 conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                 for table in (
-                    "learner_state_projection_runs", "learner_state_snapshots",
-                    "learner_state_evidence", "learner_events",
+                    "learner_state_projection_runs",
+                    "learner_state_snapshots",
+                    "learner_state_evidence",
+                    "learner_events",
                 )
             )
 
     counts_before = projection_counts()
     _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=RescheduleTaskIntervention(
-            task_id=task.id, new_deadline=AS_OF + timedelta(days=10),
+            task_id=task.id,
+            new_deadline=AS_OF + timedelta(days=10),
         ),
     )
     tasks_after, total_after = container.personal_task_repository.list_tasks(
-        user_id=user_id, page=1, page_size=200,
+        user_id=user_id,
+        page=1,
+        page_size=200,
     )
     assert total_after == total_before, "模拟不应创建或删除任务"
     same_task = next(t for t in tasks_after if t.id == task.id)
@@ -257,12 +322,18 @@ def test_simulation_refreshes_after_facts_change_without_idempotency_key():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="first task", deadline=AS_OF + timedelta(days=2),
+        container,
+        user_id=user_id,
+        title="first task",
+        deadline=AS_OF + timedelta(days=2),
     )
     intervention = AllocateFocusMinutesIntervention(focus_minutes=30)
     first = _simulate(container, user_id=user_id, intervention=intervention)
     _seed_task_with_deadline(
-        container, user_id=user_id, title="new task", deadline=AS_OF + timedelta(days=3),
+        container,
+        user_id=user_id,
+        title="new task",
+        deadline=AS_OF + timedelta(days=3),
     )
     second = _simulate(container, user_id=user_id, intervention=intervention)
     assert second.baseline_digest != first.baseline_digest
@@ -273,16 +344,24 @@ def test_simulation_replays_explicit_idempotency_key_until_expiry():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="first task", deadline=AS_OF + timedelta(days=2),
+        container,
+        user_id=user_id,
+        title="first task",
+        deadline=AS_OF + timedelta(days=2),
     )
     kwargs = dict(
-        user_id=user_id, baseline_run_id=None,
+        user_id=user_id,
+        baseline_run_id=None,
         intervention=AllocateFocusMinutesIntervention(focus_minutes=30),
-        horizon_days=7, idempotency_key="same-simulation",
+        horizon_days=7,
+        idempotency_key="same-simulation",
     )
     first = container.simulation_service.simulate(**kwargs, as_of=AS_OF)
     _seed_task_with_deadline(
-        container, user_id=user_id, title="new task", deadline=AS_OF + timedelta(days=3),
+        container,
+        user_id=user_id,
+        title="new task",
+        deadline=AS_OF + timedelta(days=3),
     )
     replay = container.simulation_service.simulate(**kwargs, as_of=AS_OF)
     assert replay.simulation_id == first.simulation_id
@@ -295,7 +374,9 @@ def test_simulation_idempotent_for_same_input():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="任务",
+        container,
+        user_id=user_id,
+        title="任务",
         deadline=AS_OF + timedelta(days=2),
     )
     intervention = AllocateFocusMinutesIntervention(focus_minutes=30, target_date=AS_OF)
@@ -310,23 +391,36 @@ def test_future_focus_changes_deadline_risk_within_horizon_only():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="due soon", deadline=AS_OF + timedelta(days=1),
+        container,
+        user_id=user_id,
+        title="due soon",
+        deadline=AS_OF + timedelta(days=1),
     )
     within = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AllocateFocusMinutesIntervention(
-            focus_minutes=30, target_date=AS_OF + timedelta(hours=4),
+            focus_minutes=30,
+            target_date=AS_OF + timedelta(hours=4),
         ),
     )
-    risk = next(f for f in within.changed_forecasts if f.forecast_type == "DEADLINE_COMPLETION_RISK")
+    risk = next(
+        f
+        for f in within.changed_forecasts
+        if f.forecast_type == "DEADLINE_COMPLETION_RISK"
+    )
     assert risk.intervention_probability < risk.baseline_probability
     outside = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AllocateFocusMinutesIntervention(
-            focus_minutes=30, target_date=AS_OF + timedelta(days=10),
+            focus_minutes=30,
+            target_date=AS_OF + timedelta(days=10),
         ),
     )
-    assert all(f.forecast_type != "DEADLINE_COMPLETION_RISK" for f in outside.changed_forecasts)
+    assert all(
+        f.forecast_type != "DEADLINE_COMPLETION_RISK" for f in outside.changed_forecasts
+    )
 
 
 def test_goal_deadline_simulation_compares_the_same_goal_population():
@@ -334,7 +428,10 @@ def test_goal_deadline_simulation_compares_the_same_goal_population():
     user_id = container.user_repository.get_user_by_username("student_demo").id
     goal = _seed_goal(container, user_id=user_id, name="target goal")
     container.student_goal_repository.create_goal(
-        user_id=user_id, name="other goal", category="academic", initial_progress_percent=80,
+        user_id=user_id,
+        name="other goal",
+        category="academic",
+        initial_progress_percent=80,
     )
     with container.db.transaction() as conn:
         conn.execute(
@@ -342,12 +439,16 @@ def test_goal_deadline_simulation_compares_the_same_goal_population():
             ((AS_OF - timedelta(days=30)).isoformat(), goal.goal_id),
         )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AdjustGoalDeadlineIntervention(
-            goal_id=goal.goal_id, new_target_date=AS_OF + timedelta(days=37),
+            goal_id=goal.goal_id,
+            new_target_date=AS_OF + timedelta(days=37),
         ),
     )
-    assert all(f.forecast_type != "GOAL_PROGRESS_OUTLOOK" for f in response.changed_forecasts)
+    assert all(
+        f.forecast_type != "GOAL_PROGRESS_OUTLOOK" for f in response.changed_forecasts
+    )
 
 
 def test_reduce_daily_load_keeps_course_and_important_tasks_fixed():
@@ -355,16 +456,24 @@ def test_reduce_daily_load_keeps_course_and_important_tasks_fixed():
     user_id = container.user_repository.get_user_by_username("student_demo").id
     deadline = (AS_OF + timedelta(days=1)).isoformat()
     container.personal_task_repository.create_task(
-        user_id=user_id, title="course task", course_id="course-a", deadline=deadline,
+        user_id=user_id,
+        title="course task",
+        course_id="course-a",
+        deadline=deadline,
     )
     important = container.personal_task_repository.create_task(
-        user_id=user_id, title="important personal task", deadline=deadline,
+        user_id=user_id,
+        title="important personal task",
+        deadline=deadline,
     )
     container.personal_task_repository.update_task(
-        important.id, user_id=user_id, fields={"importance": "high"},
+        important.id,
+        user_id=user_id,
+        fields={"importance": "high"},
     )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=ReduceDailyLoadIntervention(reduce_minutes_per_day=90),
     )
     assert "no_movable_tasks" in response.limitations
@@ -375,13 +484,20 @@ def test_plan_simulation_expires_with_the_plan():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="plan task", deadline=AS_OF + timedelta(days=1),
+        container,
+        user_id=user_id,
+        title="plan task",
+        deadline=AS_OF + timedelta(days=1),
     )
-    plan = container.learning_planner_service.generate(user_id=user_id, available_minutes=60, as_of=AS_OF)
+    plan = container.learning_planner_service.generate(
+        user_id=user_id, available_minutes=60, as_of=AS_OF
+    )
     kwargs = dict(
-        user_id=user_id, baseline_run_id=None,
+        user_id=user_id,
+        baseline_run_id=None,
         intervention=AcceptPlanIntervention(plan_id=plan.plan_id),
-        horizon_days=7, idempotency_key="plan-simulation",
+        horizon_days=7,
+        idempotency_key="plan-simulation",
     )
     first = container.simulation_service.simulate(**kwargs, as_of=AS_OF)
     assert first.expires_at == datetime.fromisoformat(plan.run.valid_until)
@@ -390,29 +506,132 @@ def test_plan_simulation_expires_with_the_plan():
     assert expired.simulation_id != first.simulation_id
 
 
-def test_simulation_reports_workload_delta_when_probability_is_saturated():
+def test_simulation_reports_concentration_change_without_double_subtracting_work():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     for index in range(100):
         _seed_task_with_deadline(
-            container, user_id=user_id, title=f"personal task {index}",
+            container,
+            user_id=user_id,
+            title=f"personal task {index}",
             deadline=AS_OF + timedelta(days=1),
         )
     response = _simulate(
-        container, user_id=user_id,
-        intervention=ReduceDailyLoadIntervention(reduce_minutes_per_day=90),
+        container,
+        user_id=user_id,
+        intervention=ReduceDailyLoadIntervention(
+            reduce_minutes_per_day=90, target_date=AS_OF + timedelta(days=1)
+        ),
     )
-    workload = next(f for f in response.changed_forecasts if f.forecast_type == "UPCOMING_WORKLOAD")
+    workload = next(
+        f for f in response.changed_forecasts if f.forecast_type == "UPCOMING_WORKLOAD"
+    )
     assert workload.baseline_probability == workload.intervention_probability == 1.0
     assert workload.direction == "unchanged"
-    assert workload.delta["estimated_total_minutes"] == -90
+    assert (
+        workload.baseline_value["estimated_total_minutes"]
+        == workload.intervention_value["estimated_total_minutes"]
+    )
+    assert (
+        AS_OF + timedelta(days=2)
+    ).date().isoformat() in workload.intervention_value["concentrated_dates"]
+
+
+@pytest.mark.parametrize(
+    "kind, fields",
+    [
+        (
+            "RESCHEDULE_TASK",
+            {"task_id": "missing", "new_deadline": "2026-10-10T08:00:00Z"},
+        ),
+        (
+            "ADJUST_GOAL_DEADLINE",
+            {"goal_id": "missing", "new_target_date": "2026-10-10T08:00:00Z"},
+        ),
+    ],
+)
+def test_missing_simulation_subject_returns_404(kind, fields):
+    _, client = _client()
+    response = client.post(
+        "/api/v1/learner-state/simulations",
+        headers=_login(client, "student_demo"),
+        json={"intervention": {"intervention_type": kind, **fields}, "horizon_days": 7},
+    )
+    assert response.status_code == 404, response.text
+
+
+def test_focus_outside_horizon_changes_no_observed_state_or_forecast():
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    _seed_task_with_deadline(
+        container, user_id=user_id, title="task", deadline=AS_OF + timedelta(days=1)
+    )
+    response = _simulate(
+        container,
+        user_id=user_id,
+        intervention=AllocateFocusMinutesIntervention(
+            focus_minutes=60, target_date=AS_OF + timedelta(days=10)
+        ),
+    )
+    assert "intervention_outside_horizon" in response.limitations
+    assert response.changed_forecasts == []
+    assert response.changed_state_estimates == []
+
+
+def test_reduce_load_only_moves_tasks_on_explicit_local_date():
+    container = _container()
+    user_id = container.user_repository.get_user_by_username("student_demo").id
+    first = _seed_task_with_deadline(
+        container, user_id=user_id, title="day-one", deadline=AS_OF + timedelta(days=1)
+    )
+    second = _seed_task_with_deadline(
+        container, user_id=user_id, title="day-two", deadline=AS_OF + timedelta(days=2)
+    )
+    baseline = container.forecast_service.collect_inputs(user_id=user_id, as_of=AS_OF)
+    changed, _ = container.simulation_service._apply_intervention(
+        inputs=baseline,
+        as_of=AS_OF,
+        intervention=ReduceDailyLoadIntervention(
+            reduce_minutes_per_day=45, target_date=AS_OF + timedelta(days=2)
+        ),
+    )
+    tasks = {row["id"]: row for row in changed.tasks}
+    assert tasks[first.id]["deadline"] == first.deadline
+    assert tasks[second.id]["deadline"] == (AS_OF + timedelta(days=3)).isoformat()
+    assert changed.simulated_load_reduction == 0
+
+
+def test_manual_source_pause_preserves_learning_platform_tasks():
+    from app.services.forecast_service import ForecastInputs
+
+    container = _container()
+    inputs = ForecastInputs(
+        tasks=[
+            {"id": "manual-task", "source": "manual"},
+            {"id": "platform-task", "source": "chaoxing"},
+        ],
+        sessions=[],
+        goals=[],
+        schedule_items=[],
+        exam_items=[],
+        grade_items=[],
+        events=[],
+        truncated=False,
+    )
+    changed, _ = container.simulation_service._apply_intervention(
+        inputs=inputs,
+        as_of=AS_OF,
+        intervention=PauseDataSourceIntervention(source_category="manual"),
+    )
+    assert [row["id"] for row in changed.tasks] == ["platform-task"]
 
 
 def test_simulation_returns_unavailable_when_no_baseline_data():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo_01").id
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AllocateFocusMinutesIntervention(focus_minutes=30),
     )
     assert response.data_quality == "unavailable"
@@ -425,12 +644,16 @@ def test_simulation_rejects_cross_user_baseline_run_id():
     student_a = container.user_repository.get_user_by_username("student_demo").id
     student_b = container.user_repository.get_user_by_username("student_demo_01").id
     _seed_task_with_deadline(
-        container, user_id=student_a, title="A 的任务",
+        container,
+        user_id=student_a,
+        title="A 的任务",
         deadline=AS_OF + timedelta(days=2),
     )
     container.learner_state_service.project_user(student_a, as_of=AS_OF, trigger="test")
     run_a = container.learner_state_repository.get_current_run(
-        user_id=student_a, projection_kind="CORE", projection_scope="__user__",
+        user_id=student_a,
+        projection_kind="CORE",
+        projection_scope="__user__",
     )
     assert run_a is not None
     with pytest.raises(LookupError):
@@ -446,16 +669,19 @@ def test_simulation_rejects_cross_user_baseline_run_id():
 
 def test_simulation_api_requires_auth_and_returns_response():
     container, client = _client()
-    assert client.post(
-        "/api/v1/learner-state/simulations",
-        json={
-            "intervention": {
-                "intervention_type": "ALLOCATE_FOCUS_MINUTES",
-                "focus_minutes": 30,
+    assert (
+        client.post(
+            "/api/v1/learner-state/simulations",
+            json={
+                "intervention": {
+                    "intervention_type": "ALLOCATE_FOCUS_MINUTES",
+                    "focus_minutes": 30,
+                },
+                "horizon_days": 7,
             },
-            "horizon_days": 7,
-        },
-    ).status_code == 401
+        ).status_code
+        == 401
+    )
     headers = _login(client, "student_demo")
     response = client.post(
         "/api/v1/learner-state/simulations",
@@ -514,11 +740,13 @@ def test_simulation_api_cross_user_baseline_returns_404():
     student_b_headers = _login(client, "student_demo_01")
     container.learner_state_service.project_user(
         container.user_repository.get_user_by_username("student_demo").id,
-        as_of=AS_OF, trigger="test",
+        as_of=AS_OF,
+        trigger="test",
     )
     run = container.learner_state_repository.get_current_run(
         user_id=container.user_repository.get_user_by_username("student_demo").id,
-        projection_kind="CORE", projection_scope="__user__",
+        projection_kind="CORE",
+        projection_scope="__user__",
     )
     assert run is not None
     response = client.post(
@@ -540,11 +768,14 @@ def test_simulation_does_not_leak_internal_table_names_or_source_ids():
     container = _container()
     user_id = container.user_repository.get_user_by_username("student_demo").id
     _seed_task_with_deadline(
-        container, user_id=user_id, title="任务",
+        container,
+        user_id=user_id,
+        title="任务",
         deadline=AS_OF + timedelta(days=2),
     )
     response = _simulate(
-        container, user_id=user_id,
+        container,
+        user_id=user_id,
         intervention=AllocateFocusMinutesIntervention(focus_minutes=30),
     )
     serialized = response.model_dump_json()

@@ -1,4 +1,5 @@
 """API 路由聚合。"""
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -13,6 +14,8 @@ from .routes import (
     contributions,
     courses,
     dashboards,
+    devices,
+    device_voice,
     focus_ai,
     focus_realtime_voice,
     edu,
@@ -37,7 +40,6 @@ from .routes import (
     learner_state,
     forecasts,
     simulations,
-
     learning_plans,
     adaptive_interventions,
     learner_control,
@@ -75,6 +77,8 @@ api_router.include_router(contributions.router)
 api_router.include_router(auth.router)
 api_router.include_router(qr_auth.router)
 api_router.include_router(dashboards.router)
+api_router.include_router(devices.router)
+api_router.include_router(device_voice.router)
 
 api_router.include_router(courses.router)
 api_router.include_router(classes.router)

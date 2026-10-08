@@ -7,6 +7,7 @@ python-multipart==0.0.20
 pydantic==2.10.4
 pydantic-settings==2.7.1
 python-dotenv==1.0.1
+tzdata==2026.5
 
 # ===== 中文处理与检索 =====
 jieba==0.42.1

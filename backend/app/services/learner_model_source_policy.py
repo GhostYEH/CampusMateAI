@@ -12,9 +12,73 @@
 - MODEL_SHADOW 暂停后不能创建真实或固定 fixture 的 shadow run。
 - PROACTIVE_SUGGESTIONS 暂停后不能自动生成建议。
 """
+
 from __future__ import annotations
 
 from typing import Optional
+from datetime import datetime, timezone
+
+
+def filter_paused_inputs(inputs: dict, cutoffs: dict[str, str]) -> dict:
+    """Retain only verifiably pre-pause facts; never mutate business records."""
+    result = dict(inputs)
+    source_keys = {
+        "chaoxing": "CHAOXING",
+        "edu": "EDU",
+        "academic": "EDU",
+        "core_study": "CORE_STUDY",
+        "study": "CORE_STUDY",
+        "study_session": "CORE_STUDY",
+        "personal_task": "PERSONAL_TASK",
+        "manual": "PERSONAL_TASK",
+        "personal": "PERSONAL_TASK",
+    }
+
+    def before(row, source, fields):
+        cutoff = cutoffs.get(source)
+        if not cutoff:
+            return True
+
+        def parse(value):
+            try:
+                parsed = (
+                    value
+                    if isinstance(value, datetime)
+                    else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                )
+                return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
+            except (ValueError, TypeError):
+                return None
+
+        boundary = parse(cutoff)
+        times = [parse(row.get(field)) for field in fields if row.get(field)]
+        return bool(
+            boundary and times and all(t is not None and t <= boundary for t in times)
+        )
+
+    specs = {
+        "tasks": ("PERSONAL_TASK", ("created_at", "updated_at", "completed_at")),
+        "sessions": ("CORE_STUDY", ("started_at", "paused_at", "ended_at")),
+        "schedule_items": ("EDU", ("last_seen_at", "last_synced_at")),
+        "exam_items": ("EDU", ("last_seen_at", "last_synced_at")),
+        "grade_items": ("EDU", ("last_seen_at", "last_synced_at")),
+        "chaoxing_exam_items": ("CHAOXING", ("last_synced_at", "updated_at")),
+        "chaoxing_grade_items": ("CHAOXING", ("last_synced_at", "updated_at")),
+    }
+    for key, (default_source, fields) in specs.items():
+        result[key] = [
+            row
+            for row in inputs.get(key, [])
+            if before(row, source_keys.get(row.get("source"), default_source), fields)
+        ]
+    result["events"] = [
+        row
+        for row in inputs.get("events", [])
+        if before(
+            row, source_keys.get(row.get("source"), ""), ("occurred_at", "recorded_at")
+        )
+    ]
+    return result
 
 
 class LearnerModelSourcePolicy:
@@ -50,14 +114,24 @@ class LearnerModelSourcePolicy:
 
     def should_skip_proactive_suggestions(self, *, user_id: str) -> bool:
         """检查是否应跳过自动生成建议。"""
-        return self.is_source_paused(user_id=user_id, source_key="PROACTIVE_SUGGESTIONS")
+        return self.is_source_paused(
+            user_id=user_id, source_key="PROACTIVE_SUGGESTIONS"
+        )
 
     def get_paused_sources(self, *, user_id: str) -> set[str]:
         """返回当前用户所有被暂停的数据源。"""
         controls = self._repo.list_source_controls(user_id=user_id)
         return {
-            c.source_key for c in controls
+            c.source_key
+            for c in controls
             if c.status in ("PAUSED", "DISCONNECTED", "DELETE_REQUESTED")
+        }
+
+    def get_paused_source_cutoffs(self, *, user_id: str) -> dict[str, str]:
+        return {
+            row.source_key: row.updated_at.isoformat()
+            for row in self._repo.list_source_controls(user_id=user_id)
+            if row.status in ("PAUSED", "DISCONNECTED", "DELETE_REQUESTED")
         }
 
     def get_projection_warning(self, *, user_id: str) -> Optional[str]:

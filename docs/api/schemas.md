@@ -1636,15 +1636,15 @@ def _normalize_self_report(cls, v: Any) -> Optional[str]:
 <a id="schema-correctioncreate"></a>
 ## CorrectionCreate
 
-模型定义：[backend/app/schemas/learner_control.py](../../backend/app/schemas/learner_control.py)。
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `projection_kind` | enum ["CORE", "KNOWLEDGE"] | 是 | — | 投影类型 |
+| `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | 投影类型 |
 | `projection_scope` | string | 是 | minLength=1; maxLength=128 | 投影范围标识 |
-| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | 快照 scope 类型 |
+| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"] | 是 | — | 快照 scope 类型 |
 | `scope_id` | string | 是 | minLength=1; maxLength=128 | 快照 scope 标识 |
-| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state"] | 是 | — | 被纠正的状态类型 |
+| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state", "knowledge_mastery_observation", "workload_pressure", "schedule_conflict", "academic_progress", "focus_rhythm", "goal_progress", "execution_consistency", "growth_momentum", "preference_profile"] | 是 | — | 被纠正的状态类型 |
 | `target_snapshot_id` | string | 是 | minLength=1; maxLength=128 | 目标快照 ID |
 | `correction_type` | enum ["MARK_INACCURATE", "NOT_APPLICABLE", "SOURCE_OUTDATED", "ALREADY_RESOLVED", "REQUEST_RECOMPUTE"] | 是 | — | 纠正类型 |
 | `reason_code` | enum ["TASK_ALREADY_COMPLETED", "DEADLINE_CHANGED", "COURSE_NO_LONGER_ACTIVE", "KNOWLEDGE_ESTIMATE_TOO_HIGH", "KNOWLEDGE_ESTIMATE_TOO_LOW", "EVIDENCE_NOT_RELEVANT", "SOURCE_DATA_STALE", "OTHER_CONTROLLED_REASON"] | 是 | — | 纠正原因码 |
@@ -1653,22 +1653,22 @@ def _normalize_self_report(cls, v: Any) -> Optional[str]:
 <a id="schema-correctionout"></a>
 ## CorrectionOut
 
-模型定义：[backend/app/schemas/learner_control.py](../../backend/app/schemas/learner_control.py)。
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `correction_id` | string | 是 | — | — |
-| `projection_kind` | enum ["CORE", "KNOWLEDGE"] | 是 | — | — |
+| `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | — |
 | `projection_scope` | string | 是 | — | — |
-| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | — |
+| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"] | 是 | — | — |
 | `scope_id` | string | 是 | — | — |
-| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state"] | 是 | — | — |
+| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state", "knowledge_mastery_observation", "workload_pressure", "schedule_conflict", "academic_progress", "focus_rhythm", "goal_progress", "execution_consistency", "growth_momentum", "preference_profile"] | 是 | — | — |
 | `target_snapshot_id` | string | 是 | — | — |
 | `correction_type` | enum ["MARK_INACCURATE", "NOT_APPLICABLE", "SOURCE_OUTDATED", "ALREADY_RESOLVED", "REQUEST_RECOMPUTE"] | 是 | — | — |
 | `reason_code` | enum ["TASK_ALREADY_COMPLETED", "DEADLINE_CHANGED", "COURSE_NO_LONGER_ACTIVE", "KNOWLEDGE_ESTIMATE_TOO_HIGH", "KNOWLEDGE_ESTIMATE_TOO_LOW", "EVIDENCE_NOT_RELEVANT", "SOURCE_DATA_STALE", "OTHER_CONTROLLED_REASON"] | 是 | — | — |
-| `status` | enum ["ACTIVE", "REVOKED"] | 是 | — | 业务状态，合法取值和操作前置条件见枚举及流程 |
-| `created_at` | string (date-time) | 是 | format="date-time" | 创建时间 |
-| `revoked_at` | string (date-time) / null | 否 | string约束: format="date-time" | — |
+| `status` | enum ["ACTIVE", "REVOKED"] | 是 | — | — |
+| `created_at` | string | 是 | format=date-time | — |
+| `revoked_at` | string / null | 否 | format=date-time | — |
 | `correction_version` | integer | 是 | — | — |
 
 <a id="schema-correctionpage"></a>
@@ -6004,31 +6004,23 @@ Run 生命周期状态(§5.6)。
 <a id="schema-simulationresponse"></a>
 ## SimulationResponse
 
-模型定义：[backend/app/schemas/simulation.py](../../backend/app/schemas/simulation.py)。
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `simulation_id` | string | 是 | — | — |
 | `baseline_digest` | string | 是 | — | — |
-| `intervention` | [AllocateFocusMinutesIntervention](schemas.md#schema-allocatefocusminutesintervention) / [RescheduleTaskIntervention](schemas.md#schema-rescheduletaskintervention) / [AcceptPlanIntervention](schemas.md#schema-acceptplanintervention) / [ReduceDailyLoadIntervention](schemas.md#schema-reducedailyloadintervention) / [PauseDataSourceIntervention](schemas.md#schema-pausedatasourceintervention) / [AdjustGoalDeadlineIntervention](schemas.md#schema-adjustgoaldeadlineintervention) | 是 | — | — |
-| `changed_forecasts` | array<[ChangedForecastSummary](schemas.md#schema-changedforecastsummary)> | 否 | maxItems=32 | — |
-| `changed_state_estimates` | array<[ChangedStateEstimateSummary](schemas.md#schema-changedstateestimatesummary)> | 否 | maxItems=64 | — |
-| `unchanged_states` | array<[UnchangedStateSummary](schemas.md#schema-unchangedstatesummary)> | 否 | maxItems=128 | — |
+| `intervention` | AllocateFocusMinutesIntervention / RescheduleTaskIntervention / AcceptPlanIntervention / ReduceDailyLoadIntervention / PauseDataSourceIntervention / AdjustGoalDeadlineIntervention | 是 | — | — |
+| `changed_forecasts` | array<ChangedForecastSummary> | 否 | maxItems=32 | — |
+| `changed_state_estimates` | array<ChangedStateEstimateSummary> | 否 | maxItems=64 | — |
+| `unchanged_states` | array<UnchangedStateSummary> | 否 | maxItems=128 | — |
 | `assumptions` | array<enum ["intervention_applied_in_memory_only", "baseline_state_unchanged", "linear_local_response", "no_second_order_effects", "plan_acceptance_assumed", "source_pause_assumed"]> | 否 | maxItems=16 | — |
-| `limitations` | array<enum ["baseline_estimator_only", "no_causal_claim", "correlation_not_causation", "counterfactual_estimate_not_cause", "single_user_scope", "no_psychological_inference", "no_dropout_prediction", "no_employment_prediction", "no_personality_prediction", "synthetic_calibration_only", "not_measured_against_real_outcomes", "intervention_not_executed", "missing_baseline_data", "plan_not_simulatable", "plan_expired", "no_movable_tasks", "simulation_no_change"]> | 否 | maxItems=16 | — |
+| `limitations` | array<enum ["baseline_estimator_only", "no_causal_claim", "correlation_not_causation", "counterfactual_estimate_not_cause", "single_user_scope", "no_psychological_inference", "no_dropout_prediction", "no_employment_prediction", "no_personality_prediction", "synthetic_calibration_only", "not_measured_against_real_outcomes", "intervention_not_executed", "missing_baseline_data", "plan_not_simulatable", "plan_expired", "no_movable_tasks", "simulation_no_change", "intervention_outside_horizon"]> | 否 | maxItems=16 | — |
 | `confidence` | number | 是 | minimum=0.0; maximum=1.0 | — |
 | `data_quality` | enum ["verified", "partial", "stale", "unavailable"] | 是 | — | — |
 | `estimator_version` | string | 是 | — | — |
-| `expires_at` | string (date-time) | 是 | format="date-time" | — |
-| `causal_claim` | const false | 否 | default=false | — |
-
-对象级约束：
-
-```json
-{
-  "additionalProperties": false
-}
-```
+| `expires_at` | string | 是 | format=date-time | — |
+| `causal_claim` | boolean | 否 | default=false | — |
 
 <a id="schema-sourcepolicyin"></a>
 ## SourcePolicyIn
@@ -7270,3 +7262,310 @@ POST /notices/{notice_id}/workflow 请求体。
 | `college` | string / null | 否 | null；maxLength=64 | 学院 |
 | `major` | string / null | 否 | null；maxLength=64 | 专业 |
 | `grade` | string / null | 否 | null；maxLength=32 | 年级 |
+
+<a id="schema-behaviorstableevent"></a>
+## BehaviorStableEvent
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `event_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `session_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `occurred_at` | string | 是 | format=date-time | — |
+| `model_version` | string | 是 | minLength=1; maxLength=128 | — |
+| `event_type` | string | 是 | — | — |
+| `payload` | BehaviorStablePayload | 是 | — | — |
+
+
+<a id="schema-behaviorstablepayload"></a>
+## BehaviorStablePayload
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `label` | enum ["READ", "WRITE", "PHONE_INTERACTION", "NO_VISIBLE_STUDY", "COMPUTER"] | 是 | — | — |
+| `confidence` | number | 是 | minimum=0.0; maximum=1.0 | — |
+| `duration_seconds` | integer | 是 | minimum=0.0; maximum=86400.0 | — |
+
+
+<a id="schema-desktopdevicelistout"></a>
+## DesktopDeviceListOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `items` | array<DesktopDeviceOut> | 是 | — | — |
+
+
+<a id="schema-desktopdeviceout"></a>
+## DesktopDeviceOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `device_id` | string | 是 | — | — |
+| `device_name` | string | 是 | — | — |
+| `platform` | string | 是 | — | — |
+| `hardware_model` | string / null | 否 | — | — |
+| `app_version` | string / null | 否 | — | — |
+| `status` | string | 是 | — | — |
+| `created_at` | string | 是 | format=date-time | — |
+| `bound_at` | string | 是 | format=date-time | — |
+| `last_heartbeat_at` | string / null | 否 | format=date-time | — |
+
+
+<a id="schema-devicebindingconfirm"></a>
+## DeviceBindingConfirm
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `bind_token` | string | 是 | minLength=32; maxLength=128 | — |
+
+
+<a id="schema-devicebindingcreate"></a>
+## DeviceBindingCreate
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `device_name` | string | 是 | minLength=1; maxLength=80 | — |
+| `platform` | enum ["android", "linux"] | 是 | — | — |
+| `hardware_model` | string / null | 否 | maxLength=120 | — |
+| `app_version` | string / null | 否 | maxLength=64 | — |
+
+
+<a id="schema-devicebindingcreateout"></a>
+## DeviceBindingCreateOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `binding_id` | string | 是 | — | — |
+| `qr_payload` | string | 是 | — | — |
+| `poll_token` | string | 是 | — | — |
+| `status` | string | 是 | — | — |
+| `expires_at` | string | 是 | format=date-time | — |
+| `poll_interval_seconds` | integer | 否 | default=2 | — |
+
+
+<a id="schema-devicebindingpollout"></a>
+## DeviceBindingPollOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `binding_id` | string | 是 | — | — |
+| `status` | enum ["PENDING", "CONFIRMED", "EXPIRED", "REVOKED"] | 是 | — | — |
+| `expires_at` | string | 是 | format=date-time | — |
+| `device_credential` | string / null | 否 | — | — |
+| `device_id` | string / null | 否 | — | — |
+
+
+<a id="schema-deviceconfigout"></a>
+## DeviceConfigOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `protocol_version` | integer | 否 | default=1 | — |
+| `config_version` | string | 是 | — | — |
+| `vision_enabled` | boolean | 否 | default=true | — |
+| `behavior_sample_interval_ms` | integer | 是 | minimum=250.0; maximum=10000.0 | — |
+| `expression_enabled` | boolean | 否 | default=true | — |
+| `supports_session_control` | boolean | 否 | default=true | — |
+| `supports_structured_event_upload` | boolean | 否 | default=true | — |
+| `supports_ota` | boolean | 否 | default=false | — |
+| `supports_realtime_voice` | boolean | 否 | default=false | — |
+| `local_behavior_inference` | boolean | 是 | — | — |
+| `local_expression_inference` | boolean | 是 | — | — |
+| `hardware_acceleration_status` | string | 否 | default="unverified" | — |
+| `preferences_configured` | boolean | 否 | default=false | — |
+| `preferences_version` | integer | 否 | default=0 | — |
+| `timezone` | string | 否 | default="Asia/Shanghai" | — |
+| `daily_capacity_minutes` | integer | 否 | default=240; minimum=15.0; maximum=720.0 | — |
+| `quiet_hours_start` | string / null | 否 | — | — |
+| `quiet_hours_end` | string / null | 否 | — | — |
+| `preferences_updated_at` | string / null | 否 | format=date-time | — |
+| `updated_at` | string | 是 | format=date-time | — |
+
+
+<a id="schema-deviceeventbatch"></a>
+## DeviceEventBatch
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `events` | array<BehaviorStableEvent / PresenceChangedEvent / ExpressionStableEvent> | 是 | minItems=1; maxItems=100 | — |
+
+
+<a id="schema-deviceeventbatchout"></a>
+## DeviceEventBatchOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `accepted_event_ids` | array<string> | 是 | — | — |
+| `duplicate_event_ids` | array<string> | 是 | — | — |
+
+
+<a id="schema-devicefocussessionactionout"></a>
+## DeviceFocusSessionActionOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | string | 是 | — | — |
+| `mode` | string | 是 | — | — |
+| `started_at` | string | 是 | format=date-time | — |
+| `paused_at` | string / null | 否 | format=date-time | — |
+| `ended_at` | string / null | 否 | format=date-time | — |
+| `planned_duration_seconds` | integer | 是 | — | — |
+| `duration_seconds` | integer | 是 | — | — |
+| `pause_seconds` | integer | 是 | — | — |
+| `status` | string | 是 | — | — |
+
+
+<a id="schema-devicefocussessioncreate"></a>
+## DeviceFocusSessionCreate
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `planned_duration_seconds` | integer / null | 否 | minimum=300.0; maximum=14400.0 | — |
+| `goal` | string / null | 否 | maxLength=500 | — |
+
+
+<a id="schema-devicefocussessionfinish"></a>
+## DeviceFocusSessionFinish
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `behavior_summary` | StudyBehaviorSummary / null | 否 | — | — |
+
+
+<a id="schema-deviceheartbeat"></a>
+## DeviceHeartbeat
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `app_version` | string | 是 | minLength=1; maxLength=64 | — |
+| `os_version` | string / null | 否 | maxLength=64 | — |
+| `network_state` | enum ["online", "offline", "limited"] | 是 | — | — |
+| `temperature_c` | number / null | 否 | minimum=-20.0; maximum=120.0 | — |
+| `free_storage_mb` | integer / null | 否 | minimum=0.0; maximum=2000000.0 | — |
+| `capabilities` | object | 否 | — | — |
+| `model_versions` | object | 否 | — | — |
+
+
+<a id="schema-deviceheartbeatout"></a>
+## DeviceHeartbeatOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `accepted` | boolean | 否 | default=true | — |
+| `received_at` | string | 是 | format=date-time | — |
+
+
+<a id="schema-expressionstableevent"></a>
+## ExpressionStableEvent
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `event_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `session_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `occurred_at` | string | 是 | format=date-time | — |
+| `model_version` | string | 是 | minLength=1; maxLength=128 | — |
+| `event_type` | string | 是 | — | — |
+| `payload` | ExpressionStablePayload | 是 | — | — |
+
+
+<a id="schema-expressionstablepayload"></a>
+## ExpressionStablePayload
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `label` | enum ["ANGRY", "DISGUST", "FEAR", "HAPPY", "NEUTRAL", "SAD", "SURPRISE", "UNKNOWN", "NO_FACE"] | 是 | — | — |
+| `confidence` | number | 是 | minimum=0.0; maximum=1.0 | — |
+
+
+<a id="schema-learnerpreferencesout"></a>
+## LearnerPreferencesOut
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `timezone` | string | 否 | default="Asia/Shanghai"; maxLength=64 | — |
+| `daily_capacity_minutes` | integer | 否 | default=240; minimum=15.0; maximum=720.0 | — |
+| `quiet_hours_start` | string / null | 否 | pattern=^(?:[01]\d|2[0-3]):[0-5]\d$ | — |
+| `quiet_hours_end` | string / null | 否 | pattern=^(?:[01]\d|2[0-3]):[0-5]\d$ | — |
+| `semester_start_dates` | object | 否 | — | — |
+| `configured` | boolean | 否 | default=false | — |
+| `version` | integer | 否 | default=0; minimum=0.0 | — |
+| `updated_at` | string / null | 否 | format=date-time | — |
+
+
+<a id="schema-learnerpreferencesupdate"></a>
+## LearnerPreferencesUpdate
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `timezone` | string | 否 | default="Asia/Shanghai"; maxLength=64 | — |
+| `daily_capacity_minutes` | integer | 否 | default=240; minimum=15.0; maximum=720.0 | — |
+| `quiet_hours_start` | string / null | 否 | pattern=^(?:[01]\d|2[0-3]):[0-5]\d$ | — |
+| `quiet_hours_end` | string / null | 否 | pattern=^(?:[01]\d|2[0-3]):[0-5]\d$ | — |
+| `semester_start_dates` | object | 否 | — | — |
+| `expected_version` | integer | 是 | minimum=0.0 | — |
+| `idempotency_key` | string | 是 | minLength=1; maxLength=128 | — |
+
+
+<a id="schema-presencechangedevent"></a>
+## PresenceChangedEvent
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `event_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `session_id` | string | 是 | minLength=1; maxLength=64 | — |
+| `occurred_at` | string | 是 | format=date-time | — |
+| `model_version` | string | 是 | minLength=1; maxLength=128 | — |
+| `event_type` | string | 是 | — | — |
+| `payload` | PresenceChangedPayload | 是 | — | — |
+
+
+<a id="schema-presencechangedpayload"></a>
+## PresenceChangedPayload
+
+字段与当前后端 OpenAPI 一致；跨字段校验和业务流程见对应模块契约。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `state` | enum ["PRESENT", "OBSERVING", "ABSENT"] | 是 | — | — |
+| `confidence` | number | 是 | minimum=0.0; maximum=1.0 | — |

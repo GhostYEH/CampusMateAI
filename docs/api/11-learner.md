@@ -1,6 +1,6 @@
 # 学习状态、预测、模拟、目标与自适应计划
 
-> 对照日期：2026-09-30。本模块共 36 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-09-30。本模块共 38 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 > 2026-10-03 补充：状态历史支持 `projection_kind`，学业快照修复分页与元信息，计划与模拟修复预测接线、只读性和缓存。六层完成情况、实际局限与联调顺序见[六层世界模型后端接入](../world-model-backend.md)。
 
@@ -47,6 +47,8 @@ Web、Android、HarmonyOS、微信小程序继续按既有幂等键及错误码�
 | POST | `/api/v1/learner-state/corrections` | 创建纠正记录 |
 | GET | `/api/v1/learner-state/corrections` | 列出纠正记录 |
 | POST | `/api/v1/learner-state/corrections/{correction_id}/revoke` | 撤销纠正记录 |
+| GET | `/api/v1/learner-state/preferences` | 读取本人明确设置的学习偏好 |
+| PUT | `/api/v1/learner-state/preferences` | 按版本幂等更新本人学习偏好 |
 | GET | `/api/v1/learner-state/data-controls` | 列出数据来源控制 |
 | PUT | `/api/v1/learner-state/data-controls/{source_key}` | 更新数据来源控制 |
 | POST | `/api/v1/learner-state/delete-request` | request数据删除 |
@@ -1382,7 +1384,7 @@ Web 封装：`createCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `projection_kind` | enum ["CORE", "KNOWLEDGE"] | 是 | — | 投影类型 |
+| `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | 投影类型 |
 | `projection_scope` | string | 是 | minLength=1; maxLength=128 | 投影范围标识 |
 | `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | 快照 scope 类型 |
 | `scope_id` | string | 是 | minLength=1; maxLength=128 | 快照 scope 标识 |
@@ -1420,7 +1422,7 @@ Web 封装：`createCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `correction_id` | string | 是 | — | — |
-| `projection_kind` | enum ["CORE", "KNOWLEDGE"] | 是 | — | — |
+| `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | — |
 | `projection_scope` | string | 是 | — | — |
 | `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | — |
 | `scope_id` | string | 是 | — | — |
@@ -1516,7 +1518,7 @@ Web 封装：`revokeCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `correction_id` | string | 是 | — | — |
-| `projection_kind` | enum ["CORE", "KNOWLEDGE"] | 是 | — | — |
+| `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | — |
 | `projection_scope` | string | 是 | — | — |
 | `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | — |
 | `scope_id` | string | 是 | — | — |
@@ -1798,3 +1800,48 @@ result
 ```
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
+
+
+## 2026-10-08 后端规划补齐的接入变化
+
+世界模型逐项证据只引用实际支持判断的记录。任务负载证据只包含未删除、待完成且截止时间位于未来七天的任务；日程冲突证据只包含实际重叠的课程/考试。同步事件属于输入局限的来源线索，标为 `LIMITS`，不替代直接支持该判断的事实。证据接口继续排除业务正文和内部来源 ID，跨用户返回 404。
+
+课表按用户明确设置的 `semester_start_dates`、IANA 时区、weekday、start_time/end_time、weeks 展开；支持明确单双周范围。缺校历、缺钟点、非法周次或夏令时无法确定时返回 partial 与 warning，不猜测。考试缺结束时间不计算为确定冲突。指定课程预测只关联本人可见课程中 code+semester 唯一匹配的教务行，未匹配/多匹配保持 partial。目标预测纳入真实目标日期和剩余时间，仍为规则估计。
+
+纠正接口追加 WORLD/ACADEMIC 和 SEMESTER scope，旧请求兼容。必须匹配本人快照的 projection_kind/projection_scope/scope_type/scope_id/state_type；不能通过纠正更改原始成绩或任务数。MARK_INACCURATE 降置信度，SOURCE_OUTDATED 标 stale，其他操作提供固定警告；历史快照不改，撤销后重新投影。旧数据库启动时无损升级 CHECK 约束，非法历史记录将回滚升级。
+
+暂停来源以状态更新时间为截止点：保留可验证的暂停前历史，暂停后新建/更新的事实不再进入预测和状态派生；没有可验证时间的记录保守排除。重复设置同一暂停状态不推进截止点；业务数据仍正常保存，历史证据不删除，派生结果带 learner_data_source_paused 且 verified 降为 partial。恢复后可重新投影。
+
+模拟任务/目标不存在或不属于本人时返回 404。专注分配仅作用于预测窗口；超窗口返回 intervention_outside_horizon 并不改变状态。降低单日负载只移动明确目标当地日期内可移动的个人任务，不移动课程任务及高优先级任务，移动到窗口内其他日期不扣除整个窗口的总工作量。模拟从副本重算 CORE/ACADEMIC/WORLD，不能把标记字段当成效果，不落库、不改变现实业务。暂停手动来源不会排除学习通任务。
+
+计划生成仍接受 available_minutes，但明确偏好中的 daily_capacity_minutes 进一步收紧预算，并返回 preference_capacity_applied。偏好变化使未执行旧计划在 execute 时返回 LEARNING_PLAN_STALE，须重新生成；不会撤销已经执行的任务。
+
+新增能力本轮未修改 Web、Android、HarmonyOS 或微信客户端。现有客户端继续使用旧契约；新增偏好设置、扩展纠正和课表基准仍待客户端接入。
+
+### `GET /api/v1/learner-state/preferences`
+
+鉴权：本人学生 access token；历史 teacher 不可使用。无参数、无请求体。200 返回 LearnerPreferencesOut；401/403 使用统一错误信封。未设置时 configured=false/version=0/updated_at=null，其他字段为初始化默认，不能称为用户真实选择。
+
+响应示例：
+
+```json
+{"timezone":"Asia/Shanghai","daily_capacity_minutes":240,"quiet_hours_start":null,"quiet_hours_end":null,"semester_start_dates":{},"configured":false,"version":0,"updated_at":null}
+```
+
+### `PUT /api/v1/learner-state/preferences`
+
+鉴权：本人学生 access token。200 返回完整 LearnerPreferencesOut。请求模型 LearnerPreferencesUpdate，严格拒绝额外字段；这是完整配置替换，省略可选字段会应用默认值，不是 PATCH。
+
+请求字段：timezone 为合法 IANA 时区，默认 Asia/Shanghai；daily_capacity_minutes 范围 15–720，默认240；quiet_hours_start/end 为 HH:MM 或 null，必须成对且不同，支持跨午夜，null 表示关闭。semester_start_dates 是最多20项的学期标识到第一教学周星期一日期映射，标识1–128字符。expected_version 为必填非负整数，第一次保存为0；idempotency_key 必填1–128字符。免打扰仅作为设备读取的明确配置，后端不据此声称已经实现提醒投递或通知静音。
+
+请求示例：
+
+```json
+{"timezone":"Asia/Shanghai","daily_capacity_minutes":90,"quiet_hours_start":"22:00","quiet_hours_end":"07:00","semester_start_dates":{"2026-fall":"2026-09-07"},"expected_version":0,"idempotency_key":"prefs-demo-1"}
+```
+
+成功响应包含同样配置及 configured=true/version=1/updated_at（UTC时间）；每次成功新操作版本递增。幂等键按本人隔离，原键原请求重放返回原响应，不覆盖后来配置；同键不同请求返回409 LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT。expected_version 已过期返回409 LEARNER_PREFERENCE_VERSION_CONFLICT，details.version 提供当前版本；客户端重新读取并由用户处理冲突，不能自动覆盖。非法时区、时间、周一基准、字段范围或未知字段返回422 VALIDATION_FAILED。ALL_LEARNER_MODEL_DATA 删除范围同时删除偏好及幂等记录。
+
+本轮 WORLD/Forecast/Simulation/Planner 规则版本分别为 world-baseline-v2 / forecast-baseline-v3 / simulation-baseline-v3 / campus-companion-plan-v3。旧计划按现有版本校验失效并重新生成；已执行业务任务保留。
+
+WORLD/ACADEMIC 纠正的新增或撤销同样使未执行旧计划在 execute 时失效，避免用户已质疑依据后仍执行原建议。

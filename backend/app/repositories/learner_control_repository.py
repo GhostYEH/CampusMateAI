@@ -3,6 +3,7 @@
 涵盖状态纠正、数据源控制、世界模型删除和安全导出摘要的 SQL 操作。
 所有查询都以 user_id 为隔离边界，跨用户资源不可枚举。
 """
+
 from __future__ import annotations
 
 import json
@@ -84,6 +85,83 @@ class LearnerControlRepository:
     def __init__(self, db: Database) -> None:
         self._db = db
 
+    def get_preferences(self, *, user_id: str) -> dict[str, Any] | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT * FROM learner_preferences WHERE user_id=?", (user_id,)
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            **json.loads(row["preferences_json"]),
+            "configured": True,
+            "version": row["version"],
+            "updated_at": row["updated_at"],
+        }
+
+    def update_preferences(
+        self,
+        *,
+        user_id: str,
+        preferences: dict[str, Any],
+        expected_version: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        from ..core.exceptions import AppException
+
+        encoded = json.dumps(preferences, sort_keys=True, separators=(",", ":"))
+        request = json.dumps(
+            {"preferences": preferences, "expected_version": expected_version},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        with self._db.transaction(immediate=True) as conn:
+            receipt = conn.execute(
+                "SELECT * FROM learner_preference_receipts WHERE user_id=? AND idempotency_key=?",
+                (user_id, idempotency_key),
+            ).fetchone()
+            if receipt is not None:
+                if receipt["request_json"] != request:
+                    raise AppException(
+                        code="LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT",
+                        http_status=409,
+                        message="幂等键已绑定其他偏好更新",
+                    )
+                return json.loads(receipt["response_json"])
+            row = conn.execute(
+                "SELECT version FROM learner_preferences WHERE user_id=?", (user_id,)
+            ).fetchone()
+            version = row["version"] if row else 0
+            if version != expected_version:
+                raise AppException(
+                    code="LEARNER_PREFERENCE_VERSION_CONFLICT",
+                    http_status=409,
+                    message="偏好已更新，请重新读取后再保存",
+                    details={"version": version},
+                )
+            response = {
+                **preferences,
+                "configured": True,
+                "version": version + 1,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            conn.execute(
+                "INSERT INTO learner_preferences(user_id, preferences_json, version, updated_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET preferences_json=excluded.preferences_json, "
+                "version=excluded.version, updated_at=excluded.updated_at",
+                (user_id, encoded, response["version"], response["updated_at"]),
+            )
+            conn.execute(
+                "INSERT INTO learner_preference_receipts VALUES(?,?,?,?)",
+                (
+                    user_id,
+                    idempotency_key,
+                    request,
+                    json.dumps(response, sort_keys=True),
+                ),
+            )
+            return response
+
     # ===== 状态纠正 =====
 
     def create_correction(
@@ -126,11 +204,15 @@ class LearnerControlRepository:
                 ):
                     return self._row_to_correction(existing)
                 from ..core.exceptions import LearnerCorrectionConflict
+
                 raise LearnerCorrectionConflict()
-            version = conn.execute(
-                "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=? AND target_snapshot_id=?",
-                (user_id, target_snapshot_id),
-            ).fetchone()["c"] + 1
+            version = (
+                conn.execute(
+                    "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=? AND target_snapshot_id=?",
+                    (user_id, target_snapshot_id),
+                ).fetchone()["c"]
+                + 1
+            )
             conn.execute(
                 """INSERT INTO learner_state_corrections
                 (correction_id, user_id, projection_kind, projection_scope, scope_type, scope_id,
@@ -138,9 +220,21 @@ class LearnerControlRepository:
                  created_at, revoked_at, correction_version, idempotency_key)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    correction_id, user_id, projection_kind, projection_scope, scope_type, scope_id,
-                    state_type, target_snapshot_id, correction_type, reason_code, "ACTIVE",
-                    now.isoformat(), None, version, idempotency_key,
+                    correction_id,
+                    user_id,
+                    projection_kind,
+                    projection_scope,
+                    scope_type,
+                    scope_id,
+                    state_type,
+                    target_snapshot_id,
+                    correction_type,
+                    reason_code,
+                    "ACTIVE",
+                    now.isoformat(),
+                    None,
+                    version,
+                    idempotency_key,
                 ),
             )
             row = conn.execute(
@@ -174,7 +268,9 @@ class LearnerControlRepository:
             ).fetchall()
             return [self._row_to_correction(r) for r in rows], total
 
-    def get_correction(self, *, user_id: str, correction_id: str) -> Optional[CorrectionRow]:
+    def get_correction(
+        self, *, user_id: str, correction_id: str
+    ) -> Optional[CorrectionRow]:
         with self._db.transaction() as conn:
             row = conn.execute(
                 "SELECT * FROM learner_state_corrections WHERE user_id=? AND correction_id=?",
@@ -185,6 +281,7 @@ class LearnerControlRepository:
     def revoke_correction(self, *, user_id: str, correction_id: str) -> CorrectionRow:
         """撤销纠正。幂等：已撤销则返回已有记录。"""
         from ..core.exceptions import LearnerCorrectionNotFound
+
         now = _utc_now()
         with self._db.transaction() as conn:
             row = conn.execute(
@@ -205,7 +302,9 @@ class LearnerControlRepository:
             ).fetchone()
             return self._row_to_correction(row)
 
-    def has_active_corrections_for_snapshot(self, *, user_id: str, snapshot_id: str) -> bool:
+    def has_active_corrections_for_snapshot(
+        self, *, user_id: str, snapshot_id: str
+    ) -> bool:
         with self._db.transaction() as conn:
             row = conn.execute(
                 "SELECT 1 FROM learner_state_corrections WHERE user_id=? AND target_snapshot_id=? AND status='ACTIVE' LIMIT 1",
@@ -236,7 +335,9 @@ class LearnerControlRepository:
             reason_code=row["reason_code"],
             status=row["status"],
             created_at=datetime.fromisoformat(row["created_at"]),
-            revoked_at=datetime.fromisoformat(row["revoked_at"]) if row["revoked_at"] else None,
+            revoked_at=datetime.fromisoformat(row["revoked_at"])
+            if row["revoked_at"]
+            else None,
             correction_version=row["correction_version"],
             idempotency_key=row["idempotency_key"],
         )
@@ -262,10 +363,19 @@ class LearnerControlRepository:
                         "INSERT INTO learner_data_source_controls (source_key, user_id, status, updated_at) VALUES (?,?,?,?)",
                         (src, user_id, "ENABLED", now),
                     )
-                    result.append(DataSourceControlRow(source_key=src, user_id=user_id, status="ENABLED", updated_at=_utc_now()))
+                    result.append(
+                        DataSourceControlRow(
+                            source_key=src,
+                            user_id=user_id,
+                            status="ENABLED",
+                            updated_at=_utc_now(),
+                        )
+                    )
             return result
 
-    def get_source_control(self, *, user_id: str, source_key: str) -> Optional[DataSourceControlRow]:
+    def get_source_control(
+        self, *, user_id: str, source_key: str
+    ) -> Optional[DataSourceControlRow]:
         with self._db.transaction() as conn:
             row = conn.execute(
                 "SELECT * FROM learner_data_source_controls WHERE user_id=? AND source_key=?",
@@ -282,8 +392,8 @@ class LearnerControlRepository:
         source_key: str,
         status: str,
     ) -> DataSourceControlRow:
-        now = _utc_now()
-        with self._db.transaction() as conn:
+        now = datetime.now(timezone.utc)
+        with self._db.transaction(immediate=True) as conn:
             row = conn.execute(
                 "SELECT * FROM learner_data_source_controls WHERE user_id=? AND source_key=?",
                 (user_id, source_key),
@@ -294,6 +404,8 @@ class LearnerControlRepository:
                     (source_key, user_id, status, now.isoformat()),
                 )
             else:
+                if row["status"] == status:
+                    return self._row_to_source_control(row)
                 conn.execute(
                     "UPDATE learner_data_source_controls SET status=?, updated_at=? WHERE user_id=? AND source_key=?",
                     (status, now.isoformat(), user_id, source_key),
@@ -310,7 +422,11 @@ class LearnerControlRepository:
                 "SELECT status FROM learner_data_source_controls WHERE user_id=? AND source_key=?",
                 (user_id, source_key),
             ).fetchone()
-            return row is not None and row["status"] in ("PAUSED", "DISCONNECTED", "DELETE_REQUESTED")
+            return row is not None and row["status"] in (
+                "PAUSED",
+                "DISCONNECTED",
+                "DELETE_REQUESTED",
+            )
 
     @staticmethod
     def _row_to_source_control(row: sqlite3.Row) -> DataSourceControlRow:
@@ -328,7 +444,8 @@ class LearnerControlRepository:
         with self._db.transaction() as conn:
             counts: dict[str, int] = {}
             counts["projection_runs"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+                "SELECT COUNT(*) AS c FROM learner_state_projection_runs WHERE user_id=?",
+                (user_id,),
             ).fetchone()["c"]
             counts["snapshots"] = conn.execute(
                 "SELECT COUNT(*) AS c FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
@@ -342,7 +459,8 @@ class LearnerControlRepository:
                 "SELECT COUNT(*) AS c FROM learner_events WHERE user_id=?", (user_id,)
             ).fetchone()["c"]
             counts["corrections"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?", (user_id,)
+                "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?",
+                (user_id,),
             ).fetchone()["c"]
             counts["learning_plans"] = conn.execute(
                 "SELECT COUNT(*) AS c FROM learning_plans WHERE user_id=?", (user_id,)
@@ -352,13 +470,16 @@ class LearnerControlRepository:
                 (user_id,),
             ).fetchone()["c"]
             counts["plan_feedback"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM learning_plan_feedback WHERE user_id=?", (user_id,)
+                "SELECT COUNT(*) AS c FROM learning_plan_feedback WHERE user_id=?",
+                (user_id,),
             ).fetchone()["c"]
             counts["plan_evaluations"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM learning_plan_evaluation_runs WHERE user_id=?", (user_id,)
+                "SELECT COUNT(*) AS c FROM learning_plan_evaluation_runs WHERE user_id=?",
+                (user_id,),
             ).fetchone()["c"]
             counts["shadow_runs"] = conn.execute(
-                "SELECT COUNT(*) AS c FROM model_shadow_runs WHERE user_id=?", (user_id,)
+                "SELECT COUNT(*) AS c FROM model_shadow_runs WHERE user_id=?",
+                (user_id,),
             ).fetchone()["c"]
             return counts
 
@@ -404,10 +525,15 @@ class LearnerControlRepository:
                  created_at, completed_at, idempotency_key)
                 VALUES (?,?,?,?,?,?,?,?,?)""",
                 (
-                    request_id, user_id, scope, "COMPLETED",
+                    request_id,
+                    user_id,
+                    scope,
+                    "COMPLETED",
                     json.dumps(before_counts, sort_keys=True),
                     json.dumps(after_counts, sort_keys=True),
-                    now.isoformat(), now.isoformat(), idempotency_key,
+                    now.isoformat(),
+                    now.isoformat(),
+                    idempotency_key,
                 ),
             )
             row = conn.execute(
@@ -434,6 +560,7 @@ class LearnerControlRepository:
             if existing is not None:
                 if existing["scope"] != scope:
                     from ..core.exceptions import LearnerDeleteIdempotencyConflict
+
                     raise LearnerDeleteIdempotencyConflict()
                 return self._row_to_delete_request(existing)
 
@@ -448,10 +575,15 @@ class LearnerControlRepository:
                  created_at, completed_at, idempotency_key)
                 VALUES (?,?,?,?,?,?,?,?,?)""",
                 (
-                    request_id, user_id, scope, "COMPLETED",
+                    request_id,
+                    user_id,
+                    scope,
+                    "COMPLETED",
                     json.dumps(before, sort_keys=True),
                     json.dumps(after, sort_keys=True),
-                    now.isoformat(), now.isoformat(), idempotency_key,
+                    now.isoformat(),
+                    now.isoformat(),
+                    idempotency_key,
                 ),
             )
             row = conn.execute(
@@ -461,11 +593,14 @@ class LearnerControlRepository:
             return self._row_to_delete_request(row)
 
     @staticmethod
-    def _count_learner_model_data_conn(conn: sqlite3.Connection, *, user_id: str) -> dict[str, int]:
+    def _count_learner_model_data_conn(
+        conn: sqlite3.Connection, *, user_id: str
+    ) -> dict[str, int]:
         """在已有 connection 上统计学生模型数据。"""
         counts: dict[str, int] = {}
         counts["projection_runs"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+            "SELECT COUNT(*) AS c FROM learner_state_projection_runs WHERE user_id=?",
+            (user_id,),
         ).fetchone()["c"]
         counts["snapshots"] = conn.execute(
             "SELECT COUNT(*) AS c FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
@@ -479,7 +614,8 @@ class LearnerControlRepository:
             "SELECT COUNT(*) AS c FROM learner_events WHERE user_id=?", (user_id,)
         ).fetchone()["c"]
         counts["corrections"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?", (user_id,)
+            "SELECT COUNT(*) AS c FROM learner_state_corrections WHERE user_id=?",
+            (user_id,),
         ).fetchone()["c"]
         counts["learning_plans"] = conn.execute(
             "SELECT COUNT(*) AS c FROM learning_plans WHERE user_id=?", (user_id,)
@@ -489,10 +625,12 @@ class LearnerControlRepository:
             (user_id,),
         ).fetchone()["c"]
         counts["plan_feedback"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM learning_plan_feedback WHERE user_id=?", (user_id,)
+            "SELECT COUNT(*) AS c FROM learning_plan_feedback WHERE user_id=?",
+            (user_id,),
         ).fetchone()["c"]
         counts["plan_evaluations"] = conn.execute(
-            "SELECT COUNT(*) AS c FROM learning_plan_evaluation_runs WHERE user_id=?", (user_id,)
+            "SELECT COUNT(*) AS c FROM learning_plan_evaluation_runs WHERE user_id=?",
+            (user_id,),
         ).fetchone()["c"]
         counts["shadow_runs"] = conn.execute(
             "SELECT COUNT(*) AS c FROM model_shadow_runs WHERE user_id=?", (user_id,)
@@ -500,7 +638,9 @@ class LearnerControlRepository:
         return counts
 
     @staticmethod
-    def _delete_by_scope_conn(conn: sqlite3.Connection, *, user_id: str, scope: str) -> None:
+    def _delete_by_scope_conn(
+        conn: sqlite3.Connection, *, user_id: str, scope: str
+    ) -> None:
         """在已有 connection 上按 scope 执行删除。"""
         if scope == "STATE_ONLY":
             snapshot_ids = [
@@ -512,9 +652,17 @@ class LearnerControlRepository:
             ]
             if snapshot_ids:
                 placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})",
+                    snapshot_ids,
+                )
+            conn.execute(
+                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+            )
         elif scope == "EVENTS_AND_STATE":
             snapshot_ids = [
                 r["snapshot_id"]
@@ -525,9 +673,17 @@ class LearnerControlRepository:
             ]
             if snapshot_ids:
                 placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})",
+                    snapshot_ids,
+                )
+            conn.execute(
+                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+            )
             conn.execute("DELETE FROM learner_events WHERE user_id=?", (user_id,))
         elif scope == "KNOWLEDGE_ONLY":
             snapshot_ids = [
@@ -539,32 +695,70 @@ class LearnerControlRepository:
             ]
             if snapshot_ids:
                 placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})",
+                    snapshot_ids,
+                )
+            conn.execute(
+                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+            )
         elif scope == "PLANS_ONLY":
             plan_ids = [
                 r["plan_id"]
-                for r in conn.execute("SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)).fetchall()
+                for r in conn.execute(
+                    "SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)
+                ).fetchall()
             ]
             if plan_ids:
                 placeholders = ",".join("?" * len(plan_ids))
-                conn.execute(f"DELETE FROM learning_plan_evidence WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_decisions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_execution_actions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_feedback WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_evaluation_runs WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
+                conn.execute(
+                    f"DELETE FROM learning_plan_evidence WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_decisions WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_execution_actions WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_feedback WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_evaluation_runs WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
             conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
             # 干预记录是"计划 + 生成决策时的状态引用"的派生记录：计划被删除后
             # 继续保留会留下指向已删计划的 plan_id 与已删状态 run 的悬空引用。
             # 结果评估同样指向已删的干预记录，一并删除（不依赖 FK 级联开关）。
-            conn.execute("DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
+            conn.execute(
+                "DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,)
+            )
+            conn.execute(
+                "DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,)
+            )
         elif scope == "MODEL_SHADOW_ONLY":
-            conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
+            conn.execute(
+                "DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)",
+                (user_id,),
+            )
             conn.execute("DELETE FROM model_shadow_runs WHERE user_id=?", (user_id,))
         elif scope == "ALL_LEARNER_MODEL_DATA":
             snapshot_ids = [
@@ -576,34 +770,79 @@ class LearnerControlRepository:
             ]
             if snapshot_ids:
                 placeholders = ",".join("?" * len(snapshot_ids))
-                conn.execute(f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})", snapshot_ids)
-            conn.execute("DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,))
+                conn.execute(
+                    f"DELETE FROM learner_state_evidence WHERE snapshot_id IN ({placeholders})",
+                    snapshot_ids,
+                )
+            conn.execute(
+                "DELETE FROM learner_state_snapshots WHERE run_id IN (SELECT run_id FROM learner_state_projection_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM learner_state_projection_runs WHERE user_id=?", (user_id,)
+            )
             conn.execute("DELETE FROM learner_events WHERE user_id=?", (user_id,))
 
             plan_ids = [
                 r["plan_id"]
-                for r in conn.execute("SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)).fetchall()
+                for r in conn.execute(
+                    "SELECT plan_id FROM learning_plans WHERE user_id=?", (user_id,)
+                ).fetchall()
             ]
             if plan_ids:
                 placeholders = ",".join("?" * len(plan_ids))
-                conn.execute(f"DELETE FROM learning_plan_evidence WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_decisions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_execution_actions WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_feedback WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_evaluation_runs WHERE plan_id IN ({placeholders})", plan_ids)
-                conn.execute(f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})", plan_ids)
+                conn.execute(
+                    f"DELETE FROM learning_plan_evidence WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_decisions WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_execution_actions WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_feedback WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_evaluation_runs WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
+                conn.execute(
+                    f"DELETE FROM learning_plan_items WHERE plan_id IN ({placeholders})",
+                    plan_ids,
+                )
             conn.execute("DELETE FROM learning_plans WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM learning_plan_runs WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
-            conn.execute("DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)", (user_id,))
+            conn.execute(
+                "DELETE FROM intervention_evaluations WHERE user_id=?", (user_id,)
+            )
+            conn.execute(
+                "DELETE FROM adaptive_interventions WHERE user_id=?", (user_id,)
+            )
+            conn.execute(
+                "DELETE FROM model_shadow_results WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)",
+                (user_id,),
+            )
+            conn.execute(
+                "DELETE FROM model_shadow_metric_records WHERE shadow_run_id IN (SELECT shadow_run_id FROM model_shadow_runs WHERE user_id=?)",
+                (user_id,),
+            )
             conn.execute("DELETE FROM model_shadow_runs WHERE user_id=?", (user_id,))
-            conn.execute("DELETE FROM learner_state_corrections WHERE user_id=?", (user_id,))
+            conn.execute(
+                "DELETE FROM learner_state_corrections WHERE user_id=?", (user_id,)
+            )
+            conn.execute("DELETE FROM learner_preferences WHERE user_id=?", (user_id,))
+            conn.execute(
+                "DELETE FROM learner_preference_receipts WHERE user_id=?", (user_id,)
+            )
 
-
-    def list_delete_requests(self, *, user_id: str, limit: int = 10) -> list[DeleteRequestRow]:
+    def list_delete_requests(
+        self, *, user_id: str, limit: int = 10
+    ) -> list[DeleteRequestRow]:
         with self._db.transaction() as conn:
             rows = conn.execute(
                 "SELECT * FROM learner_model_delete_requests WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
@@ -621,7 +860,9 @@ class LearnerControlRepository:
             before_counts=json.loads(row["before_counts_json"]),
             after_counts=json.loads(row["after_counts_json"]),
             created_at=datetime.fromisoformat(row["created_at"]),
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             idempotency_key=row["idempotency_key"],
         )
 
@@ -631,10 +872,12 @@ class LearnerControlRepository:
         counts = self.count_learner_model_data(user_id=user_id)
         with self._db.transaction() as conn:
             oldest = conn.execute(
-                "SELECT MIN(occurred_at) AS v FROM learner_events WHERE user_id=?", (user_id,)
+                "SELECT MIN(occurred_at) AS v FROM learner_events WHERE user_id=?",
+                (user_id,),
             ).fetchone()["v"]
             newest = conn.execute(
-                "SELECT MAX(occurred_at) AS v FROM learner_events WHERE user_id=?", (user_id,)
+                "SELECT MAX(occurred_at) AS v FROM learner_events WHERE user_id=?",
+                (user_id,),
             ).fetchone()["v"]
             estimator_versions = [
                 r["v"]

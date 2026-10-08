@@ -302,7 +302,7 @@
 | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | addMagicClassWhiteboard | 受管服务有内部实现，但 CampusMate 网关未注册该公开路径；新前端不能直接调用内部服务 |
 | POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用[课程场景 quiz-attempt 契约](14-magicclass.md) |
 
-覆盖方式：298 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+覆盖方式：314 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
 
 ## 动态地址与流式调用补充
 
@@ -319,3 +319,5 @@
 | [data/api.js](../../webreact/src/data/api.js) | fetch 动态 API 地址 | 聊天 SSE / assistant/tts；见 [聊天与音频协议](integration.md#chat) |
 
 当前 Web 未创建实时语音 WebSocket；后端已经注册的 /focus/realtime-voice/ws/{session_id} 仍完整列入 [实时语音协议](response-contracts.md#voice)。
+
+2026-10-08 新增设备及学习偏好接口本轮未开发 Web 封装，客户端适配待后续任务；完整契约见[设备](15-devices.md)及[学习状态](11-learner.md)。

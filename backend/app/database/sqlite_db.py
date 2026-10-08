@@ -8,6 +8,7 @@
 - 内存模式：使用单条共享连接(`check_same_thread=False`)，
   因为 `:memory:` 库的 schema 仅存在于打开它的连接中。
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -1137,6 +1138,83 @@ CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expire
 """
 
 
+# 桌面陪伴设备：设备身份与 Web trusted-device 登录态完全隔离。
+DESKTOP_DEVICE_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS desktop_devices (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT,
+    device_name TEXT NOT NULL,
+    platform TEXT NOT NULL CHECK(platform IN ('android','linux')),
+    hardware_model TEXT,
+    app_version TEXT,
+    os_version TEXT,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','ACTIVE','REVOKED')),
+    credential_hash TEXT UNIQUE,
+    network_state TEXT,
+    temperature_c REAL,
+    free_storage_mb INTEGER,
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    model_versions_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    bound_at TEXT,
+    last_heartbeat_at TEXT,
+    revoked_at TEXT,
+    FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_desktop_devices_owner ON desktop_devices(owner_user_id, status);
+
+CREATE TABLE IF NOT EXISTS desktop_device_bindings (
+    id TEXT PRIMARY KEY,
+    device_id TEXT NOT NULL UNIQUE,
+    bind_token_hash TEXT NOT NULL UNIQUE,
+    poll_token_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL CHECK(status IN ('PENDING','CONFIRMED','EXPIRED')),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    confirmed_at TEXT,
+    FOREIGN KEY(device_id) REFERENCES desktop_devices(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_desktop_bindings_expires ON desktop_device_bindings(status, expires_at);
+
+CREATE TABLE IF NOT EXISTS desktop_device_sessions (
+    device_id TEXT NOT NULL,
+    study_session_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(device_id, study_session_id),
+    FOREIGN KEY(device_id) REFERENCES desktop_devices(id) ON DELETE CASCADE,
+    FOREIGN KEY(study_session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS desktop_device_session_commands (
+    device_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('create','pause','resume','finish')),
+    request_hash TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(device_id, idempotency_key),
+    FOREIGN KEY(device_id) REFERENCES desktop_devices(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS desktop_device_events (
+    device_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    study_session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN ('behavior_stable','presence_changed','expression_stable')),
+    occurred_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    PRIMARY KEY(device_id, event_id),
+    FOREIGN KEY(device_id) REFERENCES desktop_devices(id) ON DELETE CASCADE,
+    FOREIGN KEY(study_session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_desktop_events_session_time ON desktop_device_events(study_session_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_desktop_device_sessions_session ON desktop_device_sessions(study_session_id);
+"""
+
+
 EDU_SESSION_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS edu_sessions (
     connection_id TEXT PRIMARY KEY,
@@ -1575,13 +1653,26 @@ CREATE INDEX IF NOT EXISTS idx_model_promotion_capability
 
 
 LEARNER_CONTROL_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learner_preferences (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    preferences_json TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK(version > 0),
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS learner_preference_receipts (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    idempotency_key TEXT NOT NULL,
+    request_json TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    PRIMARY KEY(user_id, idempotency_key)
+);
 -- Phase 6A: 学生状态纠正
 CREATE TABLE IF NOT EXISTS learner_state_corrections (
     correction_id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    projection_kind TEXT NOT NULL CHECK(projection_kind IN ('CORE','KNOWLEDGE')),
+    projection_kind TEXT NOT NULL CHECK(projection_kind IN ('CORE','KNOWLEDGE','ACADEMIC','WORLD')),
     projection_scope TEXT NOT NULL,
-    scope_type TEXT NOT NULL CHECK(scope_type IN ('USER','COURSE','TASK','SOURCE','KNOWLEDGE_COMPONENT')),
+    scope_type TEXT NOT NULL CHECK(scope_type IN ('USER','COURSE','TASK','SOURCE','KNOWLEDGE_COMPONENT','SEMESTER')),
     scope_id TEXT NOT NULL,
     state_type TEXT NOT NULL,
     target_snapshot_id TEXT NOT NULL,
@@ -1977,7 +2068,9 @@ class Database:
                     )
                     self._shared_conn.row_factory = sqlite3.Row
                     self._shared_conn.execute("PRAGMA foreign_keys=ON;")
-                self._local.memory_borrows = getattr(self._local, "memory_borrows", 0) + 1
+                self._local.memory_borrows = (
+                    getattr(self._local, "memory_borrows", 0) + 1
+                )
                 return self._shared_conn
             except BaseException:
                 self._lock.release()
@@ -2015,7 +2108,9 @@ class Database:
             conn.execute(statement)
 
     @staticmethod
-    def _create_declared_table(conn: sqlite3.Connection, script: str, table: str) -> None:
+    def _create_declared_table(
+        conn: sqlite3.Connection, script: str, table: str
+    ) -> None:
         """复用本层声明的表结构，避免迁移维护第二份 DDL。"""
         declaration = re.search(
             rf"CREATE TABLE IF NOT EXISTS {re.escape(table)} \([\s\S]*?\n\);", script
@@ -2034,18 +2129,28 @@ class Database:
             "AND type IN ('index', 'trigger') AND sql IS NOT NULL",
             (table,),
         ).fetchall()
-        old_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        old_columns = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
         conn.execute(f"CREATE TEMP TABLE {stash} AS SELECT * FROM {table}")
         old_count = conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0]
         conn.execute(f"DROP TABLE {table}")
         self._create_declared_table(conn, script, table)
-        new_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        new_columns = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({table})")
+        }
         if not old_columns <= new_columns:
-            raise sqlite3.IntegrityError(f"constraint restoration would discard columns: {table}")
-        columns = ", ".join('"' + name.replace('"', '""') + '"' for name in sorted(old_columns))
+            raise sqlite3.IntegrityError(
+                f"constraint restoration would discard columns: {table}"
+            )
+        columns = ", ".join(
+            '"' + name.replace('"', '""') + '"' for name in sorted(old_columns)
+        )
         conn.execute(f"INSERT INTO {table} ({columns}) SELECT {columns} FROM {stash}")
         if conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] != old_count:
-            raise sqlite3.IntegrityError(f"constraint restoration row count mismatch: {table}")
+            raise sqlite3.IntegrityError(
+                f"constraint restoration row count mismatch: {table}"
+            )
         for item in objects:
             conn.execute(item["sql"])
         conn.execute(f"DROP TABLE {stash}")
@@ -2054,8 +2159,7 @@ class Database:
     def _prepare_legacy_learning_plan_runs(conn: sqlite3.Connection) -> None:
         """补齐建索引前必须存在的旧学习计划列。"""
         columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(learning_plan_runs)")
+            row["name"] for row in conn.execute("PRAGMA table_info(learning_plan_runs)")
         }
         if columns and "goal_id" not in columns:
             conn.execute("ALTER TABLE learning_plan_runs ADD COLUMN goal_id TEXT")
@@ -2079,9 +2183,12 @@ class Database:
         主表已经是新约束，重建分支不会执行，所以必须显式回填而不是把暂存表当垃圾删掉。
         """
         stash = "adaptive_interventions__legacy_status"
-        has_stash = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (stash,)
-        ).fetchone() is not None
+        has_stash = (
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (stash,)
+            ).fetchone()
+            is not None
+        )
         row = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='adaptive_interventions'"
         ).fetchone()
@@ -2110,13 +2217,18 @@ class Database:
         干预记录。中断恢复只接受两种可证明安全的状态：目标表为空（完整回填），
         或目标表已拥有和暂存表相同数量的行（前一次已完整回填、只差删暂存表）。
         """
-        legacy_columns = {item["name"] for item in conn.execute(f"PRAGMA table_info({stash})")}
+        legacy_columns = {
+            item["name"] for item in conn.execute(f"PRAGMA table_info({stash})")
+        }
         current_columns = {
-            item["name"] for item in conn.execute("PRAGMA table_info(adaptive_interventions)")
+            item["name"]
+            for item in conn.execute("PRAGMA table_info(adaptive_interventions)")
         }
         shared = sorted(legacy_columns & current_columns)
         source_count = int(conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0])
-        target_count = int(conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0])
+        target_count = int(
+            conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0]
+        )
         if target_count not in (0, source_count):
             raise sqlite3.IntegrityError(
                 "adaptive intervention recovery found a partial target; refusing lossy merge"
@@ -2127,15 +2239,30 @@ class Database:
                 f"INSERT INTO adaptive_interventions ({columns}) "
                 f"SELECT {columns} FROM {stash}"
             )
-        restored_count = int(conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0])
+        restored_count = int(
+            conn.execute("SELECT COUNT(*) FROM adaptive_interventions").fetchone()[0]
+        )
         if restored_count != source_count:
             raise sqlite3.IntegrityError(
                 "adaptive intervention recovery row count mismatch"
             )
-        foreign_key_errors = conn.execute("PRAGMA foreign_key_check(adaptive_interventions)").fetchall()
+        foreign_key_errors = conn.execute(
+            "PRAGMA foreign_key_check(adaptive_interventions)"
+        ).fetchall()
         if foreign_key_errors:
-            raise sqlite3.IntegrityError("adaptive intervention recovery foreign-key validation failed")
+            raise sqlite3.IntegrityError(
+                "adaptive intervention recovery foreign-key validation failed"
+            )
         conn.execute(f"DROP TABLE {stash}")
+
+    def _migrate_learner_corrections(self, conn: sqlite3.Connection) -> None:
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='learner_state_corrections'"
+        ).fetchone()
+        if row is not None and "'WORLD'" not in row["sql"]:
+            self._restore_declared_constraints(
+                conn, LEARNER_CONTROL_SCHEMA_SQL, "learner_state_corrections"
+            )
 
     def _schema_steps(self) -> tuple[_SchemaStep, ...]:
         """保持既有建表顺序，将旧库必须先执行的升级绑定到对应阶段。"""
@@ -2147,7 +2274,9 @@ class Database:
             _SchemaStep("community", COMMUNITY_SCHEMA_SQL),
             _SchemaStep("academic", ACADEMIC_SCHEMA_SQL),
             # 绑定表补列/重建后才能创建依赖它的新索引和同步记录表。
-            _SchemaStep("edu_connector", EDU_CONNECTOR_SCHEMA_SQL, self._migrate_edu_bindings),
+            _SchemaStep(
+                "edu_connector", EDU_CONNECTOR_SCHEMA_SQL, self._migrate_edu_bindings
+            ),
             _SchemaStep("edu_data", EDU_DATA_SCHEMA_SQL),
             _SchemaStep("personal_task", PERSONAL_TASK_SCHEMA_SQL),
             _SchemaStep("study", STUDY_SCHEMA_SQL),
@@ -2158,29 +2287,46 @@ class Database:
             _SchemaStep("chaoxing_knowledge", CHAOXING_KNOWLEDGE_SCHEMA_SQL),
             _SchemaStep("notices", NOTICES_SCHEMA_SQL),
             _SchemaStep("qr_auth", QR_AUTH_SCHEMA_SQL),
+            _SchemaStep("desktop_device", DESKTOP_DEVICE_SCHEMA_SQL),
             _SchemaStep("edu_session", EDU_SESSION_SCHEMA_SQL),
             _SchemaStep("learner_event", LEARNER_EVENT_SCHEMA_SQL),
             _SchemaStep("learner_state", LEARNER_STATE_SCHEMA_SQL),
             # 旧运行记录的 goal_id 必须先补齐，才能建目标关联索引。
-            _SchemaStep("learning_plan", LEARNING_PLAN_SCHEMA_SQL, self._prepare_legacy_learning_plan_runs),
+            _SchemaStep(
+                "learning_plan",
+                LEARNING_PLAN_SCHEMA_SQL,
+                self._prepare_legacy_learning_plan_runs,
+            ),
             _SchemaStep("adaptive_intervention", ADAPTIVE_INTERVENTION_SCHEMA_SQL),
             # 父表重建必须先于新子表创建；已有子表由关闭的 FK 保护。
-            _SchemaStep("intervention_evaluation", INTERVENTION_EVALUATION_SCHEMA_SQL,
-                        self._migrate_adaptive_intervention_statuses),
+            _SchemaStep(
+                "intervention_evaluation",
+                INTERVENTION_EVALUATION_SCHEMA_SQL,
+                self._migrate_adaptive_intervention_statuses,
+            ),
             _SchemaStep("model_shadow", MODEL_SHADOW_SCHEMA_SQL),
-            _SchemaStep("learner_control", LEARNER_CONTROL_SCHEMA_SQL),
+            _SchemaStep(
+                "learner_control",
+                LEARNER_CONTROL_SCHEMA_SQL,
+                self._migrate_learner_corrections,
+            ),
             _SchemaStep("agent_runtime", AGENT_RUNTIME_SCHEMA_SQL),
             _SchemaStep("student_goal", STUDENT_GOAL_SCHEMA_SQL),
         )
 
     @staticmethod
-    def _validate_schema_foreign_keys(conn: sqlite3.Connection, steps: tuple[_SchemaStep, ...]) -> None:
+    def _validate_schema_foreign_keys(
+        conn: sqlite3.Connection, steps: tuple[_SchemaStep, ...]
+    ) -> None:
         # 仓储自管表在其构造时另行升级，此处只验证本层负责的表。
         # 否则尚待升级的 notification_sources 等旧表会阻断启动。
         for step in steps:
             tables = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", step.sql)
             for table in tables:
-                if conn.execute(f"PRAGMA foreign_key_check({table})").fetchone() is not None:
+                if (
+                    conn.execute(f"PRAGMA foreign_key_check({table})").fetchone()
+                    is not None
+                ):
                     raise sqlite3.IntegrityError(
                         f"schema migration foreign-key validation failed: {step.name} ({table})"
                     )
@@ -2241,14 +2387,19 @@ class Database:
             },
             "learning_plan_runs": {
                 "goal_id": "TEXT",
-                "core_run_id": "TEXT", "core_input_digest": "TEXT",
+                "core_run_id": "TEXT",
+                "core_input_digest": "TEXT",
                 "knowledge_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
-                "task_binding_digest": "TEXT", "task_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
-                "input_truncated": "INTEGER NOT NULL DEFAULT 0", "core_quality": "TEXT NOT NULL DEFAULT 'verified'",
+                "task_binding_digest": "TEXT",
+                "task_bindings_json": "TEXT NOT NULL DEFAULT '{}'",
+                "input_truncated": "INTEGER NOT NULL DEFAULT 0",
+                "core_quality": "TEXT NOT NULL DEFAULT 'verified'",
             },
             "learning_plans": {
-                "supersedes_plan_id": "TEXT", "superseded_by_plan_id": "TEXT",
-                "stale_reason": "TEXT", "replan_key": "TEXT",
+                "supersedes_plan_id": "TEXT",
+                "superseded_by_plan_id": "TEXT",
+                "stale_reason": "TEXT",
+                "replan_key": "TEXT",
             },
             "learning_plan_execution_actions": {"target_task_digest": "TEXT"},
             "adaptive_interventions": {
@@ -2301,12 +2452,17 @@ class Database:
                 "call_id": "TEXT",
             },
         }.items():
-            cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            cols = {
+                row["name"]
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
             for name, definition in columns.items():
                 if name not in cols:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
-    def _migrate_runtime_indexes_and_observations(self, conn: sqlite3.Connection) -> None:
+    def _migrate_runtime_indexes_and_observations(
+        self, conn: sqlite3.Connection
+    ) -> None:
         # 旧库回填: 当前状态为 complete/partial 的行，其 last_synced_at 就是一次
         # 成功的尝试时间。failed 行不回填 —— 无法区分"从未成功"与"曾成功后失败"，
         # 宁可少报也不要把失败当成功。
@@ -2337,7 +2493,12 @@ class Database:
             "ON agent_approvals(created_at)",
         ):
             conn.execute(index_sql)
-        shadow_result_cols = {row["name"] for row in conn.execute("PRAGMA table_info(model_shadow_results)").fetchall()}
+        shadow_result_cols = {
+            row["name"]
+            for row in conn.execute(
+                "PRAGMA table_info(model_shadow_results)"
+            ).fetchall()
+        }
         if "inference_source" not in shadow_result_cols:
             conn.execute(
                 "ALTER TABLE model_shadow_results ADD COLUMN inference_source TEXT NOT NULL "
@@ -2354,12 +2515,18 @@ class Database:
             )
 
     def _migrate_learning_plan_feedback(self, conn: sqlite3.Connection) -> None:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_learning_plans_replan_key ON learning_plans(user_id, replan_key) WHERE replan_key IS NOT NULL"
+        )
         feedback_schema = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='learning_plan_feedback'"
         ).fetchone()["sql"]
-        if not re.search(r"CHECK\s*\(\s*feedback\s+IN\s*\(", feedback_schema, re.IGNORECASE):
-            self._restore_declared_constraints(conn, LEARNING_PLAN_SCHEMA_SQL, "learning_plan_feedback")
+        if not re.search(
+            r"CHECK\s*\(\s*feedback\s+IN\s*\(", feedback_schema, re.IGNORECASE
+        ):
+            self._restore_declared_constraints(
+                conn, LEARNING_PLAN_SCHEMA_SQL, "learning_plan_feedback"
+            )
         conn.execute("DROP INDEX IF EXISTS idx_learner_state_runs_current")
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_learner_state_runs_current "
@@ -2367,22 +2534,22 @@ class Database:
             "WHERE is_current = 1"
         )
 
-    def _migrate_documents_and_retired_activities(self, conn: sqlite3.Connection) -> None:
+    def _migrate_documents_and_retired_activities(
+        self, conn: sqlite3.Connection
+    ) -> None:
         # 永久退役校园活动功能，并删除已有活动与报名记录。
         self._execute_schema_script(
             conn,
             """
             DROP TABLE IF EXISTS activity_registrations;
             DROP TABLE IF EXISTS campus_activities;
-            """
+            """,
         )
         # 获取 documents 表的现有列
         cur = conn.execute("PRAGMA table_info(documents)")
         existing_cols = {row["name"] for row in cur.fetchall()}
         if "is_demo" not in existing_cols:
-            conn.execute(
-                "ALTER TABLE documents ADD COLUMN is_demo INTEGER DEFAULT 0"
-            )
+            conn.execute("ALTER TABLE documents ADD COLUMN is_demo INTEGER DEFAULT 0")
             # 旧数据默认非演示资料
             conn.execute("UPDATE documents SET is_demo = 0 WHERE is_demo IS NULL")
         # 补建索引(若旧库不存在)
@@ -2402,7 +2569,7 @@ class Database:
                 if cols == {"user_id", "source_notice_id"}:
                     unique_idx_exists = True
                     break
-        
+
         if not unique_idx_exists:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_notice "
@@ -2437,8 +2604,12 @@ class Database:
         ):
             if column not in course_cols:
                 conn.execute(f"ALTER TABLE courses ADD COLUMN {column} {column_type}")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_courses_external_id ON courses(external_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_courses_owner_user_id ON courses(owner_user_id)"
+        )
 
     def _migrate_user_numbers(self, conn: sqlite3.Connection) -> None:
         # 检查 users 表新增列。旧库可能在 MULTI_ROLE_SCHEMA_SQL 执行时仍缺少
@@ -2451,8 +2622,12 @@ class Database:
         ):
             if column not in user_cols:
                 conn.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_student_number ON users(student_number)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_teacher_number ON users(teacher_number)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_student_number ON users(student_number)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_teacher_number ON users(teacher_number)"
+        )
         # SQLite 支持部分唯一索引(NULL 不参与唯一约束)。
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_student_number_unique "
@@ -2468,7 +2643,9 @@ class Database:
         cur = conn.execute("PRAGMA table_info(personal_tasks)")
         task_cols = {row["name"] for row in cur.fetchall()}
         if "importance" not in task_cols:
-            conn.execute("ALTER TABLE personal_tasks ADD COLUMN importance TEXT NOT NULL DEFAULT 'unknown'")
+            conn.execute(
+                "ALTER TABLE personal_tasks ADD COLUMN importance TEXT NOT NULL DEFAULT 'unknown'"
+            )
         if "source" not in task_cols:
             conn.execute("ALTER TABLE personal_tasks ADD COLUMN source TEXT")
         if "external_id" not in task_cols:
@@ -2503,13 +2680,27 @@ class Database:
         if cur.fetchone() is None:
             self._execute_schema_script(conn, CHAOXING_KNOWLEDGE_SCHEMA_SQL)
 
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_deadline ON personal_tasks(deadline)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_priority ON personal_tasks(priority)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_importance ON personal_tasks(importance)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_status ON personal_tasks(user_id, status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_deadline ON personal_tasks(user_id, deadline)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_id ON personal_tasks(user_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_status ON personal_tasks(status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_deadline ON personal_tasks(deadline)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_priority ON personal_tasks(priority)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_importance ON personal_tasks(importance)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_status ON personal_tasks(user_id, status)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personal_tasks_user_deadline ON personal_tasks(user_id, deadline)"
+        )
 
         cur = conn.execute("PRAGMA index_list(personal_tasks)")
         indexes = cur.fetchall()
@@ -2521,7 +2712,7 @@ class Database:
                 if cols == {"user_id", "source", "external_id"}:
                     unique_idx_source_ext = True
                     break
-        
+
         if not unique_idx_source_ext:
             conn.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_tasks_source_ext "
@@ -2552,7 +2743,9 @@ class Database:
         user_cols = {row["name"] for row in cur.fetchall()}
         if "university_id" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN university_id TEXT")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_university_id ON users(university_id)"
+        )
 
     def _migrate_university_catalog(self, conn: sqlite3.Connection) -> None:
         # universities 表新增 level 列(本科/专科)，旧库补齐
@@ -2573,7 +2766,9 @@ class Database:
             conn.execute(
                 "ALTER TABLE universities ADD COLUMN academic_provider TEXT NOT NULL DEFAULT 'unsupported'"
             )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_universities_level ON universities(level)")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_universities_level ON universities(level)"
+        )
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_universities_school_code "
             "ON universities(school_code) WHERE school_code IS NOT NULL"
@@ -2584,9 +2779,13 @@ class Database:
         cur = conn.execute("PRAGMA table_info(forum_posts)")
         post_cols = {row["name"] for row in cur.fetchall()}
         if "extra_json" not in post_cols:
-            conn.execute("ALTER TABLE forum_posts ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}'")
+            conn.execute(
+                "ALTER TABLE forum_posts ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}'"
+            )
         if "view_count" not in post_cols:
-            conn.execute("ALTER TABLE forum_posts ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0")
+            conn.execute(
+                "ALTER TABLE forum_posts ADD COLUMN view_count INTEGER NOT NULL DEFAULT 0"
+            )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_forum_posts_category "
             "ON forum_posts(university_id, status, category, created_at DESC)"
@@ -2607,8 +2806,15 @@ class Database:
         bind_cols = {row["name"] for row in cur.fetchall()}
         if bind_cols and "edu_system_id" not in bind_cols:
             conn.execute("ALTER TABLE edu_bindings RENAME TO edu_bindings_legacy_v1")
-            legacy_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(edu_bindings_legacy_v1)")}
-            for index in ("idx_edu_bindings_user_system", "idx_edu_bindings_university", "idx_edu_bindings_status"):
+            legacy_indexes = {
+                row["name"]
+                for row in conn.execute("PRAGMA index_list(edu_bindings_legacy_v1)")
+            }
+            for index in (
+                "idx_edu_bindings_user_system",
+                "idx_edu_bindings_university",
+                "idx_edu_bindings_status",
+            ):
                 if index in legacy_indexes:
                     conn.execute(f"DROP INDEX {index}")
             self._create_declared_table(conn, EDU_CONNECTOR_SCHEMA_SQL, "edu_bindings")
@@ -2644,22 +2850,37 @@ class Database:
 
     def _repair_edu_sync_binding_foreign_key(self, conn: sqlite3.Connection) -> None:
         """修复此前迁移已把同步记录外键改写到 legacy 绑定表的数据库。"""
-        foreign_keys = conn.execute("PRAGMA foreign_key_list(edu_sync_records)").fetchall()
+        foreign_keys = conn.execute(
+            "PRAGMA foreign_key_list(edu_sync_records)"
+        ).fetchall()
         if not any(row["table"] == "edu_bindings_legacy_v1" for row in foreign_keys):
             return
         stash = "edu_sync_records__binding_fk"
         conn.execute(f"CREATE TEMP TABLE {stash} AS SELECT * FROM edu_sync_records")
-        old_columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({stash})")}
+        old_columns = {
+            row["name"] for row in conn.execute(f"PRAGMA table_info({stash})")
+        }
         old_count = conn.execute(f"SELECT COUNT(*) FROM {stash}").fetchone()[0]
         conn.execute("DROP TABLE edu_sync_records")
         self._execute_schema_script(conn, EDU_CONNECTOR_SCHEMA_SQL)
-        new_columns = {row["name"] for row in conn.execute("PRAGMA table_info(edu_sync_records)")}
+        new_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(edu_sync_records)")
+        }
         if not old_columns <= new_columns:
-            raise sqlite3.IntegrityError("edu sync foreign-key repair would discard unknown columns")
+            raise sqlite3.IntegrityError(
+                "edu sync foreign-key repair would discard unknown columns"
+            )
         columns = ", ".join(sorted(old_columns))
-        conn.execute(f"INSERT INTO edu_sync_records ({columns}) SELECT {columns} FROM {stash}")
-        if conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0] != old_count:
-            raise sqlite3.IntegrityError("edu sync foreign-key repair row count mismatch")
+        conn.execute(
+            f"INSERT INTO edu_sync_records ({columns}) SELECT {columns} FROM {stash}"
+        )
+        if (
+            conn.execute("SELECT COUNT(*) FROM edu_sync_records").fetchone()[0]
+            != old_count
+        ):
+            raise sqlite3.IntegrityError(
+                "edu sync foreign-key repair row count mismatch"
+            )
         conn.execute(f"DROP TABLE {stash}")
 
     def _migrate_edu_schema(self, conn: sqlite3.Connection) -> None:
@@ -2672,14 +2893,20 @@ class Database:
         cur = conn.execute("PRAGMA table_info(edu_systems)")
         system_cols = {row["name"] for row in cur.fetchall()}
         if system_cols and "adapter_config" not in system_cols:
-            conn.execute("ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'")
+            conn.execute(
+                "ALTER TABLE edu_systems ADD COLUMN adapter_config TEXT NOT NULL DEFAULT '{}'"
+            )
 
-        binding_foreign_keys = conn.execute("PRAGMA foreign_key_list(edu_bindings)").fetchall()
+        binding_foreign_keys = conn.execute(
+            "PRAGMA foreign_key_list(edu_bindings)"
+        ).fetchall()
         if not any(
             row["from"] == "edu_system_id" and row["table"] == "edu_systems"
             for row in binding_foreign_keys
         ):
-            self._restore_declared_constraints(conn, EDU_CONNECTOR_SCHEMA_SQL, "edu_bindings")
+            self._restore_declared_constraints(
+                conn, EDU_CONNECTOR_SCHEMA_SQL, "edu_bindings"
+            )
 
         # 2. edu_sync_records 旧 schema → 新 schema (加 adapter/error_code)
         cur = conn.execute("PRAGMA table_info(edu_sync_records)")
@@ -2748,8 +2975,13 @@ class Database:
         now = datetime.now(timezone.utc).isoformat()
         for r in rows:
             import hashlib
+
             sys_id = f"esys_{hashlib.md5(r['university_id'].encode()).hexdigest()[:16]}"
-            rcn = int(r["requires_campus_network"]) if r["requires_campus_network"] is not None else 0
+            rcn = (
+                int(r["requires_campus_network"])
+                if r["requires_campus_network"] is not None
+                else 0
+            )
             conn.execute(
                 """
                 INSERT OR IGNORE INTO edu_systems (
@@ -2761,12 +2993,22 @@ class Database:
                 ) VALUES (?, ?, ?, 'undergraduate-main', NULL, ?, ?, ?, ?, ?, ?, 'unsupported', ?, ?, 0, 'active', 'unverified', ?, ?, ?, 0, ?, ?)
                 """,
                 (
-                    sys_id, r["university_id"], r["school_code"],
-                    r["system_type"], r["provider"],
-                    r["academic_system_url"], r["sso_url"], r["webvpn_url"],
-                    r["login_method"], r["captcha_type"], rcn,
-                    r["supported_features"], r["data_source"], r["notes"],
-                    r["created_at"] or now, r["updated_at"] or now,
+                    sys_id,
+                    r["university_id"],
+                    r["school_code"],
+                    r["system_type"],
+                    r["provider"],
+                    r["academic_system_url"],
+                    r["sso_url"],
+                    r["webvpn_url"],
+                    r["login_method"],
+                    r["captcha_type"],
+                    rcn,
+                    r["supported_features"],
+                    r["data_source"],
+                    r["notes"],
+                    r["created_at"] or now,
+                    r["updated_at"] or now,
                 ),
             )
 
@@ -2797,7 +3039,9 @@ class Database:
             conn = self._connect()
             if conn.in_transaction:
                 self._release(conn)
-                raise RuntimeError("cannot start a transaction inside an unfinished connection borrow")
+                raise RuntimeError(
+                    "cannot start a transaction inside an unfinished connection borrow"
+                )
             try:
                 if immediate:
                     conn.execute("BEGIN IMMEDIATE")
