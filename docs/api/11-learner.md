@@ -1,6 +1,6 @@
 # 学习状态、预测、模拟、目标与自适应计划
 
-> 对照日期：2026-09-30。本模块共 38 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-08。本模块共 38 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 > 2026-10-03 补充：状态历史支持 `projection_kind`，学业快照修复分页与元信息，计划与模拟修复预测接线、只读性和缓存。六层完成情况、实际局限与联调顺序见[六层世界模型后端接入](../world-model-backend.md)。
 
@@ -1386,9 +1386,9 @@ Web 封装：`createCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 | --- | --- | --- | --- | --- |
 | `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | 投影类型 |
 | `projection_scope` | string | 是 | minLength=1; maxLength=128 | 投影范围标识 |
-| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | 快照 scope 类型 |
+| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"] | 是 | — | 快照 scope 类型 |
 | `scope_id` | string | 是 | minLength=1; maxLength=128 | 快照 scope 标识 |
-| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state"] | 是 | — | 被纠正的状态类型 |
+| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state", "knowledge_mastery_observation", "workload_pressure", "schedule_conflict", "academic_progress", "focus_rhythm", "goal_progress", "execution_consistency", "growth_momentum", "preference_profile"] | 是 | — | 被纠正的状态类型 |
 | `target_snapshot_id` | string | 是 | minLength=1; maxLength=128 | 目标快照 ID |
 | `correction_type` | enum ["MARK_INACCURATE", "NOT_APPLICABLE", "SOURCE_OUTDATED", "ALREADY_RESOLVED", "REQUEST_RECOMPUTE"] | 是 | — | 纠正类型 |
 | `reason_code` | enum ["TASK_ALREADY_COMPLETED", "DEADLINE_CHANGED", "COURSE_NO_LONGER_ACTIVE", "KNOWLEDGE_ESTIMATE_TOO_HIGH", "KNOWLEDGE_ESTIMATE_TOO_LOW", "EVIDENCE_NOT_RELEVANT", "SOURCE_DATA_STALE", "OTHER_CONTROLLED_REASON"] | 是 | — | 纠正原因码 |
@@ -1424,9 +1424,9 @@ Web 封装：`createCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 | `correction_id` | string | 是 | — | — |
 | `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | — |
 | `projection_scope` | string | 是 | — | — |
-| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | — |
+| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"] | 是 | — | — |
 | `scope_id` | string | 是 | — | — |
-| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state"] | 是 | — | — |
+| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state", "knowledge_mastery_observation", "workload_pressure", "schedule_conflict", "academic_progress", "focus_rhythm", "goal_progress", "execution_consistency", "growth_momentum", "preference_profile"] | 是 | — | — |
 | `target_snapshot_id` | string | 是 | — | — |
 | `correction_type` | enum ["MARK_INACCURATE", "NOT_APPLICABLE", "SOURCE_OUTDATED", "ALREADY_RESOLVED", "REQUEST_RECOMPUTE"] | 是 | — | — |
 | `reason_code` | enum ["TASK_ALREADY_COMPLETED", "DEADLINE_CHANGED", "COURSE_NO_LONGER_ACTIVE", "KNOWLEDGE_ESTIMATE_TOO_HIGH", "KNOWLEDGE_ESTIMATE_TOO_LOW", "EVIDENCE_NOT_RELEVANT", "SOURCE_DATA_STALE", "OTHER_CONTROLLED_REASON"] | 是 | — | — |
@@ -1520,9 +1520,9 @@ Web 封装：`revokeCorrection`（[webreact/src/data/learnerStateApi.js](../../w
 | `correction_id` | string | 是 | — | — |
 | `projection_kind` | enum ["CORE", "KNOWLEDGE", "ACADEMIC", "WORLD"] | 是 | — | — |
 | `projection_scope` | string | 是 | — | — |
-| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT"] | 是 | — | — |
+| `scope_type` | enum ["USER", "COURSE", "TASK", "SOURCE", "KNOWLEDGE_COMPONENT", "SEMESTER"] | 是 | — | — |
 | `scope_id` | string | 是 | — | — |
-| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state"] | 是 | — | — |
+| `state_type` | enum ["observed_learning_activity", "task_workload", "deadline_exposure", "course_participation", "data_source_health", "academic_course_load", "grade_observation", "credit_progress", "exam_exposure", "schedule_load", "goal_state", "knowledge_mastery_observation", "workload_pressure", "schedule_conflict", "academic_progress", "focus_rhythm", "goal_progress", "execution_consistency", "growth_momentum", "preference_profile"] | 是 | — | — |
 | `target_snapshot_id` | string | 是 | — | — |
 | `correction_type` | enum ["MARK_INACCURATE", "NOT_APPLICABLE", "SOURCE_OUTDATED", "ALREADY_RESOLVED", "REQUEST_RECOMPUTE"] | 是 | — | — |
 | `reason_code` | enum ["TASK_ALREADY_COMPLETED", "DEADLINE_CHANGED", "COURSE_NO_LONGER_ACTIVE", "KNOWLEDGE_ESTIMATE_TOO_HIGH", "KNOWLEDGE_ESTIMATE_TOO_LOW", "EVIDENCE_NOT_RELEVANT", "SOURCE_DATA_STALE", "OTHER_CONTROLLED_REASON"] | 是 | — | — |
@@ -1820,7 +1820,7 @@ result
 
 ### `GET /api/v1/learner-state/preferences`
 
-鉴权：本人学生 access token；历史 teacher 不可使用。无参数、无请求体。200 返回 LearnerPreferencesOut；401/403 使用统一错误信封。未设置时 configured=false/version=0/updated_at=null，其他字段为初始化默认，不能称为用户真实选择。
+鉴权：本人学生 access token；历史 teacher 不可使用。无参数、无请求体。200 返回 [LearnerPreferencesOut](schemas.md#schema-learnerpreferencesout)；401/403 使用统一错误信封。未设置时 configured=false/version=0/updated_at=null，其他字段为初始化默认，不能称为用户真实选择。
 
 响应示例：
 
@@ -1830,9 +1830,9 @@ result
 
 ### `PUT /api/v1/learner-state/preferences`
 
-鉴权：本人学生 access token。200 返回完整 LearnerPreferencesOut。请求模型 LearnerPreferencesUpdate，严格拒绝额外字段；这是完整配置替换，省略可选字段会应用默认值，不是 PATCH。
+鉴权：本人学生 access token。200 返回完整 LearnerPreferencesOut。请求模型 [LearnerPreferencesUpdate](schemas.md#schema-learnerpreferencesupdate)，严格拒绝额外字段；这是完整配置替换，省略可选字段会应用默认值，不是 PATCH。
 
-请求字段：timezone 为合法 IANA 时区，默认 Asia/Shanghai；daily_capacity_minutes 范围 15–720，默认240；quiet_hours_start/end 为 HH:MM 或 null，必须成对且不同，支持跨午夜，null 表示关闭。semester_start_dates 是最多20项的学期标识到第一教学周星期一日期映射，标识1–128字符。expected_version 为必填非负整数，第一次保存为0；idempotency_key 必填1–128字符。免打扰仅作为设备读取的明确配置，后端不据此声称已经实现提醒投递或通知静音。
+请求字段：timezone 为合法 IANA 时区（最多64字符），默认 Asia/Shanghai；daily_capacity_minutes 范围 15–720，默认240；quiet_hours_start/end 为 HH:MM 或 null，必须成对且不同，支持跨午夜，null 表示关闭。semester_start_dates 是最多20项的学期标识到第一教学周星期一日期映射，标识1–128字符。expected_version 为必填非负整数，第一次保存为0；idempotency_key 必填1–128字符。免打扰仅作为设备读取的明确配置，后端不据此声称已经实现提醒投递或通知静音。
 
 请求示例：
 
@@ -1840,7 +1840,13 @@ result
 {"timezone":"Asia/Shanghai","daily_capacity_minutes":90,"quiet_hours_start":"22:00","quiet_hours_end":"07:00","semester_start_dates":{"2026-fall":"2026-09-07"},"expected_version":0,"idempotency_key":"prefs-demo-1"}
 ```
 
-成功响应包含同样配置及 configured=true/version=1/updated_at（UTC时间）；每次成功新操作版本递增。幂等键按本人隔离，原键原请求重放返回原响应，不覆盖后来配置；同键不同请求返回409 LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT。expected_version 已过期返回409 LEARNER_PREFERENCE_VERSION_CONFLICT，details.version 提供当前版本；客户端重新读取并由用户处理冲突，不能自动覆盖。非法时区、时间、周一基准、字段范围或未知字段返回422 VALIDATION_FAILED。ALL_LEARNER_MODEL_DATA 删除范围同时删除偏好及幂等记录。
+成功响应示例：
+
+```json
+{"timezone":"Asia/Shanghai","daily_capacity_minutes":90,"quiet_hours_start":"22:00","quiet_hours_end":"07:00","semester_start_dates":{"2026-fall":"2026-09-07"},"configured":true,"version":1,"updated_at":"2026-10-08T04:00:00Z"}
+```
+
+每次成功新操作版本递增。幂等键按本人隔离，原键原请求重放返回原响应，不覆盖后来配置；同键不同请求返回409 LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT。expected_version 已过期返回409 LEARNER_PREFERENCE_VERSION_CONFLICT，details.version 提供当前版本；客户端重新读取并由用户处理冲突，不能自动覆盖。非法时区、时间、周一基准、字段范围或未知字段返回422 VALIDATION_FAILED。ALL_LEARNER_MODEL_DATA 删除范围同时删除偏好及幂等记录。
 
 本轮 WORLD/Forecast/Simulation/Planner 规则版本分别为 world-baseline-v2 / forecast-baseline-v3 / simulation-baseline-v3 / campus-companion-plan-v3。旧计划按现有版本校验失效并重新生成；已执行业务任务保留。
 

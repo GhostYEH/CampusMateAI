@@ -68,7 +68,7 @@
 
 ### `POST /api/v1/devices/bindings/{binding_id}/confirm`
 
-需要已登录学生账号。用户必须扫描对应二维码，确认当前设备与账号关联。请求体为 `{"bind_token":"<二维码中的一次性凭据>"}`。缺少凭据、凭据不匹配、过期或绑定已经由其他账号确认时，返回 401 `DEVICE_BINDING_INVALID`。同一账号重复确认仍返回 204。
+需要已登录学生账号。用户必须扫描对应二维码，确认当前设备与账号关联。请求体为 `{"bind_token":"<二维码中的一次性凭据>"}`。缺少/格式不合法的 bind_token 返回 422 `VALIDATION_FAILED`；凭据不匹配、过期或绑定已经由其他账号确认时，返回 401 `DEVICE_BINDING_INVALID`。同一账号重复确认仍返回 204。
 
 ### `GET /api/v1/devices/bindings/{binding_id}/result`
 
@@ -84,7 +84,7 @@
 }
 ```
 
-同一有效 poll token 在绑定过期前可恢复同一个设备凭据；凭据按绑定 ID 与 poll token 作域分离派生，服务器仅保存凭据哈希。已过期时返回 `EXPIRED`，已撤销时返回 `REVOKED`，这两种状态不含凭据。错误 poll token 返回 401 `DEVICE_BINDING_INVALID`。
+同一有效 poll token 在绑定过期前可恢复同一个设备凭据；凭据按绑定 ID 与 poll token 作域分离派生，服务器仅保存凭据哈希。已过期时返回 `EXPIRED`，已撤销时返回 `REVOKED`，这两种状态不含凭据。缺少或长度不合法的 X-Device-Poll-Token 返回 422 `VALIDATION_FAILED`；格式合法但不匹配的 poll token 返回 401 `DEVICE_BINDING_INVALID`。
 
 ### `GET /api/v1/devices` 与 `DELETE /api/v1/devices/{device_id}`
 
@@ -118,7 +118,7 @@
 
 账号偏好复用学习状态中的用户偏好，不建立设备专属副本：返回 `timezone`、`daily_capacity_minutes`、`quiet_hours_start`、`quiet_hours_end`、`preferences_configured`、`preferences_version` 和 `preferences_updated_at`。未设置时使用明确默认值 `Asia/Shanghai`、240 分钟、无安静时段，并标记 `preferences_configured=false`。客户端应按偏好版本检测变更。
 
-Android 设备的成功响应示例（偏好尚未配置）：
+Android 设备的成功响应示例（已上报两项模型能力与版本，偏好尚未配置，未配置语音提供方）：
 
 ```json
 {
@@ -130,6 +130,7 @@ Android 设备的成功响应示例（偏好尚未配置）：
   "supports_session_control": true,
   "supports_structured_event_upload": true,
   "supports_ota": false,
+  "supports_realtime_voice": false,
   "local_behavior_inference": true,
   "local_expression_inference": true,
   "hardware_acceleration_status": "unverified",
@@ -203,7 +204,9 @@ Payload 为严格类型的白名单聚合结果，不接受图片、帧、人脸
 {"accepted_event_ids":["01J9DEVICEEVENT000000000001"],"duplicate_event_ids":[]}
 ```
 
-幂等键为 `(device_id,event_id)`。相同事件内容重放返回 `duplicate_event_ids`；相同 ID 携带不同内容时返回 409 `DEVICE_EVENT_ID_CONFLICT`，整批回滚。校验/存储任一事件失败时不提交批次中其他新事件。
+请求体必须包在 `{"events":[上述事件对象]}` 中，不能直接发送数组。
+
+幂等键为 `(device_id,event_id)`。相同事件内容重放返回 `duplicate_event_ids`；相同 ID 携带不同内容时返回 409 `DEVICE_EVENT_ID_CONFLICT`，整批回滚。校验/存储任一事件失败时不提交批次中其他新事件。重放仍先校验归属与时间窗口；超过七天的旧事件不能因为先前已接受而无限期重放。
 
 ## 错误处理与验收边界
 
@@ -212,8 +215,10 @@ Payload 为严格类型的白名单聚合结果，不接受图片、帧、人脸
 | 401 | `DEVICE_BINDING_INVALID` | 停止设备请求，提示重新绑定；不得退化成普通用户登录 |
 | 404 | `DEVICE_NOT_FOUND` / `STUDY_SESSION_NOT_FOUND` | 刷新本人资源；不要枚举其他账号设备或会话 |
 | 409 | `INVALID_TRANSITION` / `DEVICE_COMMAND_ID_CONFLICT` / `DEVICE_EVENT_ID_CONFLICT` | 会话状态冲突由用户处理；命令冲突更换 key 前先核对原请求；事件冲突保留本地队列并报告 ID 内容不一致 |
+| 409 | `DEVICE_VOICE_ACTIVE` | 已有设备语音会话；原 focus 与原键可重试，另一次连接前须先停止旧会话 |
 | 422 | 请求校验错误 | 丢弃或修正违反 schema/时间范围的事件，不上传原始媒体作为回退 |
 | 429 | 限流 | 遵循 `Retry-After`（若返回），退避重试 |
+| 503 | `HTTP_ERROR` | 实时语音未配置，提示不可用并停止连接流程 |
 
 软件测试可覆盖绑定状态机、owner 隔离、凭据撤销、幂等重放/冲突回滚、专注会话状态和事件时间边界。UVC/CameraX 兼容、摄像头与 USB 音频并发、设备温升/NPU、实体麦克风静音键与摄像头滑盖、整机长时运行和网络抓包须在实际硬件上验收。
 
@@ -230,7 +235,7 @@ Payload 为严格类型的白名单聚合结果，不接受图片、帧、人脸
 
 ### WebSocket `/api/v1/devices/me/voice-sessions/{voice_id}/ws`
 
-握手要求 `Authorization: Bearer <设备凭据>` 请求头，不支持 query 中长期凭据。输入为16kHz/单声道/16bit PCM二进制，输出为24kHz/单声道/16bit PCM二进制；文本帧的取消及提交命令、转写/回答/状态事件与现有[实时语音协议](response-contracts.md#voice)相同。握手无权/过期/重复连接以1008拒绝。设备撤销、账号停用、专注会话结束、显式停止语音时，服务端每帧及约一秒周期重新校验并关闭连接；音频仅在连接中转发，不写入事件表。
+握手要求 `Authorization: Bearer <设备凭据>` 请求头，不支持 query 中长期凭据。输入为16kHz/单声道/16bit PCM二进制（每帧最多65536字节，字节数必须为偶数），输出为24kHz/单声道/16bit PCM二进制；文本帧的取消及提交命令、转写/回答/状态事件与现有[实时语音协议](response-contracts.md#voice)相同。握手无权/过期/重复连接以1008拒绝。浏览器原生 WebSocket 不能设置 Authorization 请求头，因此 Web 页面不能直接调用这个设备入口；设备应用使用支持握手请求头的原生网络库，Web 学习陪伴使用用户实时语音入口。设备撤销、账号停用、专注会话结束、显式停止语音时，服务端每帧及约一秒周期重新校验并关闭连接；音频仅在连接中转发，不写入事件表。
 
 未连接会话五分钟过期，单连接最多四小时。本功能及创建幂等记录为进程内短时状态：重启或连接退出后失效，须重新创建；部署必须把创建/连接路由至同一后端进程。客户端断线后重新创建，不能把此幂等描述为持久化队列。配置的 supports_realtime_voice 只表明服务设置可用，不代表已完成真实提供方、麦克风/扬声器或数字人验证。
 

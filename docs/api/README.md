@@ -64,10 +64,12 @@
 
 文档更新时，应同步修改所属模块、字段字典、OpenAPI 和 Web 对照，并再次核对 HTTP 方法、路由、鉴权、业务必填头及动态响应。线上接口以部署版本为准，可通过后端 `/openapi.json`、`/docs`、`/redoc` 对照声明，但仍须检查本文记录的业务校验。
 
-使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 298 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
+使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 314 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
 
 2026-10-05 交接核验：全部 HTTP 操作均有索引和契约章节；字段表核对请求/响应的属性、必填和数值/长度上限；额外检查实时语音 WebSocket 与独立学习空间全部显式 handler 的章节及统计。已补齐注册 uid、聊天上限及 429/测验 409，并说明[Agent 控制键与 retry 重放](12-agents.md#run-controls)、[实时语音关闭](response-contracts.md#实时语音-websocket)。这些检查验证源码与文档覆盖，外部提供方可用性及各端完整业务流程仍须在目标部署环境联调。
 
 检查还会独立核对学习通凭据异常可达的四条已登记操作是否声明对应 HTTP 状态和错误码；删除运行时声明后重新生成快照也不能绕过此项。该清单不代表所有 AppException 的自动可达性分析。
 
 本次验证为源码契约和文档覆盖核验，未使用真实学校账号、真实模型或外部服务做运行验收；服务可用性以相应 status / capabilities 接口为准。
+
+2026-10-08 后端规划补齐已同步到 [学习状态模块](11-learner.md#2026-10-08-后端规划补齐的接入变化)、[设备协议](15-devices.md)、字段字典与 OpenAPI。后续客户端 Agent 先按[新增能力接入顺序](integration.md#planning-client-handoff)开发，并核对各端未适配项；不能把后端协议完成理解为现有页面或设备应用已经接入。

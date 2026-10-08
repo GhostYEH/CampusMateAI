@@ -283,3 +283,20 @@ Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料�
 后续客户端设置学习偏好时，先 `GET /learner-state/preferences` 读取 `version`，再 `PUT` 完整配置并携带 `expected_version` 和操作唯一 `idempotency_key`。丢失响应时重放原请求和原键；`LEARNER_PREFERENCE_VERSION_CONFLICT` 后重新读取配置并由用户决定覆盖，不能自动用新版本重试覆盖。学期第一周的星期一由用户明确设置，后端不猜测学校校历。`configured=false` 的默认值只用于初始化界面，不能称为已观测用户偏好。
 
 本轮只验证后端。Web、Android、HarmonyOS、微信小程序及桌面设备应用均尚未接入新增协议；旧调用继续兼容。详见[学习状态与计划](11-learner.md)和[设备协议](15-devices.md)。
+
+<a id="planning-client-handoff"></a>
+
+### 新增能力接入顺序
+
+以下路径均相对 `/api/v1`。先阅读本节，再阅读对应模块和字段字典；实际请求以部署版本的 OpenAPI 和模块业务说明共同为准。
+
+| 开发任务 | 调用顺序及界面要求 |
+| --- | --- |
+| 学习偏好设置 | GET `/learner-state/preferences` → 编辑完整配置 → PUT 同路径，携带原 version 和新操作 key。保留所有未编辑字段；省略字段会恢复默认值。超时重试原请求与原键；版本冲突重新读取并让用户决定。 |
+| 学期校历与课表冲突 | 用户明确提供学期标识与第一教学周星期一，再读取状态/预测。学期标识需与该账号教务事实中的 semester 一致；缺基准时展示 partial 和 warnings，不显示成确定无冲突。 |
+| 状态纠正与计划 | 从本人快照复制投影、scope、state_type 和 snapshot ID 发起 corrections；历史快照不会被改写。计划执行返回 LEARNING_PLAN_STALE 时重新生成并重新展示供用户决定，不能静默执行旧建议。 |
+| 方案比较 | POST `/learner-state/simulations` 仅用于预览。展示 limitations、warnings 和数据质量；模拟成功不表示任务已移动或现实计划已执行。 |
+| 账号侧设备管理 | 用户 JWT 扫描并确认设备二维码 → GET `/devices` → DELETE 本人设备。204 不解析 JSON；不把设备凭据当作用户登录凭据。 |
+| 设备应用 | 匿名创建绑定 → 独立 poll token 领取设备凭据 → heartbeat → config → 创建专注会话 → 按需暂停/恢复、上传事件、连接语音 → finish。会话操作保存原 Idempotency-Key 和请求；事件保存原 event_id 和完整内容，收到 accepted/duplicate 确认后才清理本地队列。 |
+
+设备语音入口需要 WebSocket Authorization 请求头，适用于支持自定义握手头的设备网络库。浏览器原生 WebSocket 无法设置该头，Web 页面继续使用[用户语音协议](response-contracts.md#voice)。设备语音创建/连接须落到同一后端进程；创建幂等状态不会跨重启保留。新增接口尚无各端适配验收，接入后需独立验证用户交互、网络重试和目标平台流程。

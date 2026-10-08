@@ -309,6 +309,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 400 | `NOTICE_TOO_LONG` | 通知文本过长，请控制在 5000 字以内。 |
 | 400 | `QR_INVALID` | 二维码无效。 |
 | 401 | `INVALID_CREDENTIALS` | 用户名或密码错误。 |
+| 401 | `DEVICE_BINDING_INVALID` | 设备绑定凭据无效或已过期。 |
 | 401 | `QR_BROWSER_TOKEN_INVALID` | 浏览器凭据无效。 |
 | 401 | `TRUSTED_DEVICE_EXPIRED` | 可信设备凭据已过期。 |
 | 401 | `TRUSTED_DEVICE_INVALID` | 可信设备凭据无效。 |
@@ -327,6 +328,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 404 | `CLASS_GROUP_NOT_FOUND` | 班级不存在。 |
 | 404 | `COURSE_NOT_FOUND` | 课程不存在。 |
 | 404 | `DOCUMENT_NOT_FOUND` | 文档不存在。 |
+| 404 | `DEVICE_NOT_FOUND` | 设备不存在或不属于当前账号。 |
 | 404 | `EDU_BINDING_NOT_FOUND` | 未绑定教务账号 |
 | 404 | `HOME_BANNER_NOT_FOUND` | Home banner not found |
 | 404 | `INVALID_INVITE_CODE` | 邀请码无效或班级不存在。 |
@@ -357,6 +359,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 409 | `CLASS_GROUP_FULL` | 班级已满员。 |
 | 409 | `DOCUMENT_ALREADY_EXISTS` | 相同内容哈希的文档已存在。 |
 | 409 | `INVALID_TRANSITION` | 状态转换不被允许。 |
+| 409 | `DEVICE_COMMAND_ID_CONFLICT` | 幂等键已用于不同设备会话操作。 |
+| 409 | `DEVICE_EVENT_ID_CONFLICT` | 事件标识已用于不同内容。 |
 | 409 | `LEARNER_CORRECTION_ALREADY_REVOKED` | 状态纠正已被撤销。 |
 | 409 | `LEARNER_CORRECTION_CONFLICT` | 状态纠正幂等键已用于不同的纠正请求。 |
 | 409 | `LEARNER_CORRECTION_SNAPSHOT_MISMATCH` | 纠正请求字段与目标快照不一致。 |
@@ -412,6 +416,15 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 
 
 ## 桌面设备凭据、事件与专用实时语音
+
+偏好更新和设备语音还有以下动态业务码，不属于上方 AppException 子类的默认码清单；响应仍使用统一错误信封。
+
+| HTTP | code | 客户端处理 |
+| --- | --- | --- |
+| 409 | `LEARNER_PREFERENCE_IDEMPOTENCY_CONFLICT` | 同键请求内容不同，核对原操作；新操作使用新键。 |
+| 409 | `LEARNER_PREFERENCE_VERSION_CONFLICT` | details.version 是当前版本；重新 GET 配置，由用户处理冲突。 |
+| 409 | `DEVICE_VOICE_ACTIVE` | 当前设备已有语音会话，先停止；重试同 focus 与同 key 可返回原会话。 |
+| 503 | `HTTP_ERROR` | 设备语音未配置，停止建立连接并提示不可用；不将其展示为语音成功。 |
 
 设备绑定结果为固定状态 PENDING/CONFIRMED/EXPIRED/REVOKED；只有 CONFIRMED 提供 device_id/device_credential，其他状态值为 null。设备凭据只在 HTTPS 返回，服务端只存哈希，不能当作普通用户 JWT。绑定二维码与独立轮询 token 不可互换；详见[设备协议](15-devices.md)。事件批次回执含 accepted_event_ids 和 duplicate_event_ids，ID 改内容返回409并原子回滚整批；不会用事件改写专注时长或用户事实。
 
