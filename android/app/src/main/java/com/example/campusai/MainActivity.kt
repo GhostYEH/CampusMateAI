@@ -13,12 +13,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +29,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.graphics.Color
@@ -86,6 +91,11 @@ class MainActivity : ComponentActivity() {
             val session by repository.session.collectAsStateWithLifecycle()
             val darkMode by repository.darkMode.collectAsStateWithLifecycle()
             val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+            var showLaunchArtwork by rememberSaveable { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(1200)
+                showLaunchArtwork = false
+            }
             val view = LocalView.current
             SideEffect {
                 val policy = systemBarPolicy(
@@ -94,13 +104,27 @@ class MainActivity : ComponentActivity() {
                     authenticated = session != null,
                 )
                 WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = policy.darkStatusBarIcons
-                    isAppearanceLightNavigationBars = policy.darkNavigationBarIcons
+                    isAppearanceLightStatusBars = !showLaunchArtwork && policy.darkStatusBarIcons
+                    isAppearanceLightNavigationBars = !showLaunchArtwork && policy.darkNavigationBarIcons
                 }
             }
             CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
-                CampusGlassScene(darkMode = darkMode) {
-                    CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                Box(Modifier.fillMaxSize()) {
+                    CampusGlassScene(darkMode = darkMode) {
+                        CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                    }
+                    AnimatedVisibility(
+                        visible = showLaunchArtwork,
+                        enter = EnterTransition.None,
+                        exit = if (reduceMotion) ExitTransition.None else fadeOut(tween(280)),
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.splash_twilight_v1),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
