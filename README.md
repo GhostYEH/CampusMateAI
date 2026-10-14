@@ -56,6 +56,10 @@ CampusMate AI 面向学生的学习与日常事务管理，围绕“通知整理
 
 在 Windows 仓库根目录按需要选择：
 
+首次配置可运行 `powershell -ExecutionPolicy Bypass -File scripts/local-environment.ps1 -Action Setup -ToolRoot <可写的工具目录>`。工具目录必须位于 Windows 系统盘以外；脚本将 Python 3.12、pnpm 10.28.0、下载缓存及临时文件放入该目录，后端虚拟环境和前端依赖保留在仓库内。Node.js 需已在 PATH 中且满足 22.19 或更高版本。现有 `.env` 保留，失效的虚拟环境移动到被忽略的 `tmp/` 备份后重建；依赖按现有锁文件安装。工具路径仅记录在被 Git 忽略的 `.environment.local`，不写入共享配置。
+
+后续使用同一脚本的 `-Action Check` 检查环境、`-Action Build` 构建 Web、受管课堂服务和独立学习空间，或 `-Action Start` 启动四服务并沿用上述缓存设置。此脚本配置本地开发环境；真实 AI 生成仍需自行在各服务的本地配置中提供模型密钥。移动端、模型训练和可选 MP4 渲染环境按各模块说明单独准备。
+
 | 脚本 | 启动内容 |
 | --- | --- |
 | `start_all.bat` | `magicclass-service` (4010) → FastAPI (8000) → `magicclass-app` (3000) → Vite Web (5174)；使用在线课堂与“学习空间”时运行 |
