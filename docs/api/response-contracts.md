@@ -292,6 +292,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 
 拒绝邀请、更新页码和离开课堂返回 204，无响应体。下载归档返回 200 `application/zip` 和 `Cache-Control: no-store`，正文为创建时上传的原始 .maic.zip，不是 JSON 或 Base64，也未设置 Content-Disposition。
 
+详情/归档/消息在同一读取快照中验证权限并读出结果。已获授权的在途读取遇到并发结束课堂时，仍返回完整快照；结束后的新请求拒绝访问。归档不能返回 200 空文件充当结束信号。
+
 所有错误遵循[统一错误结构](integration.md#errors)。未接受邀请、无成员权限、课堂不存在等均使用 404 `LEARNING_ROOM_ERROR`，避免暴露其他课堂。已结束课堂的旧成员访问通常也返回 404，因为结束操作同时将成员改为 left；若仍存在 accepted 成员，则返回 410。完整分支见模块手册。
 
 原生创建讨论课堂也返回上述 RoomRecord，包含单场景占位归档、stage_id="native-discussion"。音视频配置与凭证分别使用 [ClassroomRtcStatusOut](schemas.md#schema-classroomrtcstatusout)、[ClassroomRtcTokenOut](schemas.md#schema-classroomrtctokenout)；凭证响应 200 带 Cache-Control:no-store，expires_at 为 Unix 秒，有效期 120 秒、60 秒续期。RTC 房间/UID 固定为服务端给定值，leave 后不能续期，但已有 Token 不即时撤销。新错误 503 CLASSROOM_RTC_UNAVAILABLE 表示配置缺失/无效。完整流程及各端适配状态见[音视频协议](14-magicclass.md#classroom-rtc)。

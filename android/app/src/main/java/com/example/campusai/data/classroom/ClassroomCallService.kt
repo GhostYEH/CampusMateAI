@@ -28,20 +28,20 @@ class ClassroomCallService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == END) {
-            stopCall?.invoke()
-            stopSelf()
+            lease.stop(intent.getLongExtra(EPOCH, -1L))
+            if (!lease.hasOwner) stopSelf()
             return START_NOT_STICKY
         }
         val requestedEpoch = intent?.getLongExtra(EPOCH, -1L) ?: -1L
-        if (requestedEpoch != epoch || stopCall == null) {
-            if (stopCall == null) stopSelf(startId)
+        if (!lease.isCurrent(requestedEpoch)) {
+            if (!lease.hasOwner) stopSelf(startId)
             return START_NOT_STICKY
         }
         ownedEpoch = requestedEpoch
         val open = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val end = PendingIntent.getService(this, 1, Intent(this, ClassroomCallService::class.java).setAction(END), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val end = PendingIntent.getService(this, 1, Intent(this, ClassroomCallService::class.java).setAction(END).putExtra(EPOCH, requestedEpoch), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("共同课堂通话中")
@@ -54,18 +54,19 @@ class ClassroomCallService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && intent?.getBooleanExtra(MIC, false) == true) {
             types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         }
-        try { ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types) }
-        catch (_: Exception) { stopCall?.invoke(); stopSelf() }
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
+            lease.ready(requestedEpoch)
+        } catch (_: Exception) {
+            lease.stop(requestedEpoch)
+            if (!lease.hasOwner) stopSelf()
+        }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         // A queued destroy from an earlier call must not hang up a new call.
-        if (ownedEpoch == epoch) {
-            val callback = stopCall
-            stopCall = null
-            callback?.invoke()
-        }
+        lease.stop(ownedEpoch)
         super.onDestroy()
     }
     override fun onBind(intent: Intent?): IBinder? = null
@@ -76,17 +77,18 @@ class ClassroomCallService : Service() {
         private const val END = "classroom.end"
         private const val MIC = "microphone"
         private const val EPOCH = "call_epoch"
-        private var epoch = 0L
-        private var stopCall: (() -> Unit)? = null
-        fun start(context: Context, microphone: Boolean, onStop: () -> Unit) {
-            epoch++
-            stopCall = onStop
-            ContextCompat.startForegroundService(context, Intent(context, ClassroomCallService::class.java).putExtra(MIC, microphone).putExtra(EPOCH, epoch))
+        private val lease = ClassroomServiceLease()
+        fun start(context: Context, owner: Any, microphone: Boolean, onStop: () -> Unit, onReady: () -> Unit) {
+            val generation = lease.claim(owner, onStop, onReady)
+            try {
+                ContextCompat.startForegroundService(context, Intent(context, ClassroomCallService::class.java).putExtra(MIC, microphone).putExtra(EPOCH, generation))
+            } catch (error: Exception) {
+                lease.stop(generation)
+                throw error
+            }
         }
-        fun stop(context: Context) {
-            epoch++
-            stopCall = null
-            context.stopService(Intent(context, ClassroomCallService::class.java))
+        fun stop(context: Context, owner: Any) {
+            if (lease.release(owner)) context.stopService(Intent(context, ClassroomCallService::class.java))
         }
     }
 }

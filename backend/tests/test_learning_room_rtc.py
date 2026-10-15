@@ -13,6 +13,8 @@ import threading
 from types import SimpleNamespace
 import zipfile
 
+import pytest
+
 from app.core.exceptions import AppException
 from app.database.sqlite_db import Database
 from app.repositories.learning_room_repository import LearningRoomRepository
@@ -296,3 +298,37 @@ def test_eight_member_limit_is_atomic_across_database_instances(setup, monkeypat
         results = list(pool.map(attempt, ((repo, guest), (other, outsider))))
     assert results.count("pending") == 1
     assert len(repo.get(room, host)["members"]) == 8
+
+
+@pytest.mark.parametrize("operation", ["archive", "get"])
+def test_read_stays_complete_when_host_ends_during_read(setup, monkeypatch, operation):
+    container, _, room, (host, _), (guest, _), _ = joined(setup)
+    repo = container.learning_room_repository
+    other = LearningRoomRepository(Database(container.settings.database_path))
+    read = getattr(repo, operation)
+    expected = read(room, guest)
+    member = repo._member
+
+    def end_after_authorization(conn, room_id, user_id, **kwargs):
+        record = member(conn, room_id, user_id, **kwargs)
+        other.leave(room_id, host)
+        return record
+
+    monkeypatch.setattr(repo, "_member", end_after_authorization)
+    # Either the operation is rejected before reading, or it returns a complete
+    # authorized snapshot. A 200 response with an empty ZIP is never valid.
+    assert read(room, guest) == expected
+    with pytest.raises(AppException) as rejected:
+        read(room, guest)
+    assert rejected.value.http_status == 404
+
+
+def test_room_snapshot_reuses_outer_transaction_without_rolling_back_writes(setup):
+    container, _, room, (host, _), (guest, _), _ = joined(setup)
+    repo = container.learning_room_repository
+    with container.db.transaction(immediate=True) as conn:
+        conn.execute("UPDATE learning_rooms SET title=? WHERE id=?", ("修改后", room))
+        assert repo.get(room, host)["title"] == "修改后"
+        assert repo.archive(room, guest)
+        assert repo.messages(room, guest, 0) == []
+    assert repo.get(room, guest)["title"] == "修改后"

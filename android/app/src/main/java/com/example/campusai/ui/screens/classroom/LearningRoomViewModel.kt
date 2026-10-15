@@ -9,6 +9,7 @@ import com.example.campusai.data.classroom.ClassroomCallPhase
 import com.example.campusai.data.classroom.ClassroomCallService
 import com.example.campusai.data.remote.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import retrofit2.HttpException
 import java.util.UUID
 
@@ -41,6 +43,9 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private var pollJob: Job? = null
     private var tokenJob: Job? = null
     private var renewalJob: Job? = null
+    private var microphoneJob: Job? = null
+    private var expiryJob: Job? = null
+    private val serviceOwner = Any()
     private var epoch = 0
     private var cursor = 0L
     private var tokenDeadlineMs = 0L
@@ -50,7 +55,8 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         viewModelScope.launch {
             call.state.collect { state ->
                 if (state.phase in listOf(ClassroomCallPhase.OFF, ClassroomCallPhase.ERROR)) {
-                    ClassroomCallService.stop(getApplication())
+                    stopCallJobs()
+                    ClassroomCallService.stop(getApplication(), serviceOwner)
                     if (!uiVisible) stopInBackground()
                 }
             }
@@ -61,6 +67,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         uiVisible = visible
         pollJob?.cancel()
         if (!visible) {
+            microphoneJob?.cancel()
             call.camera(false)
             if (call.state.value.phase !in listOf(ClassroomCallPhase.CONNECTED, ClassroomCallPhase.RECONNECTING)) {
                 stopInBackground()
@@ -181,15 +188,21 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         tokenJob?.cancel()
         val roomId = mutableState.value.room?.id ?: return
         val requestEpoch = epoch
+        call.prepareConnection()
+        val session = call.sessionGeneration
         tokenJob = viewModelScope.launch {
             try {
+                val requestedAt = SystemClock.elapsedRealtime()
                 val token = api.rtcToken(roomId)
-                if (!foreground || epoch != requestEpoch) return@launch
+                if (!uiVisible || epoch != requestEpoch || session != call.sessionGeneration) return@launch
                 // Protocol TTL is 120s. Reserve 10s for HTTP transit and shutdown;
                 // wall-clock changes on a handset must not break a live call.
-                tokenDeadlineMs = SystemClock.elapsedRealtime() + 110_000L
-                ClassroomCallService.start(getApplication(), false, ::disconnect)
+                tokenDeadlineMs = requestedAt + 110_000L
+                prepareCallService(false)
+                if (!uiVisible || epoch != requestEpoch || session != call.sessionGeneration) return@launch
                 call.connect(token)
+                if (call.state.value.phase == ClassroomCallPhase.ERROR) return@launch
+                watchTokenExpiry()
                 while (true) {
                     delay(token.refresh_after_seconds * 1_000L)
                     if (call.state.value.phase in listOf(ClassroomCallPhase.OFF, ClassroomCallPhase.ERROR)) break
@@ -199,7 +212,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
                 throw error
             } catch (error: Exception) {
                 if (epoch == requestEpoch) {
-                    call.disconnect()
+                    disconnect()
                     mutableState.update { it.copy(notice = readable(error)) }
                 }
             }
@@ -210,18 +223,22 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         if (!foreground || renewalJob?.isActive == true) return
         val roomId = mutableState.value.room?.id ?: return
         val requestEpoch = epoch
+        val session = call.sessionGeneration
         renewalJob = viewModelScope.launch {
             var retryMs = 1_000L
             while (foreground && epoch == requestEpoch) {
                 try {
+                    val requestedAt = SystemClock.elapsedRealtime()
                     val token = api.rtcToken(roomId)
-                    if (epoch != requestEpoch) return@launch
+                    if (epoch != requestEpoch || session != call.sessionGeneration) return@launch
                     call.updateToken(token.token)
-                    tokenDeadlineMs = SystemClock.elapsedRealtime() + 110_000L
+                    tokenDeadlineMs = requestedAt + 110_000L
+                    watchTokenExpiry()
                     return@launch
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
+                    if (epoch != requestEpoch || session != call.sessionGeneration) return@launch
                     if (error is HttpException && error.code() in listOf(401, 403, 404, 410) ||
                         SystemClock.elapsedRealtime() >= tokenDeadlineMs) {
                         disconnect()
@@ -235,22 +252,56 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun disconnect() {
+    private fun stopCallJobs() {
         tokenJob?.cancel(); tokenJob = null
         renewalJob?.cancel(); renewalJob = null
-        call.disconnect()
-        ClassroomCallService.stop(getApplication())
+        microphoneJob?.cancel(); microphoneJob = null
+        expiryJob?.cancel(); expiryJob = null
     }
+
+    fun disconnect() {
+        stopCallJobs()
+        call.disconnect()
+        ClassroomCallService.stop(getApplication(), serviceOwner)
+    }
+
+    private suspend fun prepareCallService(microphone: Boolean) {
+        val ready = CompletableDeferred<Unit>()
+        ClassroomCallService.start(getApplication(), serviceOwner, microphone, ::disconnect) { ready.complete(Unit) }
+        check(withTimeoutOrNull(5_000L) { ready.await(); true } == true) {
+            "Foreground call service did not become ready"
+        }
+    }
+
+    private fun watchTokenExpiry() {
+        expiryJob?.cancel()
+        expiryJob = viewModelScope.launch {
+            delay((tokenDeadlineMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
+            disconnect()
+            notice("通话凭证已失效，请重新加入课堂")
+        }
+    }
+
     fun microphone(enabled: Boolean) {
-        if (enabled && !uiVisible) return
-        try {
-            // Promote to the microphone service type while the app is visible,
-            // before capture starts, so Android 14 permits background audio.
-            ClassroomCallService.start(getApplication(), enabled, ::disconnect)
-            call.microphone(enabled)
-        } catch (_: Exception) {
+        microphoneJob?.cancel()
+        if (!enabled) {
             call.microphone(false)
-            notice("无法启动麦克风通话服务，请检查系统权限")
+            return
+        }
+        if (!uiVisible || call.state.value.phase != ClassroomCallPhase.CONNECTED) return
+        val session = call.sessionGeneration
+        microphoneJob = viewModelScope.launch {
+            try {
+                // Wait for Android to accept the microphone service type before
+                // capturing, rather than assuming startForegroundService is ready.
+                prepareCallService(true)
+                if (uiVisible && session == call.sessionGeneration) call.microphone(true)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                call.microphone(false)
+                notice("无法启动麦克风通话服务，请检查系统权限")
+            }
         }
     }
     fun notice(message: String) { mutableState.update { it.copy(notice = message) } }

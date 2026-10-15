@@ -468,7 +468,10 @@ def decline(
 def room(
     room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
 ):
-    """accepted 成员读取活动课堂、共享页码与成员；pending 邀请不可读取。"""
+    """accepted 成员读取活动课堂、共享页码与成员；pending 邀请不可读取。
+
+    权限校验与结果使用同一读取快照，避免结束课堂时返回不完整的成员详情。
+    """
     return repo.get(room_id, user.id)
 
 
@@ -479,7 +482,11 @@ def room(
 def archive(
     room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
 ):
-    """accepted 成员下载创建时的完整课件归档（application/zip 二进制）。"""
+    """accepted 成员下载创建时的完整课件归档（application/zip 二进制）。
+
+    权限校验与内容读取使用同一快照；已获授权的在途读取返回完整归档，
+    不因并发结束课堂返回 200 空文件。结束后的新请求返回 404/410。
+    """
     return Response(
         repo.archive(room_id, user.id),
         media_type="application/zip",
@@ -548,7 +555,10 @@ def messages(
     user: UserRow = Depends(current_user),
     repo=Depends(_repository),
 ):
-    """accepted 成员增量读取交流记录，仅返回消息 id > after 的记录，按 id 升序。"""
+    """accepted 成员增量读取交流记录，仅返回消息 id > after 的记录，按 id 升序。
+
+    成员权限与消息列表使用同一读取快照。
+    """
     return {"items": repo.messages(room_id, user.id, after)}
 
 

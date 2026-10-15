@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-enum class ClassroomCallPhase { OFF, CONNECTING, CONNECTED, RECONNECTING, ERROR }
 data class ClassroomPeer(
     val uid: String, val streamId: String = "", val audio: Boolean = false, val video: Boolean = false,
 )
@@ -49,18 +48,26 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
     private var engine: RTCEngine? = null
     private var room: RTCRoom? = null
     private var generation = 0
+    val sessionGeneration: Int get() = generation
+    private val connection = ClassroomConnectionTracker()
     private var frontCamera = true
     private val views = mutableMapOf<String, TextureView>()
+    private val boundViews = mutableMapOf<String, Pair<TextureView, String>>()
 
     private fun dispatch(epoch: Int, action: () -> Unit) {
         main.post { if (epoch == generation && engine != null) action() }
     }
 
-    fun connect(token: ClassroomRtcToken) {
+    fun prepareConnection() {
         check(Looper.myLooper() == Looper.getMainLooper())
-        disconnect()
+        releaseResources()
+        connection.begin()
+        mutableState.value = ClassroomCallState(phase = connection.phase)
+    }
+
+    fun connect(token: ClassroomRtcToken) {
+        prepareConnection()
         val epoch = generation
-        mutableState.value = ClassroomCallState(phase = ClassroomCallPhase.CONNECTING)
         try {
             engine = checkNotNull(RTCEngine.createRTCEngine(EngineConfig().apply {
                 context = this@ClassroomCall.context.applicationContext
@@ -68,14 +75,15 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
             }, object : IRTCEngineEventHandler() {
                 override fun onError(code: Int) = dispatch(epoch) { fail("音视频引擎异常（$code），请重新连接") }
                 override fun onConnectionStateChanged(state: Int, reason: Int) = dispatch(epoch) {
-                    val connection = ConnectionState.fromId(state)
-                    if (connection in listOf(ConnectionState.CONNECTION_STATE_RECONNECTING, ConnectionState.CONNECTION_STATE_LOST)) {
-                        mutableState.update { it.copy(phase = ClassroomCallPhase.RECONNECTING) }
+                    val transport = ConnectionState.fromId(state)
+                    if (transport in listOf(ConnectionState.CONNECTION_STATE_RECONNECTING, ConnectionState.CONNECTION_STATE_LOST)) {
+                        connection.transportChanged(false)
+                        mutableState.update { it.copy(phase = connection.phase) }
                     }
-                    if (connection in listOf(ConnectionState.CONNECTION_STATE_CONNECTED, ConnectionState.CONNECTION_STATE_RECONNECTED) && mutableState.value.phase == ClassroomCallPhase.RECONNECTING) {
-                        mutableState.update { it.copy(phase = ClassroomCallPhase.CONNECTED) }
+                    if (transport in listOf(ConnectionState.CONNECTION_STATE_CONNECTED, ConnectionState.CONNECTION_STATE_RECONNECTED)) {
+                        connection.transportChanged(true)
                     }
-                    if (connection == ConnectionState.CONNECTION_STATE_FAILED) fail("网络连接失败，请重新连接课堂")
+                    if (transport == ConnectionState.CONNECTION_STATE_FAILED) fail("网络连接失败，请重新连接课堂")
                 }
                 override fun onLocalAudioStateChanged(source: com.ss.bytertc.engine.IAudioSource, state: com.ss.bytertc.engine.data.LocalAudioStreamState, error: com.ss.bytertc.engine.data.LocalAudioStreamError) = dispatch(epoch) {
                     if (state == com.ss.bytertc.engine.data.LocalAudioStreamState.LOCAL_AUDIO_STREAM_STATE_FAILED && mutableState.value.microphone) {
@@ -104,8 +112,18 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
             checkCode(callRoom.setRTCRoomEventHandler(object : IRTCRoomEventHandler() {
                 override fun onRoomStateChangedWithReason(roomId: String, uid: String, state: RoomState, reason: RoomStateChangeReason) = dispatch(epoch) {
                     when (state) {
-                        RoomState.JOIN_SUCCESS -> mutableState.update { it.copy(phase = ClassroomCallPhase.CONNECTED, error = null) }
-                        RoomState.JOIN_FAILED, RoomState.LEFT -> fail("通话已断开（${reason.name}），请重新连接")
+                        RoomState.JOIN_SUCCESS -> {
+                            connection.roomJoined()
+                            mutableState.update { it.copy(phase = connection.phase, error = null) }
+                        }
+                        RoomState.JOIN_FAILED, RoomState.LEFT -> fail(when (reason) {
+                            RoomStateChangeReason.DUPLICATE_LOGIN -> "此账号已在其他设备加入通话，请选择一台设备使用"
+                            RoomStateChangeReason.INVALID_TOKEN, RoomStateChangeReason.TOKEN_EXPIRED,
+                            RoomStateChangeReason.UPDATE_TOKEN_WITH_INVALID_TOKEN -> "通话认证已失效，请重新连接课堂"
+                            RoomStateChangeReason.ROOM_FORBIDDEN, RoomStateChangeReason.USER_FORBIDDEN,
+                            RoomStateChangeReason.KICKED_OUT, RoomStateChangeReason.ROOM_DISMISS -> "课堂已关闭或已无法加入，请返回列表"
+                            else -> "通话已断开，请检查网络后重新连接"
+                        })
                         else -> Unit
                     }
                 }
@@ -114,6 +132,7 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                 }
                 override fun onUserLeave(uid: String, reason: Int) = dispatch(epoch) {
                     mutableState.value.peers[uid]?.streamId?.let { rtc.setRemoteVideoCanvas(it, null) }
+                    boundViews.remove(uid)
                     mutableState.update { it.copy(peers = it.peers - uid) }
                 }
                 override fun onUserPublishStreamVideo(streamId: String, info: StreamInfo, published: Boolean) = dispatch(epoch) {
@@ -121,7 +140,10 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                         peer(info.userId, streamId, video = published)
                         if (published) {
                             callRoom.setRemoteVideoConfig(streamId, RemoteVideoConfig(320, 180, 15))
-                        } else rtc.setRemoteVideoCanvas(streamId, null)
+                        } else {
+                            boundViews.remove(info.userId)
+                            rtc.setRemoteVideoCanvas(streamId, null)
+                        }
                     }
                 }
                 override fun onUserPublishStreamAudio(streamId: String, info: StreamInfo, published: Boolean) = dispatch(epoch) {
@@ -157,6 +179,7 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
     fun updateToken(token: String) { checkCode(checkNotNull(room).updateToken(token)) }
 
     fun microphone(enabled: Boolean) {
+        if (enabled && mutableState.value.phase != ClassroomCallPhase.CONNECTED) return
         val rtc = engine ?: return
         try {
             if (enabled) {
@@ -174,6 +197,7 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
     }
 
     fun camera(enabled: Boolean) {
+        if (enabled && mutableState.value.phase != ClassroomCallPhase.CONNECTED) return
         val rtc = engine ?: return
         try {
             if (enabled) {
@@ -198,16 +222,28 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
 
     fun bindVideo(uid: String, view: TextureView) {
         views[uid] = view
+        val rtc = engine ?: return
+        val streamId = if (uid == "self") "self"
+            else mutableState.value.peers[uid]?.takeIf { it.video }?.streamId ?: return
+        val previous = boundViews[uid]
+        // AndroidView.update also runs for unrelated UI/RTT changes. Rebinding
+        // the same canvas can restart rendering and cause periodic flicker.
+        if (previous != null && previous.first === view && previous.second == streamId) return
+        if (previous != null && previous.second != streamId && uid != "self") {
+            rtc.setRemoteVideoCanvas(previous.second, null)
+        }
         val canvas = VideoCanvas(view, VideoCanvas.RENDER_MODE_HIDDEN)
-        if (uid == "self") engine?.setLocalVideoCanvas(canvas)
-        else mutableState.value.peers[uid]?.takeIf { it.video }?.let { engine?.setRemoteVideoCanvas(it.streamId, canvas) }
+        val result = if (uid == "self") rtc.setLocalVideoCanvas(canvas)
+            else rtc.setRemoteVideoCanvas(streamId, canvas)
+        if (result == 0) boundViews[uid] = view to streamId
     }
 
     fun unbindVideo(uid: String, view: TextureView) {
         if (views[uid] !== view) return
         views.remove(uid)
+        val previous = boundViews.remove(uid)
         if (uid == "self") engine?.setLocalVideoCanvas(null)
-        else mutableState.value.peers[uid]?.let { engine?.setRemoteVideoCanvas(it.streamId, null) }
+        else previous?.let { engine?.setRemoteVideoCanvas(it.second, null) }
     }
 
     private fun fail(message: String) {
@@ -216,15 +252,21 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
     }
 
     fun disconnect() {
+        releaseResources()
+        mutableState.value = ClassroomCallState()
+    }
+
+    private fun releaseResources() {
         generation++ // Ignore callbacks from the destroyed engine, including queued leave events.
+        connection.reset()
         room?.publishStreamAudio(false); room?.publishStreamVideo(false)
         engine?.stopAudioCapture(); engine?.stopVideoCapture()
         room?.leaveRoom(); room?.destroy(); room = null
         if (engine != null) RTCEngine.destroyRTCEngine()
         engine = null
         views.clear()
+        boundViews.clear()
         frontCamera = true
-        mutableState.value = ClassroomCallState()
     }
 
     private fun checkCode(code: Int) { check(code == 0) { "RTC operation failed: $code" } }

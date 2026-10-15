@@ -39,6 +39,8 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
     var confirmLeave by remember { mutableStateOf(false) }
     var microphoneRequestRoom by remember { mutableStateOf<String?>(null) }
     var cameraRequestRoom by remember { mutableStateOf<String?>(null) }
+    var microphoneRequestSession by remember { mutableStateOf(-1) }
+    var cameraRequestSession by remember { mutableStateOf(-1) }
     var notificationRequestRoom by remember { mutableStateOf<String?>(null) }
     val connected = call.phase == ClassroomCallPhase.CONNECTED
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -48,11 +50,11 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         }
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && microphoneRequestRoom == state.room?.id && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && model.call.state.value.phase == ClassroomCallPhase.CONNECTED) model.microphone(true)
+        if (granted && microphoneRequestRoom == state.room?.id && microphoneRequestSession == model.call.sessionGeneration && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && model.call.state.value.phase == ClassroomCallPhase.CONNECTED) model.microphone(true)
         else if (!granted) model.notice("未获得麦克风权限，仍可听课或使用摄像头")
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && cameraRequestRoom == state.room?.id && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && model.call.state.value.phase == ClassroomCallPhase.CONNECTED) model.call.camera(true)
+        if (granted && cameraRequestRoom == state.room?.id && cameraRequestSession == model.call.sessionGeneration && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && model.call.state.value.phase == ClassroomCallPhase.CONNECTED) model.call.camera(true)
         else if (!granted) model.notice("未获得摄像头权限，仍可参加语音讨论")
     }
     DisposableEffect(owner, model) {
@@ -129,15 +131,15 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(enabled = connected, onClick = {
+                    Button(enabled = connected || call.microphone, onClick = {
                         if (call.microphone) model.microphone(false)
                         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) model.microphone(true)
-                        else { microphoneRequestRoom = room.id; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+                        else { microphoneRequestRoom = room.id; microphoneRequestSession = model.call.sessionGeneration; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
                     }) { Text(if (call.microphone) "关闭麦克风" else "开启麦克风") }
-                    Button(enabled = connected, onClick = {
+                    Button(enabled = connected || call.camera, onClick = {
                         if (call.camera) model.call.camera(false)
                         else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) model.call.camera(true)
-                        else { cameraRequestRoom = room.id; cameraPermission.launch(Manifest.permission.CAMERA) }
+                        else { cameraRequestRoom = room.id; cameraRequestSession = model.call.sessionGeneration; cameraPermission.launch(Manifest.permission.CAMERA) }
                     }) { Text(if (call.camera) "关闭摄像头" else "开启摄像头") }
                 }
                 if (call.camera) TextButton(onClick = model.call::switchCamera) { Text("切换前后摄像头") }

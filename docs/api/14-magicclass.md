@@ -2760,6 +2760,8 @@ Web 封装：`getLearningRoom`（[webreact/src/data/learningRoomApi.js](../../we
 
 成员可轮询 scene_index 决定是否跟随发起人翻页，pending 邀请不能读取本接口。成员状态与结束错误见共同错误表。
 
+权限、课堂字段与成员列表在同一个读取快照中取得，避免并发结束课堂时返回 active=1 却无成员的半更新结果。
+
 ### `GET /api/v1/magicclass/learning-space/rooms/{room_id}/archive`
 
 用途：accepted 成员下载创建时的完整课件。path 参数 room_id 必填，没有请求体。成功为 200 `application/zip` 和 `Cache-Control: no-store`，响应体是二进制归档，未设置 Content-Disposition。
@@ -2767,6 +2769,8 @@ Web 封装：`getLearningRoom`（[webreact/src/data/learningRoomApi.js](../../we
 Web 封装：`getLearningArchive`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
 客户端按 Blob/二进制读取 .maic.zip，不可用 JSON 解析；失败时仍按统一 JSON 错误信封处理。无成员权限或已离开通常返回 404 `LEARNING_ROOM_ERROR`。
+
+权限检查与归档读取共用同一个 SQLite WAL 读取快照。已获授权的在途读取与结束课堂交错时仍返回完整 ZIP，后续新请求拒绝访问；不能以 200 空文件表示课堂结束。
 
 ### `PATCH /api/v1/magicclass/learning-space/rooms/{room_id}/cursor`
 
@@ -2783,6 +2787,8 @@ Web 封装：`setLearningCursor`（[webreact/src/data/learningRoomApi.js](../../
 Web 封装：`getLearningMessages`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
 脱敏响应：`{"items":[{"id":1,"uid":"usr_guest_example","name":"同学乙","content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}]}`。下一次将 after 设为最大已收 id；客户端按 id 去重。空列表仅表示暂无更新，没有实时通道或总量字段。
+
+权限检查与消息列表共用同一个读取快照；结束后的新请求继续使用共同错误表中的 404/410。
 
 ### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/messages`
 
@@ -2816,6 +2822,8 @@ RTC Token 有效期及全部发布/订阅权限均为 120 秒；提前 60 秒续
 **撤销边界**：leave 不调用云端封禁 API，已签发 Token 不能被本站即时收回；不遵循官方客户端状态检查的 SDK 使用方最多仍可使用剩余 120 秒。安全要求必须即时撤销时，另接云端房间/用户封禁并验证重入限制，不能只依赖客户端按钮或停止续期。签发不写进程内会话表，可由多个后端 worker 使用同一配置签发；人数/课堂数检查和写入通过 SQLite `BEGIN IMMEDIATE` 保持原子性。
 
 客户端默认关闭音频和视频采集，不因拒绝摄像头权限禁止开麦，也不因拒绝麦克风权限禁止开摄像头。后台通过前台服务与持续通知保持语音，停止摄像头，回到前台不自动重新开启摄像头；通知提供断开动作。视频发送 640×360、15fps、最高 500kbps；小画面订阅 320×180、15fps，按需多路编码并允许弱网回退为音频。网络 RTT 只是 SDK 网络诊断，不是端到端音频/视频延迟。
+
+Android 在服务就绪后才入会/开麦；旧页面和旧服务回调不能停止新通话。初次连接及重连均以房间成功回调为准，不能把传输连接恢复当作入会；重连中允许立即关闭现有采集，设备授权结果还须匹配本次通话代次。独立 Token 到期看门狗与网络请求并行，超时即停止并取消续期，不等待重试请求返回。
 
 ### `GET /api/v1/magicclass/learning-space/rtc/status`
 

@@ -23333,7 +23333,7 @@
             }
           }
         },
-        "description": "accepted 成员读取活动课堂、共享页码与成员；pending 邀请不可读取。"
+        "description": "accepted 成员读取活动课堂、共享页码与成员；pending 邀请不可读取。\n\n权限校验与结果使用同一读取快照，避免结束课堂时返回不完整的成员详情。"
       }
     },
     "/api/v1/magicclass/learning-space/rooms/{room_id}/archive": {
@@ -23379,7 +23379,7 @@
             }
           }
         },
-        "description": "accepted 成员下载创建时的完整课件归档（application/zip 二进制）。"
+        "description": "accepted 成员下载创建时的完整课件归档（application/zip 二进制）。\n\n权限校验与内容读取使用同一快照；已获授权的在途读取返回完整归档，\n不因并发结束课堂返回 200 空文件。结束后的新请求返回 404/410。"
       }
     },
     "/api/v1/magicclass/learning-space/rooms/{room_id}/cursor": {
@@ -23512,7 +23512,7 @@
             }
           }
         },
-        "description": "accepted 成员增量读取交流记录，仅返回消息 id > after 的记录，按 id 升序。"
+        "description": "accepted 成员增量读取交流记录，仅返回消息 id > after 的记录，按 id 升序。\n\n成员权限与消息列表使用同一读取快照。"
       },
       "post": {
         "tags": [

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -20,6 +21,23 @@ def _error(message: str, status: int = 409) -> AppException:
 class LearningRoomRepository:
     def __init__(self, db: Database):
         self.db = db
+
+    @contextmanager
+    def _snapshot(self):
+        """Keep authorization and its result in one WAL read snapshot.
+
+        Reuse caller-owned transactions without committing/rolling them back.
+        Read-only callers do not acquire SQLite's writer lock.
+        """
+        with self.db.query() as conn:
+            owned = not conn.in_transaction
+            if owned:
+                conn.execute("BEGIN")
+            try:
+                yield conn
+            finally:
+                if owned:
+                    conn.rollback()
 
     @staticmethod
     def _member(conn, room_id: str, user_id: str, *, host_only=False):
@@ -61,7 +79,7 @@ class LearningRoomRepository:
         return self.get(room_id, host_id)
 
     def get(self, room_id: str, user_id: str) -> dict:
-        with self.db.query() as conn:
+        with self._snapshot() as conn:
             room = dict(self._member(conn, room_id, user_id))
             room["host_uid"] = room.pop("host_id")
             room["members"] = [
@@ -147,7 +165,7 @@ class LearningRoomRepository:
             )
 
     def archive(self, room_id: str, user_id: str) -> bytes:
-        with self.db.query() as conn:
+        with self._snapshot() as conn:
             self._member(conn, room_id, user_id)
             return conn.execute(
                 "SELECT archive FROM learning_rooms WHERE id=?", (room_id,)
@@ -163,7 +181,7 @@ class LearningRoomRepository:
             )
 
     def messages(self, room_id: str, user_id: str, after: int) -> list[dict]:
-        with self.db.query() as conn:
+        with self._snapshot() as conn:
             self._member(conn, room_id, user_id)
             return [
                 dict(r)
