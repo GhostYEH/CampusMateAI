@@ -12,6 +12,13 @@ const example = { type: 'slide', slide: { title: '极限的例子', sections: [{
 const quiz = { type: 'quiz', questions: [{ type: 'single', question: 'x 接近 2 时，x + 1 接近多少？', options: [{ label: '2', value: 'A' }, { label: '3', value: 'B' }, { label: '4', value: 'C' }], answer: ['B'], analysis: '把 x 趋近的 2 代入 x + 1，得到 3。', points: 1 }] };
 const doc = (contents) => ({ stage: { name: '极限' }, scenes: contents.map((content, i) => ({ title: `第 ${i + 1} 页`, type: content.type, content })) });
 
+test('homework review requires at least three playable practice questions with analyses', () => {
+  const prompt = '作业提交后复习：函数练习，讲解并增加相似练习';
+  assert.ok(reviewGeneratedStage(doc([concept, example, quiz]), 'slide', prompt).some((issue) => issue.includes('at least 3')));
+  const practice = { ...quiz, questions: [2, 3, 4].map((value) => ({ ...quiz.questions[0], question: `x 接近 ${value} 时，x + 1 接近多少？` })) };
+  assert.deepEqual(reviewGeneratedStage(doc([concept, example, practice]), 'slide', prompt), []);
+});
+
 test('generated lesson keeps readable explanation text after canvas composition and full validation', () => {
   const prepared = prepareStage(materializeGeneratedStage(doc([concept, example, quiz]))).document;
   assert.deepEqual(reviewGeneratedStage(prepared, 'slide', '讲解并练习极限'), []);

@@ -62,7 +62,9 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       if (!isGenerationMode(mode)) throw new WorkspaceError('invalid_request', `mode must be one of ${GENERATION_MODES.join(', ')}`);
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
       if (!prompt) throw new WorkspaceError('invalid_request', 'prompt is required');
-      if (prompt.length > 2000) throw new WorkspaceError('invalid_request', 'prompt is too long');
+      // The trusted gateway also supplies full, authorized homework snapshots.
+      // Browser-authored prompts remain capped at 2,000 by the public API.
+      if (prompt.length > 24000) throw new WorkspaceError('invalid_request', 'prompt is too long');
       const key = request.headers[IDEMPOTENCY_HEADER]?.trim();
       if (!key) throw new WorkspaceError('invalid_request', 'Idempotency-Key is required for this request');
       const userId = request.claims.sub;

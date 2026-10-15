@@ -491,6 +491,23 @@ CREATE TABLE IF NOT EXISTS chaoxing_credentials (
     updated_at TEXT NOT NULL,
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS chaoxing_assignment_content (
+    user_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    questions_json TEXT NOT NULL,
+    remote_status TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    last_attempt_at TEXT NOT NULL,
+    PRIMARY KEY(user_id, external_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS chaoxing_auto_sync (
+    user_id TEXT PRIMARY KEY,
+    next_attempt_at TEXT NOT NULL,
+    lease_until TEXT NOT NULL,
+    last_error TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 # 学习通考试/测验事实表 —— 承载考试时间与得分，供世界模型 ACADEMIC/WORLD 投影消费。

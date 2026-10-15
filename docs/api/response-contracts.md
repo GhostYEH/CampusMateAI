@@ -121,7 +121,9 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 <a id="sync"></a>
 ## 学习通与课程局部同步
 
-学习通 login 返回 `{status:"success"}`；disconnect 返回 `{status:"disconnected"}`；sync 返回 `{status:"success",stats,warnings,sections}`。HTTP 200 且 status=success 仍可能含分区失败。
+作业题目快照与提交后课堂的动态响应见 [作业复习接口](09-integrations.md)。题目快照返回 `task_id/course_id/status/available/current/can_generate/fetched_at/questions`，每题为 `{number,stem,options:string[]}`，无可读题目时 questions 为空且 fetched_at 为 null；生成响应包含 `workspace_id/course_id/task_id/question_count` 和既有 `source/job`。can_generate 表示数据前置条件，不代表外部服务已经就绪。服务端每日同步也更新题目；抓取失败或有待补批次时 assignments 分区为 partial，warnings 含 `assignment_content:<reason>`，保留已有快照。
+
+学习通 login 返回 `{status:"success"}`；disconnect 返回 `{status:"disconnected"}`；sync 返回 `{status:"sync completed",notice_sync,source:"chaoxing_live",complete,stats,warnings,sections}`。HTTP 200 仍可能含分区失败，须检查 complete、sections 和 warnings。
 
 stats 的整数计数：courses_fetched/courses_created/courses_updated/teachers_fetched、assignments_fetched/assignments_pending/assignments_created/assignments_updated、scores_fetched/scores_pending、exams_fetched/exams_created/exams_updated、notices_fetched/notices_created/notices_updated。warnings 为 string[]；sections 为按分区名索引的对象，每项有 status/item_count/last_synced_at/error_code/error_message。字段可能包含 null，按实际分区处理。
 

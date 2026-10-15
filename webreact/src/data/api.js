@@ -173,6 +173,8 @@ export async function loginChaoxing(username, password) {
 }
 export async function syncChaoxing() { return dataOf(await client.post("/chaoxing/sync", {}, { timeout: 120000 })); }
 export async function disconnectChaoxing() { return dataOf(await client.post("/chaoxing/disconnect")); }
+export async function getChaoxingAssignmentContent(taskId) { return dataOf(await client.get(`/chaoxing/assignments/${taskId}/content`)); }
+export async function generateChaoxingAssignmentClassroom(taskId) { return dataOf(await client.post(`/chaoxing/assignments/${taskId}/classroom`, {}, { timeout: 60000 })); }
 
 // ===== 课程智能辅导空间（magic class 学生侧互动课堂）=====
 // 只能经 CampusMate 后端触达 magic class，不直连、不在前端保存任何 magic class 访问资料。

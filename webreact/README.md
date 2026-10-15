@@ -8,6 +8,7 @@
 
 - `/counselor`：通用 AI 助手界面。当前调用后端兼容接口 `/api/v1/counselor/chat`，后端对非问候问题仍会检索现有校园知识库；详见[主 README](../README.md)。
 - `/notifications`、`/tasks`、`/profile/chaoxing`：查看服务端整理的通知与待办、连接并同步学习通。Web 不读取手机系统通知，微信/QQ 消息接入发生在获授权的 Android 端。
+- 学习通作业详情可查看已同步题干和选项、刷新提交状态；提交后生成在线课堂的逐题讲解与至少 3 道相似练习，显示进度并支持失败重试。后端运行期间每天自动同步，服务停止期间的到期任务在重启后补同步；登录过期需重新连接。
 - `/courses/:courseId/classroom`、`/courses/:courseId/workspaces/:workspaceId`：课程内互动课堂，可创建或复用工作台、生成场景、编辑、播放和导出；实际可用性取决于受管服务及模型配置。
 - `/learning-space`：导航栏“学习空间”，经后端状态校验后内嵌独立进程运行的 `magicclass-app`。未配置公开 Origin 或服务不可达时会显示原因。
 

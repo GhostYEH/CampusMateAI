@@ -182,65 +182,67 @@
 | [webreact/src/data/api.js:171](../../webreact/src/data/api.js) | loginChaoxing | POST | `/chaoxing/login` | [学习通、教务连接与兼容接口](09-integrations.md) |
 | [webreact/src/data/api.js:174](../../webreact/src/data/api.js) | syncChaoxing | POST | `/chaoxing/sync` | [学习通、教务连接与兼容接口](09-integrations.md) |
 | [webreact/src/data/api.js:175](../../webreact/src/data/api.js) | disconnectChaoxing | POST | `/chaoxing/disconnect` | [学习通、教务连接与兼容接口](09-integrations.md) |
-| [webreact/src/data/api.js:184](../../webreact/src/data/api.js) | getInteractiveClassroomStatus | GET | `/courses/{courseId}/interactive-classroom/status` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:193](../../webreact/src/data/api.js) | getInteractiveClassroomPlan | GET | `/courses/{courseId}/interactive-classroom/plan` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:216](../../webreact/src/data/api.js) | generateInteractiveClassroom | POST | `/courses/{courseId}/interactive-classroom/generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:221](../../webreact/src/data/api.js) | getInteractiveClassroomComposition | GET | `/courses/{courseId}/interactive-classroom/{sessionId}/composition` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:226](../../webreact/src/data/api.js) | getInteractiveClassroomJob | GET | `/courses/{courseId}/interactive-classroom/jobs/{sessionId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:231](../../webreact/src/data/api.js) | listInteractiveClassrooms | GET | `/courses/{courseId}/interactive-classroom` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:240](../../webreact/src/data/api.js) | getMagicClassFusionStatus | GET | `/magicclass/fusion/status` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:248](../../webreact/src/data/api.js) | getMagicClassRecent | GET | `/magicclass/fusion/recent` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:252](../../webreact/src/data/api.js) | getMagicClassProviderStatus | GET | `/magicclass/fusion/providers` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:262](../../webreact/src/data/api.js) | getMagicClassCourseContext | GET | `/courses/{courseId}/magicclass-context` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:278](../../webreact/src/data/api.js) | listMagicClassWorkspaces | GET | `/courses/{courseId}/workspaces` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:286](../../webreact/src/data/api.js) | createMagicClassWorkspace | POST | `/courses/{courseId}/workspaces` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:296](../../webreact/src/data/api.js) | getMagicClassWorkspace | GET | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:307](../../webreact/src/data/api.js) | updateMagicClassWorkspace | PATCH | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:319](../../webreact/src/data/api.js) | deleteMagicClassWorkspace | DELETE | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:327](../../webreact/src/data/api.js) | listMagicClassStages | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:335](../../webreact/src/data/api.js) | getMagicClassStage | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:339](../../webreact/src/data/api.js) | createMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:349](../../webreact/src/data/api.js) | replaceMagicClassStage | PUT | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:360](../../webreact/src/data/api.js) | generateMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:369](../../webreact/src/data/api.js) | generateMagicClassHome | POST | `/courses/{courseId}/home-generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:377](../../webreact/src/data/api.js) | getMagicClassJob | GET | `/courses/{courseId}/jobs/{jobId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:381](../../webreact/src/data/api.js) | cancelMagicClassJob | POST | `/courses/{courseId}/jobs/{jobId}/cancel` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:385](../../webreact/src/data/api.js) | retryMagicClassJob | POST | `/courses/{courseId}/jobs/{jobId}/retry` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:389](../../webreact/src/data/api.js) | synthesizeMagicClassTts | POST | `/courses/{courseId}/tts` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:397](../../webreact/src/data/api.js) | runMagicClassDiscussion | POST | `/courses/{courseId}/discussion` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:412](../../webreact/src/data/api.js) | getMagicClassSceneNarration | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:425](../../webreact/src/data/api.js) | synthesizeMagicClassSceneNarration | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:434](../../webreact/src/data/api.js) | getMagicClassArtifact | GET | `/courses/{courseId}/artifacts/{artifactId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:443](../../webreact/src/data/api.js) | enqueueMagicClassStageVideo | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export/video` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:451](../../webreact/src/data/api.js) | addMagicClassWhiteboard | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | 未匹配，见下一节 |
-| [webreact/src/data/api.js:464](../../webreact/src/data/api.js) | listMagicClassFolders | GET | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:472](../../webreact/src/data/api.js) | createMagicClassFolder | POST | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:484](../../webreact/src/data/api.js) | updateMagicClassFolder | PATCH | `/courses/{courseId}/folders/{folderId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:495](../../webreact/src/data/api.js) | deleteMagicClassFolder | DELETE | `/courses/{courseId}/folders/{folderId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:503](../../webreact/src/data/api.js) | searchMagicClassContent | GET | `/courses/{courseId}/search` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:517](../../webreact/src/data/api.js) | listMagicClassMaterials | GET | `/courses/{courseId}/materials` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:525](../../webreact/src/data/api.js) | uploadMagicClassMaterial | POST | `/courses/{courseId}/materials` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:536](../../webreact/src/data/api.js) | getMagicClassMaterial | GET | `/courses/{courseId}/materials/{materialId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:540](../../webreact/src/data/api.js) | deleteMagicClassMaterial | DELETE | `/courses/{courseId}/materials/{materialId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:549](../../webreact/src/data/api.js) | resolveMagicClassMaterials | POST | `/courses/{courseId}/materials/resolve` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:570](../../webreact/src/data/api.js) | exportMagicClassStage | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:578](../../webreact/src/data/api.js) | exportMagicClassStageFormat | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export/{format}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:586](../../webreact/src/data/api.js) | importMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/import` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:596](../../webreact/src/data/api.js) | importMagicClassPptx | POST | `/courses/{courseId}/workspaces/{workspaceId}/import/pptx` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:612](../../webreact/src/data/api.js) | getMagicClassStageOutline | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/outline` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:619](../../webreact/src/data/api.js) | getMagicClassStagePlayback | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/playback` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:627](../../webreact/src/data/api.js) | getMagicClassStageScene | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:635](../../webreact/src/data/api.js) | getMagicClassQuizAttempt | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:639](../../webreact/src/data/api.js) | saveMagicClassQuizAttempt | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:643](../../webreact/src/data/api.js) | applyMagicClassStageCommands | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/commands` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:654](../../webreact/src/data/api.js) | retryInteractiveClassroom | POST | `/courses/{courseId}/interactive-classroom/{sessionId}/retry` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:659](../../webreact/src/data/api.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
-| [webreact/src/data/api.js:664](../../webreact/src/data/api.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
-| [webreact/src/data/api.js:669](../../webreact/src/data/api.js) | decideAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
-| [webreact/src/data/api.js:678](../../webreact/src/data/api.js) | chatStream | POST | `/counselor/chat` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
-| [webreact/src/data/api.js:737](../../webreact/src/data/api.js) | streamAssistantSpeech | POST | `/assistant/tts` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
-| [webreact/src/data/api.js:749](../../webreact/src/data/api.js) | extractNotice | POST | `/notices/extract-multi` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/api.js:751](../../webreact/src/data/api.js) | downloadAssignmentAttachment | GET | `/assignments/{assignmentId}/attachments/{attachmentId}` | [课程、班级、公告、作业与提交](03-courses.md) |
+| [webreact/src/data/api.js:176](../../webreact/src/data/api.js) | getChaoxingAssignmentContent | GET | `/chaoxing/assignments/{task_id}/content` | [学习通、教务连接与兼容接口](09-integrations.md) |
+| [webreact/src/data/api.js:177](../../webreact/src/data/api.js) | generateChaoxingAssignmentClassroom | POST | `/chaoxing/assignments/{task_id}/classroom` | [学习通、教务连接与兼容接口](09-integrations.md) |
+| [webreact/src/data/api.js:186](../../webreact/src/data/api.js) | getInteractiveClassroomStatus | GET | `/courses/{courseId}/interactive-classroom/status` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:195](../../webreact/src/data/api.js) | getInteractiveClassroomPlan | GET | `/courses/{courseId}/interactive-classroom/plan` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:218](../../webreact/src/data/api.js) | generateInteractiveClassroom | POST | `/courses/{courseId}/interactive-classroom/generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:223](../../webreact/src/data/api.js) | getInteractiveClassroomComposition | GET | `/courses/{courseId}/interactive-classroom/{sessionId}/composition` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:228](../../webreact/src/data/api.js) | getInteractiveClassroomJob | GET | `/courses/{courseId}/interactive-classroom/jobs/{sessionId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:233](../../webreact/src/data/api.js) | listInteractiveClassrooms | GET | `/courses/{courseId}/interactive-classroom` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:242](../../webreact/src/data/api.js) | getMagicClassFusionStatus | GET | `/magicclass/fusion/status` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:250](../../webreact/src/data/api.js) | getMagicClassRecent | GET | `/magicclass/fusion/recent` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:254](../../webreact/src/data/api.js) | getMagicClassProviderStatus | GET | `/magicclass/fusion/providers` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:264](../../webreact/src/data/api.js) | getMagicClassCourseContext | GET | `/courses/{courseId}/magicclass-context` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:280](../../webreact/src/data/api.js) | listMagicClassWorkspaces | GET | `/courses/{courseId}/workspaces` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:288](../../webreact/src/data/api.js) | createMagicClassWorkspace | POST | `/courses/{courseId}/workspaces` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:298](../../webreact/src/data/api.js) | getMagicClassWorkspace | GET | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:309](../../webreact/src/data/api.js) | updateMagicClassWorkspace | PATCH | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:321](../../webreact/src/data/api.js) | deleteMagicClassWorkspace | DELETE | `/courses/{courseId}/workspaces/{workspaceId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:329](../../webreact/src/data/api.js) | listMagicClassStages | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:337](../../webreact/src/data/api.js) | getMagicClassStage | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:341](../../webreact/src/data/api.js) | createMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:351](../../webreact/src/data/api.js) | replaceMagicClassStage | PUT | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:362](../../webreact/src/data/api.js) | generateMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:371](../../webreact/src/data/api.js) | generateMagicClassHome | POST | `/courses/{courseId}/home-generate` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:379](../../webreact/src/data/api.js) | getMagicClassJob | GET | `/courses/{courseId}/jobs/{jobId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:383](../../webreact/src/data/api.js) | cancelMagicClassJob | POST | `/courses/{courseId}/jobs/{jobId}/cancel` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:387](../../webreact/src/data/api.js) | retryMagicClassJob | POST | `/courses/{courseId}/jobs/{jobId}/retry` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:391](../../webreact/src/data/api.js) | synthesizeMagicClassTts | POST | `/courses/{courseId}/tts` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:399](../../webreact/src/data/api.js) | runMagicClassDiscussion | POST | `/courses/{courseId}/discussion` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:414](../../webreact/src/data/api.js) | getMagicClassSceneNarration | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:427](../../webreact/src/data/api.js) | synthesizeMagicClassSceneNarration | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:436](../../webreact/src/data/api.js) | getMagicClassArtifact | GET | `/courses/{courseId}/artifacts/{artifactId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:445](../../webreact/src/data/api.js) | enqueueMagicClassStageVideo | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export/video` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:453](../../webreact/src/data/api.js) | addMagicClassWhiteboard | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | 未匹配，见下一节 |
+| [webreact/src/data/api.js:466](../../webreact/src/data/api.js) | listMagicClassFolders | GET | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:474](../../webreact/src/data/api.js) | createMagicClassFolder | POST | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:486](../../webreact/src/data/api.js) | updateMagicClassFolder | PATCH | `/courses/{courseId}/folders/{folderId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:497](../../webreact/src/data/api.js) | deleteMagicClassFolder | DELETE | `/courses/{courseId}/folders/{folderId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:505](../../webreact/src/data/api.js) | searchMagicClassContent | GET | `/courses/{courseId}/search` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:519](../../webreact/src/data/api.js) | listMagicClassMaterials | GET | `/courses/{courseId}/materials` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:527](../../webreact/src/data/api.js) | uploadMagicClassMaterial | POST | `/courses/{courseId}/materials` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:538](../../webreact/src/data/api.js) | getMagicClassMaterial | GET | `/courses/{courseId}/materials/{materialId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:542](../../webreact/src/data/api.js) | deleteMagicClassMaterial | DELETE | `/courses/{courseId}/materials/{materialId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:551](../../webreact/src/data/api.js) | resolveMagicClassMaterials | POST | `/courses/{courseId}/materials/resolve` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:572](../../webreact/src/data/api.js) | exportMagicClassStage | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:580](../../webreact/src/data/api.js) | exportMagicClassStageFormat | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export/{format}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:588](../../webreact/src/data/api.js) | importMagicClassStage | POST | `/courses/{courseId}/workspaces/{workspaceId}/import` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:598](../../webreact/src/data/api.js) | importMagicClassPptx | POST | `/courses/{courseId}/workspaces/{workspaceId}/import/pptx` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:614](../../webreact/src/data/api.js) | getMagicClassStageOutline | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/outline` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:621](../../webreact/src/data/api.js) | getMagicClassStagePlayback | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/playback` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:629](../../webreact/src/data/api.js) | getMagicClassStageScene | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:637](../../webreact/src/data/api.js) | getMagicClassQuizAttempt | GET | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:641](../../webreact/src/data/api.js) | saveMagicClassQuizAttempt | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:645](../../webreact/src/data/api.js) | applyMagicClassStageCommands | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/commands` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:656](../../webreact/src/data/api.js) | retryInteractiveClassroom | POST | `/courses/{courseId}/interactive-classroom/{sessionId}/retry` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
+| [webreact/src/data/api.js:661](../../webreact/src/data/api.js) | createAgentJob | POST | `/agent-jobs` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
+| [webreact/src/data/api.js:666](../../webreact/src/data/api.js) | getAgentJob | GET | `/agent-jobs/{jobId}` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
+| [webreact/src/data/api.js:671](../../webreact/src/data/api.js) | decideAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
+| [webreact/src/data/api.js:680](../../webreact/src/data/api.js) | chatStream | POST | `/counselor/chat` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
+| [webreact/src/data/api.js:739](../../webreact/src/data/api.js) | streamAssistantSpeech | POST | `/assistant/tts` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
+| [webreact/src/data/api.js:751](../../webreact/src/data/api.js) | extractNotice | POST | `/notices/extract-multi` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/api.js:753](../../webreact/src/data/api.js) | downloadAssignmentAttachment | GET | `/assignments/{assignmentId}/attachments/{attachmentId}` | [课程、班级、公告、作业与提交](03-courses.md) |
 | [webreact/src/data/http/authEndpoints.js:5](../../webreact/src/data/http/authEndpoints.js) | probeBackend | GET | `/health` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | POST | `/auth/login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | GET | `/auth/me` | [认证、账号与扫码登录](01-auth.md) |
@@ -302,7 +304,7 @@
 | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | addMagicClassWhiteboard | 受管服务有内部实现，但 CampusMate 网关未注册该公开路径；新前端不能直接调用内部服务 |
 | POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用[课程场景 quiz-attempt 契约](14-magicclass.md) |
 
-覆盖方式：314 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+覆盖方式：316 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
 
 ## 动态地址与流式调用补充
 

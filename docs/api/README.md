@@ -1,6 +1,6 @@
 # CampusMateAI 前端接口文档
 
-本目录供 Web、Android、HarmonyOS、微信小程序和桌面陪伴设备接入使用，依据当前工作区的后端路由、请求/响应模型和业务实现整理。覆盖 CampusMate 后端 **314 个 HTTP 操作、270 个路径、2 个 WebSocket**，包含当前 Web 使用和后端已注册但客户端尚未使用的接口。移动端原生编译和真机验收不属于此文档快照的验证结果。
+本目录供 Web、Android、HarmonyOS、微信小程序和桌面陪伴设备接入使用，依据当前工作区的后端路由、请求/响应模型和业务实现整理。覆盖 CampusMate 后端 **316 个 HTTP 操作、272 个路径、2 个 WebSocket**，包含当前 Web 使用和后端已注册但客户端尚未使用的接口。移动端原生编译和真机验收不属于此文档快照的验证结果。
 
 先阅读 [接入约定与功能流程](integration.md)，按下表查模块，再通过 [字段字典](schemas.md) 查嵌套对象。接口工具可导入 [OpenAPI JSON](openapi.json)。没有完整响应模型的接口、文件和流式传输以 [实际响应补充](response-contracts.md) 为准。
 
@@ -19,15 +19,15 @@
 | 学校选择、个人文件与收藏 | 11 | [个人中心](06-profile.md) |
 | 个人考试安排 | 4 | [考试](07-exams.md) |
 | 社区帖子、评论、图片、点赞、收藏 | 13 | [校园社区](08-community.md) |
-| 学习通、教务系统、探测、绑定、验证码、同步与 URL 发现 | 32 | [外部连接](09-integrations.md) |
+| 学习通、教务系统、探测、绑定、验证码、同步与 URL 发现 | 34 | [外部连接](09-integrations.md) |
 | AI 聊天、语音、知识库与贡献 | 7 | [AI 助手](10-assistant-knowledge.md) |
 | 学习状态、证据、预测、模拟、目标、计划、自适应干预与数据控制 | 38 | [学习状态与计划](11-learner.md) |
 | Agent 任务、运行、控制、事件、审批、产物、记忆 | 20 | [Agent](12-agents.md) |
 | 期末复习、每日议程、调整与课程研究 | 18 | [复习与研究](13-workflows.md) |
 | 经典课堂、工作台、资料、编辑、播放、生成、测验、讨论、讲解与导出 | 68 | [magic class](14-magicclass.md) |
-| **合计** | **314** | [全部 Web 调用对照](web-map.md) |
+| **合计** | **316** | [全部 Web 调用对照](web-map.md) |
 
-导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 314 个接口；它的 **87 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。课程侧接入参见 [课程互动课堂与受管工作台](14-magicclass.md)，Android 当前能力与接入边界见 [客户端说明](../../android/README.md#互动课堂接入)。
+导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 316 个接口；它的 **87 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。课程侧接入参见 [课程互动课堂与受管工作台](14-magicclass.md)，Android 当前能力与接入边界见 [客户端说明](../../android/README.md#互动课堂接入)。
 
 ## 按 Web 功能查找
 
@@ -64,7 +64,7 @@
 
 文档更新时，应同步修改所属模块、字段字典、OpenAPI 和 Web 对照，并再次核对 HTTP 方法、路由、鉴权、业务必填头及动态响应。线上接口以部署版本为准，可通过后端 `/openapi.json`、`/docs`、`/redoc` 对照声明，但仍须检查本文记录的业务校验。
 
-使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 314 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
+使用后端 Python 环境在仓库根目录运行 `python scripts/sync_api_docs.py` 更新 OpenAPI，运行 `python scripts/sync_api_docs.py --check` 检查漂移。检查保留上述 9 个补充 schema 和文档元信息，其余声明与运行时一致；同一比对已纳入后端 pytest。根路径 `/` 的服务元信息包含在上表的 316 个 HTTP 操作中。Web 封装的名称和导出行号由 `node --test scripts/tests/web-api-docs.test.mjs` 递归校验，包括 `src/data/http/`。
 
 2026-10-05 交接核验：全部 HTTP 操作均有索引和契约章节；字段表核对请求/响应的属性、必填和数值/长度上限；额外检查实时语音 WebSocket 与独立学习空间全部显式 handler 的章节及统计。已补齐注册 uid、聊天上限及 429/测验 409，并说明[Agent 控制键与 retry 重放](12-agents.md#run-controls)、[实时语音关闭](response-contracts.md#实时语音-websocket)。这些检查验证源码与文档覆盖，外部提供方可用性及各端完整业务流程仍须在目标部署环境联调。
 

@@ -24376,6 +24376,104 @@
           }
         ]
       }
+    },
+    "/api/v1/chaoxing/assignments/{task_id}/content": {
+      "get": {
+        "tags": [
+          "学习通"
+        ],
+        "summary": "读取学习通作业题目快照",
+        "description": "只读本人作业题干与选项，不触发外部请求；无快照时返回 available=false。",
+        "operationId": "get_content_api_v1_chaoxing_assignments__task_id__content_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Get Content Api V1 Chaoxing Assignments  Task Id  Content Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/chaoxing/assignments/{task_id}/classroom": {
+      "post": {
+        "tags": [
+          "学习通"
+        ],
+        "summary": "生成已提交作业讲解与相似练习",
+        "description": "服务端读取本人已提交作业，按题目快照幂等生成讲解与练习，不接受客户端题目。",
+        "operationId": "generate_review_api_v1_chaoxing_assignments__task_id__classroom_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Generate Review Api V1 Chaoxing Assignments  Task Id  Classroom Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

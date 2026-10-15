@@ -29,6 +29,7 @@ from .api.routes.home_banners import banner_image_storage_dir
 from .api.routes.community import community_image_storage_dir
 from .services.container import build_container
 from .services.demo_seeder import seed_demo_data
+from .services.chaoxing.daily_sync import ChaoxingDailySyncWorker
 
 
 def _log_http_request(method: str, path: str, status: int | str, duration_ms: float) -> None:
@@ -78,6 +79,7 @@ async def lifespan(app: FastAPI):
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
+    chaoxing_daily_sync = ChaoxingDailySyncWorker(container)
     try:
         # 持久化队列由 Worker 接管；有效租约不抢占，过期租约交给 Handler recovery 决策。
         await container.agent_worker.start()
@@ -119,11 +121,13 @@ async def lifespan(app: FastAPI):
                 logger.info("学校名单 seed 完成: 新增 {} 所，更新 {} 所", inserted, updated)
         except Exception as e:
             logger.warning("学校名单 seed 失败: {}", str(e)[:200])
+        await chaoxing_daily_sync.start()
         yield
     finally:
         # Cleanup also runs when startup or a request raises, and one failing
         # shutdown must not strand the remaining workers/providers.
         for name, close in (
+            ("chaoxing_daily_sync", chaoxing_daily_sync.stop),
             ("agent_worker", container.agent_worker.stop),
             ("adaptive_replanning_worker", container.adaptive_replanning_worker.stop),
             ("llm", getattr(container.llm, "aclose", None)),

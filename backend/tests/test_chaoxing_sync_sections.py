@@ -41,7 +41,13 @@ def db() -> Database:
 
 
 @pytest.fixture
-def mock_httpx_client():
+def mock_httpx_client(monkeypatch):
+    # These scenarios isolate list/score/exam synchronization; question acquisition
+    # has independent HTTP fixtures in test_chaoxing_assignment_review.py.
+    monkeypatch.setattr(
+        "app.services.chaoxing.sync_service.sync_assignment_contents",
+        AsyncMock(return_value=None),
+    )
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         yield mock_get
 

@@ -1,0 +1,97 @@
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import * as api from "../data/api.js";
+import { userErrorMessage } from "../data/contracts.js";
+import { Button, Panel, SectionHeading } from "./Primitives.jsx";
+
+const failures = {
+  assignment_not_submitted: "请先在学习通提交作业，再同步提交状态。",
+  assignment_course_unavailable: "作业暂未关联课程，请重新同步学习通。",
+  assignment_content_not_current: "还没有取得提交后的题目，请先同步作业。",
+  assignment_images_require_text: "题目包含尚未识别的图片，暂时无法生成完整讲解。",
+  assignment_content_too_large: "这份作业内容较长，超出了单次课堂可处理的范围。",
+};
+function errorText(error) {
+  const body = error?.response?.data;
+  const code = body?.detail || body?.message || error?.message;
+  return failures[code] || userErrorMessage(error, "课堂服务暂时不可用，请稍后重试。");
+}
+
+export default function ChaoxingAssignmentPanel({ task, onSynced }) {
+  const navigate = useNavigate();
+  const [content, setContent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [review, setReview] = useState(null);
+  const alive = useRef(false);
+  const pending = useRef(false);
+
+  useEffect(() => {
+    alive.current = true;
+    let current = true;
+    setLoading(true);
+    api.getChaoxingAssignmentContent(task.id).then((result) => {
+      if (current) setContent(result);
+    }).catch((failure) => {
+      if (current) setError(errorText(failure));
+    }).finally(() => { if (current) setLoading(false); });
+    return () => { current = false; alive.current = false; };
+  }, [task.id, task.status]);
+
+  useEffect(() => {
+    if (!review?.job?.id || !["queued", "running"].includes(review.job.status)) return undefined;
+    let current = true;
+    const timer = window.setTimeout(async () => {
+      try {
+        const job = await api.getMagicClassJob(review.course_id, review.job.id);
+        if (current) setReview((previous) => ({ ...previous, job }));
+      } catch (failure) { if (current) setError(errorText(failure)); }
+    }, 2000);
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [review]);
+
+  async function sync() {
+    if (pending.current) return;
+    pending.current = true; setBusy("sync"); setError("");
+    try {
+      await api.syncChaoxing();
+      if (alive.current) await onSynced();
+    } catch (failure) { if (alive.current) setError(errorText(failure)); }
+    finally { pending.current = false; if (alive.current) setBusy(""); }
+  }
+
+  async function generate() {
+    if (pending.current) return;
+    pending.current = true; setBusy("generate"); setError("");
+    try {
+      let result = await api.generateChaoxingAssignmentClassroom(task.id);
+      if (["failed", "cancelled"].includes(result?.job?.status)) {
+        const job = await api.retryMagicClassJob(result.course_id, result.job.id);
+        result = { ...result, job };
+      }
+      if (alive.current) setReview(result);
+    } catch (failure) { if (alive.current) setError(errorText(failure)); }
+    finally { pending.current = false; if (alive.current) setBusy(""); }
+  }
+
+  const generating = ["queued", "running"].includes(review?.job?.status);
+  const completed = review?.job?.status === "completed";
+  const failed = ["failed", "cancelled"].includes(review?.job?.status);
+  return <Panel>
+    <SectionHeading title="作业讲解与相似练习" detail={task.status === "completed" ? "学习通已确认提交，可以开始复习" : "提交作业后，回到这里学习本次作业"} />
+    <p className="muted-copy">在线课堂会逐题讲解知识点和解题步骤，再安排至少 3 道相似练习。练习会改变条件或情境，并可复用部分原题选项。</p>
+    {loading ? <p role="status">正在读取作业题目…</p> : content?.available ? <>
+      <p className="muted-copy">已同步 {content.questions.length} 道题{!content.current && "，提交后的题目仍待更新"}。</p>
+      <details><summary>查看同步的题干与选项</summary><ol>{content.questions.map((question) => <li key={question.number}><p className="rich-copy">{question.stem}</p>{question.options.length > 0 && <ul>{question.options.map((option, index) => <li key={index} className="rich-copy">{option}</li>)}</ul>}</li>)}</ol></details>
+    </> : <p className="muted-copy">暂未取得题干与选项。点击同步重试；学习通登录过期时，请到个人中心重新连接。</p>}
+    <div className="form-footer">
+      <Button variant="secondary" disabled={Boolean(busy) || generating} onClick={sync}>{busy === "sync" ? "同步中…" : "同步作业与提交状态"}</Button>
+      <Button icon="PhSparkle" disabled={loading || !content?.can_generate || Boolean(busy) || generating} onClick={generate}>{busy === "generate" ? "正在创建课堂…" : failed ? "重试生成讲解与练习" : "生成作业讲解与练习"}</Button>
+    </div>
+    {generating && <p role="status">课堂生成中：{review.job.progress || 0}% 。可以稍后回来，点击生成会继续查看同一任务。</p>}
+    {failed && <p role="alert">本次课堂生成{review.job.status === "cancelled" ? "已取消" : "失败"}，可以重试。</p>}
+    {completed && <Button onClick={() => navigate(`/courses/${review.course_id}/workspaces/${review.workspace_id}?mode=playback`)}>进入课堂学习</Button>}
+    {error && <p className="page-notice notice-error" role="alert">{error}{generating && <button type="button" className="text-button" onClick={() => { setError(""); setReview((previous) => ({ ...previous })); }}>重新检查进度</button>}</p>}
+  </Panel>;
+}

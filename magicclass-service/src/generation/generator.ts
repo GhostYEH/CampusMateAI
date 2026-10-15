@@ -64,6 +64,13 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
   const needsQuiz = mode === 'quiz' || PRACTICE_REQUEST.test(prompt);
   const quizzes = scenes.filter((scene) => isObject(scene) && scene.type === 'quiz');
   if (needsQuiz && quizzes.length === 0) issues.push('quiz scene is required for practice');
+  if (prompt.startsWith('作业提交后复习：')) {
+    const questionCount = quizzes.reduce((count, scene) => {
+      const content = isObject(scene.content) ? scene.content : {};
+      return count + (Array.isArray(content.questions) ? content.questions.length : 0);
+    }, 0);
+    if (questionCount < 3) issues.push('homework review requires at least 3 similar practice questions');
+  }
   for (const scene of quizzes) {
     const content = isObject(scene.content) ? scene.content : {};
     const questions = content.questions;

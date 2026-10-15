@@ -27,7 +27,11 @@ def db():
     database.dispose()
 
 @pytest.fixture
-def mock_httpx_client():
+def mock_httpx_client(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.chaoxing.sync_service.sync_assignment_contents",
+        AsyncMock(return_value=None),
+    )
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get, \
             patch("httpx.AsyncClient.post", new=mock_get):
         yield mock_get

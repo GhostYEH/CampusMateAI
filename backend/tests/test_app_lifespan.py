@@ -25,10 +25,17 @@ def services(monkeypatch):
     monkeypatch.setattr(main, "get_settings", lambda: settings)
     monkeypatch.setattr(main, "configure_logging", lambda _settings: None)
     monkeypatch.setattr(main, "build_container", lambda _settings: container)
+    container.chaoxing_daily_sync = SimpleNamespace(start=AsyncMock(), stop=AsyncMock())
+    monkeypatch.setattr(
+        main,
+        "ChaoxingDailySyncWorker",
+        lambda _container: container.chaoxing_daily_sync,
+    )
     return container
 
 
 def assert_closed(services):
+    services.chaoxing_daily_sync.stop.assert_awaited_once()
     services.agent_worker.stop.assert_awaited_once()
     services.adaptive_replanning_worker.stop.assert_awaited_once()
     services.llm.aclose.assert_awaited_once()
@@ -37,6 +44,7 @@ def assert_closed(services):
 
 def test_testclient_context_runs_startup_and_shutdown(services):
     with TestClient(main.create_app()) as client:
+        services.chaoxing_daily_sync.start.assert_awaited_once()
         services.agent_worker.start.assert_awaited_once()
         services.adaptive_replanning_worker.tick.assert_called_once_with(batch_size=25)
         services.adaptive_replanning_worker.start.assert_awaited_once()

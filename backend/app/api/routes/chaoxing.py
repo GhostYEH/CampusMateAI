@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from typing import Annotated
 
 import httpx
@@ -16,6 +15,8 @@ from ...services.chaoxing.session_cache import (
     set_cached as _set_cached_status,
 )
 from ...services.chaoxing.sync_facts import last_chaoxing_sync_at
+from ...services.chaoxing.sync_lock import get_user_sync_lock as _get_user_sync_lock
+
 # Kept as a compatibility import for the existing deadline contract tests.
 from ...services.chaoxing import sync_service as _sync_service
 from ..deps import require_role
@@ -28,22 +29,12 @@ _normalize_deadline = _sync_service._normalize_deadline
 
 router = APIRouter(tags=["学习通"])
 
-_sync_locks: dict[str, threading.Lock] = {}
-_sync_locks_guard = threading.Lock()
-
 # 探测结果缓存在 services/chaoxing/session_cache.py，与"今日待办"共享：
 # 今日待办只读缓存、不触网，因此必须有一个统一的地方存放最近一次探测结论。
 
 
 def _status_cache_set(user_id: str, result: ChaoxingSyncStatus) -> None:
     _set_cached_status(user_id, result)
-
-
-def _get_user_sync_lock(user_id: str) -> threading.Lock:
-    with _sync_locks_guard:
-        if user_id not in _sync_locks:
-            _sync_locks[user_id] = threading.Lock()
-        return _sync_locks[user_id]
 
 
 def _container() -> ServiceContainer:
@@ -125,6 +116,7 @@ async def _login_with_client(req, user, container, client):
     # the most recently received value win for duplicate names.
     cookies = {cookie.name: cookie.value for cookie in client.client.cookies.jar}
     await run_in_threadpool(container.chaoxing_repository.save_credentials, user.id, cookies)
+    await run_in_threadpool(container.chaoxing_repository.reset_auto_sync, user.id)
 
     # 换账号/重新登录后，上一个账号的登录态观测必须作废。
     _forget_status(user.id)
@@ -353,6 +345,7 @@ async def disconnect_chaoxing(
         raise HTTPException(status_code=409, detail="sync_in_progress")
     try:
         await run_in_threadpool(container.chaoxing_repository.delete_credentials, user.id)
+        await run_in_threadpool(container.chaoxing_repository.reset_auto_sync, user.id)
         _forget_status(user.id)
         return {"status": "disconnected"}
     finally:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from cryptography.fernet import InvalidToken
@@ -119,10 +119,139 @@ class ChaoxingRepository:
                 (user_id, encrypted_cookies, datetime.now(timezone.utc).isoformat()),
             )
 
+    def save_assignment_content(
+        self,
+        *,
+        user_id: str,
+        external_id: str,
+        questions: list[dict],
+        remote_status: str,
+        fetched_at: str,
+    ) -> None:
+        # An unavailable/changed page must never erase a usable snapshot.
+        if not questions:
+            return
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO chaoxing_assignment_content VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(user_id, external_id) DO UPDATE SET "
+                "questions_json=excluded.questions_json, remote_status=excluded.remote_status, "
+                "fetched_at=excluded.fetched_at, last_attempt_at=excluded.last_attempt_at",
+                (
+                    user_id,
+                    external_id,
+                    json.dumps(questions, ensure_ascii=False),
+                    remote_status,
+                    fetched_at,
+                    fetched_at,
+                ),
+            )
+
+    def record_content_attempt(
+        self, *, user_id: str, external_id: str, attempted_at: str
+    ) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO chaoxing_assignment_content VALUES (?, ?, '[]', '', '', ?) "
+                "ON CONFLICT(user_id, external_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at",
+                (user_id, external_id, attempted_at),
+            )
+
+    def get_assignment_content(self, *, user_id: str, external_id: str) -> dict | None:
+        with self._db.query() as conn:
+            row = conn.execute(
+                "SELECT questions_json, remote_status, fetched_at, last_attempt_at FROM chaoxing_assignment_content "
+                "WHERE user_id=? AND external_id=?",
+                (user_id, external_id),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "questions": json.loads(row["questions_json"]),
+            "remote_status": row["remote_status"],
+            "fetched_at": row["fetched_at"],
+            "last_attempt_at": row["last_attempt_at"],
+        }
+
+    def due_auto_sync_users(self, *, now: datetime, limit: int = 25) -> list[str]:
+        with self._db.query() as conn:
+            rows = conn.execute(
+                "SELECT c.user_id FROM chaoxing_credentials c "
+                "LEFT JOIN chaoxing_auto_sync s ON s.user_id=c.user_id "
+                "WHERE s.user_id IS NULL OR (s.next_attempt_at<=? AND s.lease_until<=?) "
+                "ORDER BY COALESCE(s.next_attempt_at, '') LIMIT ?",
+                (now.isoformat(), now.isoformat(), limit),
+            ).fetchall()
+        return [row["user_id"] for row in rows]
+
+    def claim_auto_sync(self, *, user_id: str, now: datetime) -> bool:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO chaoxing_auto_sync (user_id, next_attempt_at, lease_until) "
+                "SELECT user_id, ?, ? FROM chaoxing_credentials WHERE user_id=?",
+                (now.isoformat(), now.isoformat(), user_id),
+            )
+            return (
+                conn.execute(
+                    "UPDATE chaoxing_auto_sync SET lease_until=? WHERE user_id=? "
+                    "AND next_attempt_at<=? AND lease_until<=? "
+                    "AND EXISTS(SELECT 1 FROM chaoxing_credentials WHERE user_id=?)",
+                    (
+                        (now + timedelta(minutes=15)).isoformat(),
+                        user_id,
+                        now.isoformat(),
+                        now.isoformat(),
+                        user_id,
+                    ),
+                ).rowcount
+                == 1
+            )
+
+    def finish_auto_sync(
+        self, *, user_id: str, now: datetime, error: str | None
+    ) -> None:
+        # Authentication requires user action. Other failures get a bounded retry.
+        delay = (
+            timedelta(hours=24)
+            if error is None
+            or error
+            in {"reauth_required", "verification_required", "credentials_unavailable"}
+            else timedelta(minutes=30)
+        )
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE chaoxing_auto_sync SET next_attempt_at=?, lease_until=?, last_error=? WHERE user_id=?",
+                ((now + delay).isoformat(), now.isoformat(), error, user_id),
+            )
+
+    def reset_auto_sync(self, user_id: str) -> None:
+        with self._db.transaction() as conn:
+            conn.execute("DELETE FROM chaoxing_auto_sync WHERE user_id=?", (user_id,))
+
+    def touch_credentials(self, user_id: str, cookies: dict) -> None:
+        # A background sync must not reconnect an account removed by another
+        # process, or overwrite a newer login with the old account's cookies.
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT encrypted_cookies FROM chaoxing_credentials WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if row is None:
+                return
+            try:
+                if json.loads(decrypt(row["encrypted_cookies"])) != cookies:
+                    return
+            except (InvalidToken, UnicodeError, json.JSONDecodeError):
+                return
+            conn.execute(
+                "UPDATE chaoxing_credentials SET updated_at=? WHERE user_id=?",
+                (datetime.now(timezone.utc).isoformat(), user_id),
+            )
+
     def get_credentials(self, user_id: str) -> dict | None:
         with self._db.query() as conn:
             row = conn.execute(
-                "SELECT encrypted_cookies FROM chaoxing_credentials WHERE user_id = ?", (user_id,)
+                "SELECT encrypted_cookies FROM chaoxing_credentials WHERE user_id = ?",
+                (user_id,),
             ).fetchone()
         if not row:
             return None

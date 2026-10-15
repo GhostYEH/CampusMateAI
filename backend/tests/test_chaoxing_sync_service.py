@@ -121,6 +121,10 @@ async def test_notices_keep_course_link_when_assignment_phase_is_skipped(isolate
 async def test_score_enrichment_failure_reports_partial_sync_and_retries(isolated_sync_container, monkeypatch):
     from unittest.mock import AsyncMock
 
+    monkeypatch.setattr(
+        "app.services.chaoxing.sync_service.sync_assignment_contents",
+        AsyncMock(return_value=None),
+    )
     container = isolated_sync_container
     client = ChaoxingClient()
     monkeypatch.setattr(client, "get_courses", AsyncMock(return_value=(True, [{

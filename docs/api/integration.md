@@ -236,6 +236,8 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 ## 学习通与教务同步
 
+连接学习通后，服务端在后端运行期间自动执行每日同步（重启补执行，部分失败 30 分钟后重试）；无需打开 Web。题目快照与列表独立采集，按 sync 的 assignments 分区及 warnings 展示部分成功。作业在学习通提交、同步为 completed 后，从个人待办 ID 调用 `GET /chaoxing/assignments/{task_id}/content`；can_generate=true 时可 `POST /chaoxing/assignments/{task_id}/classroom`，按返回的 course_id/job.id 轮询既有课堂 job 接口，失败走 retry，完成后进入 workspace 播放和作答。重复生成同份题目会复用任务，不向生成接口提交客户端题干或伪造完成状态。新增流程当前已适配 Web，移动端可按 [外部连接](09-integrations.md) 接入。
+
 学习通：login → status → sync（按返回 sections/warnings 展示部分成功）→ 课程局部 sync → disconnect。局部同步 depth=fast/deep，sections 为逗号分隔；force_refresh 及支持分区见课程接口。reauth_required/verification_required 表示外部连接需重新认证，不能循环刷新本站 JWT。
 
 教务两条入口：已知学校 detect/bind/binding/sync；未知网址 discovery/probe → connections/from-url → challenge（验证码）→ authenticate → connection sync → 读取 schedule/grade/exam items。需要额外验证时展示接口 action/status，不自动假定绑定完成。解绑与删除连接不同，按实际模型处理；来源未同步、失败或 stale 状态应可辨识。

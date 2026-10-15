@@ -32,6 +32,7 @@ from .routes import (
     student_goals,
     tts,
     chaoxing,
+    chaoxing_assignments,
     course_content,
     universities,
     community,
@@ -100,6 +101,7 @@ api_router.include_router(student_goals.router)
 api_router.include_router(personal_hub.router)
 api_router.include_router(student_tools.router)
 api_router.include_router(chaoxing.router)
+api_router.include_router(chaoxing_assignments.router)
 api_router.include_router(course_content.router)
 api_router.include_router(universities.router)
 api_router.include_router(community.router)

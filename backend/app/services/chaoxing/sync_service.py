@@ -16,6 +16,7 @@ from ...models.multi_role import UserRow
 from ...schemas.notice import DuplicateNoticeCheckRequest, RecentNoticeItem
 from .ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from .session_cache import invalidate as _invalidate_status
+from .assignment_sync import sync_assignment_contents
 
 if TYPE_CHECKING:
     from ...repositories.chaoxing_repository import ChaoxingRepository
@@ -623,14 +624,25 @@ class ChaoxingSyncService:
         for course, assignments in assignment_batches:
             for assignment in assignments:
                 await run_in_threadpool(self._save_assignment, state, course, assignment)
+        content_error = await sync_assignment_contents(
+            self._dependencies.chaoxing_repository, state, assignment_batches
+        )
         sections["assignments"] = {
-            "status": "failed" if assignment_error else "partial" if score_error else "complete",
+            "status": "failed"
+            if assignment_error
+            else "partial"
+            if score_error or content_error
+            else "complete",
             "item_count": stats["assignments_fetched"],
             "last_synced_at": now_iso,
-            "error_code": assignment_error or score_error,
+            "error_code": assignment_error or score_error or content_error,
             "error_message": (
-                "作业列表抓取失败，已保留上一次同步到的作业" if assignment_error
-                else "作业已同步，部分分数暂时获取失败，将在下次同步重试" if score_error
+                "作业列表抓取失败，已保留上一次同步到的作业"
+                if assignment_error
+                else "作业已同步，部分分数暂时获取失败，将在下次同步重试"
+                if score_error
+                else "作业列表已同步，部分题目暂未获取，将在下次同步重试"
+                if content_error
                 else None
             ),
         }
@@ -933,22 +945,27 @@ class ChaoxingSyncService:
         notice_failures = notice_summary.failures
         processing_failures = notice_summary.processing_failures
         # 更新同步时间
-        dependencies.chaoxing_repository.save_credentials(user.id, credentials) # 重新保存以更新 updated_at
+        dependencies.chaoxing_repository.touch_credentials(user.id, credentials)
 
         _invalidate_status(user.id)
 
         notice_messages = []
         if notice_failures:
-            notice_messages.append(f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败")
+            notice_messages.append(
+                f"{notice_failures}/{notice_attempted or notice_failures} 个通知来源抓取失败"
+            )
         if processing_failures:
             notice_messages.append(f"{processing_failures} 条通知处理失败")
         sections["notices"] = {
             # 按**来源**的成功/失败如实分类，不能用条目数推断成功数:
             # "成功但返回 0 条" + "另一来源失败" 是 partial，不是 failed。
             "status": (
-                "unavailable" if (not notice_sync_available and notice_succeeded == 0)
-                else "complete" if notice_failures == 0 and processing_failures == 0
-                else "failed" if notice_succeeded == 0
+                "unavailable"
+                if (not notice_sync_available and notice_succeeded == 0)
+                else "complete"
+                if notice_failures == 0 and processing_failures == 0
+                else "failed"
+                if notice_succeeded == 0
                 else "partial"
             ),
             "item_count": stats["notices_fetched"],

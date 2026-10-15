@@ -32,6 +32,21 @@ function harness() {
   return { workspace, ...createHarness({ database, routes: createGenerationRoutes({ database }) }) };
 }
 
+test('trusted generation accepts complete homework text and rejects oversized inputs', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const workspace = new WorkspaceRepository(database).createWorkspace({ userId: 'user-1', courseId: 'course-1', name: '作业复习' });
+  const provider = { baseUrl: 'https://example.invalid', apiKey: 'test', model: 'test', timeoutMs: 1000 };
+  const { server } = createHarness({ database, routes: createGenerationRoutes({ database, provider }) });
+  await withServer(server, async (base) => {
+    const path = `/internal/courses/course-1/workspaces/${workspace.id}/generate`;
+    const accepted = await call(base, 'POST', path, { body: { mode: 'slide', prompt: '题'.repeat(6000) }, headers: headers({ extra: { 'idempotency-key': 'homework-long' } }) });
+    assert.equal(accepted.status, 201);
+    assert.equal(accepted.body.job.status, 'queued');
+    const rejected = await call(base, 'POST', path, { body: { mode: 'slide', prompt: '题'.repeat(24001) }, headers: headers({ extra: { 'idempotency-key': 'homework-too-long' } }) });
+    assert.equal(rejected.status, 400);
+  });
+});
+
 test('generation creates a real persisted stage for every supported mode', async () => {
   const modes = ['slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game', 'visualization3d', 'procedural-skill'];
   const { server, workspace } = harness();
