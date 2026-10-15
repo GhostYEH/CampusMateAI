@@ -10,6 +10,7 @@
 | 通知提取 | `POST /api/v1/notices/extract` | 手动输入通知原文，优先用已配置的 LLM，失败时规则降级；不确定字段标记需确认 |
 | 手机消息整理 | `POST /api/v1/notices/ingest-batch` | 接收客户端筛选后的消息，去重，规则优先分类；模糊消息可批量交给 LLM，再生成通知和可执行待办 |
 | 学习通 | `/api/v1/chaoxing/login`、`/status`、`/sync`、`/disconnect` | 连接账号并同步课程、通知、作业、考试等；登录态失效或需要验证时返回对应状态 |
+| 学习通作业复习 | `GET /api/v1/tasks?status=completed`、`GET /api/v1/chaoxing/assignments/{task_id}/content`、`POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 读取本人已提交作业、题干与选项，创建或复用受管讲解课堂及相似练习；生成后通过课程 job 接口查询进度 |
 | 可选教务连接 | `/api/v1/edu/*` | 学校系统探测、用户绑定与课表、成绩、考试同步；真实数据取决于学校适配器及用户授权 |
 | AI 对话 | `POST /api/v1/counselor/chat`，兼容别名 `/api/v1/assistant/chat` | SSE / 非流式回答，可带经过校验的个人任务、课程和学习状态上下文；课堂建议须用户确认后才执行 |
 | 知识库 | `/api/v1/knowledge/status`、`/documents` | 只读查询知识库状态和文档；当前聊天链路仍使用内部 BM25 检索，资料导入由内部数据准备/同步流程提供 |
@@ -56,9 +57,37 @@ CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。
 2. Android 的 WorkManager 将通过筛选的消息批量发往 `/notices/ingest-batch`。后端先去重与规则分类，再对模糊内容使用可用的 LLM；普通聊天会被忽略，可执行通知可转成待办。
 3. 学习通账号同步通过独立的 `/chaoxing/*` 路由获取课程、通知、作业和考试；它与系统通知监听不是同一种接入。手动粘贴通知继续走 `/notices/extract` 等页面流程。
 
-连接后，FastAPI 后台任务在后端运行期间每日同步，重启后补执行到期任务；首次连接在下一次约 60 秒的轮询开始，成功后间隔 24 小时，部分失败 30 分钟后重试。题目抓取分批保存题干与选项，失败保留旧快照；提交状态变化后重新抓取。学习通确认提交且有相应题目快照后，Web 作业详情可以调用现有受管课堂生成逐题讲解和至少 3 道相似练习。图片没有文字描述、题目暂不可读或课堂未配置时会显示真实错误。新接口与移动端适配边界见[外部连接](../docs/api/09-integrations.md)。
-
 服务端接收的是客户端提交的文本，不具备读取微信、QQ 私有聊天记录的能力。Android、HarmonyOS 和小程序的系统权限也不相同，详见[主 README](../README.md)。
+
+## 学习通每日同步与作业复习
+
+连接学习通后，`ChaoxingDailySyncWorker` 随 FastAPI lifespan 启动，不依赖 Web 页面或手机保持打开。后台轮询在一批账号处理结束后等待 60 秒，再扫描到期账号；成功同步后从本轮结束时间起间隔 24 小时，普通失败或部分成功 30 分钟后重试。需要重新认证或凭据损坏时，重新连接会使账号重新进入待同步队列，否则下一天再尝试。首次连接、重启补同步的实际执行时间还受前面账号耗时影响，不是固定每天零点执行，也不保证连接后 60 秒内完成。
+
+每轮最多读取 25 个到期账号，逐个执行；持久化租约为 15 分钟，单账号执行预算为 10 分钟。同进程内后台同步、手动同步、登录、解绑共用用户互斥锁；后台任务在共享同一 SQLite 数据库时通过租约避免多进程重复领取。该租约不覆盖其他进程的手动同步和账号修改，不能据此承诺所有跨进程操作全局串行。正常关闭取消后台任务，强制退出后租约到期可再次领取。停止后端期间不会执行同步。
+
+作业列表、提交状态、成绩和题目快照分别处理。单次题目获取最多 12 份、并发 3、每份预算 12 秒；缺失、提交状态变化或采集超过 24 小时的快照进入队列，按最近尝试时间轮转。部分题目失败时保留已有快照，sync 返回 HTTP 200 也可能 `complete=false`，须查看 `sections.assignments` 与 `warnings`。`completed` 包括已交、待批阅等平台观测，不要求已评分；它表示最近同步结果，不是访问列表时再次向学习通确认。
+
+Web 在线课堂首页、学习空间侧栏及作业详情复用同一组后端接口：
+
+1. `GET /api/v1/tasks?status=completed&page=1&page_size=200`，按 `has_more` 翻页，再筛选 `source=chaoxing`、未删除条目。使用返回的本站 `id` 作为 task_id。
+2. `GET /api/v1/chaoxing/assignments/{task_id}/content` 读取题干和选项；`can_generate` 只表示提交状态、课程关联与题目状态匹配，不包含课堂服务可用性检测。
+3. 用户点击进入时 `POST /api/v1/chaoxing/assignments/{task_id}/classroom`。服务端按本人、课程、作业、题目需求计算幂等键，创建或复用讲解任务。每日同步只采集作业，不主动生成课堂。
+4. 对 queued/running 用 `GET /api/v1/courses/{course_id}/jobs/{job_id}` 查询；失败/取消可用对应 `/retry` 接口重试；completed 后进入返回工作台学习。Web 在题目未就绪时尝试一次同步，生成成功后自动进入播放。
+
+生成内容包含逐题讲解及至少 3 道可作答的相似练习，可复用原选项并按新条件确定答案；这是模型生成的学习内容，不是学习通官方批阅。未识别的图片、过长题目或模型不可用会返回明确错误，不生成替代模板。
+
+运行依赖见 [backend/.env.example](.env.example) 与 [受管服务配置](../magicclass-service/.env.example)：后端设置 `MAGICCLASS_FUSION_ENABLED=true`、可达的 `MAGICCLASS_SERVICE_URL`，两服务使用一致的 `MAGICCLASS_INTERNAL_SECRET`；受管服务另需配置 `MAGICCLASS_PROVIDER_BASE_URL`、`MAGICCLASS_PROVIDER_API_KEY`、`MAGICCLASS_PROVIDER_MODEL`。只设置后端通用 LLM 不代表课堂生成模型已配置。独立学习空间的 `MAGICCLASS_ENABLED` / `MAGICCLASS_EMBED_ORIGIN` 控制另一条内嵌链路，不代替受管课堂配置。
+
+持久化涉及后端的 `chaoxing_credentials`（加密 Cookie）、`personal_tasks`（列表与提交状态）、`chaoxing_assignment_content`（题目快照及尝试时间）、`chaoxing_auto_sync`（下次尝试时间、租约与最近错误），以及受管服务自己的工作台、任务和幂等数据。新增表由数据库初始化建立；部署时保留两服务的数据目录及稳定密钥。没有公开的每日同步配置、立即执行后台 tick、下次执行时间或租约查询 API；维护时通过受控数据库诊断和日志排查，不手工改业务状态来伪造提交。
+
+排查时先看本人 `/chaoxing/status` 是否需重新连接，再检查手动 `/chaoxing/sync` 的分区结果与题目快照。`chaoxing_daily_sync_tick_failed` 表示后台轮次异常，`chaoxing_daily_sync_failed` 表示单账号执行异常；日志中的 error_type 只用于定位，不能当作前端协议。作业复习接口的错误码、请求/响应示例、跨端适配与联调步骤见[外部连接](../docs/api/09-integrations.md#assignment-review-flow)。
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest tests/test_chaoxing_assignment_review.py tests/test_chaoxing_sync_service.py tests/test_chaoxing_sync_sections.py tests/test_app_lifespan.py tests/test_openapi_docs.py -q
+```
+
+自动化测试覆盖用户隔离、提交门槛、题目采集与保留、后台租约与重启恢复、幂等生成和服务不可用分支。真实学习通页面解析、有效账号登录态以及外部模型生成质量仍需在实际部署验证。Web 已适配一键进入；Android、HarmonyOS 和微信小程序尚未接入该作业复习入口。
 
 ## 在线课堂
 

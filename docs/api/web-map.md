@@ -308,6 +308,8 @@
 
 ## 动态地址与流式调用补充
 
+在线课堂首页和学习空间侧栏的“已提交作业”使用既有 `getTasks({status:"completed",page,page_size:200})`，按 has_more 读取所有页后筛选 source=chaoxing；点击复用 `generateChaoxingAssignmentClassroom`，题目未就绪时调用一次 `syncChaoxing`，已有失败/取消任务通过 `retryMagicClassJob` 恢复，再用 `getMagicClassJob` 轮询，completed 后跳转工作台播放。编排在 [assignmentReviewModel.js](../../webreact/src/features/magicclass/assignmentReviewModel.js)，展示在 [SubmittedAssignmentReviews.jsx](../../webreact/src/components/SubmittedAssignmentReviews.jsx)；后端协议与错误恢复见[作业复习接入](09-integrations.md#assignment-review-flow)。这是已有接口的组合调用，不是新增独立学习空间 iframe API。
+
 以下请求的地址由返回字段或局部变量构造，不能仅靠字面量列表覆盖。
 
 | Web 位置 | 请求 | 地址与解析 |

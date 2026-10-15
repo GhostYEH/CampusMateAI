@@ -4,6 +4,12 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 从已提交作业进入讲解课堂
+
+Web 在线课堂首页与独立学习空间侧栏可展示本人已提交的学习通作业。列表及题目属于[外部连接模块](09-integrations.md#assignment-review-flow)，通过 `GET /api/v1/tasks?status=completed` 分页筛选 source=chaoxing 后，点击 `POST /api/v1/chaoxing/assignments/{task_id}/classroom` 创建或复用受管工作台与 job。本模块现有 `GET /api/v1/courses/{course_id}/jobs/{job_id}` 和对应 `/retry` 负责进度与重试；只有 job.status=completed 后才进入 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback`。
+
+这条链路调用 `magicclass-service` 的 slide 生成并要求 quiz 相似练习；不会向经典 `/interactive-classroom/generate` 提交，也不调用 iframe 中独立应用的私有生成接口。用户不需要再次选择课程或输入题目，题干、选项和课程归属从服务端读取。受管服务及其生成模型必须可用；独立学习空间 iframe 不可用时，本站作业侧栏仍可读取列表，能否生成由受管课堂接口独立判断。job 完成后的练习作答、解析及记录沿用本模块现有 quiz-attempt 协议。跨端适配和生成限制见外部连接模块。
+
 ## 测验并发保存与冲突
 
 `GET` / `POST /api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/quiz-attempt` 继续要求已登录且有课程访问权限。POST 对已有作答的课堂归属及 `draft → submitted → reviewed` 阶段进行校验；原子读写覆盖重试 ID 分配，并发重试不会相互覆盖。

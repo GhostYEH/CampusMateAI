@@ -236,7 +236,9 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 ## 学习通与教务同步
 
-连接学习通后，服务端在后端运行期间自动执行每日同步（重启补执行，部分失败 30 分钟后重试）；无需打开 Web。题目快照与列表独立采集，按 sync 的 assignments 分区及 warnings 展示部分成功。作业在学习通提交、同步为 completed 后，从个人待办 ID 调用 `GET /chaoxing/assignments/{task_id}/content`；can_generate=true 时可 `POST /chaoxing/assignments/{task_id}/classroom`，按返回的 course_id/job.id 轮询既有课堂 job 接口，失败走 retry，完成后进入 workspace 播放和作答。重复生成同份题目会复用任务，不向生成接口提交客户端题干或伪造完成状态。新增流程当前已适配 Web，移动端可按 [外部连接](09-integrations.md) 接入。
+连接学习通后，服务端在后端运行期间自动执行每日同步（成功结束后间隔 24 小时，重启补执行，部分失败 30 分钟后重试），无需打开 Web；每批处理结束后再等待 60 秒扫描，不是固定零点或实时提交推送。题目快照与列表独立采集，按 sync 的 assignments 分区及 warnings 展示部分成功。作业的 completed 表示最近同步时的平台观测，can_generate/current 不是实时联网或服务可用性检测。
+
+在线课堂先分页读取 `GET /tasks?status=completed&page=1&page_size=200`，逐页筛选 source=chaoxing、未删除条目；接口没有 source 过滤参数，total/has_more 也不是学习通作业数量。使用本站个人待办 id 作为 task_id，completed_at 仅表示本站确认完成时间。点击后 `POST /chaoxing/assignments/{task_id}/classroom`，按返回 course_id/job.id 轮询既有课堂 job 接口；409 assignment_content_not_current 可先同步一次，失败任务显式 retry，completed 后自动进入 workspace 播放和作答。可用 `GET /chaoxing/assignments/{task_id}/content` 预览题目。重复生成同份需求会复用任务，不提交客户端题干或伪造完成状态，也不在每日同步时自动生成课堂。完整示例、错误恢复和时间语义见[一键讲解接入](09-integrations.md#assignment-review-flow)。新增流程当前已适配 Web，移动端可按契约接入。
 
 学习通：login → status → sync（按返回 sections/warnings 展示部分成功）→ 课程局部 sync → disconnect。局部同步 depth=fast/deep，sections 为逗号分隔；force_refresh 及支持分区见课程接口。reauth_required/verification_required 表示外部连接需重新认证，不能循环刷新本站 JWT。
 

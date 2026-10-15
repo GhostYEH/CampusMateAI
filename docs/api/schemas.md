@@ -5206,6 +5206,8 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 `status` 取值: pending / completed / deleted。
 `materials` 解析为字符串数组返回(后端以 JSON 字符串存储)。
 
+学习通列表使用 `source="chaoxing"`，completed 是最近同步的平台已提交/完成观测；`id` 用于作业讲解路径，`external_id` 是远端编号，两者不可互换。`completed_at` 是本站记录的完成时间，`last_synced_at` 是最近同步时间；本响应不公开数据库中的 remote_submitted_at/score/score_max。题目快照的 `current/can_generate/fetched_at/questions` 属于[单独的内容接口](09-integrations.md#assignment-review-flow)，不在本模型中。
+
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `id` | string | 是 | — | 当前资源标识 |
