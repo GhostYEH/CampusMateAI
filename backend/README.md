@@ -16,7 +16,8 @@
 | 知识库 | `/api/v1/knowledge/status`、`/documents` | 只读查询知识库状态和文档；当前聊天链路仍使用内部 BM25 检索，资料导入由内部数据准备/同步流程提供 |
 | 课程内互动课堂 | `/api/v1/courses/{course_id}/interactive-classroom/*` 及课程 workspace 路由 | 按课程权限读取上下文、生成、查询进度和真实内容组成；由 `magicclass-service` 提供受管能力 |
 | 学习空间状态 | `GET /api/v1/magicclass/learning-space/status` | 返回独立 `magicclass-app` 的可用性与公开 Origin，供 Web 导航入口使用 |
-| 学习空间共同课堂 | `/api/v1/magicclass/learning-space/identity`、`/rooms`、`/invitations` | 复用账号唯一 ID 作为 UID，保存课堂文件、邀请、成员、翻页和文字消息；接受邀请后才允许读取内容 |
+| 学习空间共同课堂 | `/api/v1/magicclass/learning-space/identity`、`/rooms`、`/invitations` | 复用账号 UID，保存课件/原生讨论课堂、邀请、成员、翻页和文字消息；接受邀请后才允许读取内容 |
+| Android 共同课堂音视频 | `/api/v1/magicclass/learning-space/rtc/status`、`/rooms/{room_id}/rtc-token` | 为 accepted 成员签发短期 RTC 凭证；客户端分别选择麦克风/摄像头，媒体由火山 RTC 传输 |
 | Agent Runtime | `/api/v1/agent-jobs`、`/agent-runs` 等 | 持久化任务、运行事件、审批及产物接口；与普通聊天接口不同 |
 
 完整路径以 [`app/api/router.py`](app/api/router.py) 中实际注册的路由为准；完整请求/响应与接入流程见[接口文档](../docs/api/README.md)，FastAPI `/docs` 和对应 schema 提供声明快照。
@@ -97,6 +98,14 @@ Android 的“课程 → 同学一起学”已接入共同课堂身份、创建�
 
 后端使用现有 `VOLC_RTC_APP_ID`（24 位）与 `VOLC_RTC_APP_KEY`，从已开通实时音视频服务的火山 RTC 应用取得后填入本地环境配置。AppKey 只留在后端，不要写入 APK、源码、日志或提交。此功能不需要 AI VoiceChat 配置、Seeduplex Key 或 AK/SK；与 Focus AI 语音独立。配置检查不等于云账号余额、真实连通性或通话质量已经通过验证。
 
+部署时按以下顺序检查：
+
+1. 按[本地启动](#本地启动)准备后端，在其环境配置中设置同一 RTC 应用的 `VOLC_RTC_APP_ID`、`VOLC_RTC_APP_KEY`，重启后端使配置生效。不要复制示例 AppId 作为真实配置。
+2. 用已登录账号的 Bearer access token 请求 `GET /api/v1/magicclass/learning-space/rtc/status`；`available=false` 时检查 AppId 是否为 24 位字母数字、AppKey 是否为空。`available=true` 后仍需真机验证密钥匹配及云服务状态。
+3. 用两个不同账号完成创建 → 邀请 → 接受 → 各自获取 RTC 凭证，按[双账号联调步骤](../docs/api/14-magicclass.md#classroom-rtc-handoff)接入 Android；不能把两台设备登录同一账号作为双人测试。
+
+原生讨论课堂只依赖本站后端、账号数据库及云端 RTC；创建与文字消息不要求配置 RTC，也不依赖 `magicclass-service`、独立 `magicclass-app` 或课堂生成模型。需要生成、播放完整课件时，再按下文配置对应服务。`VOLC_RTC_TOKEN_TTL_SECONDS` 和 `VOLC_RTC_AGENT_USER_ID` 属于 Focus AI 语音配置项，共同课堂不读取它们，固定使用 120 秒凭证及 60 秒续期规则。
+
 新增接口为 `GET /api/v1/magicclass/learning-space/rtc/status`、`POST /api/v1/magicclass/learning-space/rooms/native` 和 `POST /api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token`。完整请求/响应、权限、错误和跨端接入见[共同课堂音视频协议](../docs/api/14-magicclass.md#classroom-rtc)。后端只处理控制请求，音视频通过 RTC SDK/云服务传输，不经 HTTP 轮询、Python 转发或 SQLite。
 
 RTC 凭证绑定服务端确定的课堂与本人 UID，120 秒过期，客户端每 60 秒续期并处理 SDK 的到期提醒。续期重新检查 accepted 成员关系；离开/结束后拒绝续期。**离开不调用云端即时封禁接口，已签发凭证最多仍可使用 120 秒**；官方客户端通过课堂状态轮询及时断开。需要强制即时回收时，应另接云端房间/用户封禁，不能把短期凭证描述为即时撤销。
@@ -116,7 +125,7 @@ cd backend
 
 课程内互动课堂会先检查课程访问权限及受管服务状态，生成前可查看计划，提交后可查询进度、内容组成和历史会话。Web 的课堂工作台还通过课程 workspace 接口管理场景、播放、编辑与导出。导航栏“学习空间”则承载以独立进程运行的上游 `magicclass-app`。
 
-这些入口依赖 `magicclass-service` 和相应模型提供方。服务未启用、不可达或缺少所需配置时，接口会返回真实的不可用状态；仓库中的页面和测试并不等于每台机器都能生成课堂。
+课程课堂生成与受管工作台依赖 `magicclass-service` 和相应模型提供方；导航栏独立学习空间依赖 `magicclass-app`。服务未启用、不可达或缺少所需配置时，接口会返回真实的不可用状态；仓库中的页面和测试并不等于每台机器都能生成课堂。
 
 ## 本地启动
 

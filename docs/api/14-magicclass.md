@@ -2676,7 +2676,7 @@ Web 封装：`getLearningSpaceStatus`（[webreact/src/data/learningSpaceApi.js](
 | --- | --- | --- |
 | 404 | LEARNING_ROOM_ERROR | 课堂不存在、不是 accepted 成员，或邀请失效；回到课堂/邀请列表 |
 | 403 | LEARNING_ROOM_ERROR | 已接受邀请的成员执行发起人专用操作 |
-| 409 | LEARNING_ROOM_ERROR | 活动课堂数或成员数达到上限；已加入后尝试拒绝邀请 |
+| 409 | LEARNING_ROOM_ERROR | 活动课堂数或成员数达到上限；已加入后尝试拒绝邀请；同一 client_id 改正文重发 |
 | 410 | LEARNING_ROOM_ERROR | 成员仍为 accepted，但课堂已结束；停止轮询 |
 | 422 | LEARNING_ROOM_ERROR | 邀请自己或场景索引超出课件范围 |
 
@@ -2819,6 +2819,8 @@ Web 封装：`leaveLearningRoom`（[webreact/src/data/learningRoomApi.js](../../
 
 服务端配置 `VOLC_RTC_APP_ID`（24 位字母数字）与 `VOLC_RTC_APP_KEY`，必须来自已开通 RTC 的同一个应用；AppKey 不下发、不写入日志。普通多人通话不依赖 Focus AI VoiceChat、Seeduplex 或 AK/SK。`available=true` 只表示配置格式满足要求，不保证云服务开通/余额、设备或网络可用。
 
+配置修改后需重启后端。`VOLC_RTC_TOKEN_TTL_SECONDS`、`VOLC_RTC_AGENT_USER_ID` 属于 Focus AI 语音配置项，共同课堂不读取它们，固定使用 120 秒凭证、60 秒续期及本人 UID。原生讨论课堂的创建、邀请和文字不要求 RTC 配置，也不依赖 `magicclass-service`、独立 `magicclass-app` 或课堂生成模型；只有进入音视频需要可用 RTC 配置及云服务。
+
 Android 入口为“课程 → 同学一起学”，支持创建讨论课堂及进入 Web 已有课堂的通话；Web 本轮未实现 RTC 客户端，不能与 Android 做音视频互通。HarmonyOS、微信小程序未接入共同课堂。Android 完整课件播放器仍待接入，本轮显示已有课堂的共享页码，支持发起人翻页。原生编译及真机音视频未验证，不能声称已达到某个实测延迟。
 
 接入顺序：Bearer 登录 → identity、rtc/status、rooms、invitations → 创建 native 或接受邀请 → 请求 rtc-token → 按返回 app_id、room_id、user_id、token 入 RTC 房 → SDK 成功回调后显示通话中 → 单独授权并开启所需设备 → 60 秒后再次请求 rtc-token 并 `updateToken` → 断开 RTC 或主动 leave。`joinRoom` 返回 0 仅表示请求已接受，不能代替成功回调。严禁用本地任意 UID、通配房间或 URL query Token 替代服务端给定身份。
@@ -2857,4 +2859,41 @@ expires_at 为 UTC Unix 秒，不是有效时长。room_id 由本站课堂 ID �
 
 错误：401 `UNAUTHORIZED`；404 `LEARNING_ROOM_ERROR`（包括 pending、非成员、已离开及通常的结束态）；410 `LEARNING_ROOM_ERROR`（课堂结束但仍保留 accepted 关系）；503 `CLASSROOM_RTC_UNAVAILABLE`（RTC AppId/AppKey 缺失或格式无效）。配置错误示例 `{"code":"CLASSROOM_RTC_UNAVAILABLE","message":"课堂音视频尚未配置，请联系服务维护者","details":null,"request_id":"req_example"}`。网络暂时失败可以在凭证到期前有界重试；权限错误应停止通话，不能继续拿旧 Token 自动重入。
 
-发布验收：至少两台 Android 真机核对声音/画面双向互通、只开麦/只开摄像头/全部关闭、权限拒绝、回声、前后摄像头、锁屏与通知断开；随后进行 8 人持续 30 分钟、跨 Wi-Fi/蜂窝切网、丢包、至少两轮 Token 续期、离开与发起人结束测试。应单独测量端到端语音/视频延迟、卡顿与恢复时间；后端单元测试不提供这些指标。
+<a id="classroom-rtc-handoff"></a>
+### 双账号联调与故障定位
+
+准备两个不同的本站账号 A（发起人）、B（受邀同学），分别持有本人的 Bearer access token。下表所有路径均以 `/api/v1/magicclass/learning-space` 为前缀；JSON 请求带 `Content-Type: application/json`，无请求体的 POST 不需要构造空字段。示例 ID 必须替换为实际响应，不能复制其他成员的 RTC Token。
+
+| 顺序 | 调用者与请求 | 预期结果与下一步 |
+| --- | --- | --- |
+| 1 | A、B 各自 `GET /identity`；任一账号 `GET /rtc/status` | 保存各自 uid；available=false 时先修复后端 RTC 配置，仍可测试文字功能 |
+| 2 | A `POST /rooms/native`，body 为 `{"title":"双人联调"}` | 201 RoomRecord；保存顶层 id 作为业务课堂 ID R，A 已是 accepted |
+| 3 | A `POST /rooms/R/invitations`，body 为 `{"uid":"<B的uid>"}` | 200，B 的状态 pending；此时 B 请求课堂详情或 rtc-token 应为 404 |
+| 4 | B `GET /invitations`，再 `POST /invitations/R/accept` | 200 RoomRecord，B 成为 accepted；双方 `GET /rooms/R` 可见 accepted 成员 |
+| 5 | A、B 各自 `POST /rooms/R/rtc-token` | 各返回 200、no-store；两份响应的 app_id/room_id 相同，user_id 各为本人，token 分别绑定本人 |
+| 6 | 两台 Android 使用各自响应加入 RTC，等待 SDK 成功回调 | 初始不采集；分别测试只开麦、只开摄像头、双开及全部关闭，核对对方接收状态 |
+| 7 | 双方在 60 秒后重新 `POST /rooms/R/rtc-token`，更新 SDK Token | 200 新凭证；持续通话跨越多次 120 秒有效期，不能只验证首次签发 |
+| 8 | B `POST /rooms/R/leave`；A 最后执行同路径 | 各成功操作为 204；B 离开后续期 404；A 离开结束整堂课，原成员的新读取/续期通常为 404 |
+
+业务 classroom ID（RoomRecord.id）用于 HTTP 路径；SDK room_id 必须取 rtc-token 响应的 room_id。本站 Bearer access token 用于 HTTP 鉴权，RTC Token 只交给 SDK；两者不能互换。不要自行推算房间名，也不要让受邀者复用发起人的 user_id 或 token。
+
+仅断开 RTC、通知栏停止通话或离开通话页面会释放本机媒体资源，不会自动调用业务 leave；仍可保留 accepted 课堂关系、读取消息及稍后重新入会。显式“离开课堂”才调用 leave；发起人的此操作会结束全体成员的课堂。断开后须取消本次通话续期，防止旧任务覆盖后续新通话。
+
+| 现象 | 核对与处理 |
+| --- | --- |
+| status 为 false 或 rtc-token 为 503 CLASSROOM_RTC_UNAVAILABLE | 检查后端运行环境中的 AppId/AppKey、格式及配置修改后是否重启；不要把密钥写进客户端 |
+| status 为 true、签发成功，但 SDK 入房失败 | 配置状态不验证 AppKey 正确性；核对同一 RTC 应用、云服务状态、后端系统时间、响应的 room_id/user_id 和 SDK 错误码；HTTP 200 不能代表云端入会成功 |
+| B 收到邀请后 rtc-token 为 404 | 确认 B 已接受邀请、请求使用 B 的 Bearer、路径为 RoomRecord.id，并确认课堂仍活动；pending 没有入会权限 |
+| 401，或续期返回 404/410 | 401 处理本站登录失效；404/410 停止采集、续期及状态轮询，返回课堂列表，不用旧凭证自动重入 |
+| 一两分钟后断开 | 检查续期 HTTP、SDK updateToken 与到期提醒是否处理，区分登录失效、成员退出和网络失败；不要通过调大 Focus AI 的 TTL 掩盖问题 |
+| 能看到成员但没有声音/画面 | 成员列表只代表业务加入；检查 SDK 入会回调、本人及对方采集开关、系统权限、订阅事件和媒体网络；Android 默认关闭两项采集，后台关闭摄像头 |
+| 同账号另一设备入会后原设备断开 | 同 UID 同房存在设备冲突；用两个不同账号验证双向通话，原设备停止自动重入以免反复互踢 |
+| API 正常但通话延迟/卡顿 | 分别记录 SDK 网络/丢包诊断和实测端到端延迟；媒体不经本站 API，提高 HTTP 轮询频率不能改善媒体延迟 |
+
+排查 HTTP 问题时保留错误 code、request_id、时间及脱敏的业务课堂 ID；RTC 问题记录 SDK 错误码、网络类型、端系统与 SDK 版本。不要采集 AppKey、Bearer、RTC Token 或含这些字段的完整请求/响应日志。
+
+### 发布验收与验证边界
+
+至少两台 Android 真机核对声音/画面双向互通、只开麦/只开摄像头/全部关闭、权限拒绝、回声、前后摄像头、锁屏与通知断开；随后进行 8 人持续 30 分钟、跨 Wi-Fi/蜂窝切网、丢包、至少两轮 Token 续期、离开与发起人结束测试。应单独测量端到端语音/视频延迟、卡顿与恢复时间；后端单元测试不提供这些指标。
+
+后端相关自动化测试覆盖配置检查、鉴权与成员隔离、Token 格式/签名/范围/有效期、人数并发上限、消息幂等冲突及并发结束时读取的一致性，运行命令见[后端说明](../../backend/README.md#android-多人音视频共同课堂)。这不代表整套后端或云端链路已经没有问题；当前 Android 原生编译、真实云端签名接受情况、真机音视频、8 人容量与弱网质量仍待验收，不能承诺实测低延迟或绝对稳定。

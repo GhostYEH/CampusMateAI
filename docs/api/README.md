@@ -29,6 +29,8 @@
 
 导航栏的独立学习空间使用另一个 Origin，其 `/api/*` 不属于上面的 319 个接口；它的 **87 个显式 HTTP handler**另列于 [独立学习空间](learning-space.md)，持久化 catch-all 下的文档、资源与 Runtime 子接口也已展开，包含当前禁止的操作及权限条件。课程侧接入参见 [课程互动课堂与受管工作台](14-magicclass.md)，Android 当前能力与接入边界见 [客户端说明](../../android/README.md#互动课堂接入)。
 
+Android 多人通话从[共同课堂音视频](14-magicclass.md#classroom-rtc)和[双账号联调步骤](14-magicclass.md#classroom-rtc-handoff)开始；部署配置见[后端说明](../../backend/README.md#android-多人音视频共同课堂)。原生讨论课堂不要求启动独立学习空间或课堂生成服务；Web、HarmonyOS、微信小程序尚未接入 RTC。
+
 ## 按 Web 功能查找
 
 学习通“已提交作业 → 一键讲解 → 相似练习”从[作业复习接入流程](09-integrations.md#assignment-review-flow)开始，列表分页和时间字段见[个人待办](04-tasks-notices.md)，任务轮询与播放见[课堂协议](14-magicclass.md#从已提交作业进入讲解课堂)，运行配置与每日调度见[后端说明](../../backend/README.md#学习通每日同步与作业复习)。接口数量不因这些组合入口增加。

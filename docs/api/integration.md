@@ -275,11 +275,16 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料；社区举报功能及 `POST /community/reports` 已移除，Web、Android、HarmonyOS、微信小程序的入口或调用封装已同步清理；旧客户端须停止调用，删除的路径返回 404。其余学生接口保持兼容，源码核对未发现管理接口调用；移动端构建和真机流程尚未验证。共享课程、公告、横幅与知识库的已有数据和只读能力保留，由仓库的内部数据准备/同步工具提供内容，产品没有在线管理界面。
 
-## 共同课堂邀请与消息
+## 共同课堂邀请、消息与 Android 音视频
 
-共同课堂使用 CampusMate Bearer 认证和本人 UID，按[共同课堂协议](14-magicclass.md#learning-rooms)完成上传 → 邀请 → 接受 → 下载 → 页码/消息轮询 → 离开。该通道属于 /api/v1/magicclass/learning-space，与独立 iframe 内的 /api 是不同服务。
+共同课堂使用 CampusMate Bearer 认证和本人 UID，按[共同课堂协议](14-magicclass.md#learning-rooms)完成上传课件或创建 native 讨论课堂 → 邀请 → 接受 → 按需下载课件 → 页码/消息轮询 → 离开。该通道属于 `/api/v1/magicclass/learning-space`，与独立 iframe 内的 `/api` 是不同服务。native 创建、邀请与文字不依赖课堂生成服务，也不要求配置 RTC。
 
 动态对象字段见[实际响应](response-contracts.md#learning-rooms)。成员权限基于 accepted 状态，pending 不具备课件访问权；发起人结束会清空归档并撤销成员关系。客户端须处理 404/410 并停止轮询，204 不解析 JSON，消息重试复用同一 client_id。Web 已有课件/文字调用封装但未接入 RTC；Android 已接入邀请、原生讨论课堂、文字及 RTC，完整课件播放待接入；HarmonyOS、小程序未适配。原生构建和真机流程未验证。
+
+Android 音视频按[完整 RTC 协议](14-magicclass.md#classroom-rtc)接入：rtc/status → 已接受邀请或创建 native → rtc-token → 使用响应给定的 app_id、room_id、user_id、token 加入 SDK 房间 → 入会成功回调 → 分别授权并开启麦克风/摄像头。本站 HTTP 只维护课堂、成员和凭证；通话媒体由 RTC SDK/云服务传输，文字和共享页码继续轮询。不要用 HTTP 轮询发送音视频，也不能把课堂数据库 ID 直接当作 SDK room_id。
+
+Token 有效期 120 秒，60 秒后通过同一 rtc-token 接口续期并调用 SDK `updateToken`；SDK 的权限到期提醒同样触发去重续期。离开后拒绝续期，已有 Token 不会即时失效；不能将其当作云端即时踢人。账号认证失败按[登录约定](#auth)处理；课堂 404/410 立即退出并停止采集与续期，网络错误在有效期内有界重试。后台语音使用前台服务，摄像头在后台停止。详细的双账号步骤、断开 RTC 与退出课堂的区别及排查方法见[联调说明](14-magicclass.md#classroom-rtc-handoff)。
+
 ## 桌面设备与学习偏好接入补充
 
 桌面设备使用[设备协议](15-devices.md)中的独立设备凭据，只能访问 `/devices/me/*`。设备凭据不能调用用户 JWT 接口，也不能作为已有实时语音 WebSocket 的 `access_token`；专用设备语音 WebSocket 使用 Authorization 请求头，流程见设备协议；用户凭据不能代替设备凭据。确认二维码绑定、列出设备和撤销设备由已登录学生执行。后端仅接收允许的结构化观察，不接收相机画面。
@@ -304,5 +309,3 @@ Web 已移除运行观测页面，并改为 `PATCH /auth/me` 编辑本人资料�
 | 设备应用 | 匿名创建绑定 → 独立 poll token 领取设备凭据 → heartbeat → config → 创建专注会话 → 按需暂停/恢复、上传事件、连接语音 → finish。会话操作保存原 Idempotency-Key 和请求；事件保存原 event_id 和完整内容，收到 accepted/duplicate 确认后才清理本地队列。 |
 
 设备语音入口需要 WebSocket Authorization 请求头，适用于支持自定义握手头的设备网络库。浏览器原生 WebSocket 无法设置该头，Web 页面继续使用[用户语音协议](response-contracts.md#voice)。设备语音创建/连接须落到同一后端进程；创建幂等状态不会跨重启保留。新增接口尚无各端适配验收，接入后需独立验证用户交互、网络重试和目标平台流程。
-
-Android 多人音视频见[完整 RTC 协议](14-magicclass.md#classroom-rtc)：rtc/status → 已接受邀请/创建 native → rtc-token → SDK 入会成功回调 → 分别开启麦克风/摄像头 → 60 秒后续期并 updateToken。Token 有效期 120 秒，离开后拒绝续期但已有 Token 不会即时失效；不可将其当作云端即时踢人。后台语音使用前台服务，摄像头在后台停止。Web/HarmonyOS/小程序尚未接入音视频。
