@@ -66,6 +66,12 @@ class ChaoxingResourceProxy:
             "com.chaoxing.mobile/ChaoXingStudy_3_6.3.7_android_phone"
         )
 
+    @staticmethod
+    def _referer(item) -> str:
+        if (item.source_url or "").startswith("https://mooc1.chaoxing.com/coursedata/downloadData?"):
+            return "https://pan-yz.chaoxing.com/"
+        return item.source_url or "https://mooc1.chaoxing.com/"
+
     async def _resolve_download_url(self, item) -> str:
         source_url = item.source_url
         if item.remote_object_id:
@@ -116,7 +122,7 @@ class ChaoxingResourceProxy:
         """
         current_url = await self._resolve_download_url(item)
         headers = {
-            "Referer": item.source_url or "https://mooc1.chaoxing.com/",
+            "Referer": self._referer(item),
             "User-Agent": self._mobile_ua(),
         }
         if range_header:
@@ -147,9 +153,15 @@ class ChaoxingResourceProxy:
             if response.status_code == 404:
                 await response.aclose()
                 raise CourseResourceProxyError("resource_not_found")
+            if response.status_code == 202 or "antispiderShowVerify" in str(response.url):
+                await response.aclose()
+                raise CourseResourceProxyError("verification_required")
             if response.status_code >= 400:
                 await response.aclose()
                 raise CourseResourceProxyError(f"http_error_{response.status_code}")
+            if "text/html" in (response.headers.get("content-type") or "").lower():
+                await response.aclose()
+                raise CourseResourceProxyError("resource_invalid_payload")
         except CourseResourceProxyError:
             await client.aclose()
             raise
@@ -243,7 +255,7 @@ class ChaoxingResourceProxy:
                 cookies=self.credentials,
                 timeout=httpx.Timeout(60, connect=10),
                 headers={
-                    "Referer": item.source_url or "https://mooc1.chaoxing.com/",
+                    "Referer": self._referer(item),
                     "User-Agent": self._mobile_ua(),
                 },
             )

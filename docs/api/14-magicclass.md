@@ -1,6 +1,6 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-10-15。本模块共 71 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-15。本模块共 76 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -36,6 +36,11 @@ Web 在线课堂首页与独立学习空间侧栏可展示本人已提交的学�
 
 | 方法 | 完整路径 | 用途 |
 | --- | --- | --- |
+| GET | `/api/v1/self-classroom/status` | 自主选题课堂状态 |
+| POST | `/api/v1/self-classroom/generate` | 生成自主选题课堂 |
+| POST | `/api/v1/self-classroom/materials` | 上传自主选题资料 |
+| GET | `/api/v1/self-classroom/jobs/{session_id}` | 自主选题课堂进度 |
+| GET | `/api/v1/self-classroom` | 本人自主选题课堂历史 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/status` | 读取状态 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/plan` | 生成**之前**给学生看的信息：课程、可选资料、推荐形态与理由 |
 | POST | `/api/v1/courses/{course_id}/interactive-classroom/generate` | 生成课堂 |
@@ -2897,3 +2902,93 @@ expires_at 为 UTC Unix 秒，不是有效时长。room_id 由本站课堂 ID �
 至少两台 Android 真机核对声音/画面双向互通、只开麦/只开摄像头/全部关闭、权限拒绝、回声、前后摄像头、锁屏与通知断开；随后进行 8 人持续 30 分钟、跨 Wi-Fi/蜂窝切网、丢包、至少两轮 Token 续期、离开与发起人结束测试。应单独测量端到端语音/视频延迟、卡顿与恢复时间；后端单元测试不提供这些指标。
 
 后端相关自动化测试覆盖配置检查、鉴权与成员隔离、Token 格式/签名/范围/有效期、人数并发上限、消息幂等冲突及并发结束时读取的一致性，运行命令见[后端说明](../../backend/README.md#android-多人音视频共同课堂)。这不代表整套后端或云端链路已经没有问题；当前 Android 原生编译、真实云端签名接受情况、真机音视频、8 人容量与弱网质量仍待验收，不能承诺实测低延迟或绝对稳定。
+
+<a id="self-classroom"></a>
+## 自主选题与个人资料
+
+新增五个自主选题接口，均要求 Bearer access token 且 role=student，其他角色403；不要求课程选课关系。服务端以当前 user_id 和内部范围 `__self_study__` 隔离资料与课堂。鉴权失败401，参数校验422，错误均使用[统一错误信封](integration.md#errors)；经典生成服务、受管资料服务的不可用/超时错误沿用对应服务处理，客户端不要无限自动重试。
+
+课程经典生成前计划也加入本人在该课程上传并已提取、text_chars>0 的资料（最多读取前50条）；资料服务读取失败会加入 warnings。generate/retry 对 selected_material_ids 中未由课程源解析的 ID 再通过受管服务鉴权解析，正文按上下文预算截断后合并；未解析项通过 materials_unresolved/materials_warning 回传。自主选题对未解析资料直接拒绝生成，避免把未读资料当成已使用。
+
+Android 已有自主选题、上传和 WebView 调用源码；Web、HarmonyOS、微信小程序尚未接入自主选题五个接口。课程/个人待办新增可空字段兼容已有调用；本次未进行 Android 原生编译或真机验收。
+
+### `GET /api/v1/self-classroom/status`
+
+用途：自主选题课堂状态。
+
+鉴权与前置条件：已登录学生，按本人自主选题范围隔离，见上节。
+
+无请求体。返回 MagicClassStatusOut；enabled/configured/available 与可展示 URL 的能力应分别判断，配置要求沿用经典课堂。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [MagicClassStatusOut](schemas.md#schema-magicclassstatusout) |
+
+### `POST /api/v1/self-classroom/generate`
+
+用途：生成自主选题课堂。
+
+鉴权与前置条件：已登录学生，按本人自主选题范围隔离，见上节。
+
+请求体：JSON [MagicClassGenerateRequest](schemas.md#schema-magicclassgeneraterequest)。learning_objective 去空白后必须非空，否则 HTTP400「请先输入想学的内容」。mode、current_difficulty、desired_duration_minutes、difficulty_level、wants_more_practice、selected_material_ids 等字段及约束见模型。传入资料必须已完成提取且属于本人自主选题范围；资料服务关闭返回503，资料不存在、未完成提取或归属不符返回400。无资料时可只按主题生成。
+
+返回202 [MagicClassGenerateOut](schemas.md#schema-magicclassgenerateout)，accepted=true，session.course_id 为 __self_study__。使用 session.session_id 轮询下述 jobs 接口，按 poll_interval_ms 等待并遵守终态；succeeded 后才使用 URL，URL 可能为空，须展示 url_unavailable_reason。session_id 不是受管工作台 job_id，不可调用 /courses/{course_id}/jobs。生成接口不要求 Idempotency-Key，复用经典提交预占及恢复语义，不能承诺上游只执行一次。
+
+请求示例：`{"mode":"explain","learning_objective":"理解 Linux 文件权限","wants_more_practice":true,"selected_material_ids":[]}`。响应关键字段示例：`{"accepted":true,"session":{"session_id":"sess_example","course_id":"__self_study__","status":"queued","terminal":false},"poll_interval_ms":5000}`；这是裁剪示例，完整字段见模型。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 202 | application/json | [MagicClassGenerateOut](schemas.md#schema-magicclassgenerateout) |
+| 422 | application/json | [统一错误结构](integration.md#errors)；OpenAPI 默认校验模型仅为声明 |
+
+### `POST /api/v1/self-classroom/materials`
+
+用途：上传自主选题资料。
+
+鉴权与前置条件：已登录学生，按本人自主选题范围隔离，见上节。
+
+请求体：multipart/form-data，唯一文件字段 file 必填；Header Idempotency-Key 必填且不能全为空白，最长200字符。相同逻辑上传重试复用原 key，换文件使用新 key，沿用受管资料服务的幂等/冲突规则。无效 key 返回400，缺少 header/file 返回422。
+
+文件最多2 MiB，文件名最长255字符且不能包含路径分隔符；提取文本最多512 KiB，超过上限拒绝而不静默截断。扩展名决定格式，可提取 txt/md/markdown/pdf/docx，其余格式可能保存为 unsupported，空内容为 empty，不得将上传成功等同于可用于生成。非法文件名返回400 MAGICCLASS_INVALID_REQUEST；文件/文本超限返回422 MAGICCLASS_DOCUMENT_REJECTED，并在 details 中说明 limit；幂等键冲突返回409 MAGICCLASS_IDEMPOTENCY_CONFLICT，受管服务不可用返回503 MAGICCLASS_FUSION_UNAVAILABLE。必须启用 magicclass_fusion_enabled 并配置受管资料服务；关闭返回503。
+
+成功201 [MaterialOut](schemas.md#schema-materialout)，含 id/course_id/filename/extraction_status/text_chars 等，course_id=__self_study__；仅 extraction_status=extracted 且有正文的本人资料可放入生成请求 selected_material_ids。服务器注入 user_id 与隔离范围，客户端不能覆盖。上传示例：FormData.append("file", file)，请求头 Idempotency-Key: self-notes-example；重试时复用同一个 key，Content-Type 的 boundary 由客户端运行时生成。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 201 | application/json | [MaterialOut](schemas.md#schema-materialout) |
+| 422 | application/json | [统一错误结构](integration.md#errors)；OpenAPI 默认校验模型仅为声明 |
+
+### `GET /api/v1/self-classroom/jobs/{session_id}`
+
+用途：自主选题课堂进度。
+
+鉴权与前置条件：已登录学生，按本人自主选题范围隔离，见上节。
+
+路径参数 session_id（string，必填）。无请求体；仅读取当前学生自主选题范围的会话，其他账号、其他课程或不存在的任务统一404「课堂生成任务不存在」。服务端按需向上游轮询；成功200 [MagicClassSessionOut](schemas.md#schema-magicclasssessionout)。queued/running 时继续有界轮询，terminal=true 后停止；失败展示 error_code/message，不把 partial 当作完整成功。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [MagicClassSessionOut](schemas.md#schema-magicclasssessionout) |
+| 422 | application/json | [统一错误结构](integration.md#errors)；OpenAPI 默认校验模型仅为声明 |
+
+### `GET /api/v1/self-classroom`
+
+用途：本人自主选题课堂历史。
+
+鉴权与前置条件：已登录学生，按本人自主选题范围隔离，见上节。
+
+无参数和请求体，返回200 [MagicClassClassroomsOut](schemas.md#schema-magicclassclassroomsout)：enabled 与 items，仅含本人 __self_study__ 范围内已生成课堂，不混入课程课堂或其他学生内容。当前接口没有分页、重试或内容组成查询；不得将 __self_study__ 当作真实课程调用受管工作台接口。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [MagicClassClassroomsOut](schemas.md#schema-magicclassclassroomsout) |

@@ -803,7 +803,7 @@ Web 封装：`getTasks`（[webreact/src/data/api.js](../../webreact/src/data/api
 - 默认不返回 `deleted` 状态(除非 `include_deleted=true` 或显式 `status=deleted`)
 - 支持按 status/priority/deadline 筛选
 
-在线课堂“已提交作业”复用本接口的 `status=completed`，分页获取后由客户端筛选 `source=chaoxing`、`deleted_at=null`；当前没有 source 查询参数。total/has_more 统计所有满足筛选的个人待办，即使某页未筛出学习通作业也要继续翻页。返回顺序为 deadline 升序（空值置后）、created_at 降序，不是提交时间顺序。`completed_at` 是本站记录的完成时间，不能作为学习通真实提交时间；PersonalTaskOut 当前不返回 remote_submitted_at。使用本人任务的 `id` 调用[作业讲解流程](09-integrations.md#assignment-review-flow)，不要与 `/student/assignments` 的班级作业混用。
+在线课堂“已提交作业”复用本接口的 `status=completed`，分页获取后由客户端筛选 `source=chaoxing`、`deleted_at=null`；当前没有 source 查询参数。total/has_more 统计所有满足筛选的个人待办，即使某页未筛出学习通作业也要继续翻页。返回顺序为 deadline 升序（空值置后）、created_at 降序，不是提交时间顺序。`completed_at` 是本站记录的完成时间，不能作为学习通真实提交时间；PersonalTaskOut 返回可空的 `remote_submitted_at`（远端明确提供时的提交时间），缺失时不得由 completed_at 推算。使用本人任务的 `id` 调用[作业讲解流程](09-integrations.md#assignment-review-flow)，不要与 `/student/assignments` 的班级作业混用。
 
 参数：
 
@@ -916,6 +916,7 @@ Web 封装：`createTask`（[webreact/src/data/api.js](../../webreact/src/data/a
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
@@ -1070,6 +1071,7 @@ Web 封装：`getTask`（[webreact/src/data/api.js](../../webreact/src/data/api.
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -1155,6 +1157,7 @@ Web 封装：`updateTask`（[webreact/src/data/api.js](../../webreact/src/data/a
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -1220,6 +1223,7 @@ Web 封装：`completeTask`（[webreact/src/data/api.js](../../webreact/src/data
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -1286,6 +1290,7 @@ Web 封装：`completeTask`（[webreact/src/data/api.js](../../webreact/src/data
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -1353,6 +1358,7 @@ Web 封装：`deleteTask`（[webreact/src/data/api.js](../../webreact/src/data/a
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 
@@ -1408,3 +1414,5 @@ Web 封装：当前无封装；按本节后端契约调用。
 | `total` | integer | 否 | default=0 | 本次评定任务数 |
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
+
+任务导入支持“10.12 下午3:00”等月日加时段表达；通知中的生日、署名日期不自动当作截止时间，“待提交”等状态文本不构造截止时间。重要要求与材料列表会保留到任务描述，客户端应展示实际返回的 deadline、description 和 materials，不自行从原文覆盖。

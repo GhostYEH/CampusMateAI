@@ -166,6 +166,8 @@ class ApiFocusRepository(private val api: ApiService) : FocusRepository {
         pausedAt = dto.paused_at,
         pauseSeconds = dto.pause_seconds,
         behaviorSummary = dto.behavior_summary?.toDomain(),
+        selfReport = dto.self_report,
+        goal = dto.goal,
     )
 
     private fun FocusMode.toApiMode() = when (this) {

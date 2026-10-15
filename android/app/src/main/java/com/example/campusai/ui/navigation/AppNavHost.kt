@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.unit.Dp
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -32,7 +33,9 @@ import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.data.repository.NotificationInboxRepository
 import com.example.campusai.ui.screens.counselor.CounselorScreen
-import com.example.campusai.ui.screens.courses.CoursesScreen
+import com.example.campusai.ui.screens.courses.LibraryScreen
+import com.example.campusai.ui.screens.courses.InteractiveClassroomScreen
+import com.example.campusai.ui.screens.courses.ClassroomHubScreen
 import com.example.campusai.ui.screens.dashboard.DashboardScreen
 import com.example.campusai.ui.screens.exams.ExamDetailScreen
 import com.example.campusai.ui.screens.exams.ExamEditScreen
@@ -68,7 +71,6 @@ import com.example.campusai.ui.screens.community.CommunityScreen
 import com.example.campusai.ui.screens.community.CommunityDetailScreen
 import com.example.campusai.ui.screens.community.CommunityPublishScreen
 import com.example.campusai.ui.screens.community.CommunityHotTopicsScreen
-import com.example.campusai.ui.screens.v3.UniversityScreen
 import com.example.campusai.ui.screens.profile.UniversityPickerScreen
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.CampusMotion
@@ -76,6 +78,20 @@ import java.net.URLEncoder
 
 internal fun eduFlowViewModelOwner(navController: NavHostController): NavBackStackEntry =
     navController.getBackStackEntry("edu_system")
+
+private fun homePortalRoute(route: String?): Boolean {
+    val key = route?.substringBefore('?') ?: return false
+    return key in setOf(
+        "courses", "focus", "classroom-hub", "community", "focus_history", "tasks", "counselor", "profile",
+    )
+}
+
+private fun homeLandmarkOrigin(route: String?): TransformOrigin? = when (route?.substringBefore('?')) {
+    "courses" -> TransformOrigin(.31f, .29f)
+    "focus" -> TransformOrigin(.30f, .49f)
+    "classroom-hub" -> TransformOrigin(.79f, .50f)
+    else -> null
+}
 
 @Composable
 private fun NavigationDestinationFrame(
@@ -93,6 +109,7 @@ private fun NavigationDestinationFrame(
         else -> destination?.title
     }
     val layout = navigationDestinationLayout(route, statusBarHeight)
+    val hasInlineJournalHeader = route?.startsWith("task_detail/") == true
 
     Box(Modifier.fillMaxSize().background(Background)) {
         Box(
@@ -102,7 +119,7 @@ private fun NavigationDestinationFrame(
         ) {
             content()
         }
-        destination?.let {
+        destination?.takeUnless { hasInlineJournalHeader }?.let {
             StickySecondaryNavigation(
                 title = title ?: it.title,
                 onBack = onBack,
@@ -154,8 +171,12 @@ fun AppNavHost(
                 startDestination = "home",
                 modifier = Modifier.fillMaxSize(),
         enterTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
+            } else if (initialState.destination.route == "home" && homePortalRoute(targetState.destination.route)) {
+                fadeIn(animationSpec = tween(300, easing = CampusMotion.routeEasing)) +
+                    slideInVertically(animationSpec = tween(300, easing = CampusMotion.routeEasing),
+                        initialOffsetY = { (it * .012f).toInt() })
             } else {
                 val motion = forwardNavigationMotion(
                     initialRoute = initialState.destination.route,
@@ -173,8 +194,14 @@ fun AppNavHost(
             }
         },
         exitTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || targetState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
+            } else if (initialState.destination.route == "home" && homePortalRoute(targetState.destination.route)) {
+                val fade = fadeOut(animationSpec = tween(280, easing = CampusMotion.routeEasing))
+                homeLandmarkOrigin(targetState.destination.route)?.let { origin ->
+                    fade + scaleOut(targetScale = 1.018f, transformOrigin = origin,
+                        animationSpec = tween(280, easing = CampusMotion.routeEasing))
+                } ?: fade
             } else {
                 val motion = forwardNavigationMotion(
                     initialRoute = initialState.destination.route,
@@ -192,8 +219,14 @@ fun AppNavHost(
             }
         },
         popEnterTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 EnterTransition.None
+            } else if (targetState.destination.route == "home" && homePortalRoute(initialState.destination.route)) {
+                val fade = fadeIn(animationSpec = tween(300, easing = CampusMotion.routeEasing))
+                homeLandmarkOrigin(initialState.destination.route)?.let { origin ->
+                    fade + scaleIn(initialScale = 1.018f, transformOrigin = origin,
+                        animationSpec = tween(300, easing = CampusMotion.routeEasing))
+                } ?: fade
             } else {
                 slideInHorizontally(
                     animationSpec = tween(CampusMotion.routeEnterDuration, easing = CampusMotion.routeEasing),
@@ -207,8 +240,12 @@ fun AppNavHost(
             }
         },
         popExitTransition = {
-            if (reduceMotion) {
+            if (reduceMotion || initialState.destination.route?.startsWith("task_detail/") == true) {
                 ExitTransition.None
+            } else if (targetState.destination.route == "home" && homePortalRoute(initialState.destination.route)) {
+                fadeOut(animationSpec = tween(260, easing = CampusMotion.routeEasing)) +
+                    slideOutVertically(animationSpec = tween(260, easing = CampusMotion.routeEasing),
+                        targetOffsetY = { (it * .012f).toInt() })
             } else {
                 slideOutHorizontally(
                     animationSpec = tween(CampusMotion.routeExitDuration, easing = CampusMotion.routeEasing),
@@ -252,6 +289,7 @@ fun AppNavHost(
                 repository = repository,
                 onBack = { navController.popBackStack() },
                 onTaskDeleted = { navController.popBackStack() },
+                onOpenCourse = { courseId -> go("courses/${Uri.encode(courseId)}") },
             )
         }
         composable("notifications") {
@@ -260,6 +298,7 @@ fun AppNavHost(
                 inboxRepository = notificationInboxRepository,
                 onNavigateToWechat = { navController.navigate("notification-settings") },
                 onNavigateToChaoxing = { navController.navigate("chaoxing") },
+                onNavigateToTasks = { go("tasks") },
             )
         }
         composable("campus-news") {
@@ -311,16 +350,19 @@ fun AppNavHost(
             }
         }
         composable("courses") {
-            CoursesScreen(
-                repository,
-                onOpenSchedule = { go(courseScheduleRoute()) },
+            LibraryScreen(
+                repository = repository,
+                focusRepository = modules.focus,
                 onOpenLearningRooms = { go("learning_rooms") },
-                onOpenCounselor = { courseId, courseName, initialPrompt ->
-                    go(
-                        "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
-                    )
-                },
+                onBack = { navController.popBackStack() },
+                onConnectChaoxing = { go("chaoxing") },
+                onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
+                onOpenClassroom = { courseId -> go("course-classroom/${Uri.encode(courseId)}") },
             )
+        }
+        composable("classroom-hub") {
+            ClassroomHubScreen(repository, onBack = { navController.popBackStack() },
+                onOpenCourses = { go("courses") }, onOpenHistory = { go("focus_history") })
         }
         composable(
             route = "courses/{courseId}?tab={tab}&session={session}",
@@ -330,16 +372,40 @@ fun AppNavHost(
                 navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
             ),
         ) { backStackEntry ->
-            CoursesScreen(
+            val courseId = backStackEntry.arguments?.getString("courseId").orEmpty()
+            val sessionId = backStackEntry.arguments?.getString("session")
+            if (!sessionId.isNullOrBlank()) {
+                InteractiveClassroomScreen(
+                    courseId = courseId,
+                    repository = repository,
+                    onBack = { navController.popBackStack() },
+                    initialSessionId = sessionId,
+                )
+            } else {
+                LibraryScreen(
+                    repository = repository,
+                    focusRepository = modules.focus,
+                    initialCourseId = courseId,
+                    onBack = { navController.popBackStack() },
+                    onConnectChaoxing = { go("chaoxing") },
+                    onOpenLearningRooms = { go("learning_rooms") },
+                    onStartFocus = { goal -> go("focus?goal=${Uri.encode(goal)}") },
+                    onOpenClassroom = { id -> go("course-classroom/${Uri.encode(id)}") },
+                )
+            }
+        }
+        composable(
+            route = "course-classroom/{courseId}?session={session}",
+            arguments = listOf(
+                navArgument("courseId") { type = NavType.StringType },
+                navArgument("session") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { backStackEntry ->
+            InteractiveClassroomScreen(
+                courseId = backStackEntry.arguments?.getString("courseId").orEmpty(),
                 repository = repository,
-                initialCourseId = backStackEntry.arguments?.getString("courseId"),
-                initialTab = backStackEntry.arguments?.getString("tab"),
+                onBack = { navController.popBackStack() },
                 initialSessionId = backStackEntry.arguments?.getString("session"),
-                onOpenLearningRooms = { go("learning_rooms") },
-                onOpenSchedule = { go(courseScheduleRoute()) },
-                onOpenCounselor = { courseId, courseName, initialPrompt ->
-                    go("counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}")
-                },
             )
         }
         composable("learning_rooms") {
@@ -378,10 +444,12 @@ fun AppNavHost(
             )
         }
         composable("university") {
-            UniversityScreen(
-                repository = repository,
-                onNavigate = { route -> go(route) },
-            )
+            LaunchedEffect(Unit) {
+                navController.navigate("account") {
+                    popUpTo("university") { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
         }
         composable(
             route = "community?sort={sort}&query={query}",
@@ -474,6 +542,7 @@ fun AppNavHost(
             SettingsScreen(
                 repository = repository,
                 onOpenContribution = { navController.navigate("expression-contribution") },
+                onBack = { navController.popBackStack() },
             )
         }
         composable("help-feedback") {
@@ -592,12 +661,11 @@ fun AppNavHost(
 
         // ── 专注大厅 / 专注空间 / 本次专注总结 ──
         composable(
-            route = "focus?taskId={taskId}",
-            arguments = listOf(navArgument("taskId") {
-                type = NavType.StringType
-                nullable = true
-                defaultValue = null
-            }),
+            route = "focus?taskId={taskId}&goal={goal}",
+            arguments = listOf(
+                navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("goal") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
         ) { backStackEntry ->
             val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
             FocusScreen(
@@ -606,6 +674,7 @@ fun AppNavHost(
                 reduceMotion = reduceMotion,
                 onBack = { navController.popBackStack() },
                 relatedTaskId = backStackEntry.arguments?.getString("taskId"),
+                initialGoal = backStackEntry.arguments?.getString("goal"),
                 onOpenCounselorPlan = { prompt ->
                     val encoded = URLEncoder.encode(prompt, Charsets.UTF_8.name())
                     go("counselor?prompt=$encoded")
@@ -619,7 +688,8 @@ fun AppNavHost(
             )
         }
         composable("focus_history") {
-            FocusHistoryScreen(repository = modules.focus, onBack = { navController.popBackStack() })
+            FocusHistoryScreen(repository = modules.focus, appRepository = repository,
+                onBack = { navController.popBackStack() })
         }
         composable(
             route = "focus_session?durationSeconds={durationSeconds}&taskName={taskName}&sessionMode={sessionMode}&taskId={taskId}",
@@ -644,26 +714,26 @@ fun AppNavHost(
                     // Uri.encode keeps spaces as %20.  URLEncoder uses '+', which Navigation
                     // treats as literal text and previously produced strings such as "+4+次".
                     val task = Uri.encode(completion.taskName)
-                    val summary = Uri.encode(completion.aiSummary)
-                    val observation = Uri.encode(completion.observationSummary)
                     val nextStep = Uri.encode(completion.nextStepTitle.orEmpty())
-                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&aiSummary=$summary&observationSummary=$observation&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}")
+                    go("focus_summary?actualSeconds=${completion.actualSeconds}&taskName=$task&conversationCount=${completion.conversationCount}&taskId=${Uri.encode(completion.planTaskId.orEmpty())}&nextStepTitle=$nextStep&planComplete=${completion.planComplete}&sessionId=${Uri.encode(completion.sessionId)}")
                 },
             )
         }
         composable(
-            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&aiSummary={aiSummary}&observationSummary={observationSummary}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}",
+            route = "focus_summary?actualSeconds={actualSeconds}&taskName={taskName}&conversationCount={conversationCount}&taskId={taskId}&nextStepTitle={nextStepTitle}&planComplete={planComplete}&sessionId={sessionId}",
             arguments = listOf(
                 navArgument("actualSeconds") { type = NavType.IntType; defaultValue = 0 },
                 navArgument("taskName") { type = NavType.StringType; defaultValue = "本次专注" },
                 navArgument("conversationCount") { type = NavType.IntType; defaultValue = 0 },
-                navArgument("aiSummary") { type = NavType.StringType; defaultValue = "你完成了这段专注。" },
-                navArgument("observationSummary") { type = NavType.StringType; defaultValue = "你的学习状态整体稳定。" },
                 navArgument("taskId") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("nextStepTitle") { type = NavType.StringType; nullable = true; defaultValue = null },
                 navArgument("planComplete") { type = NavType.BoolType; defaultValue = false },
+                navArgument("sessionId") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { backStackEntry ->
+            val completedRecords by modules.focus.records.collectAsStateWithLifecycle()
+            val completedSessionId = backStackEntry.arguments?.getString("sessionId")
+            LaunchedEffect(completedSessionId) { modules.focus.refreshHistoryAndGoal() }
             val returnToFocusHome = {
                 navController.navigate("focus") {
                     // Remove the original home entry too.  It may otherwise restore its
@@ -682,15 +752,15 @@ fun AppNavHost(
                 }
             }
             FocusSummaryScreen(
+                selfReport = completedRecords.firstOrNull { it.sourceId == completedSessionId }?.selfReport,
                 actualSeconds = backStackEntry.arguments?.getInt("actualSeconds") ?: 0,
                 taskName = backStackEntry.arguments?.getString("taskName") ?: "本次专注",
                 conversationCount = backStackEntry.arguments?.getInt("conversationCount") ?: 0,
-                aiSummary = backStackEntry.arguments?.getString("aiSummary") ?: "你完成了这段专注。",
-                observationSummary = backStackEntry.arguments?.getString("observationSummary") ?: "你的学习状态整体稳定。",
                 nextStepTitle = backStackEntry.arguments?.getString("nextStepTitle")?.takeIf { it.isNotBlank() },
                 planComplete = backStackEntry.arguments?.getBoolean("planComplete") ?: false,
                 onReturnHome = returnToFocusHome,
                 onStartNext = startNextStep,
+                onOpenHistory = { go("focus_history") },
             )
         }
 

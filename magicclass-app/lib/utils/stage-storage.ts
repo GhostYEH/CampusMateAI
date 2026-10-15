@@ -129,6 +129,54 @@ function stampScene(stageId: string, scene: Scene, index: number, now: number): 
   };
 }
 
+/**
+ * Convert the short-lived legacy `text` action into the current speech action.
+ *
+ * A few generated classrooms were persisted before `text` was removed from
+ * the action contract.  Those documents can still be read from IndexedDB,
+ * but the current document validator rejects them on the next save.  Keep the
+ * migration at the storage boundary so old local data cannot block the app.
+ */
+function normalizeLegacySceneActions(scenes: Scene[]): Scene[] {
+  let converted = 0;
+  let dropped = 0;
+  const normalized = scenes.map((scene) => {
+    if (
+      !scene.actions?.some((action) => (action as unknown as { type?: unknown }).type === 'text')
+    ) {
+      return scene;
+    }
+
+    const actions = scene.actions.flatMap((action) => {
+      const raw = action as unknown as Record<string, unknown>;
+      if (raw.type !== 'text') return [action];
+
+      const text = [raw.text, raw.content, raw.value].find(
+        (value): value is string => typeof value === 'string',
+      );
+      if (text === undefined) {
+        dropped += 1;
+        return [];
+      }
+
+      const { content: _content, value: _value, ...rest } = raw;
+      converted += 1;
+      return [
+        { ...rest, type: 'speech', text } as unknown as NonNullable<Scene['actions']>[number],
+      ];
+    });
+
+    return { ...scene, actions };
+  });
+
+  if (converted > 0 || dropped > 0) {
+    log.warn(
+      `Migrated legacy scene actions: ${converted} text action(s) converted, ${dropped} dropped`,
+    );
+  }
+  return normalized;
+}
+
 function documentSnapshot(
   stageId: string,
   data: StageStoreData,
@@ -143,7 +191,9 @@ function documentSnapshot(
     };
   return {
     stage: stampStage(stageId, data.stage, now),
-    scenes: data.scenes.map((scene, index) => stampScene(stageId, scene, index, now)),
+    scenes: normalizeLegacySceneActions(
+      data.scenes.map((scene, index) => stampScene(stageId, scene, index, now)),
+    ),
     outline: {
       ...outline,
       createdAt: existingOutline?.createdAt ?? outline.createdAt,
@@ -490,7 +540,7 @@ export async function loadStageData(stageId: string): Promise<StageStoreData | n
 
     return {
       stage: document.stage,
-      scenes: document.scenes,
+      scenes: normalizeLegacySceneActions(document.scenes),
       currentSceneId,
       chats,
       chatSnapshot,

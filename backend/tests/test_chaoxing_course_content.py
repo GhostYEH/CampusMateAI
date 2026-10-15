@@ -13,6 +13,49 @@ from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingParser
 from app.services.chaoxing.resource_proxy import ChaoxingResourceProxy, CourseResourceProxyError
 
 
+def test_independent_course_data_parser_reads_files_and_empty_state():
+    html = '''<div class="dataBody">
+      <div class="dataBody_td" id="71" dataname="Lecture.pdf" type="pdf" t="0">
+        <a href="https://mooc1.chaoxing.com/coursedata/downloadData?dataId=71&amp;courseId=12">下载</a>
+      </div>
+      <div class="dataBody_td" id="72" dataname="Notes.docx" type="docx" t="0">
+        <a href="https://mooc1.chaoxing.com/coursedata/downloadData?dataId=72">下载</a>
+      </div>
+    </div>'''
+    parsed = ChaoxingParser.parse_course_data_list(html)
+    assert parsed["status"] == "complete"
+    assert [item["external_id"] for item in parsed["items"]] == ["course-data-71", "course-data-72"]
+    assert all(item["kind"] == "document" for item in parsed["items"])
+    assert parsed["items"][0]["source_url"].endswith("dataId=71&courseId=12")
+    assert ChaoxingParser.parse_course_data_list('<div class="NoResult"></div>')["items"] == []
+    assert ChaoxingParser.parse_course_data_list("<html>login</html>")["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_empty_chapter_refresh_preserves_independent_material(db: Database):
+    from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
+
+    course = _course(db, "user1", "11_22")
+    repo = CourseContentRepository(db)
+    repo.upsert_item(user_id="user1", course_id=course.id, kind="document",
+                     external_id="course-data-71", title="Lecture.pdf")
+    container = MagicMock()
+    container.course_repository.get_course.return_value = course
+    container.chaoxing_repository.get_credentials.return_value = {"cookie": "test"}
+    container.course_content_repository = repo
+    client = MagicMock()
+    client.client.aclose = AsyncMock()
+    client.get_course_chapters = AsyncMock(return_value={
+        "status": "complete", "items": [], "error": None,
+    })
+    with patch("app.services.chaoxing.course_content_sync.ChaoxingClient", return_value=client):
+        await ChaoxingCourseContentSyncService(container).sync_course(
+            user_id="user1", course_id=course.id, sections=["chapters"])
+    items = repo.list_items(user_id="user1", course_id=course.id, kind="document")
+    assert len(items) == 1
+    assert items[0].external_id == "course-data-71"
+
+
 @pytest.fixture
 def db() -> Database:
     database = Database(None)

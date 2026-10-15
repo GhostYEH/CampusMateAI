@@ -309,3 +309,9 @@ Token 有效期 120 秒，60 秒后通过同一 rtc-token 接口续期并调用 
 | 设备应用 | 匿名创建绑定 → 独立 poll token 领取设备凭据 → heartbeat → config → 创建专注会话 → 按需暂停/恢复、上传事件、连接语音 → finish。会话操作保存原 Idempotency-Key 和请求；事件保存原 event_id 和完整内容，收到 accepted/duplicate 确认后才清理本地队列。 |
 
 设备语音入口需要 WebSocket Authorization 请求头，适用于支持自定义握手头的设备网络库。浏览器原生 WebSocket 无法设置该头，Web 页面继续使用[用户语音协议](response-contracts.md#voice)。设备语音创建/连接须落到同一后端进程；创建幂等状态不会跨重启保留。新增接口尚无各端适配验收，接入后需独立验证用户交互、网络重试和目标平台流程。
+
+## 自主选题课堂接入
+
+学生登录后读取 `/self-classroom/status` 与 `/self-classroom`，可先用 multipart 的 file 和 Idempotency-Key 上传到 `/self-classroom/materials`，保留返回的资料 ID 与提取状态。主题不能为空；`POST /self-classroom/generate` 发送 learning_objective 和本人已提取的 selected_material_ids，收到202后按 poll_interval_ms 轮询 `/self-classroom/jobs/{session_id}`，终态停止。成功但 url 为空时显示不可打开原因，不拼接或猜测播放地址。数据归属当前学生的 __self_study__，不需要课程选课，也不可复用其他课程或其他账号的资料。新增接口的完整参数与异常见[课堂模块](14-magicclass.md#self-classroom)。
+
+课程列表 CourseOut 新增 starts_at/ends_at（可空时间字符串），个人待办 PersonalTaskOut 新增 remote_submitted_at（可空远端提交时间）。客户端应允许 null；展示已提交作业时可用该字段，缺失则说明时间未获取，不能用 completed_at 冒充远端精确提交时间。Android 已有字段/接口适配源码，Web 现有作业讲解链路保持兼容；HarmonyOS、微信小程序未接入自主选题，跨端构建和真机交互未在本次验证。

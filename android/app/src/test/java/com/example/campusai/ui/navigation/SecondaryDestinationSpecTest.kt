@@ -20,12 +20,22 @@ class SecondaryDestinationSpecTest {
     @Test
     fun rootRouteOmitsSecondaryChrome() {
         assertNull(secondaryDestinationSpec("home"))
+        assertNull(secondaryDestinationSpec("courses"))
+        assertNull(secondaryDestinationSpec("focus"))
     }
 
     @Test
     fun focusSessionOwnsImmersiveChrome() {
         assertNull(secondaryDestinationSpec("focus_session"))
         assertEquals(0.dp, navigationDestinationLayout("focus_session", 24.dp).contentTopPadding)
+    }
+
+    @Test
+    fun focusFlowOwnsItsHeaderAndFullBleedBackground() {
+        listOf("focus", "focus_summary", "focus_history").forEach { route ->
+            assertNull(secondaryDestinationSpec(route))
+            assertEquals(0.dp, navigationDestinationLayout(route, 24.dp).contentTopPadding)
+        }
     }
 
     @Test
@@ -37,8 +47,15 @@ class SecondaryDestinationSpecTest {
     }
 
     @Test
+    fun taskDetailKeepsItsHeaderInsideTheJournalPage() {
+        assertEquals(24.dp, navigationDestinationLayout("task_detail/{taskId}", 24.dp).contentTopPadding)
+        assertEquals("待办详情", secondaryDestinationSpec("task_detail/{taskId}")?.title)
+    }
+
+    @Test
     fun rootPagesWithoutLocalStatusInsetReserveTheStatusBarInNavHostContent() {
-        assertEquals(24.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
+        assertEquals(0.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
+        assertEquals(0.dp, navigationDestinationLayout("focus", 24.dp).contentTopPadding)
         assertEquals(24.dp, navigationDestinationLayout("tasks", 24.dp).contentTopPadding)
         assertEquals(24.dp, navigationDestinationLayout("counselor", 24.dp).contentTopPadding)
         assertEquals(0.dp, navigationDestinationLayout("home", 24.dp).contentTopPadding)
@@ -80,7 +97,6 @@ class SecondaryDestinationSpecTest {
             "exams",
             "exam_detail/{examId}",
             "exam_edit/{examId}",
-            "focus",
         ).forEach { route ->
             assertFalse("Route $route needs a fixed navigation title", secondaryDestinationSpec(route)?.title.isNullOrBlank())
         }

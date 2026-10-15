@@ -129,7 +129,7 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 {"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":false,"current":false,"can_generate":false,"fetched_at":null,"questions":[]}
 ```
 
-已提交作业列表沿用 `GET /tasks` 的 `Page<PersonalTaskOut>`，按 status=completed 分页，客户端再筛选 source=chaoxing；它没有专用的学习通列表响应。completed_at 是本站完成记录时间，实际远端提交时间和成绩虽可内部保存，但目前不在 PersonalTaskOut 中公开。不得按数据库内部字段自行扩展返回承诺。
+已提交作业列表沿用 `GET /tasks` 的 `Page<PersonalTaskOut>`，按 status=completed 分页，客户端再筛选 source=chaoxing；它没有专用的学习通列表响应。completed_at 是本站完成记录时间，`remote_submitted_at` 返回远端明确提供的提交时间，未获取时为 null；成绩字段仍不公开。不得将 completed_at 作为真实提交时间。
 
 课堂 POST 的 queued/running job 需要继续用课程 job GET 查询，重试接口成功返回的是 job 本身，不能误取 `response.job`；只有 completed 才表示课件可以进入。页面停止查看不会取消服务端任务，重复课堂 POST 会按同份需求恢复任务，失败/取消仍需显式调用 retry。请求示例和恢复状态表见[一键讲解流程](09-integrations.md#assignment-review-flow)。
 
@@ -447,3 +447,5 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 WS /api/v1/devices/me/voice-sessions/{voice_id}/ws 使用 Authorization 设备 bearer 请求头。PCM 输入16kHz/单声道/16bit，输出24kHz/单声道/16bit；文本事件和命令沿用用户语音协议，provider_event 仅透出事件类型名，不透出上游凭据。握手无权关闭1008；活连接每帧和约一秒周期核验设备、账号及专注状态，撤销或会话结束后关闭。上游不可用返回 error 事件并退出。创建会话和重试记录是进程内短时状态，未连接5分钟过期、连接最长4小时，重启后须重新创建。设备应用须支持握手请求头。
 
 学习偏好配置未保存时 configured=false/version=0/updated_at=null，默认值不代表观测到的偏好。更新带 expected_version+idempotency_key，原请求重放返回历史操作响应；409版本冲突应重新读取并由用户处理，不能强制覆盖。计划预算受明确容量进一步限制，配置变化使未执行旧计划失效。接口行为与各端未适配情况见[学习状态协议](11-learner.md)。
+
+自主选题课堂使用既有 MagicClassStatusOut/GenerateOut/SessionOut/ClassroomsOut 和 MaterialOut，不引入独立动态字典。course_id 固定为服务端隔离范围 __self_study__；本人课程资料的提取状态、ID 及文本授权仍由受管资料服务核验。CourseOut 的 starts_at/ends_at 和 PersonalTaskOut 的 remote_submitted_at 均可空，字段含义见[字段字典](schemas.md)。

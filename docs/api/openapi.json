@@ -24601,6 +24601,208 @@
           }
         }
       }
+    },
+    "/api/v1/self-classroom/status": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "Self Classroom Status",
+        "operationId": "self_classroom_status_api_v1_self_classroom_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicClassStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/self-classroom/generate": {
+      "post": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "Generate Self Classroom",
+        "operationId": "generate_self_classroom_api_v1_self_classroom_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MagicClassGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicClassGenerateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/self-classroom/materials": {
+      "post": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "Upload Self Classroom Material",
+        "operationId": "upload_self_classroom_material_api_v1_self_classroom_materials_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_self_classroom_material_api_v1_self_classroom_materials_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-classroom/jobs/{session_id}": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "Self Classroom Job",
+        "operationId": "self_classroom_job_api_v1_self_classroom_jobs__session_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicClassSessionOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-classroom": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "List Self Classrooms",
+        "operationId": "list_self_classrooms_api_v1_self_classroom_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicClassClassroomsOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -29198,6 +29400,28 @@
               }
             ],
             "title": "Owner User Id"
+          },
+          "starts_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts At"
+          },
+          "ends_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ends At"
           }
         },
         "type": "object",
@@ -39384,6 +39608,17 @@
               }
             ],
             "title": "Deleted At"
+          },
+          "remote_submitted_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remote Submitted At"
           }
         },
         "type": "object",
@@ -47078,6 +47313,20 @@
           "title"
         ],
         "title": "NativeRoomIn"
+      },
+      "Body_upload_self_classroom_material_api_v1_self_classroom_materials_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_self_classroom_material_api_v1_self_classroom_materials_post"
       }
     },
     "securitySchemes": {

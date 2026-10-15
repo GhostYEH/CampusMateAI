@@ -1850,6 +1850,8 @@ AI 导员上下文中的"最近待办"条目 — 仅表示 PersonalTask。
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `owner_user_id` | string / null | 否 | — | — |
+| `starts_at` | string / null | 否 | — | 课程开始时间 |
+| `ends_at` | string / null | 否 | — | 课程结束时间 |
 
 <a id="schema-courseparticipationvalue"></a>
 ## CourseParticipationValue
@@ -5206,7 +5208,7 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 `status` 取值: pending / completed / deleted。
 `materials` 解析为字符串数组返回(后端以 JSON 字符串存储)。
 
-学习通列表使用 `source="chaoxing"`，completed 是最近同步的平台已提交/完成观测；`id` 用于作业讲解路径，`external_id` 是远端编号，两者不可互换。`completed_at` 是本站记录的完成时间，`last_synced_at` 是最近同步时间；本响应不公开数据库中的 remote_submitted_at/score/score_max。题目快照的 `current/can_generate/fetched_at/questions` 属于[单独的内容接口](09-integrations.md#assignment-review-flow)，不在本模型中。
+学习通列表使用 `source="chaoxing"`，completed 是最近同步的平台已提交/完成观测；`id` 用于作业讲解路径，`external_id` 是远端编号，两者不可互换。`completed_at` 是本站记录的完成时间，`last_synced_at` 是最近同步时间；`remote_submitted_at` 是可空的远端提交时间，缺失时为 null；本响应不公开 score/score_max。题目快照的 `current/can_generate/fetched_at/questions` 属于[单独的内容接口](09-integrations.md#assignment-review-flow)，不在本模型中。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -5235,6 +5237,7 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `completed_at` | string / null | 否 | — | — |
 | `deleted_at` | string / null | 否 | — | — |
+| `remote_submitted_at` | string / null | 否 | — | 远端明确提供的提交时间；未知为 null |
 
 <a id="schema-personaltaskupdate"></a>
 ## PersonalTaskUpdate
@@ -7610,3 +7613,12 @@ RTC 配置状态，不代表云服务和设备网络已验收。
 | `token` | string | 是 | — | 120 秒有效的 RTC Token |
 | `expires_at` | integer | 是 | — | UTC Unix 秒 |
 | `refresh_after_seconds` | integer | 是 | — | 当前为 60；再次请求相同接口并更新 SDK Token |
+
+<a id="schema-body_upload_self_classroom_material_api_v1_self_classroom_materials_post"></a>
+## Body_upload_self_classroom_material_api_v1_self_classroom_materials_post
+
+自定义主题课堂 multipart/form-data 上传请求。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `file` | string (binary) | 是 | — | 最大 2 MiB；文件格式和提取规则见课堂模块 |

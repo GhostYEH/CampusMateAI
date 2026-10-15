@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- One open arch, with a path leading through it. All artwork stays inside the adaptive safe zone. -->
+    <path
+        android:fillColor="#F2B84D"
+        android:pathData="M32,77L32,53C32,39 41,29 54,22C67,29 76,39 76,53L76,77L68,77L68,53C68,44 62,37 54,33C46,37 40,44 40,53L40,77Z" />
+    <path
+        android:strokeColor="#FFF0CE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M57,54C46,56 46,59 56,62C65,65 60,68 52,73" />
+    <path
+        android:fillColor="#FFF0CE"
+        android:pathData="M51,71C43,76 40,81 38,87L70,87C67,82 61,76 53,72Z" />
+</vector>

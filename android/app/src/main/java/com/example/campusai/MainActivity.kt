@@ -10,7 +10,36 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.app.NotificationManagerCompat
@@ -21,14 +50,17 @@ import com.example.campusai.data.repository.ModuleRepositories
 import com.example.campusai.ui.navigation.AppNavHost
 import com.example.campusai.ui.screens.login.LoginScreen
 import com.example.campusai.ui.screens.shell.AppShell
+import com.example.campusai.ui.screens.tasks.isCurrentSemesterAssignment
 import com.example.campusai.ui.system.systemBarPolicy
 import com.example.campusai.ui.theme.CampusAITheme
+import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.glass.CampusGlassScene
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,6 +91,11 @@ class MainActivity : ComponentActivity() {
             val session by repository.session.collectAsStateWithLifecycle()
             val darkMode by repository.darkMode.collectAsStateWithLifecycle()
             val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+            var showLaunchArtwork by rememberSaveable { mutableStateOf(true) }
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(1200)
+                showLaunchArtwork = false
+            }
             val view = LocalView.current
             SideEffect {
                 val policy = systemBarPolicy(
@@ -67,13 +104,27 @@ class MainActivity : ComponentActivity() {
                     authenticated = session != null,
                 )
                 WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = policy.darkStatusBarIcons
-                    isAppearanceLightNavigationBars = policy.darkNavigationBarIcons
+                    isAppearanceLightStatusBars = !showLaunchArtwork && policy.darkStatusBarIcons
+                    isAppearanceLightNavigationBars = !showLaunchArtwork && policy.darkNavigationBarIcons
                 }
             }
             CampusAITheme(darkTheme = darkMode, reduceMotion = reduceMotion) {
-                CampusGlassScene(darkMode = darkMode) {
-                    CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                Box(Modifier.fillMaxSize()) {
+                    CampusGlassScene(darkMode = darkMode) {
+                        CampusAIApp(repository, moduleRepositories, notificationInboxRepository)
+                    }
+                    AnimatedVisibility(
+                        visible = showLaunchArtwork,
+                        enter = EnterTransition.None,
+                        exit = if (reduceMotion) ExitTransition.None else fadeOut(tween(280)),
+                    ) {
+                        Image(
+                            painter = painterResource(R.drawable.splash_twilight_v1),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -88,8 +139,22 @@ fun CampusAIApp(
     notificationInboxRepository: com.example.campusai.data.repository.NotificationInboxRepository,
 ) {
     val session by repository.session.collectAsStateWithLifecycle()
+    val reduceMotion = LocalReduceMotion.current
     val navController = rememberNavController()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var appEntry by remember { mutableIntStateOf(1) }
+    var showTaskReminder by remember { mutableStateOf(false) }
+    var reminderDismissed by remember(appEntry) { mutableStateOf(false) }
+    var reminderDragY by remember { mutableFloatStateOf(0f) }
+    var reminderCount by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) appEntry++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     if (session == null) {
         LoginScreen(
@@ -97,19 +162,33 @@ fun CampusAIApp(
             onLoginSuccess = { }
         )
     } else {
+        LaunchedEffect(session?.accountId, appEntry) {
+            repository.refreshCourses()
+            repository.refreshTasks()
+            reminderCount = repository.tasks.value.count {
+                !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
+            }
+            showTaskReminder = reminderCount > 0 && !reminderDismissed
+        }
+        LaunchedEffect(showTaskReminder, appEntry) {
+            if (showTaskReminder) {
+                kotlinx.coroutines.delay(6000)
+                showTaskReminder = false
+            }
+        }
         // 应用启动时，自动同步一次学习通任务
         LaunchedEffect(session) {
             val syncStateStore = com.example.campusai.workers.ChaoxingSyncStateStore(context)
             if (syncStateStore.isConnected.first()) {
                 val syncResult = repository.syncChaoxing()
                 if (syncResult.first) {
-                    coroutineScope {
-                        awaitAll(
-                            async { repository.refreshCourses() },
-                            async { repository.refreshTasks() },
-                            async { repository.refreshNotices() },
-                        )
+                    repository.refreshCourses()
+                    repository.refreshTasks()
+                    repository.refreshNotices()
+                    reminderCount = repository.tasks.value.count {
+                        !it.done && it.isCurrentSemesterAssignment(repository.courses.value, java.time.Instant.now())
                     }
+                    if (reminderCount > 0 && !reminderDismissed) showTaskReminder = true
                 } else if (syncResult.second == "reauth_required" || syncResult.second == "verification_required") {
                     syncStateStore.setReauthRequired(true)
                 }
@@ -122,16 +201,59 @@ fun CampusAIApp(
             }
         }
 
-        AppShell(
-            navController = navController,
-            repository = repository
-        ) {
-            AppNavHost(
-                navController = navController,
-                repository = repository,
-                modules = modules,
-                notificationInboxRepository = notificationInboxRepository,
-            )
+        Box(Modifier.fillMaxSize()) {
+            AppShell(navController = navController, repository = repository) {
+                AppNavHost(
+                    navController = navController,
+                    repository = repository,
+                    modules = modules,
+                    notificationInboxRepository = notificationInboxRepository,
+                )
+            }
+            AnimatedVisibility(
+                visible = showTaskReminder,
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding(),
+                enter = if (reduceMotion) EnterTransition.None else slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = if (reduceMotion) ExitTransition.None else slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            ) {
+                Surface(
+                    onClick = {
+                        reminderDismissed = true
+                        showTaskReminder = false
+                        navController.navigate("tasks") { launchSingleTop = true }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .offset { IntOffset(0, reminderDragY.roundToInt()) }
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { change, dragAmount ->
+                                    reminderDragY = (reminderDragY + dragAmount).coerceAtMost(0f)
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    if (reminderDragY < -48.dp.toPx()) {
+                                        reminderDismissed = true
+                                        showTaskReminder = false
+                                    }
+                                    reminderDragY = 0f
+                                },
+                                onDragCancel = { reminderDragY = 0f },
+                            )
+                        },
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color(0xFFF9F2E6),
+                    shadowElevation = 10.dp,
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("课程待办提醒", color = Color(0xFF203B32), fontWeight = FontWeight.Bold)
+                            Text("还有 $reminderCount 项本学期作业待处理 · 点击查看",
+                                color = Color(0xFF4C655A), fontSize = 13.sp)
+                        }
+                        Text("查看", color = Color(0xFF295643), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

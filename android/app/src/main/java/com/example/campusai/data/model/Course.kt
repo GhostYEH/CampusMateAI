@@ -10,5 +10,8 @@ data class Course(
     val provider: String? = null,
     val external_id: String? = null,
     val source_url: String? = null,
-    val last_synced_at: String? = null
+    val last_synced_at: String? = null,
+    val semester: String? = null,
+    val startsAt: String? = null,
+    val endsAt: String? = null,
 )

@@ -180,6 +180,62 @@ async def test_expired_cache_refetches_and_preserves_files_referenced_elsewhere(
 
 
 @pytest.mark.asyncio
+async def test_standalone_course_material_download_keeps_referer_and_cache_identity(
+    cached_resource, tmp_path, monkeypatch
+):
+    repo, item, fields, old_file = cached_resource
+    fields.update(
+        remote_object_id=None,
+        source_url="https://mooc1.chaoxing.com/coursedata/downloadData?dataId=71",
+    )
+    updated = repo.upsert_item(
+        user_id=item.user_id,
+        course_id=item.course_id,
+        kind=item.kind,
+        external_id=item.external_id,
+        title=item.title,
+        **fields,
+    )
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        assert request.headers["referer"] == "https://pan-yz.chaoxing.com/"
+        if request.url.host == "mooc1.chaoxing.com":
+            return httpx.Response(
+                302, headers={"location": "https://pan-yz.chaoxing.com/file.pdf"}
+            )
+        return httpx.Response(
+            200, content=b"course notes", headers={"content-type": "application/pdf"}
+        )
+
+    original_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        resource_proxy.httpx,
+        "AsyncClient",
+        lambda **kwargs: original_client(
+            transport=httpx.MockTransport(respond), **kwargs
+        ),
+    )
+    proxy = resource_proxy.ChaoxingResourceProxy(
+        settings=SimpleNamespace(
+            chaoxing_cache_dir=tmp_path,
+            chaoxing_cache_file_max_mb=1,
+            chaoxing_cache_max_mb=1,
+        ),
+        repository=repo,
+        credentials={},
+    )
+    downloaded, _, _ = await proxy.get_file(item=updated)
+    assert downloaded.read_bytes() == b"course notes"
+    assert len(requests) == 2
+    assert not old_file.exists()
+    assert repo.list_cached_item_ids(item_ids=[item.id], user_id=item.user_id) == {item.id}
+    await proxy.get_file(item=updated)
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_replacement_during_download_retries_and_publishes_only_latest_identity(
     cached_resource, tmp_path, monkeypatch
 ):

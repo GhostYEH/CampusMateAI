@@ -60,7 +60,7 @@
 | --- | --- | --- |
 | 读取已提交作业 | `GET /api/v1/tasks?status=completed&page=1&page_size=200` | 接口没有 source 筛选参数；读取每页 items，再保留 source=chaoxing、status=completed 且 deleted_at=null 的作业。total/has_more 是所有符合 completed 筛选的个人待办统计，不能当作学习通作业数量。 |
 | 读取剩余页 | 按返回的 has_more 递增 page，直到 false | 后续页即使没有学习通作业也应继续；不要仅筛选第一页。服务端按 deadline 升序、无截止时间置后，再按 created_at 降序；它不是提交时间排序。 |
-| 展示作业 | id/title/source_name/course_id/completed_at/last_synced_at | id 是后续路径中的 task_id，external_id 只是远端引用。completed_at 是本站确认完成的时间，不能冒充学习通精确提交时间；当前 PersonalTaskOut 不返回 remote_submitted_at 或成绩字段。 |
+| 展示作业 | id/title/source_name/course_id/completed_at/remote_submitted_at/last_synced_at | id 是后续路径中的 task_id，external_id 只是远端引用。completed_at 是本站确认完成的时间，不能冒充学习通精确提交时间；`remote_submitted_at` 是可空的远端提交时间，未观测到时为 null；成绩字段仍不返回。 |
 | 可选查看题目 | `GET /api/v1/chaoxing/assignments/{task_id}/content` | 只读已同步快照，不会隐式触发学习通网络访问；不必为列表中每份作业预请求题目。 |
 | 点击进入讲解 | `POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 无需请求体或客户端幂等键；仅 completed 且题目状态匹配的本人作业允许生成。保留返回 course_id/workspace_id/job.id，按原始任务继续查询。 |
 | 补同步题目 | POST 返回 409 且 message=assignment_content_not_current 时，`POST /api/v1/chaoxing/sync` 后重试原请求 | Web 自动尝试一次；同步可能部分成功或返回 sync_in_progress，再次失败应提示用户，不无限同步。复习接口本身不会替客户端同步。 |
@@ -1675,3 +1675,5 @@ Web 封装：当前无封装；按本节后端契约调用。
 学校 URL 在首次请求及每个重定向处校验。建立 TCP 连接时再次解析并校验全部 DNS 地址，实际连接固定为此次校验通过的 IP；保留原域名的 HTTP Host、TLS SNI 和证书检查，不能通过二次 DNS 解析切换到私网。任一 DNS 地址为 loopback、链路本地、保留地址或默认禁止的私网地址时拒绝连接；解析无有效地址以网络错误处理。已建立的连接池按原 Origin 复用，备用合法 IP 使用同一有界连接超时预算。学校客户端不使用进程的 HTTP(S) 代理变量。
 
 现有仅非生产环境的 `EDU_ALLOW_INSECURE_SSL` 开关仍按原契约控制 TLS 兼容回退，不放松 IP 检查。Web、Android、HarmonyOS、微信小程序请求格式不变，无需端侧适配此连接层修复。
+
+课程资料同步同时扫描独立“资料”页和章节资源；资料文件夹最多递归3层，收集最多300项。一个来源失败时保留另一个来源已取得的资源并标记 partial，不能把部分同步当作完整覆盖。安全的 coursedata/downloadData 链接即使没有 remote_object_id 也可通过本人课程文件代理下载，仍遵循资源域名、归属、缓存一致性与大小限制。

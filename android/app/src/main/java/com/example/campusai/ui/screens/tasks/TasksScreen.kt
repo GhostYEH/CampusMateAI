@@ -1,7 +1,6 @@
 package com.example.campusai.ui.screens.tasks
 
 import com.example.campusai.ui.components.GlassButton as Button
-import com.example.campusai.ui.components.GlassExtendedFloatingActionButton as ExtendedFloatingActionButton
 import com.example.campusai.ui.components.GlassIconButton as IconButton
 import com.example.campusai.ui.components.GlassTextButton as TextButton
 
@@ -11,20 +10,27 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -32,11 +38,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.model.Task
+import com.example.campusai.data.model.Course
 import com.example.campusai.data.repository.AppRepository
+import com.example.campusai.data.repository.courseDateInstant
+import com.example.campusai.data.repository.courseDeadlineInstant
+import com.example.campusai.data.repository.isCurrentSemesterAt
 import com.example.campusai.ui.screens.shell.floatingDockContentBottomPadding
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.time.LocalDate
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 
 private val ScreenLavender: Color @Composable get() = Background
@@ -48,67 +60,83 @@ private val TaskBlue: Color @Composable get() = Primary
 @Composable
 fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
     val tasks by repository.tasks.collectAsStateWithLifecycle()
+    val courseCatalog by repository.courses.collectAsStateWithLifecycle()
     val backendOnline by repository.backendOnline.collectAsStateWithLifecycle()
     val taskError by repository.taskError.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var filter by remember { mutableStateOf("全部") }
-    var search by remember { mutableStateOf("") }
-    var showAddSheet by remember { mutableStateOf(false) }
-    var showImportDialog by remember { mutableStateOf(false) }
-    var deletingTask by remember { mutableStateOf<Task?>(null) }
+    val reduceMotion by repository.reduceMotion.collectAsStateWithLifecycle()
+    var filter by rememberSaveable { mutableStateOf("待完成") }
+    var selectedCourse by rememberSaveable { mutableStateOf<String?>(null) }
+    var search by rememberSaveable { mutableStateOf("") }
+    var expandedCourses by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val listState = rememberLazyListState()
+    var showTaskEditor by remember { mutableStateOf(false) }
+    var showCourseFilter by remember { mutableStateOf(false) }
     val importSnackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(Unit) { repository.refreshTasks() }
-    val pending = remember(tasks) { tasks.filterNot(Task::done) }
-    val today = remember(pending) { pending.filter { it.due.contains("今天") || it.due.contains(LocalDate.now().toString()) } }
-    val nearDeadline = remember(pending) { pending.filter { task ->
-        task.due.contains("今天") || task.due.contains("明天") || task.due.contains("截止")
-    } }
-    val courses = remember(tasks) { tasks.map(Task::course).filter { it.isNotBlank() }.distinct() }
-    val visibleTasks = remember(tasks, filter, search) {
-        tasks.filter { task ->
+    LaunchedEffect(Unit) { repository.refreshCourses(); repository.refreshTasks() }
+    val now = Instant.now()
+    val currentAssignments = remember(tasks, courseCatalog, now.epochSecond / 60) {
+        tasks.filter { it.isCurrentSemesterAssignment(courseCatalog, now) }
+    }
+    val completedAssignments = remember(tasks, courseCatalog, now.epochSecond / 60) {
+        tasks.filter { it.done && it.isCurrentSemesterCourseTask(courseCatalog, now) }
+    }
+    val personalTasks = remember(tasks) { tasks.filterNot(Task::isCourseAssignment) }
+    val pending = remember(currentAssignments, personalTasks) {
+        currentAssignments.filterNot(Task::done) + personalTasks.filterNot(Task::done)
+    }
+    val allTasks = remember(currentAssignments, completedAssignments, personalTasks) {
+        (currentAssignments + completedAssignments + personalTasks).distinctBy(Task::id)
+    }
+    val courseFilters = remember(currentAssignments, completedAssignments) {
+        (currentAssignments + completedAssignments)
+            .map(Task::course).filter(String::isNotBlank).distinct().sorted()
+    }
+    val visibleTasks = remember(tasks, courseCatalog, filter, selectedCourse, search, now.epochSecond / 60) {
+        val relevant = when (filter) {
+            "全部" -> allTasks
+            "个人事务" -> personalTasks
+            "已完成" -> allTasks.filter(Task::done)
+            else -> pending
+        }
+        relevant.filter { task ->
             val matchesFilter = when (filter) {
-                "今日" -> task in today
-                "课程" -> task.course.isNotBlank()
-                "个人事务" -> task.course.contains("个人")
-                "已完成" -> task.done
+                "快截止" -> task.dueInstant()?.isBefore(now.plusSeconds(48 * 3600)) == true
                 else -> true
             }
-            matchesFilter && (search.isBlank() || task.title.contains(search, true) || task.course.contains(search, true))
-        }
+            matchesFilter && (filter == "个人事务" || selectedCourse == null || task.course == selectedCourse) &&
+                (search.isBlank() || task.title.contains(search, true) || task.course.contains(search, true))
+        }.sortedWith(compareBy<Task> { filter == "全部" && it.done }.thenBy { it.dueInstant() ?: Instant.MAX })
     }
-    val progress = if (tasks.isEmpty()) 0f else tasks.count(Task::done).toFloat() / tasks.size
-
-    Box(Modifier.fillMaxSize().background(ScreenLavender)) {
+    val upcoming = visibleTasks.filter { !it.done }
+    val todayTasks = upcoming.filter { it.dueInstant()?.isBefore(now.plusSeconds(24 * 3600)) == true }
+    val weekTasks = upcoming.filter { it !in todayTasks && it.dueInstant()?.isBefore(now.plusSeconds(7 * 24 * 3600)) == true }
+    val laterTasks = upcoming.filter { it !in todayTasks && it !in weekTasks }
+    Box(Modifier.fillMaxSize()) {
+        JournalBackdrop(Modifier.fillMaxSize())
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().padding(start = 12.dp, end = 31.dp, top = 8.dp).journalBookPage(),
+            state = listState,
             contentPadding = PaddingValues(
-                start = 16.dp,
-                top = 0.dp,
-                end = 16.dp,
-                bottom = floatingDockContentBottomPadding(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ) + 86.dp,
+                start = 26.dp,
+                top = 9.dp,
+                end = 15.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 30.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    Column {
-                        Text("待办", color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 32.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text("把重要事情安排得更清楚", color = Muted, fontSize = 15.sp)
+                Row(Modifier.fillMaxWidth().heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onNavigate("home") }, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = JournalNight)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { showImportDialog = true }) { Icon(Icons.Default.UploadFile, "导入学习材料", tint = Primary) }
-                        Surface(shape = RoundedCornerShape(12.dp), color = Surface, shadowElevation = 2.dp) {
-                        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(9.dp).clip(CircleShape).background(if (backendOnline) TaskGreen else TaskOrange))
-                            Spacer(Modifier.width(7.dp))
-                            Text(if (backendOnline) "真实后端" else "等待后端", fontSize = 12.sp, color = TextPrimary)
-                        }
-                        }
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("待办手账", color = JournalNight, fontWeight = FontWeight.ExtraBold, fontSize = 25.sp)
+                        Text("${pending.size} 件待处理 · ${todayTasks.size} 件今天优先", color = JournalMuted, fontSize = 11.sp)
                     }
+                    PaperPlusButton(onClick = { showTaskEditor = true })
                 }
             }
             taskError?.let { message ->
@@ -123,116 +151,117 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
                     }
                 }
             }
-            item { TaskOverview(today.size, nearDeadline.size, tasks.count(Task::done), tasks.size, progress) }
-            item { TaskDateStrip(onCalendar = { onNavigate("task_calendar") }) }
             item {
-                Column(
-                    Modifier.clip(RoundedCornerShape(24.dp)).background(Surface).padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("CAMPUS / TASK JOURNAL     ·     ${filter}", color = JournalClay, fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                     OutlinedTextField(
                         value = search,
                         onValueChange = { search = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        placeholder = { Text("搜索任务 / 课程 / 关键词", color = Muted) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                        placeholder = { Text("搜索作业或课程", color = Muted) },
                         leadingIcon = { Icon(Icons.Default.Search, null, tint = Muted) },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Primary),
+                        shape = RoundedCornerShape(5.dp),
+                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = JournalBlue, focusedBorderColor = JournalClay,
+                            unfocusedContainerColor = Color(0x55FFFFFF), focusedContainerColor = Color(0x88FFFFFF)),
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        items(listOf("全部", "今日", "课程", "个人事务", "已完成")) { label ->
-                            FilterChip(
-                                selected = filter == label,
-                                onClick = { filter = label },
-                                label = { Text(label, fontSize = 13.sp) },
-                                shape = RoundedCornerShape(18.dp),
-                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = TaskBlue, selectedLabelColor = Color.White),
-                                border = FilterChipDefaults.filterChipBorder(borderColor = Line, selectedBorderColor = TaskBlue, enabled = true, selected = filter == label),
-                            )
+                    if (filter != "个人事务") {
+                        Row(Modifier.fillMaxWidth().clickable { showCourseFilter = true }.padding(vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Tune, null, tint = JournalBlue, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text(selectedCourse ?: "按课程筛选", color = JournalNight, fontSize = 12.sp, maxLines = 1,
+                                modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, null, tint = JournalMuted, modifier = Modifier.size(17.dp))
                         }
                     }
+                    HorizontalDivider(color = JournalBlue.copy(alpha = .38f))
                 }
-            }
-            item {
-                SmartFocusCard(
-                    task = visibleTasks.firstOrNull { !it.done },
-                    onFocus = { task -> onNavigate("focus?taskId=${Uri.encode(task.id)}") },
-                )
             }
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (filter == "全部") "今日重点" else filter, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, color = TextPrimary)
-                    Text("${visibleTasks.size} 项", color = Muted, fontSize = 13.sp)
+                    Text(if (filter == "待完成") "接下来要做" else filter,
+                        fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, color = JournalNight)
+                    Text("${visibleTasks.size} 项", color = JournalMuted, fontSize = 13.sp)
                 }
             }
             if (visibleTasks.isEmpty()) {
-                item { EmptyTasks(backendOnline, onRetry = { scope.launch { repository.refreshTasks() } }) }
+                item { EmptyTasks(backendOnline, filter, onRetry = { scope.launch { repository.refreshTasks() } }) }
             } else {
-                itemsIndexed(
-                    items = visibleTasks,
-                    key = { index, task -> task.listKey(index) },
-                ) { _, task ->
-                    DashboardTaskRow(
-                        task = task,
-                        onOpen = { onNavigate("task_detail/${Uri.encode(task.id)}") },
-                        onToggle = { scope.launch { repository.toggleTask(task.id) } },
-                        onDelete = { deletingTask = task },
-                    )
-                }
-            }
-            if (courses.isNotEmpty()) {
-                item {
-                    Column(Modifier.clip(RoundedCornerShape(24.dp)).background(Surface).padding(16.dp)) {
-                        Text("任务来源课程", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
-                        Spacer(Modifier.height(12.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(courses) { course ->
-                                Surface(color = PrimarySoft, shape = RoundedCornerShape(14.dp)) {
-                                    Text(course, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                }
+                val sections = if (filter == "已完成") listOf("已盖章" to visibleTasks)
+                    else listOf("今天优先" to todayTasks, "本周待办" to weekTasks, "之后处理" to laterTasks) +
+                        (if (filter == "全部" || filter == "个人事务") listOf("已完成" to visibleTasks.filter(Task::done)) else emptyList())
+                sections.filter { it.second.isNotEmpty() }.forEach { (label, group) ->
+                    item { Text("$label  /  ${group.size}", color = JournalClay, fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp, bottom = 1.dp)) }
+                    itemsIndexed(group.filterNot(Task::isCourseAssignment), key = { index, task -> task.listKey(index) }) { _, task ->
+                        DashboardTaskRow(task,
+                            onOpen = { onNavigate("task_detail/${Uri.encode(task.id)}") },
+                            onToggle = { scope.launch { repository.toggleTask(task.id) } },
+                            reduceMotion = reduceMotion)
+                    }
+                    group.filter(Task::isCourseAssignment).groupBy(Task::course).forEach { (course, courseTasks) ->
+                        val expanded = course in expandedCourses
+                        item(key = "course-heading|$label|$course") {
+                            Row(Modifier.fillMaxWidth().clickable {
+                                expandedCourses = if (course in expandedCourses) expandedCourses - course else expandedCourses + course
+                            }.padding(vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.MenuBook, null, tint = JournalBlue, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(7.dp))
+                                Text(course, color = JournalNight, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${courseTasks.size} 项", color = JournalMuted, fontSize = 11.sp)
+                                Icon(if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (expanded) "收起课程" else "展开课程", tint = JournalBlue)
                             }
+                        }
+                        if (expanded) itemsIndexed(courseTasks, key = { index, task -> task.listKey(index) }) { _, task ->
+                            DashboardTaskRow(task,
+                                onOpen = { onNavigate("task_detail/${Uri.encode(task.id)}") },
+                                onToggle = { scope.launch { repository.toggleTask(task.id) } },
+                                reduceMotion = reduceMotion)
                         }
                     }
                 }
             }
         }
 
-        ExtendedFloatingActionButton(
-            onClick = { showAddSheet = true },
-            icon = { Icon(Icons.Default.Add, null) },
-            text = { Text("新建待办", fontWeight = FontWeight.Bold) },
-            containerColor = TaskBlue,
-            contentColor = Color.White,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(
-                end = 20.dp,
-                bottom = floatingDockContentBottomPadding(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ) + 14.dp,
-            ),
-        )
+        Column(Modifier.align(Alignment.CenterEnd).statusBarsPadding(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            listOf("全部", "待完成", "已完成", "个人事务").forEach { label ->
+                val active = filter == label
+                val tabColor = when (label) {
+                    "待完成" -> JournalClay
+                    "已完成" -> JournalBlue
+                    "个人事务" -> Color(0xFF9B8064)
+                    else -> Color(0xFF61758A)
+                }
+                Box(Modifier.width(if (active) 33.dp else 28.dp).height(69.dp)
+                    .clip(RoundedCornerShape(topStart = 7.dp, bottomStart = 7.dp))
+                    .background(tabColor).clickable { filter = label; selectedCourse = null },
+                    contentAlignment = Alignment.Center) {
+                    Text(label.toList().joinToString("\n"), color = Color.White, fontSize = 10.sp,
+                        fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium, lineHeight = 11.sp)
+                }
+            }
+        }
+
         SnackbarHost(
             importSnackbar,
             Modifier.align(Alignment.BottomCenter).padding(
                 start = 16.dp,
                 end = 16.dp,
-                bottom = floatingDockContentBottomPadding(
-                    WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
-                ) + 76.dp,
+                bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 76.dp,
             ),
         )
     }
 
-    if (showAddSheet) AddTaskSheet(
-        onDismiss = { showAddSheet = false },
-        onAdd = { title, due -> scope.launch { repository.addTask(title, due); showAddSheet = false } },
-    )
-    if (showImportDialog) TaskImportDialog(
+    if (showTaskEditor) TaskImportDialog(
         repository = repository,
-        onDismiss = { showImportDialog = false },
+        onDismiss = { showTaskEditor = false },
         onImported = { createdCount, skippedExistingCount ->
-            showImportDialog = false
+            showTaskEditor = false
             val message = buildString {
                 append("已创建 $createdCount 项")
                 if (skippedExistingCount > 0) append("，保留已有 $skippedExistingCount 项")
@@ -240,19 +269,59 @@ fun TasksScreen(repository: AppRepository, onNavigate: (String) -> Unit = {}) {
             scope.launch { importSnackbar.showSnackbar(message) }
         },
     )
-    deletingTask?.let { task ->
-        AlertDialog(
-            onDismissRequest = { deletingTask = null },
-            title = { Text("删除这项待办？", fontWeight = FontWeight.Bold) },
-            text = { Text("删除后会同步写入后端数据库。", color = Muted) },
-            confirmButton = { TextButton(onClick = { scope.launch { repository.deleteTask(task.id) }; deletingTask = null }) { Text("删除", color = Danger) } },
-            dismissButton = { TextButton(onClick = { deletingTask = null }) { Text("取消") } },
-        )
-    }
+    if (showCourseFilter) AlertDialog(
+        onDismissRequest = { showCourseFilter = false },
+        title = { Text("按课程筛选", color = JournalNight) },
+        text = {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                (listOf<String?>(null) + courseFilters).forEach { course ->
+                    TextButton(onClick = {
+                        selectedCourse = course
+                        if (course != null && course !in expandedCourses) expandedCourses = expandedCourses + course
+                        showCourseFilter = false
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text(course ?: "所有课程", modifier = Modifier.fillMaxWidth(), color = JournalInk)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        containerColor = JournalPaper,
+        shape = RoundedCornerShape(6.dp),
+    )
 }
 
 private fun Task.listKey(index: Int): String =
     "task|${id.ifBlank { "$title|$due|$course" }}|$index"
+
+private fun Task.dueInstant(): Instant? = due.takeIf { it != "待设置" }?.courseDeadlineInstant()
+
+private fun Task.isCourseAssignment(): Boolean = source in setOf("chaoxing", "chaoxing_notice", "course_notice")
+
+private fun Task.isCurrentSemesterCourseTask(courses: List<Course>, now: Instant): Boolean {
+    if (!isCourseAssignment()) return false
+    val course = courses.firstOrNull { it.id == courseId }
+        ?: courses.firstOrNull { it.name == this.course }
+        ?: return false
+    return course.isCurrentSemesterAt(now)
+}
+
+/** Only verified current-course assignments are promoted into automatic pending tasks. */
+internal fun Task.isCurrentSemesterAssignment(courses: List<Course>, now: Instant): Boolean {
+    if (source !in setOf("chaoxing", "chaoxing_notice", "course_notice")) return false
+    if (source == "chaoxing_notice" &&
+        !listOf(title, description).any { text ->
+            listOf("作业", "实验", "练习", "习题", "报告").any { keyword -> text.contains(keyword) }
+        }) return false
+    val course = courses.firstOrNull { it.id == courseId }
+        ?: courses.firstOrNull { it.name == this.course }
+        ?: return false
+    if (!course.isCurrentSemesterAt(now)) return false
+    val noticeStart = startAt?.courseDateInstant()
+    if (noticeStart != null && now.isBefore(noticeStart)) return false
+    val deadline = dueInstant() ?: return false
+    return now.isBefore(deadline)
+}
 
 @Composable
 private fun TaskOverview(today: Int, near: Int, done: Int, all: Int, progress: Float) {
@@ -333,45 +402,64 @@ private fun importanceFgColor(importance: String): Color = when (importance) {
 }
 
 @Composable
-private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Unit, onDelete: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(Surface).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = task.done, onCheckedChange = { onToggle() }, colors = CheckboxDefaults.colors(checkedColor = TaskGreen, uncheckedColor = TaskBlue))
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(task.title, color = if (task.done) Muted else TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Schedule, null, tint = Muted, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(4.dp)); Text(task.due, color = Muted, fontSize = 12.sp)
-                if (task.course.isNotBlank()) { Spacer(Modifier.width(8.dp)); Surface(color = PrimarySoft, shape = RoundedCornerShape(6.dp)) { Text(task.course, Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = Primary, fontSize = 10.sp) } }
-                if (task.importance.isNotBlank() && task.importance != "unknown") { Spacer(Modifier.width(8.dp)); Surface(color = importanceBgColor(task.importance), shape = RoundedCornerShape(6.dp)) { Text(importanceLabel(task.importance), Modifier.padding(horizontal = 6.dp, vertical = 2.dp), color = importanceFgColor(task.importance), fontSize = 10.sp) } }
+private fun DashboardTaskRow(task: Task, onOpen: () -> Unit, onToggle: () -> Unit, reduceMotion: Boolean) {
+    var stamping by remember(task.id) { mutableStateOf(false) }
+    val stampScale by animateFloatAsState(if (stamping) 1f else 1.4f, animationSpec = tween(340), label = "task stamp scale")
+    val stampAlpha by animateFloatAsState(if (stamping) 1f else 0f, animationSpec = tween(340), label = "task stamp alpha")
+    LaunchedEffect(stamping) {
+        if (stamping) {
+            delay(if (reduceMotion) 1 else 560)
+            onToggle()
+            stamping = false
+        }
+    }
+    Box(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Box {
+            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 2.dp, end = 4.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                val accent = when {
+                    task.done -> JournalBlue
+                    task.dueInstant()?.isBefore(Instant.now().plusSeconds(24 * 3600)) == true -> JournalAmber
+                    task.isCourseAssignment() -> JournalClay
+                    else -> JournalBlue
+                }
+                Box(Modifier.width(3.dp).height(36.dp).background(accent))
+                Spacer(Modifier.width(5.dp))
+                if (task.isCourseAssignment()) {
+                    Icon(Icons.Default.Assignment, contentDescription = "课程作业", tint = JournalNight, modifier = Modifier.size(24.dp))
+                } else {
+                    Checkbox(
+                        checked = task.done || stamping,
+                        onCheckedChange = { if (!stamping) { if (task.done || reduceMotion) onToggle() else stamping = true } },
+                        colors = CheckboxDefaults.colors(checkedColor = JournalClay, uncheckedColor = JournalNight),
+                        modifier = Modifier.size(38.dp),
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(task.title, color = if (task.done) JournalMuted else JournalNight, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${task.course.ifBlank { "个人事务" }} · 截止 ${task.due.replace('T', ' ').take(16)}", color = JournalMuted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!task.done && task.source in setOf("chaoxing_notice", "course_notice"))
+                        Text("提交状态待确认", color = Color(0xFF966942), fontSize = 10.sp)
+                }
+                if (task.done) Text("已完成", color = JournalClay, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.border(1.dp, JournalClay.copy(alpha = .7f), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 2.dp))
             }
+            HorizontalDivider(Modifier.align(Alignment.BottomCenter), color = JournalBlue.copy(alpha = .32f))
+            if (stamping && !reduceMotion) Text("已完成", color = JournalInk, fontSize = 16.sp, fontWeight = FontWeight.Black,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 5.dp)
+                    .graphicsLayer { scaleX = stampScale; scaleY = stampScale; alpha = stampAlpha; rotationZ = -12f }
+                    .border(2.dp, JournalInk, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp))
         }
-        IconButton(onClick = onDelete) { Icon(Icons.Default.MoreVert, null, tint = Muted) }
     }
 }
 
 @Composable
-private fun EmptyTasks(online: Boolean, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Surface).padding(vertical = 38.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(if (online) Icons.Default.TaskAlt else Icons.Default.CloudOff, null, tint = Primary, modifier = Modifier.size(36.dp))
-        Text(if (online) "还没有待办" else "暂时无法获取后端数据", color = TextPrimary, fontWeight = FontWeight.Bold)
-        Text(if (online) "点击右下角新建第一项待办" else "请检查网络或稍后重试", color = Muted, fontSize = 12.sp)
-        if (!online) TextButton(onClick = onRetry) { Text("重新获取", color = Primary) }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddTaskSheet(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var due by remember { mutableStateOf("") }
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Surface, shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)) {
-        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, bottom = 34.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("新建待办", fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-            Text("保存后会直接写入你的后端任务库。", color = Muted, fontSize = 13.sp)
-            OutlinedTextField(value = title, onValueChange = { title = it }, modifier = Modifier.fillMaxWidth(), label = { Text("任务名称") }, leadingIcon = { Icon(Icons.Default.EditNote, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(value = due, onValueChange = { due = it }, modifier = Modifier.fillMaxWidth(), label = { Text("截止时间") }, placeholder = { Text("例如：今天 23:59") }, leadingIcon = { Icon(Icons.Default.CalendarMonth, null) }, singleLine = true, shape = RoundedCornerShape(14.dp))
-            Button(onClick = { onAdd(title.trim(), due.ifBlank { "待设置" }) }, enabled = title.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = TaskBlue)) { Text("保存到待办", fontWeight = FontWeight.Bold) }
-        }
+private fun EmptyTasks(online: Boolean, filter: String, onRetry: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 36.dp, horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(if (online) Icons.Default.TaskAlt else Icons.Default.CloudOff, null, tint = JournalClay, modifier = Modifier.size(30.dp))
+        Text(if (online) "这页手账暂时空着" else "暂时无法获取任务", color = JournalNight, fontWeight = FontWeight.Bold)
+        Text(if (online) if (filter == "已完成") "完成一件事后，印章会留在这里" else "给今天留一点空间，也可以添加一件小事" else "请检查网络后重试", color = JournalMuted, fontSize = 12.sp)
+        if (!online) TextButton(onClick = onRetry) { Text("重新获取", color = JournalNight) }
     }
 }

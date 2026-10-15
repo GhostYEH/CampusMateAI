@@ -20,6 +20,7 @@ import com.example.campusai.data.remote.InteractiveClassroomItemDto
 import com.example.campusai.data.remote.InteractiveClassroomGenerateResponse
 import com.example.campusai.data.remote.InteractiveClassroomGenerateRequest
 import com.example.campusai.data.remote.InteractiveClassroomCompositionDto
+import com.example.campusai.data.remote.UploadedClassroomMaterialDto
 import com.example.campusai.data.remote.agent.CounselorFinalMetaDto
 import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.RefreshRequest
@@ -55,6 +56,20 @@ import java.io.File
 import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
+
+data class ClassroomStudyVisit(
+    val id: String,
+    val classroomFingerprint: String,
+    val enteredAt: String,
+    val endedAt: String,
+    val activeSeconds: Long,
+    val completed: Boolean,
+)
+
+data class ClassroomHistoryEntry(
+    val courseName: String,
+    val classroom: InteractiveClassroomItemDto,
+)
 
 class AppRepository(
     application: Application,
@@ -124,6 +139,8 @@ class AppRepository(
 
 
     private val taskMutex = Mutex()
+    private val classroomVisitMutex = Mutex()
+    @Volatile private var pendingClassroomVisitWrite: Job? = null
     private var taskJob: Job? = null
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
     val tasks: StateFlow<List<Task>> = _tasks.asStateFlow()
@@ -134,7 +151,7 @@ class AppRepository(
         .map { list -> list.count { !it.done } }
         .stateIn(scope, SharingStarted.Eagerly, 0)
 
-    private val _notices = MutableStateFlow(defaultNotices())
+    private val _notices = MutableStateFlow<List<Notice>>(emptyList())
     val notices: StateFlow<List<Notice>> = _notices.asStateFlow()
 
     private val _campusNews = MutableStateFlow(defaultCampusNews())
@@ -147,7 +164,7 @@ class AppRepository(
 
     fun getCampusNewsById(id: String): CampusNews? = _campusNews.value.find { it.id == id }
 
-    private val _courses = MutableStateFlow(defaultCourses())
+    private val _courses = MutableStateFlow<List<Course>>(emptyList())
     val courses: StateFlow<List<Course>> = _courses.asStateFlow()
 
     private val _homeBanners = MutableStateFlow<List<HomeBanner>>(emptyList())
@@ -451,23 +468,25 @@ class AppRepository(
 
     /** 拉取校园通知（聚合学生可见班级的已发布通知）。 */
     suspend fun refreshNotices() {
-        if (!_backendOnline.value || _mockMode.value) return
+        if (_mockMode.value) {
+            _notices.value = defaultNotices()
+            return
+        }
+        if (!_backendOnline.value) return
         try {
             val resp = ApiClient.api.listNotices(page = 1, pageSize = 50)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _notices.value = items.map { dto ->
-                        Notice(
-                            id = dto.id,
-                            title = dto.title,
-                            source = dto.source.orEmpty(),
-                            time = dto.time.orEmpty(),
-                            unread = dto.unread,
-                            category = dto.category.orEmpty(),
-                            content = dto.content.orEmpty(),
-                        )
-                    }
+                _notices.value = items.map { dto ->
+                    Notice(
+                        id = dto.id,
+                        title = dto.title,
+                        source = dto.source.orEmpty(),
+                        time = dto.time.orEmpty(),
+                        unread = dto.unread,
+                        category = dto.category.orEmpty(),
+                        content = dto.content.orEmpty(),
+                    )
                 }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
@@ -588,8 +607,7 @@ class AppRepository(
             val resp = ApiClient.api.listCourses(page = 1, pageSize = 100)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                if (items.isNotEmpty()) {
-                    _courses.value = items.map { dto ->
+                _courses.value = items.map { dto ->
                         Course(
                             id = dto.id,
                             name = dto.name,
@@ -601,9 +619,11 @@ class AppRepository(
                             external_id = dto.external_id,
                             source_url = dto.source_url,
                             last_synced_at = dto.last_synced_at,
+                            semester = dto.semester,
+                            startsAt = dto.starts_at,
+                            endsAt = dto.ends_at,
                         )
                     }
-                }
             }
         } catch (_: Exception) { /* 保留现有数据 */ }
     }
@@ -622,18 +642,53 @@ class AppRepository(
             val resp = ApiClient.api.listTasks(page = 1, pageSize = 200)
             if (resp.isSuccessful) {
                 val items = resp.body()?.items.orEmpty()
-                _tasks.value = TaskRemotePolicy.replaceAfterSuccessfulRead(_tasks.value, items.map { dto ->
+                val remoteTasks = items.map { dto ->
                         Task(
                             id = dto.id,
                             title = dto.title,
                             due = dto.deadline ?: "待设置",
                             course = dto.source_name ?: "个人待办",
-                            done = dto.status == "completed",
+                            done = dto.status == "completed" || dto.remote_submitted_at != null,
                             description = dto.description ?: dto.source_text ?: "",
                             importance = dto.importance ?: "unknown",
                             completedAt = dto.updated_at.takeIf { dto.status == "completed" },
+                            source = dto.source,
+                            externalId = dto.external_id,
+                            courseId = dto.course_id,
+                            sourceUrl = dto.source_url,
+                            submittedAt = dto.remote_submitted_at,
+                            sourceText = dto.source_text,
                         )
-                    })
+                    }
+                val now = java.time.Instant.now()
+                val noticeTasks = _courses.value.filter { it.isCurrentSemesterAt(now) }
+                    .chunked(6).flatMap { batch ->
+                        coroutineScope {
+                            batch.map { course -> async {
+                                runCatching { loadCourseContent(course.id).second }
+                                    .getOrDefault(emptyList())
+                                    .mapNotNull { assignmentFromNotice(course, it) }
+                            } }.awaitAll().flatten()
+                        }
+                    }.filter { notice ->
+                        val matchingRemote = remoteTasks.any { task ->
+                            task.courseId == notice.courseId && task.source in setOf("chaoxing", "chaoxing_notice") &&
+                                ((task.externalId != null && task.externalId == notice.externalId) ||
+                                 task.title.contains(notice.title) || notice.title.contains(task.title))
+                        }
+                        !matchingRemote
+                    }.distinctBy { it.id }
+                val acknowledgementKey = "course_notice_ack_${accountStorageKey(_session.value ?: return@withLock)}"
+                val acknowledged = runCatching {
+                    val saved = JSONArray(dataStore.readRaw(acknowledgementKey) ?: "[]")
+                    (0 until saved.length()).map { saved.getString(it) }.toSet()
+                }.getOrDefault(emptySet())
+                _tasks.value = TaskRemotePolicy.replaceAfterSuccessfulRead(
+                    _tasks.value.filterNot { it.source == "course_notice" },
+                    remoteTasks + noticeTasks.map { notice ->
+                        if (notice.id in acknowledged) notice.copy(done = true) else notice
+                    },
+                )
                 _taskError.value = null
             } else {
                 _taskError.value = if (resp.code() == 401) {
@@ -667,7 +722,7 @@ class AppRepository(
     }
 
     suspend fun syncCourseContent(courseId: String): Pair<CourseContentSummaryDto?, List<CourseContentItemDto>> {
-        val response = ApiClient.api.syncCourseContent(courseId)
+        val response = ApiClient.api.syncCourseContent(courseId, sections = "chapters,materials,assignments,notices")
         if (!response.isSuccessful) throw IllegalStateException("course_content_sync_failed_${response.code()}")
         return loadCourseContent(courseId)
     }
@@ -689,8 +744,24 @@ class AppRepository(
     /** 只同步 knowledge_graph 这一个 section，不连带跑完整 deep 同步。 */
     suspend fun syncCourseKnowledgeGraph(courseId: String): CourseKnowledgeGraphDto? {
         val response = ApiClient.api.syncCourseContent(courseId, sections = "knowledge_graph")
-        if (!response.isSuccessful) throw IllegalStateException("course_knowledge_graph_sync_failed_${response.code()}")
-        return loadCourseKnowledgeGraph(courseId)
+        if (!response.isSuccessful) {
+            val message = if (response.code() == 401) "账号登录已失效，请重新登录后再同步" else "知识点同步请求失败（${response.code()}）"
+            throw IllegalStateException(message)
+        }
+        val section = response.body()?.sections?.get("knowledge_graph")
+            ?: throw IllegalStateException("学习通没有返回课程图谱的同步结果")
+        if (section.status != "complete" && section.status != "partial") {
+            val message = when (section.error) {
+                "missing_course_context" -> "这门课缺少教学班信息，暂时无法读取课程图谱"
+                "structure_changed" -> "学习通未提供可读取的课程图谱，或图谱页面已变化"
+                "access_denied" -> "学习通拒绝读取课程图谱。可先使用已同步的课程章节学习"
+                "network_error" -> "读取学习通课程图谱失败，请检查连接后重试"
+                else -> if (section.status == "unavailable") "这门课暂时没有可读取的课程图谱" else "课程图谱同步失败，请稍后重试"
+            }
+            throw IllegalStateException(message)
+        }
+        return loadCourseKnowledgeGraph(courseId)?.takeIf { it.available }
+            ?: throw IllegalStateException("同步已完成，但没有读取到知识点数据")
     }
 
     suspend fun getCourseResourceUrl(courseId: String, itemId: String): String? {
@@ -699,15 +770,22 @@ class AppRepository(
         return response.body()?.url
     }
 
-    suspend fun downloadCourseResource(courseId: String, item: CourseContentItemDto): File? {
+    data class CourseResourceDownloadResult(val file: File? = null, val errorCode: String? = null)
+
+    suspend fun downloadCourseResource(courseId: String, item: CourseContentItemDto): CourseResourceDownloadResult {
         val response = ApiClient.chaoxingApi.downloadCourseResource(courseId, item.id)
         val body = response.body()
-        if (!response.isSuccessful || body == null) return null
+        if (!response.isSuccessful || body == null) {
+            val detail = runCatching {
+                org.json.JSONObject(response.errorBody()?.string().orEmpty()).optString("detail")
+            }.getOrNull()?.takeIf(String::isNotBlank)
+            return CourseResourceDownloadResult(errorCode = detail ?: "http_${response.code()}")
+        }
         val safeName = item.title.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { item.id }
         val targetDir = File(application.cacheDir, "chaoxing-resources").apply { mkdirs() }
         val target = File(targetDir, safeName.take(160))
         body.byteStream().use { input -> target.outputStream().use { output -> input.copyTo(output) } }
-        return target
+        return CourseResourceDownloadResult(file = target)
     }
 
     /** 拉取个人中心数据（文件 / 收藏 / 活动）。 */
@@ -816,6 +894,63 @@ class AppRepository(
                     done = true,
                     completedAt = java.time.Instant.now().toString(),
                 )
+            }
+            _tasks.value = list
+        }
+    }
+
+    /** A provisional notice has no server task ID; keep the student's confirmation on this device. */
+    suspend fun confirmCourseNoticeSubmitted(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val user = checkNotNull(_session.value) { "请先登录" }
+            val task = _tasks.value.firstOrNull { it.id == id && it.source == "course_notice" }
+                ?: error("课程通知待办不存在")
+            val key = "course_notice_ack_${accountStorageKey(user)}"
+            val saved = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+            val ids = (0 until saved.length()).map { saved.getString(it) }.toMutableSet()
+            ids += task.id
+            dataStore.saveRaw(key, JSONArray(ids.toList()).toString())
+            _tasks.value = _tasks.value.map { current ->
+                if (current.id == id) current.copy(done = true, completedAt = java.time.Instant.now().toString()) else current
+            }
+        }
+    }
+
+    /** Revoke this device's acknowledgement of a provisional course notice. */
+    suspend fun undoCourseNoticeSubmitted(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val user = checkNotNull(_session.value) { "请先登录" }
+            val task = _tasks.value.firstOrNull { it.id == id && it.source == "course_notice" }
+                ?: error("课程通知待办不存在")
+            val key = "course_notice_ack_${accountStorageKey(user)}"
+            val saved = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+            val ids = (0 until saved.length()).map { saved.getString(it) }.toMutableSet()
+            ids -= task.id
+            dataStore.saveRaw(key, JSONArray(ids.toList()).toString())
+            _tasks.value = _tasks.value.map { current ->
+                if (current.id == id) current.copy(done = false, completedAt = null) else current
+            }
+        }
+    }
+
+    /** Restore a user-confirmed server task and surface failures to the detail page. */
+    suspend fun restoreTaskStrict(id: String): Result<Unit> = taskMutex.withLock {
+        runCatching {
+            val list = _tasks.value.toMutableList()
+            val idx = list.indexOfFirst { it.id == id }
+            check(idx >= 0) { "待办不存在" }
+            val current = list[idx]
+            if (!current.done) return@runCatching
+            check(current.source != "chaoxing" && current.submittedAt == null) { "平台提交状态无法在待办中撤销" }
+            if (_backendOnline.value && !_mockMode.value && !id.startsWith("local_")) {
+                val response = ApiClient.api.restoreTask(id)
+                check(response.isSuccessful) { "撤销确认失败 (${response.code()})" }
+                val dto = checkNotNull(response.body()) { "待办同步响应为空" }
+                check(dto.status != "completed") { "服务端未确认撤销" }
+                list[idx] = current.copy(done = false, completedAt = null)
+            } else {
+                check(id.startsWith("local_") || _mockMode.value) { "当前离线，无法撤销云端确认" }
+                list[idx] = current.copy(done = false, completedAt = null)
             }
             _tasks.value = list
         }
@@ -1280,7 +1415,7 @@ class AppRepository(
     suspend fun suggestInteractiveClassroomUrls(courseId: String): List<String> {
         if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
             return try {
-                val resp = ApiClient.api.getInteractiveClassroom(courseId)
+                val resp = ApiClient.classroomApi.getInteractiveClassroom(courseId)
                 if (resp.isSuccessful) resp.body()?.existingClassroomUrls() ?: emptyList()
                 else emptyList()
             } catch (_: Exception) {
@@ -1307,7 +1442,7 @@ class AppRepository(
     suspend fun interactiveClassroomPlan(courseId: String, mode: String): InteractiveClassroomPlanDto? {
         if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return null
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomPlan(courseId, mode)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomPlan(courseId, mode)
             if (resp.isSuccessful) resp.body() else null
         } catch (_: Exception) {
             null
@@ -1318,7 +1453,7 @@ class AppRepository(
     suspend fun interactiveClassroomHistory(courseId: String): List<InteractiveClassroomItemDto> {
         if (!_backendOnline.value || _mockMode.value || courseId.isBlank()) return emptyList()
         return try {
-            val resp = ApiClient.api.getInteractiveClassroom(courseId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroom(courseId)
             if (resp.isSuccessful && resp.body()?.enabled == true) resp.body()?.items.orEmpty()
             else emptyList()
         } catch (_: Exception) {
@@ -1335,7 +1470,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法生成互动课堂"))
         }
         return try {
-            val resp = ApiClient.api.generateInteractiveClassroom(courseId, request)
+            val resp = ApiClient.classroomApi.generateInteractiveClassroom(courseId, request)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("生成请求被拒绝")))
@@ -1353,7 +1488,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法查询进度"))
         }
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomJob(courseId, sessionId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomJob(courseId, sessionId)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("进度查询失败")))
@@ -1372,7 +1507,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法重试"))
         }
         return try {
-            val resp = ApiClient.api.retryInteractiveClassroom(courseId, sessionId, request)
+            val resp = ApiClient.classroomApi.retryInteractiveClassroom(courseId, sessionId, request)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("重试失败")))
@@ -1390,7 +1525,7 @@ class AppRepository(
             return Result.failure(IllegalStateException("离线状态下无法读取课堂内容"))
         }
         return try {
-            val resp = ApiClient.api.getInteractiveClassroomComposition(courseId, sessionId)
+            val resp = ApiClient.classroomApi.getInteractiveClassroomComposition(courseId, sessionId)
             val body = resp.body()
             if (resp.isSuccessful && body != null) Result.success(body)
             else Result.failure(IllegalStateException(resp.errorMessage("课堂内容读取失败")))
@@ -1406,13 +1541,179 @@ class AppRepository(
     suspend fun interactiveClassroomStatus(courseId: String): InteractiveClassroomStatusDto? {
         if (_backendOnline.value && !_mockMode.value && courseId.isNotBlank()) {
             return try {
-                val resp = ApiClient.api.getInteractiveClassroomStatus(courseId)
+                val resp = ApiClient.classroomApi.getInteractiveClassroomStatus(courseId)
                 if (resp.isSuccessful) resp.body() else null
             } catch (_: Exception) {
                 null
             }
         }
         return null
+    }
+
+    suspend fun selfClassroomStatusResult(): Result<InteractiveClassroomStatusDto> {
+        if (!_backendOnline.value) return Result.failure(IllegalStateException("后端未连接，请重试"))
+        if (_mockMode.value) return Result.failure(IllegalStateException("模拟模式下无法读取课堂状态"))
+        return try {
+            val response = ApiClient.classroomApi.getSelfClassroomStatus()
+            if (response.isSuccessful) {
+                response.body()?.let { Result.success(it) }
+                    ?: Result.failure(IllegalStateException("课堂状态响应为空，请重试"))
+            } else {
+                val message = when (response.code()) {
+                    401 -> "登录状态已失效，请重新登录"
+                    403 -> "当前账号无权使用互动课堂"
+                    404 -> "当前后端未提供课堂状态接口（HTTP 404）"
+                    else -> "课堂状态读取失败（HTTP ${response.code()}）"
+                }
+                Result.failure(IllegalStateException(message))
+            }
+        } catch (error: java.net.SocketTimeoutException) {
+            Result.failure(IllegalStateException("课堂状态请求超时，请重试", error))
+        } catch (error: java.io.IOException) {
+            Result.failure(IllegalStateException("无法连接课堂状态接口，请检查手机与后端的连接", error))
+        } catch (error: kotlinx.coroutines.CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(IllegalStateException("课堂状态响应无法读取，请重试", error))
+        }
+    }
+
+    suspend fun selfClassroomStatus(): InteractiveClassroomStatusDto? = selfClassroomStatusResult().getOrNull()
+
+    suspend fun selfClassroomHistory(): List<InteractiveClassroomItemDto> {
+        if (!_backendOnline.value || _mockMode.value) return emptyList()
+        return try {
+            val response = ApiClient.classroomApi.getSelfClassrooms()
+            if (response.isSuccessful) response.body()?.items.orEmpty() else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    /** One history source for the classroom hub and learning footprint. */
+    suspend fun allClassroomHistory(): List<ClassroomHistoryEntry> = coroutineScope {
+        val self = async { selfClassroomHistory().map { ClassroomHistoryEntry("自主学习", it) } }
+        val courseEntries = _courses.value.chunked(8).flatMap { group ->
+            group.map { course -> async {
+                interactiveClassroomHistory(course.id).map { ClassroomHistoryEntry(course.name, it) }
+            } }.awaitAll().flatten()
+        }
+        (self.await() + courseEntries).distinctBy {
+            it.classroom.sessionId ?: it.classroom.classroomId ?: it.classroom.url
+                ?: "${it.courseName}:${it.classroom.createdAt}"
+        }
+    }
+
+    suspend fun generateSelfClassroom(topic: String, materialIds: List<String> = emptyList()): Result<InteractiveClassroomGenerateResponse> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法生成课堂"))
+        return try {
+            val response = ApiClient.classroomApi.generateSelfClassroom(
+                InteractiveClassroomGenerateRequest(learningObjective = topic.trim(), selectedMaterialIds = materialIds)
+            )
+            response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(response.errorMessage("自主课堂生成失败")))
+        } catch (error: Exception) { Result.failure(error) }
+    }
+
+    fun classroomVisitFingerprint(url: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(url.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    suspend fun classroomEntryTimes(): Map<String, String> {
+        val user = _session.value ?: return emptyMap()
+        val raw = dataStore.readRaw("classroom_entry_${accountStorageKey(user)}") ?: return emptyMap()
+        return runCatching {
+            val entries = JSONObject(raw)
+            entries.keys().asSequence().associateWith { entries.getString(it) }
+        }.getOrDefault(emptyMap())
+    }
+
+    suspend fun classroomStudyVisits(): List<ClassroomStudyVisit> {
+        val user = _session.value ?: return emptyList()
+        pendingClassroomVisitWrite?.join()
+        return classroomVisitMutex.withLock {
+            val raw = dataStore.readRaw("classroom_visits_${accountStorageKey(user)}") ?: return@withLock emptyList()
+            runCatching {
+                val entries = JSONArray(raw)
+                (0 until entries.length()).mapNotNull { index ->
+                    val item = entries.optJSONObject(index) ?: return@mapNotNull null
+                    val fingerprint = item.optString("classroomFingerprint")
+                    val enteredAt = item.optString("enteredAt")
+                    if (fingerprint.isBlank() || enteredAt.isBlank()) return@mapNotNull null
+                    ClassroomStudyVisit(
+                        id = item.optString("id"),
+                        classroomFingerprint = fingerprint,
+                        enteredAt = enteredAt,
+                        endedAt = item.optString("endedAt"),
+                        activeSeconds = item.optLong("activeSeconds").coerceAtLeast(0),
+                        completed = item.optBoolean("completed"),
+                    )
+                }
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Queue the write on repository scope so closing the viewer cannot cancel it. */
+    fun recordClassroomStudyVisit(url: String, enteredAt: String, activeSeconds: Long, completed: Boolean) {
+        val user = _session.value ?: return
+        if (enteredAt.isBlank()) return
+        pendingClassroomVisitWrite = scope.launch {
+            classroomVisitMutex.withLock {
+                val key = "classroom_visits_${accountStorageKey(user)}"
+                val entries = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+                val next = JSONArray()
+                val start = (entries.length() - 499).coerceAtLeast(0)
+                for (index in start until entries.length()) next.put(entries.get(index))
+                next.put(JSONObject().apply {
+                    put("id", java.util.UUID.randomUUID().toString())
+                    put("classroomFingerprint", classroomVisitFingerprint(url))
+                    put("enteredAt", enteredAt)
+                    put("endedAt", java.time.Instant.now().toString())
+                    put("activeSeconds", activeSeconds.coerceAtLeast(0))
+                    put("completed", completed)
+                })
+                dataStore.saveRaw(key, next.toString())
+            }
+        }
+    }
+
+    suspend fun recordClassroomEntry(url: String) {
+        val user = _session.value ?: return
+        val key = "classroom_entry_${accountStorageKey(user)}"
+        val entries = runCatching { JSONObject(dataStore.readRaw(key) ?: "{}") }.getOrDefault(JSONObject())
+        entries.put(classroomVisitFingerprint(url), java.time.Instant.now().toString())
+        dataStore.saveRaw(key, entries.toString())
+    }
+
+    suspend fun selfClassroomJob(sessionId: String): Result<InteractiveClassroomSessionDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法查看课堂"))
+        return try {
+            val response = ApiClient.classroomApi.getSelfClassroomJob(sessionId)
+            response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(response.errorMessage("课堂进度读取失败")))
+        } catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun uploadClassroomMaterial(courseId: String, filename: String, bytes: ByteArray): Result<UploadedClassroomMaterialDto> {
+        if (bytes.size > 2 * 1024 * 1024) return Result.failure(IllegalArgumentException("单份资料不能超过 2 MB"))
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("请先连接课堂服务"))
+        return try {
+            val file = MultipartBody.Part.createFormData("file", filename,
+                bytes.toRequestBody("application/octet-stream".toMediaType()))
+            val response = ApiClient.classroomApi.uploadClassroomMaterial(courseId, java.util.UUID.randomUUID().toString(), file)
+            response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(response.errorMessage("资料上传失败")))
+        } catch (error: Exception) { Result.failure(error) }
+    }
+
+    suspend fun uploadSelfClassroomMaterial(filename: String, bytes: ByteArray): Result<UploadedClassroomMaterialDto> {
+        if (bytes.size > 2 * 1024 * 1024) return Result.failure(IllegalArgumentException("单份资料不能超过 2 MB"))
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("请先连接课堂服务"))
+        return try {
+            val file = MultipartBody.Part.createFormData("file", filename,
+                bytes.toRequestBody("application/octet-stream".toMediaType()))
+            val response = ApiClient.classroomApi.uploadSelfClassroomMaterial(java.util.UUID.randomUUID().toString(), file)
+            response.body()?.takeIf { response.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(response.errorMessage("资料上传失败")))
+        } catch (error: Exception) { Result.failure(error) }
     }
 
     suspend fun extractNotice(text: String): ExtractResult {
@@ -1428,15 +1729,6 @@ class AppRepository(
         Task("demo-2", "《高等数学》习题课报告提交", "明天 20:00", "课程作业", false, "完成第六章曲线积分与曲面积分的课后练习题，并整理成习题课报告。\n\n报告需包含：\n- 不少于 5 道典型例题的详细解答\n- 知识点总结与易错点归纳"),
         Task("demo-3", "整理创新创业项目资料", "5月21日 18:00", "个人待办", false, "整理已有项目资料并确认下一步计划。\n\n- 汇总项目计划书\n- 整理团队分工\n- 记录需要咨询的问题"),
         Task("demo-4", "图书馆座位预约", "今天 14:00", "学习安排", true, "三楼自习区 A-12 座位，预约时段 14:00-17:00。\n\n记得带校园卡刷卡入座，超时 30 分钟未签到将自动取消。"),
-    )
-
-    private fun defaultCourses() = listOf(
-        Course(name = "数据结构", code = "CS2103", type = "专业必修", teacher = "张明远", location = "教学楼 2-305"),
-        Course(name = "计算机组成原理", code = "CS2201", type = "专业必修", teacher = "刘文青", location = "实验楼 A-204"),
-        Course(name = "高等数学（下）", code = "MA1202", type = "学科基础", teacher = "王建国", location = "博学楼 1-401"),
-        Course(name = "大学英语 IV", code = "EN1404", type = "公共基础", teacher = "陈思雨", location = "明德楼 3-208"),
-        Course(name = "操作系统原理", code = "CS2304", type = "专业核心", teacher = "赵启航", location = "教学楼 4-302"),
-        Course(name = "计算机网络", code = "CS2402", type = "专业核心", teacher = "周立新", location = "实验楼 B-310"),
     )
 
     private fun defaultNotices() = listOf(
@@ -1642,6 +1934,12 @@ class AppRepository(
                 put("description", task.description)
                 put("importance", task.importance)
                 put("completedAt", task.completedAt)
+                put("source", task.source)
+                put("courseId", task.courseId)
+                put("sourceUrl", task.sourceUrl)
+                put("submittedAt", task.submittedAt)
+                put("startAt", task.startAt)
+                put("externalId", task.externalId)
             })
         }
     }.toString()
@@ -1660,6 +1958,12 @@ class AppRepository(
                     description = item.optString("description"),
                     importance = item.optString("importance", "unknown"),
                     completedAt = item.optString("completedAt").takeIf(String::isNotBlank),
+                    source = item.optString("source").takeIf(String::isNotBlank),
+                    courseId = item.optString("courseId").takeIf(String::isNotBlank),
+                    sourceUrl = item.optString("sourceUrl").takeIf(String::isNotBlank),
+                    submittedAt = item.optString("submittedAt").takeIf(String::isNotBlank),
+                    startAt = item.optString("startAt").takeIf(String::isNotBlank),
+                    externalId = item.optString("externalId").takeIf(String::isNotBlank),
                 )
             }
         }

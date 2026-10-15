@@ -50,6 +50,52 @@ def test_analyze_task_material_turns_checklist_into_editable_drafts() -> None:
     assert all(item["source_name"] == "数据结构复习计划" for item in body["tasks"])
 
 
+def test_notice_keeps_eligibility_and_signature_dates_out_of_deadline() -> None:
+    client = _client()
+    notice = (
+        "党务信息管理中心通知：各班组委请通知本班同学："
+        "有意向提交入党申请的同学，可以利用国庆假期准备入党申请书。"
+        "❶本人亲笔手写，禁止抄袭代写，结合个人真实思想撰写。"
+        "❷入党申请人年龄要求：2008年10月15日之前出生，即年满18周岁。"
+        "❸有意愿申请并满足条件的同学需准备一篇入党申请书和一篇个人自传，"
+        "落款时间均为2026年10月15日。具体上交时间开学后等通知"
+    )
+    response = client.post(
+        "/api/v1/tasks/import/analyze",
+        headers=_headers(client),
+        json={"content": notice, "source_name": "班群通知"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["tasks"]) == 1
+    draft = body["tasks"][0]
+    assert draft["title"] == "准备入党申请材料"
+    assert draft["deadline"] is None
+    assert "个人自传" in draft["materials"]
+    assert "亲笔手写" in draft["description"]
+    assert "落款时间" in draft["description"]
+    assert draft["needs_confirmation"] is True
+    assert body["needs_user_confirmation"] is True
+
+
+def test_dot_date_deadline_and_form_task_are_extracted() -> None:
+    client = _client()
+    response = client.post(
+        "/api/v1/tasks/import/analyze",
+        headers=_headers(client),
+        json={
+            "content": "本次中秋假期和国庆假期的离校统计为合并表，请仔细填写。截止时间为9.23（周三）下午18:00。",
+            "source_name": "班级通知",
+        },
+    )
+
+    assert response.status_code == 200
+    draft = response.json()["tasks"][0]
+    assert draft["title"] == "填写离校统计表"
+    assert draft["deadline"].endswith("T18:00:00+08:00")
+
+
 def test_analyze_marks_existing_title_without_overwriting_progress() -> None:
     client = _client()
     headers = _headers(client)

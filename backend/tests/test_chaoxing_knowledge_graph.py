@@ -8,14 +8,17 @@
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+
+import httpx
 
 from app.database.sqlite_db import Database
 from app.repositories.chaoxing_repository import ChaoxingRepository
 from app.repositories.course_content_repository import CourseContentRepository
 from app.repositories.learner_event_repository import LearnerEventRepository
 from app.repositories.learner_state_repository import LearnerStateRepository
-from app.services.chaoxing.ChaoxingClient import ChaoxingParser
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingParser
 from app.services.chaoxing.course_content_sync import ChaoxingCourseContentSyncService
 from app.services.learner_event_service import LearnerEventService
 from app.services.learner_state_service import LearnerStateProjectionService
@@ -46,6 +49,24 @@ GRAPH_HTML = """
 <li class="xdropdownBox__item"><input type="checkbox" data="3" id="cb_3"><label for="cb_3"><div class="ellips">三级</div></label></li>
 <li class="xdropdownBox__item"><input type="checkbox" data="4" id="cb_4"><label for="cb_4"><div class="ellips">父子关系</div></label></li>
 """
+
+
+def test_knowledge_graph_403_is_access_denied_not_structure_changed():
+    async def fetch():
+        client = ChaoxingClient(cookies={})
+        await client.client.aclose()
+        client.client = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(403, text="<html>access denied</html>", request=request)
+        ))
+        try:
+            return await client.get_course_knowledge_graph({"course_id": "1", "clazz_id": "2"})
+        finally:
+            await client.client.aclose()
+
+    result = asyncio.run(fetch())
+    assert result["status"] == "unavailable"
+    assert result["error"] == "access_denied"
+    assert result["graph"] == {}
 
 GRAPH_STATS = {
     "knowledge_point_count": 21,

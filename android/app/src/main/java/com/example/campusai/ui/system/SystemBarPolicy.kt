@@ -5,15 +5,26 @@ data class SystemBarPolicy(
     val darkNavigationBarIcons: Boolean,
 )
 
-private val lightThemeRoutesWithDarkStatusHeader = setOf(
-    "profile",
+private val routesWithDarkFullBleedScene = setOf(
+    "home",
+    "courses",
+    "focus",
+    "focus_session",
+    "focus_summary",
+    "focus_history",
 )
+
+private val lightThemeRoutesWithDarkStatusHeader = routesWithDarkFullBleedScene + "profile"
 
 private val routesWithAlwaysLightStatusSurface = emptySet<String>()
 
 private val routesOwningStatusBarInset = setOf(
     "home",
+    "courses",
     "profile",
+    "focus",
+    "focus_summary",
+    "focus_history",
     "focus_session",
 )
 
@@ -27,7 +38,7 @@ fun systemBarPolicy(
     val useDarkStatusIcons = authenticated &&
         statusSurfaceIsLight &&
         baseRoute !in lightThemeRoutesWithDarkStatusHeader
-    val useDarkNavigationIcons = authenticated && !darkTheme
+    val useDarkNavigationIcons = authenticated && !darkTheme && baseRoute !in routesWithDarkFullBleedScene
     return SystemBarPolicy(
         darkStatusBarIcons = useDarkStatusIcons,
         darkNavigationBarIcons = useDarkNavigationIcons,

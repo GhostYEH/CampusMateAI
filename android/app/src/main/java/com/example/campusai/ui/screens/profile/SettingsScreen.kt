@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.BuildConfig
 import com.example.campusai.ui.components.campusClickable
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.Danger
 import kotlinx.coroutines.launch
 
@@ -38,6 +37,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     repository: AppRepository,
     onOpenContribution: () -> Unit,
+    onBack: () -> Unit,
 
 ) {
     val darkMode by repository.darkMode.collectAsStateWithLifecycle()
@@ -54,12 +54,21 @@ fun SettingsScreen(
         val status = repository.refreshBackendStatus()
         backendLabel = if (status.online) "已连接（${status.mode}）" else "未连接（${status.mode}）"
     }
-    Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
+    Box(Modifier.fillMaxSize().background(Color(0xFFF8F2E8))) {
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = BottomDockReservedHeight + 20.dp),
+            modifier = Modifier.fillMaxSize().statusBarsPadding(),
+            contentPadding = PaddingValues(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            item {
+                Row(Modifier.fillMaxWidth().padding(start = 10.dp, top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回我的", tint = Color(0xFF203B32))
+                    }
+                    Text("设置", color = Color(0xFF203B32), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                }
+            }
             item {
                 SettingsGroup(
                     title = "显示与动效",

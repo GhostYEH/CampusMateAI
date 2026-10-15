@@ -53,11 +53,13 @@ app/src/main/java/com/example/campusai/
 
 学习通还有独立的账号连接与同步链路：后端同步课程、课程通知、作业和考试；Android 可定期触发同步，并提示登录态失效或需重新验证。学习通系统通知监听只是辅助来源，不等同于账号同步。
 
+图书馆入口使用这条账号链路，只展示 `provider=chaoxing` 的真实课程。学生可在图书馆连接或同步学习通，再打开课程查看已同步的资料、知识点和互动课堂，并把课程或知识点作为目标带入自习室。结束时填写的学习感受会显示在总结、专注记录及相应课程的学习足迹中。自习室提供安静专注、AI 陪伴和摄像头专注三种可选方式；摄像头方式在进入专注后申请权限，本机观察结果仍需后续校准。
+
 ## 互动课堂接入
 
-Android 当前接入课程内经典互动课堂的 7 个接口：状态、生成前计划、生成、任务进度、历史、重试和内容组成。实现位于 [ApiService](app/src/main/java/com/example/campusai/data/remote/ApiService.kt) 与 [InteractiveClassroomSection](app/src/main/java/com/example/campusai/ui/screens/courses/InteractiveClassroomSection.kt)。课堂通过系统浏览器打开，地址须先通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 的公开 HTTPS 与 Origin 校验。
+Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选择自定义主题、上传个人资料并生成课堂。课程接口保留状态、计划、生成、进度、历史、重试和内容组成；自主选题使用新增的五个 `/self-classroom` 接口，详见 [API 契约](../docs/api/14-magicclass.md#self-classroom)。课程已提取的个人上传资料可用于生成上下文，自定义资料按当前学生隔离，不混用其他课程资料。
 
-课程内经典课堂、CampusMate 受管工作台和导航栏独立学习空间使用不同的数据与身份链路。Android 尚未接入受管工作台或独立学习空间的完整播放器/编辑器；不能混用 `session_id/classroom_id` 和 `workspace_id/stage_id/scene_id`，或假定本站 JWT 自动成为独立应用的身份。
+课堂通过应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) WebView 展示，地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验：正式构建要求公开 HTTPS 与可信 Origin 精确匹配；调试例外仅限代码规定的模拟器本地课堂入口。WebView 展示不等于原生实现受管工作台编辑器；不能混用经典 session_id/classroom_id 与 workspace_id/stage_id/scene_id，也不能假定本站 JWT 自动成为独立应用的身份。共同课堂的课件共享与通话能力另见下文。
 
 ### 多人共同课堂
 

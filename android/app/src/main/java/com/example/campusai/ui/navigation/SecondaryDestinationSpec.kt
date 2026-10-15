@@ -24,6 +24,7 @@ internal fun navigationDestinationLayout(
 ): NavigationDestinationLayout {
     val normalizedRoute = route?.substringBefore('?')?.substringBefore('/')
     val contentTopPadding = when {
+        route?.startsWith("task_detail/") == true -> statusBarHeight
         secondaryDestinationSpec(route) != null ->
             statusBarHeight + StickySecondaryNavigationContentHeight
         routeOwnsStatusBarInset(route) || normalizedRoute in profileFlowRoutes -> 0.dp
@@ -53,6 +54,9 @@ private fun dynamicDestinationTitle(route: String): String? = when {
 
 private val rootRoutes = setOf(
     "home",
+    "focus",
+    "focus_summary",
+    "focus_history",
     "courses",
     "tasks",
     "profile",
@@ -90,9 +94,8 @@ private val staticDestinationTitles = mapOf(
     "edu_system" to "教务系统",
     "edu_schedule" to "教务课表",
     "exams" to "考试安排",
-    "focus" to "专注大厅",
     "focus_summary" to "本次专注总结",
-    "focus_history" to "专注记录",
+    "focus_history" to "学习足迹",
     "agent_final_review" to "期末复习",
     "agent_course_research" to "课程研究",
     "agent_notice_workflow" to "通知事务",

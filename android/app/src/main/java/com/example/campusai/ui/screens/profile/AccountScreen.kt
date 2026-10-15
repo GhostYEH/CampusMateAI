@@ -3,6 +3,7 @@ package com.example.campusai.ui.screens.profile
 import com.example.campusai.ui.components.GlassButton as Button
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.compose.BackHandler
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.DangerText
 import kotlinx.coroutines.launch
 
@@ -58,9 +58,15 @@ fun AccountScreen(
     var saving by remember { mutableStateOf(false) }
     var nameError by remember { mutableStateOf<String?>(null) }
     var emailError by remember { mutableStateOf<String?>(null) }
+    var showDiscard by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val hasUnsavedChanges = name != user?.name.orEmpty() || detail != user?.detail.orEmpty() ||
+        studentId != user?.studentId.orEmpty() || email != user?.email.orEmpty() ||
+        phone != user?.phone.orEmpty() || universityId != user?.universityId.orEmpty()
+    fun leave() { if (hasUnsavedChanges) showDiscard = true else onBack() }
+    BackHandler(onBack = ::leave)
 
     LaunchedEffect(Unit) {
         runCatching { repository.ensureUniversityNameLoaded() }
@@ -97,26 +103,26 @@ fun AccountScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize().background(ReferencePageBackground).imePadding()) {
+    Box(Modifier.fillMaxSize().background(Color(0xFFF8F2E8)).imePadding()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                .padding(bottom = BottomDockReservedHeight + 28.dp),
+            Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState())
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 28.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
+            Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 18.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = ::leave) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "返回我的", tint = Color(0xFF203B32))
+                }
+                Text("账号设置", color = Color(0xFF203B32), fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold)
+            }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp)
                     .enterAnimation(enabled = !reduceMotion),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                Box(contentAlignment = Alignment.BottomEnd) {
-                    ReferenceAvatar(86.dp)
-                    Box(
-                        Modifier.size(27.dp).clip(CircleShape).background(ReferencePrimary),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Edit, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                    }
-                }
+                ReferenceAvatar(86.dp)
             }
 
             AccountCard(
@@ -149,6 +155,7 @@ fun AccountScreen(
                     label = "院系与年级",
                     icon = Icons.Default.School,
                     supporting = "例如：计算机学院 · 大三",
+                    multiline = true,
                     imeAction = ImeAction.Next,
                     onIme = { focusManager.moveFocus(FocusDirection.Down) },
                 )
@@ -187,7 +194,7 @@ fun AccountScreen(
                     onIme = ::save,
                 )
                 Text(
-                    "当前资料仅保存在本机；接入真实后端后可同步到校园账号。",
+                    "联系方式用于账号资料，请确认填写正确。",
                     color = ReferenceMuted,
                     fontSize = 10.5.sp,
                 )
@@ -214,9 +221,17 @@ fun AccountScreen(
         SnackbarHost(
             snackbar,
             Modifier.align(Alignment.BottomCenter)
-                .padding(start = 16.dp, end = 16.dp, bottom = BottomDockReservedHeight + 16.dp),
+                .padding(start = 16.dp, end = 16.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp),
         )
     }
+    if (showDiscard) AlertDialog(
+        onDismissRequest = { showDiscard = false },
+        title = { Text("放弃未保存的修改？") },
+        text = { Text("刚才修改的账号资料还没有保存。") },
+        confirmButton = { TextButton(onClick = { showDiscard = false; onBack() }) { Text("放弃修改") } },
+        dismissButton = { TextButton(onClick = { showDiscard = false }) { Text("继续编辑") } },
+    )
 }
 
 @Composable
@@ -249,6 +264,7 @@ private fun AccountField(
     icon: ImageVector,
     error: String? = null,
     supporting: String? = null,
+    multiline: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     imeAction: ImeAction,
     onIme: () -> Unit,
@@ -266,7 +282,8 @@ private fun AccountField(
                 Text(message, color = if (error != null) DangerText else ReferenceMuted)
             }
         },
-        singleLine = true,
+        singleLine = !multiline,
+        maxLines = if (multiline) 3 else 1,
         shape = RoundedCornerShape(14.dp),
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
         keyboardActions = KeyboardActions(onNext = { onIme() }, onDone = { onIme() }),

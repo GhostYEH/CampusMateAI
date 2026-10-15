@@ -7,13 +7,13 @@ import org.junit.Test
 
 class ClassicDashboardOnlyContractTest {
     @Test
-    fun androidHomeKeepsOnlyTheClassicDashboard() {
+    fun androidHomeKeepsOneDashboardWithoutAStyleToggle() {
         val dashboardScreen = source("ui/screens/dashboard/DashboardScreen.kt").readText()
         val dataStore = source("data/local/AppDataStore.kt").readText()
         val repository = source("data/repository/AppRepository.kt").readText()
         val settings = source("ui/screens/profile/SettingsScreen.kt").readText()
 
-        assertTrue(dashboardScreen.contains("ClassicDashboardScreen(repository, onNavigate)"))
+        assertTrue(dashboardScreen.contains("ModernDashboardScreen(repository, onNavigate)"))
         assertFalse(dashboardScreen.contains("ImmersiveDashboardScreen"))
         assertFalse(dashboardScreen.contains("DashboardStyle"))
         assertFalse(dataStore.contains("KEY_DASHBOARD_STYLE"))

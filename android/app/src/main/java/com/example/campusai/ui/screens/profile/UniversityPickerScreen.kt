@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.components.campusClickable
 import com.example.campusai.ui.components.enterAnimation
-import com.example.campusai.ui.screens.shell.BottomDockReservedHeight
 import com.example.campusai.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -59,9 +58,9 @@ fun UniversityPickerScreen(
     }
     LaunchedEffect(Unit) { load() }
 
-    Box(Modifier.fillMaxSize().background(ReferencePageBackground)) {
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFFF8F2E8))) {
         Column(
-            Modifier.fillMaxSize().padding(bottom = BottomDockReservedHeight + 28.dp),
+            Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(

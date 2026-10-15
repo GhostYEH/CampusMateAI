@@ -128,6 +128,8 @@ Web 封装：`getCourse`（[webreact/src/data/api.js](../../webreact/src/data/ap
 | `created_at` | string | 是 | — | 创建时间 |
 | `updated_at` | string | 是 | — | 最近更新时间 |
 | `owner_user_id` | string / null | 否 | — | — |
+| `starts_at` | string / null | 否 | — | 课程开始时间 |
+| `ends_at` | string / null | 否 | — | 课程结束时间 |
 
 路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
 

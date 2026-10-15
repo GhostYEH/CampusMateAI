@@ -15,6 +15,7 @@
 | AI 对话 | `POST /api/v1/counselor/chat`，兼容别名 `/api/v1/assistant/chat` | SSE / 非流式回答，可带经过校验的个人任务、课程和学习状态上下文；课堂建议须用户确认后才执行 |
 | 知识库 | `/api/v1/knowledge/status`、`/documents` | 只读查询知识库状态和文档；当前聊天链路仍使用内部 BM25 检索，资料导入由内部数据准备/同步流程提供 |
 | 课程内互动课堂 | `/api/v1/courses/{course_id}/interactive-classroom/*` 及课程 workspace 路由 | 按课程权限读取上下文、生成、查询进度和真实内容组成；由 `magicclass-service` 提供受管能力 |
+| 自主选题课堂 | `/api/v1/self-classroom/status`、`/materials`、`/generate`、`/jobs/{session_id}`、`/self-classroom` 历史 | 学生输入主题，可上传本人资料；复用经典生成服务，以当前用户及 __self_study__ 隔离，完整契约见课堂模块 |
 | 学习空间状态 | `GET /api/v1/magicclass/learning-space/status` | 返回独立 `magicclass-app` 的可用性与公开 Origin，供 Web 导航入口使用 |
 | 学习空间共同课堂 | `/api/v1/magicclass/learning-space/identity`、`/rooms`、`/invitations` | 复用账号 UID，保存课件/原生讨论课堂、邀请、成员、翻页和文字消息；接受邀请后才允许读取内容 |
 | Android 共同课堂音视频 | `/api/v1/magicclass/learning-space/rtc/status`、`/rooms/{room_id}/rtc-token` | 为 accepted 成员签发短期 RTC 凭证；客户端分别选择麦克风/摄像头，媒体由火山 RTC 传输 |

@@ -44,6 +44,44 @@ def _auth_error(response) -> str | None:
 
 class ChaoxingParser:
     @staticmethod
+    def parse_course_data_list(html: str) -> dict:
+        """Parse the independent 资料 tab, including files inside folders."""
+        soup = BeautifulSoup(html, "html.parser")
+        if soup.select_one(".NoResult"):
+            return {"status": "complete", "items": [], "folders": []}
+        body = soup.select_one(".dataBody")
+        if body is None:
+            return {"status": "failed", "items": [], "folders": [], "error": "structure_changed"}
+        items, folders = [], []
+        extensions = {"mp4": "video", "avi": "video", "mp3": "audio", "wav": "audio",
+                      "png": "image", "jpg": "image", "jpeg": "image", "gif": "image",
+                      "pdf": "document", "doc": "document", "docx": "document",
+                      "ppt": "document", "pptx": "document", "xls": "document", "xlsx": "document",
+                      "txt": "document"}
+        for position, row in enumerate(body.select(":scope > .dataBody_td"), start=1):
+            data_id = _identifier(row.get("id"))
+            if not data_id:
+                continue
+            title = str(row.get("dataname") or "").strip()
+            if not title:
+                title = row.select_one(".dataBody_name_stu").get_text(" ", strip=True) if row.select_one(".dataBody_name_stu") else "资料"
+            raw_type = str(row.get("type") or "").lower().lstrip(".")
+            if str(row.get("t")) == "1" or raw_type in {"folder", "dir"}:
+                onclick = row.get("onclick") or ""
+                enc_match = re.search(r"(?:enc=|['\"])([a-fA-F0-9]{16,})", onclick)
+                folders.append({"id": data_id, "enc": enc_match.group(1) if enc_match else "", "title": title})
+                continue
+            anchor = row.select_one('a[href*="downloadData"]')
+            href = anchor.get("href") if anchor else None
+            if not href or not href.startswith("https://mooc1.chaoxing.com/coursedata/downloadData"):
+                continue
+            extension = raw_type or title.rsplit(".", 1)[-1].lower()
+            items.append({"external_id": f"course-data-{data_id}", "kind": extensions.get(extension, "material"),
+                          "title": title, "position": position, "depth": 0, "status": "unknown",
+                          "source_url": href, "metadata": {"source": "course_data", "extension": extension}})
+        return {"status": "complete", "items": items, "folders": folders}
+
+    @staticmethod
     def parse_courses_json(data: dict) -> list[dict]:
         courses = []
         for channel in data.get("channelList") or []:
@@ -615,11 +653,19 @@ class ChaoxingClient:
     async def get_course_materials(self, context: dict, *,
                                    force_refresh: bool = False,
                                    unchanged_chapter_ids: set[str] | None = None) -> dict:
+        standalone = await self.get_course_data_materials(context)
         chapter_result = await self.get_course_chapters(context)
         if chapter_result["status"] != "complete":
+            if standalone["status"] == "complete":
+                return standalone
+            if standalone.get("items"):
+                return {"status": "partial", "items": standalone["items"],
+                        "error": standalone.get("error") or chapter_result.get("error")}
             return chapter_result
         kinds = {"document", "video", "audio", "image", "material", "link"}
         resources = [item for item in chapter_result["items"] if item.get("kind") in kinds]
+        if standalone["status"] in {"complete", "partial"}:
+            resources.extend(standalone["items"])
         seen = {(str(item.get("kind")), str(item.get("external_id"))) for item in resources}
         course_id = _identifier(context.get("course_id"))
         clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
@@ -673,6 +719,8 @@ class ChaoxingClient:
                 if key not in seen:
                     resources.append(item)
                     seen.add(key)
+        if standalone["status"] != "complete":
+            errors.append(standalone.get("error") or "course_data_unavailable")
         if errors:
             return {"status": "partial", "items": resources, "error": errors[0]}
         return {
@@ -680,6 +728,52 @@ class ChaoxingClient:
             "items": resources,
             "error": None,
         }
+
+    async def get_course_data_materials(self, context: dict) -> dict:
+        course_id = _identifier(context.get("course_id"))
+        clazz_id = _identifier(context.get("clazz_id"), context.get("remote_class_id"))
+        cpi = _identifier(context.get("cpi"), context.get("remote_cpi"))
+        if not all((course_id, clazz_id, cpi)):
+            return {"status": "unavailable", "items": [], "error": "missing_course_context"}
+        base_url = "https://mooc2-ans.chaoxing.com/mooc2-ans/coursedata/stu-datalist"
+        params = {"courseid": course_id, "clazzid": clazz_id, "cpi": cpi, "ut": "s"}
+        items: list[dict] = []
+        visited: set[str] = set()
+
+        async def fetch(data_id: str | None = None, enc: str = "", depth: int = 0) -> str | None:
+            if data_id:
+                if data_id in visited or depth > 3:
+                    return None
+                visited.add(data_id)
+            query = {**params, **({"dataId": data_id, "enc": enc} if data_id else {})}
+            response = await self.client.get(base_url, params=query, headers=self._mobile_headers())
+            auth = _auth_error(response)
+            if auth:
+                return auth
+            response.raise_for_status()
+            parsed = ChaoxingParser.parse_course_data_list(response.text)
+            if parsed["status"] != "complete":
+                return parsed.get("error") or "structure_changed"
+            for item in parsed["items"]:
+                item["depth"] = depth
+                items.append(item)
+            for folder in parsed["folders"]:
+                if len(items) >= 300:
+                    break
+                error = await fetch(folder["id"], folder["enc"], depth + 1)
+                if error:
+                    return error
+            return None
+
+        try:
+            error = await fetch()
+            return {"status": "partial" if error and items else "failed" if error else "complete",
+                    "items": items, "error": error}
+        except (httpx.RequestError, OSError):
+            return {"status": "partial" if items else "failed", "items": items, "error": "network_error"}
+        except httpx.HTTPStatusError as error:
+            return {"status": "partial" if items else "failed", "items": items,
+                    "error": f"http_error_{error.response.status_code}"}
 
     async def get_course_exams(self, context: dict, *,
                                force_refresh: bool = False,
@@ -922,9 +1016,27 @@ class ChaoxingClient:
             "https://stat2-ans.chaoxing.com/study-knowledge/index"
             f"?courseId={course_id}&clazzId={clazz_id}"
         )
-        html = await self._get_text(url)
-        if not html:
+        response = None
+        for attempt in range(2):
+            try:
+                response = await self.client.get(url, follow_redirects=True)
+                break
+            except (httpx.RequestError, OSError):
+                if attempt == 0:
+                    await asyncio.sleep(0.8)
+        if response is None:
             return {"status": "failed", "items": [], "graph": {}, "error": "network_error"}
+        # A 403 response is an access-denied page, not a changed knowledge-graph
+        # layout. Never treat its HTML as evidence that the course has no graph.
+        if response.status_code in (401, 403):
+            return {"status": "unavailable", "items": [], "graph": {},
+                    "error": "access_denied"}
+        if response.status_code >= 400:
+            return {"status": "failed", "items": [], "graph": {},
+                    "error": f"http_error_{response.status_code}"}
+        html = response.text or ""
+        if not html:
+            return {"status": "failed", "items": [], "graph": {}, "error": "empty_response"}
         parsed = ChaoxingParser.parse_knowledge_graph(html)
         if not parsed.get("knowledge_points") and not parsed.get("knowledge_point_count"):
             return {"status": "unavailable", "items": [], "graph": {},
