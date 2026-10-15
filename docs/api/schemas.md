@@ -7569,3 +7569,42 @@ POST /notices/{notice_id}/workflow 请求体。
 | --- | --- | --- | --- | --- |
 | `state` | enum ["PRESENT", "OBSERVING", "ABSENT"] | 是 | — | — |
 | `confidence` | number | 是 | minimum=0.0; maximum=1.0 | — |
+
+
+<a id="schema-nativeroomin"></a>
+## NativeRoomIn
+
+原生讨论课堂创建请求，见[课堂 RTC](14-magicclass.md#classroom-rtc)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `title` | string | 是 | minLength=1; maxLength=200 | 去除首尾空白后不能为空 |
+
+
+<a id="schema-classroomrtcstatusout"></a>
+## ClassroomRtcStatusOut
+
+RTC 配置状态，不代表云服务和设备网络已验收。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `available` | boolean | 是 | — | AppId/AppKey 是否配置且格式满足要求 |
+| `provider` | string | 否 | default="volcengine" | RTC 提供方 |
+| `max_members` | integer | 否 | default=8 | 包含发起人与待接受邀请 |
+| `reason` | string / null | 否 | default=null | 不可用原因 |
+
+
+<a id="schema-classroomrtctokenout"></a>
+## ClassroomRtcTokenOut
+
+本课堂/本人专属凭证，响应禁止缓存，不持久化或记录 Token。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `provider` | string | 是 | — | volcengine |
+| `app_id` | string | 是 | — | 可公开的 RTC AppId，不是 AppKey |
+| `room_id` | string | 是 | — | 服务端生成的 RTC 房间，与本站 room_id 不同 |
+| `user_id` | string | 是 | — | 当前账号 UID |
+| `token` | string | 是 | — | 120 秒有效的 RTC Token |
+| `expires_at` | integer | 是 | — | UTC Unix 秒 |
+| `refresh_after_seconds` | integer | 是 | — | 当前为 60；再次请求相同接口并更新 SDK Token |

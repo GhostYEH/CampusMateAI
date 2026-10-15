@@ -57,7 +57,17 @@ app/src/main/java/com/example/campusai/
 
 Android 当前接入课程内经典互动课堂的 7 个接口：状态、生成前计划、生成、任务进度、历史、重试和内容组成。实现位于 [ApiService](app/src/main/java/com/example/campusai/data/remote/ApiService.kt) 与 [InteractiveClassroomSection](app/src/main/java/com/example/campusai/ui/screens/courses/InteractiveClassroomSection.kt)。课堂通过系统浏览器打开，地址须先通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 的公开 HTTPS 与 Origin 校验。
 
-课程内经典课堂、CampusMate 受管工作台和导航栏独立学习空间使用不同的数据与身份链路。Android 尚未接入受管工作台或独立学习空间，也没有原生课堂播放器与编辑器；不能混用 `session_id/classroom_id` 和 `workspace_id/stage_id/scene_id`，或假定本站 JWT 自动成为独立应用的身份。
+课程内经典课堂、CampusMate 受管工作台和导航栏独立学习空间使用不同的数据与身份链路。Android 尚未接入受管工作台或独立学习空间的完整播放器/编辑器；不能混用 `session_id/classroom_id` 和 `workspace_id/stage_id/scene_id`，或假定本站 JWT 自动成为独立应用的身份。
+
+### 多人共同课堂
+
+“课程 → 同学一起学”进入原生课堂列表，支持创建讨论课堂、显示/复制本人 UID、发起人邀请、接受/拒绝邀请、课堂文字讨论和最多 8 人的 RTC 音视频。可加入已有 Web 课件课堂的通话；Android 目前显示共享页码与发起人翻页按钮，完整课件内容仍需 Web 学习空间。实现见 `data/remote/LearningRoomApi.kt`、`data/classroom/ClassroomCall.kt` 和 `ui/screens/classroom/`。
+
+后端必须配置 `VOLC_RTC_APP_ID`、`VOLC_RTC_APP_KEY` 并开通火山 RTC；客户端仅领取短期 Token，不包含 AppKey。按[音视频协议](../docs/api/14-magicclass.md#classroom-rtc)接入。默认入会关闭麦克风/摄像头，分别授权后开启；拒绝一项权限仍可使用另一项。后台通过可见通知的前台服务保持语音、停止摄像头，返回前台需手动重新开摄像头；通知可直接断开通话。Token 每 60 秒续期，到期前提醒也会触发续期，网络失败有界退避，到期停止通话。
+
+RTC 锁定版本为 `3.60.104.300`，通过 typed `RTCEngine` / `RTCRoom` API 接入，使用实际入会回调、远端发布回调与视频渲染。视频发送 360p/15fps，远端小画面订阅 180p/15fps、弱网回退音频；画面关闭会停止采集和发布。用户离开列表不等于退出成员关系；“结束共同课堂”会结束所有成员的课堂，操作前有确认。服务端离开后的已有凭证最长剩余 120 秒，详见后端文档。
+
+本次未完成真机验收。Android 编译必须使用下文指定的本地 JDK；缺失时停止 JVM 操作。发布前验证两台及八台真机互通、前后台/锁屏、权限拒绝、切网重连、连续续期与回声/丢包；界面显示的 RTT 只是网络往返，不能作为端到端低延迟结论。
 
 后续接入以 [课程侧 API](../docs/api/14-magicclass.md)、[独立学习空间 API](../docs/api/learning-space.md) 和 [接口流程](../docs/api/integration.md) 为准。课程侧复用本站登录态与课程权限校验，不直接调用受管服务的 `/internal/*`。先读取状态、资料和历史，再实现生成、异步进度、播放与写入；提供方可用性、浏览器打开条件和实际内容组成须分别确认。上述说明来自源码核对，不代表真机或真实提供方验收。
 

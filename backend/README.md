@@ -62,6 +62,25 @@ CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。
 
 ## 在线课堂
 
+### Android 多人音视频共同课堂
+
+Android 的“课程 → 同学一起学”已接入共同课堂身份、创建讨论课堂、UID 邀请/接受、成员、文字消息与火山 RTC 音视频。已有上传课件课堂也可接受邀请后加入通话；完整课件播放仍在 Web 学习空间，Android 显示共享页码。每堂最多 8 人（含发起人及待接受邀请），每位发起人最多 20 个活动课堂。
+
+后端使用现有 `VOLC_RTC_APP_ID`（24 位）与 `VOLC_RTC_APP_KEY`，从已开通实时音视频服务的火山 RTC 应用取得后填入本地环境配置。AppKey 只留在后端，不要写入 APK、源码、日志或提交。此功能不需要 AI VoiceChat 配置、Seeduplex Key 或 AK/SK；与 Focus AI 语音独立。配置检查不等于云账号余额、真实连通性或通话质量已经通过验证。
+
+新增接口为 `GET /api/v1/magicclass/learning-space/rtc/status`、`POST /api/v1/magicclass/learning-space/rooms/native` 和 `POST /api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token`。完整请求/响应、权限、错误和跨端接入见[共同课堂音视频协议](../docs/api/14-magicclass.md#classroom-rtc)。后端只处理控制请求，音视频通过 RTC SDK/云服务传输，不经 HTTP 轮询、Python 转发或 SQLite。
+
+RTC 凭证绑定服务端确定的课堂与本人 UID，120 秒过期，客户端每 60 秒续期并处理 SDK 的到期提醒。续期重新检查 accepted 成员关系；离开/结束后拒绝续期。**离开不调用云端即时封禁接口，已签发凭证最多仍可使用 120 秒**；官方客户端通过课堂状态轮询及时断开。需要强制即时回收时，应另接云端房间/用户封禁，不能把短期凭证描述为即时撤销。
+
+安卓入会默认关闭采集，两项权限分别申请；后台通过前台服务保留通话声音并关闭摄像头，返回前台不会自动重新开摄像头。视频以 640×360/15fps 发送，订阅小画面并启用弱网音频优先。SDK 入会回调成功后才显示通话中；支持凭证续期、断线提示/重连、通知栏断开及离开释放。网络 RTT 不等于真实端到端语音延迟。
+
+部署验收须使用真实 RTC 配置和至少两台 Android 设备，覆盖不同运营商/Wi-Fi、锁屏、前后台、权限拒绝、反复开关、凭证续期和发起人结束；再进行 8 人持续通话与丢包/切网测试。当前自动化测试覆盖后端凭证/权限/并发边界，不代替真机音视频与延迟验收。
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pytest tests/test_learning_rooms.py tests/test_learning_room_rtc.py tests/test_openapi_docs.py -q
+```
+
 课程内互动课堂会先检查课程访问权限及受管服务状态，生成前可查看计划，提交后可查询进度、内容组成和历史会话。Web 的课堂工作台还通过课程 workspace 接口管理场景、播放、编辑与导出。导航栏“学习空间”则承载以独立进程运行的上游 `magicclass-app`。
 
 这些入口依赖 `magicclass-service` 和相应模型提供方。服务未启用、不可达或缺少所需配置时，接口会返回真实的不可用状态；仓库中的页面和测试并不等于每台机器都能生成课堂。

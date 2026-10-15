@@ -23471,7 +23471,8 @@
               "type": "integer",
               "minimum": 0,
               "default": 0,
-              "title": "After"
+              "title": "After",
+              "maximum": 9223372036854775807
             }
           }
         ],
@@ -23582,9 +23583,12 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "LEARNING_ROOM_ERROR：同一 client_id 已用于不同正文"
           }
         },
-        "description": "accepted 成员发送文字消息；content 1–2000，client_id 用于幂等去重。"
+        "description": "accepted 成员发送文字消息；content 1–2000，client_id 用于幂等去重。\n\n同一 client_id 与相同正文重试返回原消息；改变正文返回 409 LEARNING_ROOM_ERROR。"
       }
     },
     "/api/v1/magicclass/learning-space/rooms/{room_id}/leave": {
@@ -24461,6 +24465,129 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/magicclass/learning-space/rtc/status": {
+      "get": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "读取课堂音视频配置状态",
+        "description": "仅检查服务端 AppId/AppKey 配置，不代表云账号余额、网络或设备已验收。",
+        "operationId": "rtc_status_api_v1_magicclass_learning_space_rtc_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomRtcStatusOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/magicclass/learning-space/rooms/native": {
+      "post": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "创建原生讨论课堂",
+        "description": "创建无需上传课件的讨论课堂；复用邀请、成员、文字消息及 8 人/20 堂上限。",
+        "operationId": "native_room_api_v1_magicclass_learning_space_rooms_native_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeRoomIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token": {
+      "post": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "签发或续期课堂音视频凭证",
+        "description": "accepted 成员领取本人、当前课堂专属的 120 秒 RTC 凭证。\n\n同一接口用于续期；不接受客户端指定 RTC room_id/user_id。\n60 秒后续期，每次重新校验成员与课堂状态。客户端默认关闭采集。",
+        "operationId": "rtc_token_api_v1_magicclass_learning_space_rooms__room_id__rtc_token_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomRtcTokenOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CLASSROOM_RTC_UNAVAILABLE：音视频配置缺失或无效"
           },
           "422": {
             "description": "Validation Error",
@@ -46859,6 +46986,98 @@
           "confidence"
         ],
         "title": "PresenceChangedPayload"
+      },
+      "ClassroomRtcStatusOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "volcengine"
+          },
+          "max_members": {
+            "type": "integer",
+            "title": "Max Members",
+            "default": 8
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "title": "ClassroomRtcStatusOut"
+      },
+      "ClassroomRtcTokenOut": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "app_id": {
+            "type": "string",
+            "title": "App Id"
+          },
+          "room_id": {
+            "type": "string",
+            "title": "Room Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "expires_at": {
+            "type": "integer",
+            "title": "Expires At"
+          },
+          "refresh_after_seconds": {
+            "type": "integer",
+            "title": "Refresh After Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "app_id",
+          "room_id",
+          "user_id",
+          "token",
+          "expires_at",
+          "refresh_after_seconds"
+        ],
+        "title": "ClassroomRtcTokenOut"
+      },
+      "NativeRoomIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "NativeRoomIn"
       }
     },
     "securitySchemes": {

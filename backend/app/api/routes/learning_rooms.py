@@ -16,6 +16,11 @@ from ...services.learning_room_creation import (
     archive_scene_count as archive_scene_count,
     create_room_from_archive,
 )
+from ...services.learning_room_rtc import (
+    create_native_room,
+    issue_room_token,
+    rtc_available,
+)
 from ..deps import current_user
 
 router = APIRouter(prefix="/magicclass/learning-space", tags=["学习空间"])
@@ -39,6 +44,34 @@ class InvitationIn(BaseModel):
 
 class CursorIn(BaseModel):
     scene_index: int = Field(ge=0)
+
+
+class NativeRoomIn(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+    @field_validator("title")
+    @classmethod
+    def trim_title(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("课堂标题不能为空")
+        return value.strip()
+
+
+class ClassroomRtcStatusOut(BaseModel):
+    available: bool
+    provider: str = "volcengine"
+    max_members: int = 8
+    reason: str | None = None
+
+
+class ClassroomRtcTokenOut(BaseModel):
+    provider: str
+    app_id: str
+    room_id: str
+    user_id: str
+    token: str
+    expires_at: int
+    refresh_after_seconds: int
 
 
 class MessageIn(BaseModel):
@@ -75,6 +108,49 @@ class MessageIn(BaseModel):
 def identity(user: UserRow = Depends(current_user)):
     """读取当前登录账号在共同课堂中的 UID 与显示名，仅要求登录。"""
     return {"uid": user.id, "name": user.display_name or user.username}
+
+
+@router.get(
+    "/rtc/status",
+    response_model=ClassroomRtcStatusOut,
+    summary="读取课堂音视频配置状态",
+)
+def rtc_status(_user: UserRow = Depends(current_user)):
+    """仅检查服务端 AppId/AppKey 配置，不代表云账号余额、网络或设备已验收。"""
+    available = rtc_available(get_container().settings)
+    return ClassroomRtcStatusOut(
+        available=available,
+        reason=None if available else "课堂音视频尚未配置，请联系服务维护者",
+    )
+
+
+@router.post("/rooms/native", status_code=201, summary="创建原生讨论课堂")
+def native_room(
+    body: NativeRoomIn, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
+    """创建无需上传课件的讨论课堂；复用邀请、成员、文字消息及 8 人/20 堂上限。"""
+    return create_native_room(repo, user.id, body.title)
+
+
+@router.post(
+    "/rooms/{room_id}/rtc-token",
+    response_model=ClassroomRtcTokenOut,
+    summary="签发或续期课堂音视频凭证",
+    responses={503: {"description": "CLASSROOM_RTC_UNAVAILABLE：音视频配置缺失或无效"}},
+)
+def rtc_token(
+    room_id: str,
+    response: Response,
+    user: UserRow = Depends(current_user),
+    repo=Depends(_repository),
+):
+    """accepted 成员领取本人、当前课堂专属的 120 秒 RTC 凭证。
+
+    同一接口用于续期；不接受客户端指定 RTC room_id/user_id。
+    60 秒后续期，每次重新校验成员与课堂状态。客户端默认关闭采集。
+    """
+    response.headers["Cache-Control"] = "no-store"
+    return issue_room_token(get_container().settings, repo, room_id, user.id)
 
 
 @router.get(
@@ -468,7 +544,7 @@ def cursor(
 )
 def messages(
     room_id: str,
-    after: int = Query(0, ge=0),
+    after: int = Query(0, ge=0, le=9223372036854775807),
     user: UserRow = Depends(current_user),
     repo=Depends(_repository),
 ):
@@ -481,6 +557,7 @@ def messages(
     status_code=201,
     summary="发送文字消息",
     responses={
+        409: {"description": "LEARNING_ROOM_ERROR：同一 client_id 已用于不同正文"},
         201: {
             "description": "消息发送成功，返回消息 ID 与时间",
             "content": {
@@ -516,7 +593,10 @@ def send(
     user: UserRow = Depends(current_user),
     repo=Depends(_repository),
 ):
-    """accepted 成员发送文字消息；content 1–2000，client_id 用于幂等去重。"""
+    """accepted 成员发送文字消息；content 1–2000，client_id 用于幂等去重。
+
+    同一 client_id 与相同正文重试返回原消息；改变正文返回 409 LEARNING_ROOM_ERROR。
+    """
     return repo.send(room_id, user.id, body.content, body.client_id)
 
 

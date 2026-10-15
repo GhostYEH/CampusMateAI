@@ -288,11 +288,13 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | id | integer | 服务端递增消息 ID；供 after 游标使用 |
 | uid / name / content / created_at | string | 发送者、显示名、去除首尾空白的正文、UTC 时间 |
 
-消息读取返回 `{items:MessageRecord[]}`，最多 100 条，按 id 升序，且 id > after。发送返回 `{id:integer,content:string,created_at:string}`，不含 uid/name/client_id。重复发送同一成员、同一课堂、同一 client_id 时仍返回 201 和原消息，新的正文不会覆盖原记录。
+消息读取返回 `{items:MessageRecord[]}`，最多 100 条，按 id 升序，且 id > after。发送返回 `{id:integer,content:string,created_at:string}`，不含 uid/name/client_id。重复发送同一成员、同一课堂、同一 client_id 且正文相同时返回 201 和原消息；改变正文则返回 409 LEARNING_ROOM_ERROR，原消息不变。after 范围为 0–9223372036854775807，越界返回 422。
 
 拒绝邀请、更新页码和离开课堂返回 204，无响应体。下载归档返回 200 `application/zip` 和 `Cache-Control: no-store`，正文为创建时上传的原始 .maic.zip，不是 JSON 或 Base64，也未设置 Content-Disposition。
 
 所有错误遵循[统一错误结构](integration.md#errors)。未接受邀请、无成员权限、课堂不存在等均使用 404 `LEARNING_ROOM_ERROR`，避免暴露其他课堂。已结束课堂的旧成员访问通常也返回 404，因为结束操作同时将成员改为 left；若仍存在 accepted 成员，则返回 410。完整分支见模块手册。
+
+原生创建讨论课堂也返回上述 RoomRecord，包含单场景占位归档、stage_id="native-discussion"。音视频配置与凭证分别使用 [ClassroomRtcStatusOut](schemas.md#schema-classroomrtcstatusout)、[ClassroomRtcTokenOut](schemas.md#schema-classroomrtctokenout)；凭证响应 200 带 Cache-Control:no-store，expires_at 为 Unix 秒，有效期 120 秒、60 秒续期。RTC 房间/UID 固定为服务端给定值，leave 后不能续期，但已有 Token 不即时撤销。新错误 503 CLASSROOM_RTC_UNAVAILABLE 表示配置缺失/无效。完整流程及各端适配状态见[音视频协议](14-magicclass.md#classroom-rtc)。
 
 ## 错误码字典
 

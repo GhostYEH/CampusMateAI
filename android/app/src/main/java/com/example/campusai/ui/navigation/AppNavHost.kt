@@ -314,6 +314,7 @@ fun AppNavHost(
             CoursesScreen(
                 repository,
                 onOpenSchedule = { go(courseScheduleRoute()) },
+                onOpenLearningRooms = { go("learning_rooms") },
                 onOpenCounselor = { courseId, courseName, initialPrompt ->
                     go(
                         "counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}",
@@ -334,10 +335,16 @@ fun AppNavHost(
                 initialCourseId = backStackEntry.arguments?.getString("courseId"),
                 initialTab = backStackEntry.arguments?.getString("tab"),
                 initialSessionId = backStackEntry.arguments?.getString("session"),
+                onOpenLearningRooms = { go("learning_rooms") },
                 onOpenSchedule = { go(courseScheduleRoute()) },
                 onOpenCounselor = { courseId, courseName, initialPrompt ->
                     go("counselor?prompt=${Uri.encode(initialPrompt)}&courseId=${Uri.encode(courseId)}&courseName=${Uri.encode(courseName)}")
                 },
+            )
+        }
+        composable("learning_rooms") {
+            com.example.campusai.ui.screens.classroom.LearningRoomScreen(
+                onBack = { navController.popBackStack() },
             )
         }
         composable("profile") {

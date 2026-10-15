@@ -106,6 +106,7 @@ fun CoursesScreen(
     initialCourseId: String? = null,
     initialTab: String? = null,
     initialSessionId: String? = null,
+    onOpenLearningRooms: () -> Unit = {},
 ) {
     val courses by repository.courses.collectAsStateWithLifecycle()
     val mockMode by repository.mockMode.collectAsStateWithLifecycle()
@@ -149,6 +150,11 @@ fun CoursesScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { CoursesHeader(mockMode, reduceMotion) }
+        item {
+            androidx.compose.material3.OutlinedButton(onClick = onOpenLearningRooms, modifier = Modifier.fillMaxWidth()) {
+                Text("同学一起学 · 多人音视频课堂")
+            }
+        }
         item {
             CourseHero(
                 course = courses.firstOrNull(),

@@ -1,6 +1,6 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-10-07。本模块共 68 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-15。本模块共 71 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -98,6 +98,9 @@
 | GET | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 按消息 ID 增量读取交流记录 |
 | POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 发送文字消息 |
 | POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/leave` | 离开课堂；发起人操作时结束课堂 |
+| GET | `/api/v1/magicclass/learning-space/rtc/status` | 音视频配置状态 |
+| POST | `/api/v1/magicclass/learning-space/rooms/native` | 创建原生讨论课堂 |
+| POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token` | 领取或续期本课堂音视频凭证 |
 
 共同课堂接口均要求 Bearer 登录。UID 复用账号已有的唯一 `id`，注册、登录和个人信息响应同步提供 `uid` 字段。创建课堂用 multipart 的 `title`、`stage_id`、`file` 上传 `.maic.zip`（最多 64 MB）；邀请用 `{ "uid": "usr_…" }`。未接受邀请的用户不能读取课件、成员或消息。翻页用 `{ "scene_index": 0 }`；消息用 `{ "content": "一起讨论", "client_id": "客户端生成的唯一 ID" }`，同一成员在同一课堂重复提交同一个 `client_id` 不会重复写入。消息读取接受 `after`（默认 0），每次最多返回 100 条，按服务端 ID 升序排列。每位发起人最多保留 20 个活动课堂，每个课堂最多 8 位已加入或待接受的成员。
 
@@ -2657,7 +2660,7 @@ Web 封装：`getLearningSpaceStatus`（[webreact/src/data/learningSpaceApi.js](
 <a id="learning-rooms"></a>
 ## 共同课堂协议与接入
 
-以下 14 个接口属于 CampusMate 后端，统一使用 Bearer access token；路径不能改为 iframe 独立 Origin 的 /api。实现为 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py) 与 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，Web 封装见 [learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)。
+以下 17 个接口属于 CampusMate 后端，统一使用 Bearer access token；路径不能改为 iframe 独立 Origin 的 /api。实现为 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py) 与 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，Web 封装见 [learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)。
 
 权限按账号 UID 与课堂成员关系校验，不要求与发起人同校或预先选择学校；历史 teacher/admin 账号按普通学生身份参与。发起人创建后自动成为 accepted 成员；待接受邀请的用户不能读取课堂、课件或消息。每位发起人最多保留 20 个活动课堂；每个课堂的 pending 与 accepted 成员合计最多 8 人，包含发起人。
 
@@ -2673,9 +2676,9 @@ Web 封装：`getLearningSpaceStatus`（[webreact/src/data/learningSpaceApi.js](
 
 发起人结束课堂会同时清空归档并将所有成员置为 left，因此后续访问通常返回 404；客户端不能只处理 410。其余接口特有错误列在各节，body.request_id 可用于问题追踪。
 
-接入顺序：读取本人 identity → 上传完整课件创建课堂 → 按 UID 校验并邀请同学 → 对方读取 invitations 并接受 → 双方读取课堂与 archive → 发起人更新 cursor、成员轮询 room/messages → 主动 leave。客户端保存自己已读取的最大消息 id 作为 after；满 100 条时继续读取，避免遗漏后续消息。本协议使用 HTTP 轮询，没有 SSE 或 WebSocket。消息重试复用 client_id，新的消息必须使用新的 client_id；创建课堂没有幂等键，重复提交会创建新课堂。
+接入顺序：读取本人 identity → 上传完整课件创建课堂 → 按 UID 校验并邀请同学 → 对方读取 invitations 并接受 → 双方读取课堂与 archive → 发起人更新 cursor、成员轮询 room/messages → 主动 leave。客户端保存自己已读取的最大消息 id 作为 after；满 100 条时继续读取，避免遗漏后续消息。课件/文字协议使用 HTTP 轮询，没有 SSE 或 WebSocket；新增音视频使用独立 RTC 媒体通道，见下文。消息重试复用 client_id，新的消息必须使用新的 client_id；创建课堂没有幂等键，重复提交会创建新课堂。
 
-Web 已有上述调用封装；Android、HarmonyOS、微信小程序在本次审查中未接入该共同课堂协议，须按本文独立适配，原生构建与真机流程未验证。
+Web 已有课件、邀请、翻页及文字消息封装，尚未接入 RTC。Android 已接入共同课堂身份、原生讨论课堂、邀请、成员、消息、页码及 RTC 音视频，完整课件播放器未接入。HarmonyOS、微信小程序尚未适配共同课堂。本次原生构建与真机流程未验证。
 
 ### `GET /api/v1/magicclass/learning-space/identity`
 
@@ -2775,7 +2778,7 @@ Web 封装：`setLearningCursor`（[webreact/src/data/learningRoomApi.js](../../
 
 ### `GET /api/v1/magicclass/learning-space/rooms/{room_id}/messages`
 
-用途：accepted 成员增量读取消息。path 参数 room_id 必填；query after 为非负整数，默认 0，仅返回消息 id > after 的记录。成功返回 200 `{items:MessageRecord[]}`，按 id 升序最多 100 条。
+用途：accepted 成员增量读取消息。path 参数 room_id 必填；query after 为 0–9223372036854775807 的整数，默认 0，仅返回消息 id > after 的记录。超出范围返回 422 `VALIDATION_FAILED`。成功返回 200 `{items:MessageRecord[]}`，按 id 升序最多 100 条。
 
 Web 封装：`getLearningMessages`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
@@ -2787,7 +2790,7 @@ Web 封装：`getLearningMessages`（[webreact/src/data/learningRoomApi.js](../.
 
 Web 封装：`sendLearningMessage`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
-成功返回 201，例如 `{"id":1,"content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}`。同一成员、同一课堂的 client_id 去重；重试用同一 ID 返回原内容，即使新的 content 不同也不会覆盖。新消息使用新 ID。空白或超长正文返回 422 `VALIDATION_FAILED`。
+成功返回 201，例如 `{"id":1,"content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}`。同一成员、同一课堂的 client_id 去重；同一 ID 与相同正文重试返回原消息；同一 ID 改正文返回 409 `LEARNING_ROOM_ERROR`，避免误报发送成功。新消息使用新 ID。空白或超长正文返回 422 `VALIDATION_FAILED`。Web 现有重试已按正文生成 ID；Android 按课堂及正文保留重试 ID，其余两端待适配。
 
 ### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/leave`
 
@@ -2796,3 +2799,48 @@ Web 封装：`sendLearningMessage`（[webreact/src/data/learningRoomApi.js](../.
 Web 封装：`leaveLearningRoom`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
 其他成员随后应停止轮询。重复离开通常返回 404 `LEARNING_ROOM_ERROR`；邀请列表与活动课堂列表不再包含已结束课堂。
+
+<a id="classroom-rtc"></a>
+## Android 多人实时音视频
+
+音视频使用火山 RTC SDK 3.60.104.300 的 `RTCEngine`，所有 accepted 同学都有发布/订阅权限，分别决定是否开启麦克风与摄像头。课堂及成员继续使用上述数据库记录，没有第二套成员表。媒体经过 RTC 传输，不通过本站 HTTP 轮询或 FastAPI 转发。文字/页码仍为 HTTP 增量轮询，音视频流及开关变化由 RTC 事件通知其他同学。
+
+服务端配置 `VOLC_RTC_APP_ID`（24 位字母数字）与 `VOLC_RTC_APP_KEY`，必须来自已开通 RTC 的同一个应用；AppKey 不下发、不写入日志。普通多人通话不依赖 Focus AI VoiceChat、Seeduplex 或 AK/SK。`available=true` 只表示配置格式满足要求，不保证云服务开通/余额、设备或网络可用。
+
+Android 入口为“课程 → 同学一起学”，支持创建讨论课堂及进入 Web 已有课堂的通话；Web 本轮未实现 RTC 客户端，不能与 Android 做音视频互通。HarmonyOS、微信小程序未接入共同课堂。Android 完整课件播放器仍待接入，本轮显示已有课堂的共享页码，支持发起人翻页。原生编译及真机音视频未验证，不能声称已达到某个实测延迟。
+
+接入顺序：Bearer 登录 → identity、rtc/status、rooms、invitations → 创建 native 或接受邀请 → 请求 rtc-token → 按返回 app_id、room_id、user_id、token 入 RTC 房 → SDK 成功回调后显示通话中 → 单独授权并开启所需设备 → 60 秒后再次请求 rtc-token 并 `updateToken` → 断开 RTC 或主动 leave。`joinRoom` 返回 0 仅表示请求已接受，不能代替成功回调。严禁用本地任意 UID、通配房间或 URL query Token 替代服务端给定身份。
+
+RTC Token 有效期及全部发布/订阅权限均为 120 秒；提前 60 秒续期，SDK 的入房/发布/订阅权限到期提醒也触发去重续期。每次签发重新验证 accepted 成员与活动课堂，未接受/已离开/已结束返回 404，旧 accepted 结束态可为 410。官方 Android 每 3 秒完成一轮非重叠状态轮询（另加请求耗时），发现权限失效立即销毁 RTC；暂时断网续期采用 1/2/4/8 秒退避，凭证到期前停止通话。
+
+**撤销边界**：leave 不调用云端封禁 API，已签发 Token 不能被本站即时收回；不遵循官方客户端状态检查的 SDK 使用方最多仍可使用剩余 120 秒。安全要求必须即时撤销时，另接云端房间/用户封禁并验证重入限制，不能只依赖客户端按钮或停止续期。签发不写进程内会话表，可由多个后端 worker 使用同一配置签发；人数/课堂数检查和写入通过 SQLite `BEGIN IMMEDIATE` 保持原子性。
+
+客户端默认关闭音频和视频采集，不因拒绝摄像头权限禁止开麦，也不因拒绝麦克风权限禁止开摄像头。后台通过前台服务与持续通知保持语音，停止摄像头，回到前台不自动重新开启摄像头；通知提供断开动作。视频发送 640×360、15fps、最高 500kbps；小画面订阅 320×180、15fps，按需多路编码并允许弱网回退为音频。网络 RTT 只是 SDK 网络诊断，不是端到端音频/视频延迟。
+
+### `GET /api/v1/magicclass/learning-space/rtc/status`
+
+要求 Bearer 登录；无额外参数或请求体。成功 200 [ClassroomRtcStatusOut](schemas.md#schema-classroomrtcstatusout)。例如 `{"available":true,"provider":"volcengine","max_members":8,"reason":null}`；未配置时仍返回 200，available=false，reason 为提示文本。此接口不返回 AppKey、Token 或 AK/SK；认证错误 401 `UNAUTHORIZED`。
+
+### `POST /api/v1/magicclass/learning-space/rooms/native`
+
+要求 Bearer 登录；无需绑定课程或配置 RTC。JSON body 为 [NativeRoomIn](schemas.md#schema-nativeroomin)，例如 `{"title":"期末复习讨论"}`。title 必填，长度 1–200，去除首尾空白后不能为空。成功 201 返回与创建课件课堂相同的 RoomRecord：
+
+```json
+{"id":"room_example","host_uid":"usr_host_example","title":"期末复习讨论","stage_id":"native-discussion","scene_index":0,"scene_count":1,"active":1,"created_at":"2026-10-15T00:00:00+00:00","members":[{"uid":"usr_host_example","name":"同学甲","status":"accepted"}]}
+```
+
+创建一个包含单场景的占位课件归档，复用 archive、邀请、成员、消息、leave 等既有协议。20 堂活动上限返回 409 `LEARNING_ROOM_ERROR`，无效标题返回 422 `VALIDATION_FAILED`，未登录 401。创建没有幂等键；网络超时先回读 rooms，不盲目重复创建。
+
+### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token`
+
+要求 Bearer 登录与当前课堂 accepted 成员关系；path room_id 必填，无请求体或 query 参数。客户端不能指定 RTC 身份。相同接口用于初次入会与续期，成功 200 [ClassroomRtcTokenOut](schemas.md#schema-classroomrtctokenout)，响应 `Cache-Control: no-store`：
+
+```json
+{"provider":"volcengine","app_id":"0123456789abcdef01234567","room_id":"class_example_hash","user_id":"usr_host_example","token":"<short-lived-rtc-token>","expires_at":1800000120,"refresh_after_seconds":60}
+```
+
+expires_at 为 UTC Unix 秒，不是有效时长。room_id 由本站课堂 ID 的 SHA-256 摘要加 `class_` 命名空间生成，与 Focus AI 房间隔离；user_id 固定为当前账号 UID。不同成员进入同一 RTC 房间但各持有本人 Token；不要持久化或共享 Token。同 UID 在多个设备进同房可能导致先前设备被挤出，客户端显示断开并让用户重新选择设备。
+
+错误：401 `UNAUTHORIZED`；404 `LEARNING_ROOM_ERROR`（包括 pending、非成员、已离开及通常的结束态）；410 `LEARNING_ROOM_ERROR`（课堂结束但仍保留 accepted 关系）；503 `CLASSROOM_RTC_UNAVAILABLE`（RTC AppId/AppKey 缺失或格式无效）。配置错误示例 `{"code":"CLASSROOM_RTC_UNAVAILABLE","message":"课堂音视频尚未配置，请联系服务维护者","details":null,"request_id":"req_example"}`。网络暂时失败可以在凭证到期前有界重试；权限错误应停止通话，不能继续拿旧 Token 自动重入。
+
+发布验收：至少两台 Android 真机核对声音/画面双向互通、只开麦/只开摄像头/全部关闭、权限拒绝、回声、前后摄像头、锁屏与通知断开；随后进行 8 人持续 30 分钟、跨 Wi-Fi/蜂窝切网、丢包、至少两轮 Token 续期、离开与发起人结束测试。应单独测量端到端语音/视频延迟、卡顿与恢复时间；后端单元测试不提供这些指标。

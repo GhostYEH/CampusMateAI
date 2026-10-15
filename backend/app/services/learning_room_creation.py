@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
+import zlib
 
 from ..core.exceptions import AppException
 from ..repositories.learning_room_repository import LearningRoomRepository
@@ -39,6 +40,8 @@ def archive_scene_count(data: bytes) -> int:
             return len(scenes)
     except (
         zipfile.BadZipFile,
+        zlib.error,
+        EOFError,
         KeyError,
         ValueError,
         TypeError,

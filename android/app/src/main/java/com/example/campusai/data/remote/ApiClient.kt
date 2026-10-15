@@ -132,6 +132,7 @@ object ApiClient {
         .build()
 
     val api: ApiService = retrofit.create(ApiService::class.java)
+    val learningRooms: LearningRoomApi = retrofit.create(LearningRoomApi::class.java)
 
     /** Same authenticated backend, but converted to WebSocket only inside the voice transport. */
     fun websocketUrl(path: String): String {
