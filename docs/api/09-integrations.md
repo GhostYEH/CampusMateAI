@@ -107,7 +107,7 @@ Web 封装：`generateChaoxingAssignmentClassroom`（[webreact/src/data/api.js](
 
 异常：401 本站登录无效；403 课程权限不足；404 作业不可见或课程不存在；409 的 `message` 为 `assignment_not_submitted`（先到学习通提交并同步）、`assignment_course_unavailable`（重新同步课程关联）或 `assignment_content_not_current`（同步提交后的题目）。422 的 message 为 `assignment_images_require_text` 或 `assignment_content_too_large`。503 为受管服务或模型不可用，沿用 `MAGICCLASS_FUSION_UNAVAILABLE`；受管服务的权限、资源、限流与幂等错误沿用 [课堂契约](14-magicclass.md)。不会用本地模板伪装生成成功。
 
-兼容性：现有 login/status/sync/disconnect 请求和响应字段保留。每日服务端同步对所有已连接客户端生效；Web 已接入题目查看、生成、进度、重试及播放入口。Android/HarmonyOS/微信小程序尚未接入新增作业复习入口，也未做本次原生端验证；它们可按上述新增接口适配。
+兼容性：现有 login/status/sync/disconnect 请求和响应字段保留。每日服务端同步对所有已连接客户端生效；Web 已接入题目查看、生成、进度、重试及播放入口。在线课堂首页和学习空间侧栏通过 `GET /tasks?status=completed` 分页读取并筛选 source=chaoxing 的已提交作业；一键进入会复用上述生成接口、必要时同步缺失题目、重试已有失败任务，完成后自动跳转播放器，无需再次确认进入。Android/HarmonyOS/微信小程序尚未接入新增作业复习入口，也未做本次原生端验证；它们可按上述新增接口适配。
 
 ### `POST /api/v1/chaoxing/login`
 

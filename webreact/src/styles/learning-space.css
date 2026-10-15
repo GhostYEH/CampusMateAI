@@ -34,6 +34,10 @@
   border: 0;
 }
 
+.learning-space-tools { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; background: var(--surface, #fff); }
+.learning-space-tools > .assignment-reviews { flex: 0 0 auto; }
+.learning-space-tools > .learning-room-panel { flex: 1 0 auto; overflow: visible; }
+
 .learning-room-panel {
   min-height: 0;
   overflow: auto;

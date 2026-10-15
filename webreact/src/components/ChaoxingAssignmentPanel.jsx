@@ -1,21 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
-import { userErrorMessage } from "../data/contracts.js";
+import { assignmentReviewError as errorText } from "../features/magicclass/assignmentReviewModel.js";
 import { Button, Panel, SectionHeading } from "./Primitives.jsx";
-
-const failures = {
-  assignment_not_submitted: "请先在学习通提交作业，再同步提交状态。",
-  assignment_course_unavailable: "作业暂未关联课程，请重新同步学习通。",
-  assignment_content_not_current: "还没有取得提交后的题目，请先同步作业。",
-  assignment_images_require_text: "题目包含尚未识别的图片，暂时无法生成完整讲解。",
-  assignment_content_too_large: "这份作业内容较长，超出了单次课堂可处理的范围。",
-};
-function errorText(error) {
-  const body = error?.response?.data;
-  const code = body?.detail || body?.message || error?.message;
-  return failures[code] || userErrorMessage(error, "课堂服务暂时不可用，请稍后重试。");
-}
 
 export default function ChaoxingAssignmentPanel({ task, onSynced }) {
   const navigate = useNavigate();

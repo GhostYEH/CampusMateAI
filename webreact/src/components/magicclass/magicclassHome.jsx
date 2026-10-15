@@ -7,6 +7,7 @@ import { describeEntryFailure, enterClassroomHref, resolveGenerationPhase, stage
 import { buildCourseRailItems, defaultMagicClassCourseId } from "../../features/magicclass/homeModel.js";
 import { inferHomeGenerationMode } from "../../features/magicclass/homeGenerationModel.js";
 import { createPollScope } from "../../data/pollScope.js";
+import SubmittedAssignmentReviews from "../SubmittedAssignmentReviews.jsx";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
@@ -97,6 +98,7 @@ export default function MagicClassHome({ courses = [], assignments = [], recentI
       {selectedCourseId ? <Link className="button button-primary magicclass-classroom-entry__action" to={enterClassroomHref(selectedCourseId)} aria-label={`进入《${selectedCourse?.name || selectedCourse?.title || "当前课程"}》的课堂`}><Icon name="PhSparkle" size={17} />进入课堂</Link> : <button type="button" className="button button-primary magicclass-classroom-entry__action" disabled><Icon name="PhSparkle" size={17} />进入课堂</button>}
     </div>
     <p className="magicclass-classroom-entry__hint" role="status">直接进入会创建或恢复该课程的课堂；输入主题后则可生成新的学习内容。</p>
+    <SubmittedAssignmentReviews />
     <RecentClassrooms items={recentItems} error={recentError} /><CourseLibrary courses={courses} assignments={assignments} /><p className="magicclass-reference-footer">{"magic class Open Source Project"}</p>
   </section>;
 }

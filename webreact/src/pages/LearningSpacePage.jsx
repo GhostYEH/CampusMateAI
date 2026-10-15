@@ -12,6 +12,7 @@ import "../styles/learning-space.css";
  *    也就不可能在别处悄悄放宽 sandbox。
  * 3. 不可用时说清是链条上哪一段没起来、以及怎么起来，不摆一个点了没反应的假入口。
  * 4. 通过受校验的消息桥准备课堂文件，邀请 UID 对应的同学加入并交流。
+ * 5. 展示已提交作业，一键创建或复用讲解课堂并进入学习。
  *
  * 不在这里重新实现 magic class 的任何界面：那是它自己的产品。
  */
@@ -19,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import ClassroomEmbed from "../components/interactive/ClassroomEmbed.jsx";
 import LearningRoomPanel from "../components/interactive/LearningRoomPanel.jsx";
+import SubmittedAssignmentReviews from "../components/SubmittedAssignmentReviews.jsx";
 import { learningSpaceEmbedUrl } from "../data/learningRoomBridge.js";
 import { Icon } from "../components/Icon.jsx";
 import { Button, PageFrame } from "../components/Primitives.jsx";
@@ -128,41 +130,41 @@ export default function LearningSpacePage() {
       className="learning-space-page"
       showHeading={false}
     >
-      {loading && (
-        <div className="learning-space-feedback">
-          <div className="state-card loading-state" aria-busy="true">
-            <span className="loading-orb" />
-            <p>正在连接学习空间…</p>
+      <section className="learning-space-stage" aria-label="学习空间">
+        {loading && (
+          <div className="learning-space-feedback">
+            <div className="state-card loading-state" aria-busy="true">
+              <span className="loading-orb" />
+              <p>正在连接学习空间…</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {!loading && error && (
-        <div className="learning-space-feedback">
-          <div className="state-card error-state" role="alert">
-            <Icon name="PhWarningCircle" size={24} />
-            <p>学习空间状态读取失败：{String(error?.message || error)}</p>
-            <Button variant="secondary" onClick={load}>重试</Button>
+        {!loading && error && (
+          <div className="learning-space-feedback">
+            <div className="state-card error-state" role="alert">
+              <Icon name="PhWarningCircle" size={24} />
+              <p>学习空间状态读取失败：{String(error?.message || error)}</p>
+              <Button variant="secondary" onClick={load}>重试</Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {blocker && (
-        <div className="learning-space-feedback">
-          <div className="state-card empty-state" role="status">
-            <Icon name="PhChalkboardTeacher" size={34} />
-            <h2 className="learning-space-blocker__title">{blocker.title}</h2>
-            <p>{blocker.body}</p>
-            <p className="learning-space-blocker__hint">{blocker.hint}</p>
-            <Button variant="secondary" icon="PhArrowClockwise" onClick={load}>
-              重新检测
-            </Button>
+        {blocker && (
+          <div className="learning-space-feedback">
+            <div className="state-card empty-state" role="status">
+              <Icon name="PhChalkboardTeacher" size={34} />
+              <h2 className="learning-space-blocker__title">{blocker.title}</h2>
+              <p>{blocker.body}</p>
+              <p className="learning-space-blocker__hint">{blocker.hint}</p>
+              <Button variant="secondary" icon="PhArrowClockwise" onClick={load}>
+                重新检测
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {ready && (
-        <section className="learning-space-stage" aria-label="学习空间">
+        {ready && (
           <ClassroomEmbed
             iframeRef={iframeRef}
             url={learningSpaceEmbedUrl(origin, window.location.origin)}
@@ -170,9 +172,12 @@ export default function LearningSpacePage() {
             title="学习空间"
             onOpenExternal={openExternal}
           />
-          <LearningRoomPanel origin={origin} iframeRef={iframeRef} />
-        </section>
-      )}
+        )}
+        <aside className="learning-space-tools" aria-label="课堂学习工具">
+          <SubmittedAssignmentReviews compact />
+          {ready && <LearningRoomPanel origin={origin} iframeRef={iframeRef} />}
+        </aside>
+      </section>
 
       {ready && origin && !origin.startsWith("https:") && (
         <span className="sr-only">
