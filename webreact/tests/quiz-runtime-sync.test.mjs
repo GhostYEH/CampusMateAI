@@ -53,6 +53,48 @@ async function choose(host, index = 0) {
   await act(async () => host.querySelectorAll('input[type="radio"]')[index].click());
 }
 
+test("student-led practice supports choosing, progressive help, skipping and opt-in analysis with real persistence", async () => {
+  const calls = [];
+  globalThis.__quizApi = { get: async () => ({ attempt_id: "attempt", state: null }), save: async (...args) => { calls.push(args.at(-1)); return { attempt_id: "attempt" }; } };
+  const practice = [1, 2].map((n) => ({ id: `q${n}`, type: "single", question: `练习${n}`, options: [{ label: "甲", value: "A" }, { label: "乙", value: "B" }], answer: ["A"], analysis: `第${n}题完整解析`, points: 2, sourceQuestionNumber: n, exerciseRole: n === 1 ? "retry" : "transfer", hints: [`关注条件${n}`, `尝试代入${n}`] }));
+  const view = await mount({ questions: practice, studentLed: true });
+  try {
+    await click(view.host, "开始练习");
+    assert.equal(view.host.querySelector("details"), null);
+    assert.doesNotMatch(view.host.textContent, /关注条件1|尝试代入1|完整解析/);
+    await click(view.host, "给我一点提示");
+    assert.match(view.host.textContent, /关注条件1/);
+    assert.doesNotMatch(view.host.textContent, /尝试代入1/);
+    await click(view.host, "给我一点提示");
+    assert.match(view.host.textContent, /尝试代入1/);
+    await click(view.host, "第 2 题");
+    await choose(view.host);
+    await click(view.host, "提交本轮答案");
+    assert.match(view.host.textContent, /本轮跳过/);
+    assert.equal(view.host.querySelector('[data-testid="quiz-score"]').textContent, "本轮已答选择题 2 / 2");
+    assert.equal(view.host.querySelector("details").open, false);
+    assert.deepEqual(calls.at(-1).answers, { q2: "A" });
+    assert.equal(calls.at(-1).results[0].correct, null);
+    await click(view.host, "重新作答");
+    assert.doesNotMatch(view.host.textContent, /关注条件1|完整解析/);
+    assert.equal(calls.at(-1).start_new_attempt, true);
+  } finally { await view.close(); }
+});
+
+test("practice short answers are self-checked and never receive a fabricated automatic score", async () => {
+  globalThis.__quizApi = { get: async () => ({ attempt_id: "attempt", state: { phase: "draft", answers: { proof: "先写出已知条件" } } }), save: async () => ({ attempt_id: "attempt" }) };
+  const view = await mount({ studentLed: true, questions: [{ id: "proof", type: "short_answer", question: "写出证明思路", analysis: "AI参考证明", points: 5 }] });
+  try {
+    const textarea = view.host.querySelector("textarea");
+    assert.ok(textarea);
+    assert.equal(textarea.value, "先写出已知条件");
+    await click(view.host, "提交本轮答案");
+    assert.match(view.host.textContent, /对照解析自行核对/);
+    assert.ok(view.host.querySelector(".is-ungraded"));
+    assert.equal(view.host.querySelector('[data-testid="quiz-score"]').textContent, "本轮已答选择题 0 / 0");
+  } finally { await view.close(); }
+});
+
 test("failed draft remains visible and retry sends the latest answers", async () => {
   let fail = false;
   const calls = [];

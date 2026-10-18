@@ -121,15 +121,15 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 <a id="sync"></a>
 ## 学习通与课程局部同步
 
-作业题目快照与提交后课堂的动态响应见 [作业复习接口](09-integrations.md)。题目快照返回 `task_id/course_id/status/available/current/can_generate/fetched_at/questions`，每题为 `{number,stem,options:string[]}`，无可读题目时 questions 为空且 fetched_at 为 null；生成响应包含 `workspace_id/course_id/task_id/question_count` 和既有 `source/job`。can_generate 表示数据前置条件，不代表外部服务已经就绪。服务端每日同步也更新题目；抓取失败或有待补批次时 assignments 分区为 partial，warnings 含 `assignment_content:<reason>`，保留已有快照。
+作业题目快照与截止后自主练习课堂的动态响应见 [作业复习接口](09-integrations.md)。题目快照返回 `task_id/course_id/status/available/current/can_generate/fetched_at/questions`，每题为 `{number,stem,options:string[]}`，无可读题目时 questions 为空且 fetched_at 为 null；生成响应包含 `workspace_id/course_id/task_id/question_count` 和既有 `source/job`。can_generate 表示数据前置条件，不代表外部服务已经就绪。服务端每日同步也更新题目；抓取失败或有待补批次时 assignments 分区为 partial，warnings 含 `assignment_content:<reason>`，保留已有快照。
 
-题目快照的 `available` 表示存在已采集题目；`current` 仅表示快照保存的提交状态与待办一致；`can_generate` 还要求 completed 和非空 course_id，不包含图片/长度检查、课程权限或模型可用性检测。fetched_at 是成功采集时的同步轮次时间，失败重试不会把旧题目伪装为本次采集。示例（没有题目时）：
+题目快照的 `available` 表示存在已采集题目；`current` 仅表示快照保存的提交状态与待办一致；`can_generate` 还要求有效截止时间已到期和非空 course_id（pending/completed 均可），不包含图片/长度检查、课程权限或模型可用性检测。fetched_at 是成功采集时的同步轮次时间，失败重试不会把旧题目伪装为本次采集。示例（没有题目时）：
 
 ```json
 {"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":false,"current":false,"can_generate":false,"fetched_at":null,"questions":[]}
 ```
 
-已提交作业列表沿用 `GET /tasks` 的 `Page<PersonalTaskOut>`，按 status=completed 分页，客户端再筛选 source=chaoxing；它没有专用的学习通列表响应。completed_at 是本站完成记录时间，`remote_submitted_at` 返回远端明确提供的提交时间，未获取时为 null；成绩字段仍不公开。不得将 completed_at 作为真实提交时间。
+已截止作业列表沿用 `GET /tasks` 的 `Page<PersonalTaskOut>`，不传 status 分页，客户端筛选 source=chaoxing、未删除且有效 deadline 已到期的 pending/completed 条目；它没有专用的学习通列表响应。completed_at 是本站完成记录时间，`remote_submitted_at` 返回远端明确提供的提交时间，未获取时为 null；成绩字段仍不公开。不得将 completed_at 作为真实提交时间。
 
 课堂 POST 的 queued/running job 需要继续用课程 job GET 查询，重试接口成功返回的是 job 本身，不能误取 `response.job`；只有 completed 才表示课件可以进入。页面停止查看不会取消服务端任务，重复课堂 POST 会按同份需求恢复任务，失败/取消仍需显式调用 retry。请求示例和恢复状态表见[一键讲解流程](09-integrations.md#assignment-review-flow)。
 

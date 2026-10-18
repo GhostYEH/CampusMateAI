@@ -846,6 +846,7 @@ class MagicClassFusionClient:
         idempotency_key: str,
         role_mode: str = "preset",
         selected_role_ids: Optional[list[str]] = None,
+        assignment_review: Optional[dict[str, int]] = None,
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
@@ -858,6 +859,7 @@ class MagicClassFusionClient:
                 "prompt": prompt,
                 "role_mode": role_mode,
                 "selected_role_ids": selected_role_ids or [],
+                **({"assignment_review": assignment_review} if assignment_review else {}),
             },
             idempotency_key=idempotency_key,
         )

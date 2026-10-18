@@ -1,4 +1,4 @@
-const SHORT_ANSWER_TYPES = new Set(["short", "short-answer", "text", "freeform"]);
+const SHORT_ANSWER_TYPES = new Set(["short", "short_answer", "short-answer", "text", "freeform"]);
 
 function stringValue(value) {
   return typeof value === "string" ? value.trim() : String(value ?? "").trim();
@@ -23,7 +23,7 @@ export function normalizeQuizQuestions(content) {
         : "single";
     const options = Array.isArray(question.options)
       ? question.options.map((option, optionIndex) => ({
-        label: stringValue(option?.label ?? option?.value) || `选项 ${optionIndex + 1}`,
+        label: stringValue(typeof option === "string" ? option : option?.label ?? option?.value) || `选项 ${optionIndex + 1}`,
         value: optionValue(option) || `option-${optionIndex + 1}`,
       }))
       : [];
@@ -36,6 +36,9 @@ export function normalizeQuizQuestions(content) {
       acceptedAnswers: uniqueStrings(question.acceptedAnswers ?? question.answer ?? question.answers ?? question.correctAnswer),
       analysis: stringValue(question.analysis) || "暂无解析。",
       points: Math.max(0, Number(question.points) || 1),
+      hints: Array.isArray(question.hints) ? question.hints.filter((hint) => typeof hint === "string" && hint.trim()).slice(0, 3) : [],
+      sourceQuestionNumber: question.sourceQuestionNumber,
+      exerciseRole: question.exerciseRole,
     };
   });
 }
@@ -61,10 +64,12 @@ function isCorrect(question, answer) {
   return sameSet([answer], question.answers);
 }
 
-export function evaluateQuiz(questions, answers = {}) {
+export function evaluateQuiz(questions, answers = {}, { studentLed = false } = {}) {
   const normalized = Array.isArray(questions) ? questions : normalizeQuizQuestions(questions);
   const results = normalized.map((question) => {
-    const correct = isCorrect(question, answerForQuestion(question, answers[question.id]));
+    const answer = answerForQuestion(question, answers[question.id]);
+    const answered = Array.isArray(answer) ? answer.length > 0 : Boolean(answer);
+    const correct = studentLed && (question.type === "short" || !answered) ? null : isCorrect(question, answer);
     return {
       questionId: question.id,
       correct,
@@ -74,7 +79,7 @@ export function evaluateQuiz(questions, answers = {}) {
   });
   return {
     score: results.reduce((sum, item) => sum + item.earned, 0),
-    total: normalized.reduce((sum, question) => sum + question.points, 0),
+    total: normalized.reduce((sum, question, index) => sum + (results[index].correct === null ? 0 : question.points), 0),
     results,
   };
 }

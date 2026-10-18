@@ -136,6 +136,9 @@ export interface QuizQuestion {
   answer?: string[];
   analysis?: string;
   points?: number;
+  sourceQuestionNumber?: number;
+  exerciseRole?: 'retry' | 'transfer';
+  hints?: string[];
 }
 
 export interface SlideContent {
@@ -149,6 +152,7 @@ export interface SlideContent {
 export interface QuizContent {
   type: 'quiz';
   questions: QuizQuestion[];
+  learningProfile?: 'assignment_review';
 }
 
 export interface InteractiveContent {

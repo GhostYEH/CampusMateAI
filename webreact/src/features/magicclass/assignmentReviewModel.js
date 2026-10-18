@@ -1,7 +1,8 @@
 import { itemsOf, userErrorMessage } from "../../data/contracts.js";
 
 const errors = {
-  assignment_not_submitted: "学习通当前尚未确认提交，请同步后重试。",
+  assignment_not_ended: "作业尚未截止，截止后再来练习。",
+  assignment_deadline_unknown: "尚未取得有效截止时间，请同步学习通后重试。",
   assignment_course_unavailable: "作业暂未关联课程，请重新同步学习通。",
   assignment_content_not_current: "还没有取得提交后的题目，请先同步作业。",
   assignment_images_require_text: "题目包含尚未识别的图片，暂时无法生成完整讲解。",
@@ -18,17 +19,29 @@ export function assignmentReviewError(error) {
   return errors[errorCode(error)] || userErrorMessage(error, "课堂服务暂时不可用，请稍后重试。");
 }
 
-export async function loadSubmittedAssignments(getTasks) {
+function assignmentDeadlineTime(task) {
+  let deadline = String(task?.deadline || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(deadline)) deadline += "T23:59:59+08:00";
+  else if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(deadline)) deadline += "+08:00";
+  return Date.parse(deadline);
+}
+
+export function assignmentHasEnded(task, now = Date.now()) {
+  const endsAt = assignmentDeadlineTime(task);
+  return Number.isFinite(endsAt) && endsAt <= now;
+}
+
+export async function loadEndedAssignments(getTasks, now = Date.now()) {
   const tasks = [];
   let page = 1;
   while (true) {
-    const result = await getTasks({ status: "completed", page, page_size: 200 });
+    const result = await getTasks({ page, page_size: 200 });
     const items = itemsOf(result);
-    tasks.push(...items.filter((task) => task.source === "chaoxing" && task.status === "completed" && !task.deleted_at));
+    tasks.push(...items.filter((task) => task.source === "chaoxing" && ["pending", "completed"].includes(task.status) && !task.deleted_at && assignmentHasEnded(task, now)));
     if (!result?.has_more || !items.length) break;
     page += 1;
   }
-  const time = (task) => Date.parse(task.remote_submitted_at || task.completed_at || task.last_synced_at || task.updated_at) || 0;
+  const time = (task) => assignmentDeadlineTime(task) || 0;
   return [...new Map(tasks.map((task) => [task.id, task])).values()].sort((a, b) => time(b) - time(a));
 }
 

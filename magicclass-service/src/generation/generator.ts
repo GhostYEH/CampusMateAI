@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contract.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 import { composeSlideCanvas, readSlideOutline } from '../dsl/slide-canvas.ts';
+import { reviewAssignmentPractice, type AssignmentReviewSpec } from './assignment-review.ts';
 import { composePblProject } from '../dsl/pbl-project.ts';
 
 export const GENERATION_MODES = [
@@ -47,10 +48,11 @@ function authoredScene(stageId: string, order: number, title: string, content: S
 }
 
 /** A generation-specific quality gate; prepareStage still validates the entire DSL. */
-export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt: string): string[] {
+export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt: string, assignmentReview?: AssignmentReviewSpec): string[] {
   const scenes = isObject(raw) && Array.isArray(raw.scenes) ? raw.scenes : [];
   const issues: string[] = [];
-  if (mode === 'slide') {
+  if (assignmentReview) issues.push(...reviewAssignmentPractice(scenes, assignmentReview));
+  if (mode === 'slide' && !assignmentReview) {
     for (const [index, purpose] of ['概念', '推导或例子'].entries()) {
       const scene = scenes[index];
       const content = isObject(scene) && isObject(scene.content) ? scene.content : {};
@@ -89,7 +91,7 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
       if (question.type === 'short_answer') continue;
       const options = question.options;
       const answer = question.answer;
-      if (!Array.isArray(options) || options.length < 3 || options.length > 6
+      if (!Array.isArray(options) || options.length < (assignmentReview ? 2 : 3) || options.length > (assignmentReview ? 26 : 6)
         || !options.every((option) => isObject(option) && typeof option.label === 'string' && option.label.trim()
           && typeof option.value === 'string' && option.value.trim())
         || new Set(options.map((option) => option.value)).size !== options.length
@@ -263,7 +265,7 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
  * content and never identities or timestamps (the prompt forbids it), so the
  * service owns the ids, ordering and clock before the validator runs.
  */
-export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[]; mode?: GenerationMode; prompt?: string } = {}): StageAggregate & { dslVersion: string } {
+export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[]; mode?: GenerationMode; prompt?: string; assignmentReview?: AssignmentReviewSpec } = {}): StageAggregate & { dslVersion: string } {
   const now = Date.now();
   const stageId = id('stage');
   const source = isObject(raw) ? raw : {};
@@ -280,6 +282,11 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
       updatedAt: now,
     } as unknown as Scene;
   });
+  if (options.assignmentReview) {
+    scenes = scenes.map((scene) => ({ ...scene, actions: [], multiAgent: { enabled: false, agentIds: [] },
+      content: scene.content.type === 'quiz' ? { ...scene.content, learningProfile: 'assignment_review' } : scene.content,
+    } as Scene));
+  }
   if (options.mode === 'simulation') {
     // Providers often return a rich interactive explanation with the correct
     // widget type but omit the parameter schema. Keep that explanation and

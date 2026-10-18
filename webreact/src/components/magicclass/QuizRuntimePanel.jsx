@@ -3,6 +3,7 @@ import { Button } from "../Primitives.jsx";
 import { evaluateQuiz, normalizeQuizQuestions } from "../../features/magicclass/sceneRuntimeModel.js";
 import * as api from "../../data/api.js";
 import { userErrorMessage } from "../../data/contracts.js";
+import "../../styles/assignment-practice.css";
 
 function storageKey(sceneId) {
   return sceneId ? `campusmate:magicclass:quiz:${sceneId}` : "";
@@ -32,7 +33,7 @@ export default function QuizRuntimePanel(props) {
   return <QuizAttemptPanel key={identity} {...props} />;
 }
 
-function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId }) {
+function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId, studentLed = false }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
@@ -44,6 +45,8 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
   const [loadError, setLoadError] = React.useState("");
   const [loadPending, setLoadPending] = React.useState(Boolean(courseId && workspaceId && stageId && sceneId));
   const [loadRetry, setLoadRetry] = React.useState(0);
+  const [selectedQuestion, setSelectedQuestion] = React.useState(0);
+  const [hintLevels, setHintLevels] = React.useState({});
   const mounted = React.useRef(false);
   const edited = React.useRef(Boolean(saved?.pending_sync));
   const writer = React.useRef({
@@ -154,7 +157,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
       const state = remote.state;
       const submitted = state.phase === "submitted";
       const nextPhase = state.phase === "reviewed" || submitted ? "review" : state.phase === "draft" && Object.keys(state.answers || {}).length ? "answering" : "intro";
-      const evaluation = evaluateQuiz(questions, state.answers || {});
+      const evaluation = evaluateQuiz(questions, state.answers || {}, { studentLed });
       const nextReview = nextPhase === "review" ? {
         ...evaluation,
         results: state.phase === "reviewed" && state.results?.length === questions.length ? state.results : evaluation.results,
@@ -182,7 +185,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
     session.ready = ready;
     void ready.catch(() => {}); // The load error is displayed above; writes still receive the rejection.
     return () => { cancelled = true; };
-  }, [courseId, workspaceId, stageId, sceneId, questions, loadRetry]);
+  }, [courseId, workspaceId, stageId, sceneId, questions, loadRetry, studentLed]);
 
   function persist(nextPhase, nextAnswers, nextReview = review) {
     edited.current = true;
@@ -198,7 +201,7 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
 
   function submitAnswers(event) {
     event.preventDefault();
-    const result = evaluateQuiz(questions, answers);
+    const result = evaluateQuiz(questions, answers, { studentLed });
     setReview(result);
     setPhase("review");
     persist("review", answers, result);
@@ -212,11 +215,14 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
     setAnswers({});
     setReview(null);
     setPhase("answering");
+    setHintLevels({});
+    setSelectedQuestion(0);
     persist("answering", {}, null);
     void persistRemote("answering", {}, null, true);
   }
 
   const allAnswered = questions.length > 0 && questions.every((question) => isAnswered(question, answers[question.id]));
+  const anyAnswered = questions.some((question) => isAnswered(question, answers[question.id]));
   if (!questions.length) return <p className="magicclass-hint">这份测验还没有题目。</p>;
   const syncNotice = loadError ? <div className="magicclass-hint magicclass-hint--error" role="alert">
     <p>答题记录读取失败：{loadError}</p>
@@ -230,10 +236,10 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
   if (phase === "intro") return <section className="magicclass-quiz-runtime" aria-label="测验开始">
     {syncNotice}
     <div className="magicclass-runtime-cover">
-      <span className="magicclass-runtime-kicker">互动测验</span>
+      <span className="magicclass-runtime-kicker">{studentLed ? "作业自主练习 · AI复习材料" : "互动测验"}</span>
       <strong>{questions.length} 道题 · 共 {questions.reduce((sum, question) => sum + question.points, 0)} 分</strong>
-      <p>完成答题后提交，系统会立即给出得分和逐题解析。</p>
-      <Button type="button" disabled={loadPending} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>开始答题</Button>
+      <p>{studentLed ? "由你选题和决定节奏，可以跳过、逐步求助；提交后再按需查看解析。简答与证明题由你对照参考解法自行核对。" : "完成答题后提交，系统会立即给出得分和逐题解析。"}</p>
+      <Button type="button" disabled={loadPending} onClick={() => { setPhase("answering"); persist("answering", answers); void persistRemote("answering", answers); }}>{studentLed ? "开始练习" : "开始答题"}</Button>
     </div>
   </section>;
 
@@ -241,15 +247,18 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
     {syncNotice}
     <div className="magicclass-runtime-result">
       <span className="magicclass-runtime-kicker">测验完成</span>
-      <strong data-testid="quiz-score">得分 {review.score} / {review.total}</strong>
-      <p>{review.score === review.total ? "全部答对，讲解内容掌握得很好。" : "查看下面的答案解析，再重新作答巩固。"}</p>
+      <strong data-testid="quiz-score">{studentLed ? "本轮已答选择题" : "得分"} {review.score} / {review.total}</strong>
+      <p>{studentLed ? "选择你想复盘的题目展开解析，或重新练习。简答题与跳过的题目不计入自动评分。" : review.score === review.total ? "全部答对，讲解内容掌握得很好。" : "查看下面的答案解析，再重新作答巩固。"}</p>
     </div>
     <ol className="magicclass-quiz-runtime__questions">
       {questions.map((question, index) => {
         const result = review.results[index];
-        return <li key={question.id} className={result.correct ? "is-correct" : "is-incorrect"}>
-          <div className="magicclass-quiz-runtime__question-head"><strong>{index + 1}. {question.question}</strong><span>{result.correct ? "回答正确" : "需要复习"}</span></div>
-          <p className="magicclass-quiz-runtime__analysis"><b>答案解析：</b>{result.analysis}</p>
+        return <li key={question.id} className={result.correct === null ? "is-ungraded" : result.correct ? "is-correct" : "is-incorrect"}>
+          <div className="magicclass-quiz-runtime__question-head"><strong>{index + 1}. {question.question}</strong><span>{result.correct === null ? isAnswered(question, answers[question.id]) ? "对照解析自行核对" : "本轮跳过" : result.correct ? "回答正确" : "需要复习"}</span></div>
+          {studentLed ? <>
+            <p>我的作答：{Array.isArray(answers[question.id]) ? answers[question.id].join("、") : answers[question.id] || "尚未作答"}</p>
+            <details><summary>查看本题解析</summary><p className="magicclass-quiz-runtime__analysis">{result.analysis}</p></details>
+          </> : <p className="magicclass-quiz-runtime__analysis"><b>答案解析：</b>{result.analysis}</p>}
         </li>;
       })}
     </ol>
@@ -259,12 +268,17 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
   return <section className="magicclass-quiz-runtime" aria-label="测验答题">
     {syncNotice}
     <div className="magicclass-runtime-progress"><strong>答题中</strong><span>{Object.values(answers).filter((value) => isAnswered({ type: "single" }, value)).length} / {questions.length} 已完成</span></div>
+    {studentLed && <>
+      <p className="magicclass-hint">先独立尝试，需要时再展开提示。你可以自由选题、跳过，本轮只检查已答的选择题。</p>
+      <nav className="assignment-practice-picker" aria-label="选择练习题">{questions.map((question, index) => <Button key={question.id} type="button" variant={selectedQuestion === index ? "primary" : "secondary"} aria-pressed={selectedQuestion === index} onClick={() => setSelectedQuestion(index)}>第 {index + 1} 题{isAnswered(question, answers[question.id]) ? " · 已答" : ""}</Button>)}</nav>
+    </>}
     <form onSubmit={submitAnswers}>
       <ol className="magicclass-quiz-runtime__questions">
-        {questions.map((question, index) => <li key={question.id}>
+        {questions.map((question, index) => studentLed && index !== selectedQuestion ? null : <li key={question.id}>
+          {studentLed && <p className="magicclass-hint">原作业第 {question.sourceQuestionNumber} 题 · {question.exerciseRole === "retry" ? "原题重做" : "变式练习"}</p>}
           <fieldset>
             <legend>{index + 1}. {question.question}</legend>
-            {question.type === "short" ? <input
+            {question.type === "short" ? <textarea
               className="magicclass-quiz-runtime__short"
               value={answers[question.id] || ""}
               onChange={(event) => updateAnswer(question.id, event.target.value)}
@@ -289,9 +303,14 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
               })}
             </div>}
           </fieldset>
+          {studentLed && question.hints.length > 0 && <div className="assignment-practice-hints">
+            <Button type="button" variant="secondary" disabled={(hintLevels[question.id] || 0) >= question.hints.length} onClick={() => setHintLevels((previous) => ({ ...previous, [question.id]: (previous[question.id] || 0) + 1 }))}>给我一点提示</Button>
+            <ol aria-live="polite">{question.hints.slice(0, hintLevels[question.id] || 0).map((hint, hintIndex) => <li key={hintIndex}>{hint}</li>)}</ol>
+          </div>}
         </li>)}
       </ol>
-      <Button type="submit" disabled={!allAnswered}>提交答案</Button>
+      {studentLed && <Button type="button" variant="secondary" disabled={selectedQuestion >= questions.length - 1} onClick={() => setSelectedQuestion((index) => index + 1)}>下一题 / 先跳过</Button>}
+      <Button type="submit" disabled={studentLed ? !anyAnswered : !allAnswered}>{studentLed ? "提交本轮答案" : "提交答案"}</Button>
     </form>
   </section>;
 }

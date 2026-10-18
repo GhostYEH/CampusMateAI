@@ -1,25 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { enterAssignmentReview, loadSubmittedAssignments } from "../src/features/magicclass/assignmentReviewModel.js";
+import { assignmentHasEnded, enterAssignmentReview, loadEndedAssignments } from "../src/features/magicclass/assignmentReviewModel.js";
 
 const result = (status) => ({ course_id: "course", workspace_id: "review", job: { id: "job", status, progress: 10 } });
 const options = () => ({ signal: new AbortController().signal, onPhase() {}, wait: async () => {} });
 
-test("submitted list reads all pages, excludes personal/pending/deleted tasks and sorts recent submissions first", async () => {
+test("ended list reads all pages, includes missed assignments and excludes future, unknown and deleted tasks", async () => {
   const calls = [];
-  const tasks = await loadSubmittedAssignments(async (params) => {
+  const tasks = await loadEndedAssignments(async (params) => {
     calls.push(params);
     return params.page === 1 ? { has_more: true, items: [
       { id: "personal", status: "completed", source: "manual" },
-      { id: "pending", status: "pending", source: "chaoxing" },
-      { id: "old", status: "completed", source: "chaoxing", completed_at: "2026-10-12T08:00:00Z" },
+      { id: "pending", status: "pending", source: "chaoxing", deadline: "2000-01-02T08:00:00Z" },
+      { id: "old", status: "completed", source: "chaoxing", deadline: "2000-01-01T08:00:00Z" },
     ] } : { has_more: false, items: [
-      { id: "new", status: "completed", source: "chaoxing", completed_at: "2026-10-15T08:00:00Z" },
+      { id: "new", status: "completed", source: "chaoxing", deadline: "2000-01-03T08:00:00Z" },
+      { id: "future", status: "completed", source: "chaoxing", deadline: "2999-01-01T08:00:00Z" },
+      { id: "unknown", status: "completed", source: "chaoxing" },
       { id: "deleted", status: "completed", source: "chaoxing", deleted_at: "2026-10-15" },
     ] };
   });
-  assert.deepEqual(tasks.map((task) => task.id), ["new", "old"]);
-  assert.deepEqual(calls, [1, 2].map((page) => ({ status: "completed", page, page_size: 200 })));
+  assert.deepEqual(tasks.map((task) => task.id), ["new", "pending", "old"]);
+  assert.deepEqual(calls, [1, 2].map((page) => ({ page, page_size: 200 })));
+});
+
+test("cutoff includes equality and treats China date-only deadlines as end of day", () => {
+  assert.equal(assignmentHasEnded({ deadline: "2026-10-18" }, Date.parse("2026-10-18T15:59:58Z")), false);
+  assert.equal(assignmentHasEnded({ deadline: "2026-10-18" }, Date.parse("2026-10-18T15:59:59Z")), true);
+  assert.equal(assignmentHasEnded({ deadline: "2026-10-18T20:00:00" }, Date.parse("2026-10-18T12:00:00Z")), true);
+  assert.equal(assignmentHasEnded({ deadline: "invalid" }), false);
 });
 
 test("one click waits for real job completion before returning the playback address", async () => {

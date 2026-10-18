@@ -24435,8 +24435,8 @@
         "tags": [
           "学习通"
         ],
-        "summary": "生成已提交作业讲解与相似练习",
-        "description": "服务端读取本人已提交作业，按题目快照幂等生成讲解与练习，不接受客户端题目。",
+        "summary": "生成已截止作业自主练习与按需讲解",
+        "description": "截止后允许复习（含未提交作业）；按题目快照幂等生成学生主导的练习。",
         "operationId": "generate_review_api_v1_chaoxing_assignments__task_id__classroom_post",
         "security": [
           {

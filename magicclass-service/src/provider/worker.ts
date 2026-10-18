@@ -4,6 +4,7 @@ import { DslLimitError } from '../dsl/limits.ts';
 import { DslValidationError, prepareStage } from '../dsl/validate.ts';
 import { DslVersionError } from '../dsl/version.ts';
 import { isGenerationMode, materializeGeneratedStage } from '../generation/generator.ts';
+import { isAssignmentReviewSpec } from '../generation/assignment-review.ts';
 import type { JobRepository } from '../jobs/repository.ts';
 import type { WorkspaceRepository } from '../workspace/repository.ts';
 import {
@@ -99,8 +100,9 @@ export function createProviderJobWorker(options: {
         .filter((value): value is string => typeof value === 'string' && value.trim())
         .map((value) => value.trim()))].slice(0, 7)
       : [];
-    const raw = await generateStageDocument(options.provider, { mode, prompt });
-    const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds, mode, prompt }));
+    const assignmentReview = isAssignmentReviewSpec(input.assignment_review) ? input.assignment_review : undefined;
+    const raw = await generateStageDocument(options.provider, { mode, prompt, assignmentReview });
+    const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds, mode, prompt, assignmentReview }));
     const title = String(prepared.document.stage?.name ?? prompt).slice(0, 200);
     workspaces.createStage({
       userId: identity.userId,
