@@ -10,6 +10,7 @@ import { MagicClassSceneRenderer } from "../../magicclass/scene/index.js";
 import { MagicClassSlideSurface } from "../../magicclass/slide/index.js";
 import { MagicClassRoundtable } from "../../magicclass/roundtable/index.jsx";
 import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
+import QuizRuntimePanel from "./QuizRuntimePanel.jsx";
 import { cn } from "../../magicclass/utils/cn.js";
 import {
   degradeNotice,
@@ -371,6 +372,9 @@ export default function MagicClassClassroomStage({
       // 两边各放一个会让同一件事出现两个数字。
     >
       <SceneStage
+        courseId={courseId}
+        workspaceId={workspaceId}
+        stageId={stageId}
         scene={scene}
         outline={current}
         loading={sceneLoading}
@@ -401,6 +405,9 @@ export default function MagicClassClassroomStage({
  * 原生交给移植来的渲染器，沙箱交给最小 sandbox 的 iframe，其余说清缺什么。
  */
 function SceneStage({
+  courseId,
+  workspaceId,
+  stageId,
   scene,
   outline,
   loading,
@@ -437,6 +444,8 @@ function SceneStage({
       <span className="loading-orb" />
       <p>正在读取场景内容…</p>
     </div>;
+  } else if (scene?.content?.type === "quiz" && scene.content.learningProfile === "assignment_review") {
+    body = <div className="assignment-practice-stage"><QuizRuntimePanel studentLed questions={scene.content.questions} sceneId={scene.id} courseId={courseId} workspaceId={workspaceId} stageId={stageId} /></div>;
   } else if (isNativeSimulation) {
     body = <SimulationRuntimePanel content={scene.content} sceneId={scene.id} />;
   } else if (policy.allowIframe && (sandboxHtml || sandboxUrl)) {

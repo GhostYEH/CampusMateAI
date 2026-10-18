@@ -234,11 +234,12 @@ def review_setup(script=None):
         source="chaoxing",
         external_id="work",
         course_id=course_id,
+        deadline=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
     )
     return container, transport, http, headers, user, task
 
 
-def test_review_gates_submission_current_content_and_ownership_before_using_provider():
+def test_review_gates_current_content_and_ownership_before_using_provider():
     container, transport, http, headers, user, task = review_setup()
     path = f"/api/v1/chaoxing/assignments/{task.id}"
     response = http.get(path + "/content", headers=headers)
@@ -289,11 +290,13 @@ def test_review_passes_real_questions_options_and_practice_requirements_with_sta
     generations = [
         call for call in transport.calls if call["url"].endswith("/generate")
     ]
-    assert generations[0]["json"]["mode"] == "slide"
+    assert generations[0]["json"]["mode"] == "quiz"
+    assert generations[0]["json"]["assignment_review"] == {"question_count": 1}
     prompt = generations[0]["json"]["prompt"]
     assert QUESTIONS[0]["stem"] in prompt and "B. 3" in prompt
     assert "至少3道" in prompt and "可以复用部分原题选项" in prompt
     assert "官方答案" in prompt and "quiz" in prompt
+    assert "学生主导" in prompt and "三分之二" in prompt and "hints" in prompt
     assert (
         generations[0]["headers"]["Idempotency-Key"]
         == generations[1]["headers"]["Idempotency-Key"]
@@ -325,3 +328,36 @@ def test_review_does_not_generate_a_fake_lesson_when_provider_is_unconfigured():
     )
     assert result.status_code == 503
     assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("status", ["pending", "completed"])
+def test_review_requires_deadline_and_allows_ended_unsubmitted_work(status):
+    script = [(200, {"llm": True}), (201, {"id": "ws"}),
+              (201, {"source": "provider", "job": {"id": "job", "status": "queued"}})]
+    container, transport, http, headers, user, task = review_setup(script)
+    if status == "completed":
+        container.personal_task_repository.complete(task.id, user_id=user.id)
+    container.chaoxing_repository.save_assignment_content(
+        user_id=user.id, external_id=task.external_id, questions=QUESTIONS,
+        remote_status=status, fetched_at=datetime.now(timezone.utc).isoformat(),
+    )
+    path = f"/api/v1/chaoxing/assignments/{task.id}"
+    for deadline, error in [(None, "assignment_deadline_unknown"), ("unknown", "assignment_deadline_unknown"),
+                            ((datetime.now(timezone.utc) + timedelta(days=1)).isoformat(), "assignment_not_ended")]:
+        container.personal_task_repository.update_task(task.id, user_id=user.id, fields={"deadline": deadline})
+        assert http.get(path + "/content", headers=headers).json()["can_generate"] is False
+        response = http.post(path + "/classroom", headers=headers)
+        assert response.status_code == 409 and response.json()["message"] == error
+        assert transport.calls == []
+    container.personal_task_repository.update_task(task.id, user_id=user.id, fields={"deadline": "2000-01-01"})
+    assert http.get(path + "/content", headers=headers).json()["can_generate"] is True
+    assert http.post(path + "/classroom", headers=headers).status_code == 201
+
+
+def test_review_deadline_uses_china_end_of_day_and_opens_at_exact_cutoff():
+    gate = chaoxing_assignments._review_gate
+    task = SimpleNamespace(deadline="2026-10-18")
+    assert gate(task, datetime(2026, 10, 18, 15, 59, 58, tzinfo=timezone.utc)) == "assignment_not_ended"
+    assert gate(task, datetime(2026, 10, 18, 15, 59, 59, tzinfo=timezone.utc)) is None
+    task.deadline = "2026-10-18T20:00:00"
+    assert gate(task, datetime(2026, 10, 18, 12, tzinfo=timezone.utc)) is None

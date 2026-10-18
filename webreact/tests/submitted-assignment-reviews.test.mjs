@@ -22,7 +22,7 @@ const vite = await createServer({
 });
 after(async () => { await vite.close(); dom.window.close(); });
 const { default: Reviews } = await vite.ssrLoadModule("/src/components/SubmittedAssignmentReviews.jsx");
-const task = { id: "work", title: "函数作业", source: "chaoxing", source_name: "高等数学", status: "completed", course_id: "course" };
+const task = { id: "work", title: "函数作业", source: "chaoxing", source_name: "高等数学", status: "pending", course_id: "course", deadline: "2000-01-01T00:00:00Z" };
 const button = (host, text) => [...host.querySelectorAll("button")].find((node) => node.textContent.includes(text));
 const completed = { course_id: "course", workspace_id: "review", job: { id: "job", status: "completed" } };
 function Location() { const location = useLocation(); return createElement("output", null, location.pathname + location.search); }
@@ -42,7 +42,8 @@ test("classroom list enters an existing review in one click and blocks rapid dup
   try {
     assert.match(view.host.textContent, /高等数学/);
     assert.match(view.host.querySelector("a").href, /\/tasks\/chaoxing\/work$/);
-    await act(async () => { button(view.host, "一键进入讲解").click(); button(view.host, "一键进入讲解").click(); });
+    assert.match(view.host.textContent, /未提交，可复习/);
+    await act(async () => { button(view.host, "进入练习与详解").click(); button(view.host, "进入练习与详解").click(); });
     assert.equal(calls, 1);
     await act(async () => resolve(completed));
     assert.equal(view.host.querySelector("output").textContent, "/courses/course/workspaces/review?mode=playback");
@@ -57,7 +58,7 @@ test("sidebar shows generation progress and automatically opens the finished les
   };
   const view = await mount(true);
   try {
-    await act(async () => button(view.host, "一键进入讲解").click());
+    await act(async () => button(view.host, "进入练习与详解").click());
     assert.match(view.host.textContent, /正在生成讲解 20%/);
     assert.equal(view.host.querySelector("output").textContent, "/");
     await act(async () => new Promise((resolve) => setTimeout(resolve, 2100)));
@@ -72,7 +73,7 @@ test("list failure stays visible and can be refreshed into an empty state", asyn
   try {
     assert.match(view.host.querySelector('[role="alert"]').textContent, /读取失败/);
     fail = false;
-    await act(async () => view.host.querySelector('[aria-label="刷新已提交作业"]').click());
-    assert.match(view.host.textContent, /暂无已提交的学习通作业/);
+    await act(async () => view.host.querySelector('[aria-label="刷新已截止作业"]').click());
+    assert.match(view.host.textContent, /暂无已截止的学习通作业/);
   } finally { await view.close(); }
 });

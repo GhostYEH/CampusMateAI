@@ -162,7 +162,7 @@ function NativeScene({ scene, fallbackTitle, courseId, workspaceId, stageId }) {
   if (!content) {
     return <p className="magicclass-hint">「{fallbackTitle}」的正文暂时读不到，仅显示标题。</p>;
   }
-  if (content.type === "quiz") return <QuizRuntimePanel questions={content.questions} sceneId={scene?.id || ""} courseId={courseId} workspaceId={workspaceId} stageId={stageId} />;
+  if (content.type === "quiz") return <QuizRuntimePanel studentLed={content.learningProfile === "assignment_review"} questions={content.questions} sceneId={scene?.id || ""} courseId={courseId} workspaceId={workspaceId} stageId={stageId} />;
   if (content.type === "pbl") return <PblRuntimePanel content={content} sceneId={scene?.id || ""} />;
   if (content.type === "interactive" && content.widgetType === "simulation") return <SimulationRuntimePanel content={content} sceneId={scene?.id || ""} />;
   if (content.type === "slide") {

@@ -10,6 +10,7 @@ import { WorkspaceError } from '../workspace/errors.ts';
 import { hashRequest, WorkspaceRepository } from '../workspace/repository.ts';
 import { IDEMPOTENCY_HEADER, stageResponse } from '../workspace/routes.ts';
 import { GENERATION_MODES, buildGeneratedStage, isGenerationMode } from './generator.ts';
+import { isAssignmentReviewSpec } from './assignment-review.ts';
 
 export const GENERATION_SCOPE = 'generation:write';
 export const GENERATION_CAPABILITY: Capability = 'generation';
@@ -60,6 +61,8 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       const body = parseBody(request);
       const mode = body.mode;
       if (!isGenerationMode(mode)) throw new WorkspaceError('invalid_request', `mode must be one of ${GENERATION_MODES.join(', ')}`);
+      if (body.assignment_review !== undefined && (!isAssignmentReviewSpec(body.assignment_review) || mode !== 'quiz')) throw new WorkspaceError('invalid_request', 'assignment_review requires quiz mode and a positive question_count');
+      if (body.assignment_review && !options.provider) throw new WorkspaceError('invalid_request', 'assignment review requires a real generation provider');
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
       if (!prompt) throw new WorkspaceError('invalid_request', 'prompt is required');
       // The trusted gateway also supplies full, authorized homework snapshots.

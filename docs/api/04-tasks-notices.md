@@ -803,7 +803,7 @@ Web 封装：`getTasks`（[webreact/src/data/api.js](../../webreact/src/data/api
 - 默认不返回 `deleted` 状态(除非 `include_deleted=true` 或显式 `status=deleted`)
 - 支持按 status/priority/deadline 筛选
 
-在线课堂“已提交作业”复用本接口的 `status=completed`，分页获取后由客户端筛选 `source=chaoxing`、`deleted_at=null`；当前没有 source 查询参数。total/has_more 统计所有满足筛选的个人待办，即使某页未筛出学习通作业也要继续翻页。返回顺序为 deadline 升序（空值置后）、created_at 降序，不是提交时间顺序。`completed_at` 是本站记录的完成时间，不能作为学习通真实提交时间；PersonalTaskOut 返回可空的 `remote_submitted_at`（远端明确提供时的提交时间），缺失时不得由 completed_at 推算。使用本人任务的 `id` 调用[作业讲解流程](09-integrations.md#assignment-review-flow)，不要与 `/student/assignments` 的班级作业混用。
+在线课堂“已截止作业”复用本接口且不传 status，分页获取后由客户端筛选 `source=chaoxing`、`deleted_at=null`、status 为 pending/completed 且有效 deadline 已到期；当前没有 source 查询参数。total/has_more 统计所有满足筛选的个人待办，即使某页未筛出学习通作业也要继续翻页。返回顺序为 deadline 升序（空值置后）、created_at 降序，不是提交时间顺序。`completed_at` 是本站记录的完成时间，不能作为学习通真实提交时间；PersonalTaskOut 返回可空的 `remote_submitted_at`（远端明确提供时的提交时间），缺失时不得由 completed_at 推算。使用本人任务的 `id` 调用[作业讲解流程](09-integrations.md#assignment-review-flow)，不要与 `/student/assignments` 的班级作业混用。
 
 参数：
 

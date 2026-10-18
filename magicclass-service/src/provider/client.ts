@@ -2,6 +2,7 @@ import type { ProviderConfig, RenderConfig, TtsConfig } from '../config.ts';
 import { GENERATION_MODES, reviewGeneratedStage } from '../generation/generator.ts';
 import type { GenerationMode } from '../generation/generator.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
+import { assignmentReviewGuide, type AssignmentReviewSpec } from '../generation/assignment-review.ts';
 
 /**
  * Redacted failure codes a job can end with. Messages never carry the API
@@ -103,20 +104,20 @@ const MODE_SCENE_GUIDE = [
 /** Ask the provider for a full stage document; the caller still runs prepareStage. */
 export async function generateStageDocument(
   provider: ProviderConfig,
-  input: { mode: string; prompt: string },
+  input: { mode: string; prompt: string; assignmentReview?: AssignmentReviewSpec },
 ): Promise<unknown> {
   const userRequest = `生成模式：${input.mode}\n内容要求：${input.prompt}`;
   let issues: string[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const payload = await chatCompletion(provider, {
       messages: [
-        { role: 'system', content: MODE_SCENE_GUIDE },
+        { role: 'system', content: input.assignmentReview ? assignmentReviewGuide(input.assignmentReview) : MODE_SCENE_GUIDE },
         { role: 'user', content: attempt === 0 ? userRequest : `${userRequest}\n上一稿未达到以下要求，请重新生成完整 JSON 文档并补全：${issues.join('；')}` },
       ],
       temperature: 0.4,
     });
     const document = parseJsonContent(firstMessageContent(payload));
-    issues = reviewGeneratedStage(document, input.mode as GenerationMode, input.prompt);
+    issues = reviewGeneratedStage(document, input.mode as GenerationMode, input.prompt, input.assignmentReview);
     if (issues.length === 0) return document;
   }
   throw new ProviderError('provider_invalid_response', 'provider returned incomplete learning content');

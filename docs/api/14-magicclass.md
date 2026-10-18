@@ -1,14 +1,25 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-10-15。本模块共 76 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-18。本模块共 76 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
-## 从已提交作业进入讲解课堂
+<a id="assignment-practice-profile"></a>
+## 从已截止作业进入自主练习
 
-Web 在线课堂首页与独立学习空间侧栏可展示本人已提交的学习通作业。列表及题目属于[外部连接模块](09-integrations.md#assignment-review-flow)，通过 `GET /api/v1/tasks?status=completed` 分页筛选 source=chaoxing 后，点击 `POST /api/v1/chaoxing/assignments/{task_id}/classroom` 创建或复用受管工作台与 job。本模块现有 `GET /api/v1/courses/{course_id}/jobs/{job_id}` 和对应 `/retry` 负责进度与重试；只有 job.status=completed 后才进入 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback`。
+Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，不传 status，筛选本人学习通未删除且 deadline 有效、已到期的 pending/completed 作业。点击 `POST /api/v1/chaoxing/assignments/{task_id}/classroom` 创建或复用受管工作台与 job，按课程 job GET/retry 接口等待 completed 后进入 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback`。完整截止规则、请求响应、权限及错误见[外部连接模块](09-integrations.md#assignment-review-flow)。
 
-这条链路调用 `magicclass-service` 的 slide 生成并要求 quiz 相似练习；不会向经典 `/interactive-classroom/generate` 提交，也不调用 iframe 中独立应用的私有生成接口。用户不需要再次选择课程或输入题目，题干、选项和课程归属从服务端读取。受管服务及其生成模型必须可用；独立学习空间 iframe 不可用时，本站作业侧栏仍可读取列表，能否生成由受管课堂接口独立判断。job 完成后的练习作答、解析及记录沿用本模块现有 quiz-attempt 协议。跨端适配和生成限制见外部连接模块。
+作业采用独立的 quiz 生成策略：先做原题再做变式，至少三分之二场景为 quiz，每道原题均有重做与变式、变式总数至少 3 道，最多两页补救 slide；每题 2–3 条递进提示。普通主题课堂仍按既有生成意图工作。课堂仍由 magicclass-service 生成并在本站播放器学习，不调用 iframe 独立应用的私有生成 API；iframe 不可用时作业侧栏仍能读取。
+
+持久化的作业 quiz content 增加可选字段 `learningProfile="assignment_review"`（由受管服务写入），每个 question 增加 `sourceQuestionNumber:integer`（原题编号）、`exerciseRole:"retry"|"transfer"`、`hints:string[]`。这些是既有 DSL 的向后兼容补充，不新增表或改变 dslVersion。非作业 quiz 不需要这些字段；旧客户端可以忽略，Web 的主课堂和旧播放器均识别该标记并复用 QuizRuntimePanel 的学生主导交互。例：
+
+```json
+{"type":"quiz","learningProfile":"assignment_review","questions":[{"id":"q_demo","type":"single","question":"x=3时，x+1是多少？","options":[{"label":"4","value":"A"},{"label":"5","value":"B"}],"answer":["A"],"analysis":"AI参考解析：代入3后再加1得4。","points":1,"sourceQuestionNumber":1,"exerciseRole":"transfer","hints":["先找到x的取值。","将已知值代入表达式。"]}]}
+```
+
+学生自由选题、跳过、逐条展开提示，至少回答一题即可提交本轮。提交前不展示 analysis；提交后每题解析仍折叠，由学生主动展开。简答/证明题和跳过题的结果 `correct=null,earned=0`，不计入自动评分分母；简答题由学生对照参考解法自行核对，不调用未接通的简答批阅端点或虚构分数。选择题由已有答案键在浏览器计算，quiz-attempt 持久化的是学生练习状态/结果，不是教师正式成绩或服务端权威批阅。draft→submitted→reviewed、重做新 attempt、离线保留与重试协议不变。
+
+作业场景不带自动语音/讨论动作；主动请求的题目朗读只读题干，不朗读隐藏解析。生成校验覆盖结构、题目覆盖标记及提示数量，不能证明答案正确或提示没有泄露答案，仍需真实模型验收。新 v2 工作台与旧讲解式课堂隔离，旧课件保留。Web 已适配，Android/HarmonyOS/微信小程序尚未接入此作业策略，未做本次原生构建或真机验证。
 
 ## 测验并发保存与冲突
 

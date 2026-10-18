@@ -140,8 +140,12 @@ function quizNarration(content: SceneContent, sceneTitle: string): string {
     if (!isObject(entry)) continue;
     const question = text(entry.question);
     if (question) parts.push(question);
-    const analysis = text(entry.analysis);
-    if (analysis) parts.push(analysis);
+    // Practice narration is available before submission too. Keep the answer
+    // explanation behind the learner's explicit review action in the quiz UI.
+    if (!isObject(content) || content.learningProfile !== 'assignment_review') {
+      const analysis = text(entry.analysis);
+      if (analysis) parts.push(analysis);
+    }
   }
   return paragraphs(parts);
 }

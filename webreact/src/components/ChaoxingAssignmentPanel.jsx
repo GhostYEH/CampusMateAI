@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as api from "../data/api.js";
-import { assignmentReviewError as errorText } from "../features/magicclass/assignmentReviewModel.js";
+import { assignmentHasEnded, assignmentReviewError as errorText } from "../features/magicclass/assignmentReviewModel.js";
 import { Button, Panel, SectionHeading } from "./Primitives.jsx";
 
 export default function ChaoxingAssignmentPanel({ task, onSynced }) {
@@ -24,7 +24,7 @@ export default function ChaoxingAssignmentPanel({ task, onSynced }) {
       if (current) setError(errorText(failure));
     }).finally(() => { if (current) setLoading(false); });
     return () => { current = false; alive.current = false; };
-  }, [task.id, task.status]);
+  }, [task.id, task.status, task.deadline]);
 
   useEffect(() => {
     if (!review?.job?.id || !["queued", "running"].includes(review.job.status)) return undefined;
@@ -44,6 +44,8 @@ export default function ChaoxingAssignmentPanel({ task, onSynced }) {
     try {
       await api.syncChaoxing();
       if (alive.current) await onSynced();
+      const result = await api.getChaoxingAssignmentContent(task.id);
+      if (alive.current) setContent(result);
     } catch (failure) { if (alive.current) setError(errorText(failure)); }
     finally { pending.current = false; if (alive.current) setBusy(""); }
   }
@@ -66,10 +68,10 @@ export default function ChaoxingAssignmentPanel({ task, onSynced }) {
   const completed = review?.job?.status === "completed";
   const failed = ["failed", "cancelled"].includes(review?.job?.status);
   return <Panel>
-    <SectionHeading title="作业讲解与相似练习" detail={task.status === "completed" ? "学习通已确认提交，可以开始复习" : "提交作业后，回到这里学习本次作业"} />
-    <p className="muted-copy">在线课堂会逐题讲解知识点和解题步骤，再安排至少 3 道相似练习。练习会改变条件或情境，并可复用部分原题选项。</p>
+    <SectionHeading title="作业自主练习与详解" detail={assignmentHasEnded(task) ? "作业已截止，可重做原题和变式练习" : "作业截止后开放复习；截止时间缺失时请先同步"} />
+    <p className="muted-copy">由你选题、先练再看解析；卡住时逐步查看提示。每道原题都有重做和变式练习，变式总数至少 3 道。</p>
     {loading ? <p role="status">正在读取作业题目…</p> : content?.available ? <>
-      <p className="muted-copy">已同步 {content.questions.length} 道题{!content.current && "，提交后的题目仍待更新"}。</p>
+      <p className="muted-copy">已同步 {content.questions.length} 道题{!content.current && "，当前状态下的题目仍待更新"}。</p>
       <details><summary>查看同步的题干与选项</summary><ol>{content.questions.map((question) => <li key={question.number}><p className="rich-copy">{question.stem}</p>{question.options.length > 0 && <ul>{question.options.map((option, index) => <li key={index} className="rich-copy">{option}</li>)}</ul>}</li>)}</ol></details>
     </> : <p className="muted-copy">暂未取得题干与选项。点击同步重试；学习通登录过期时，请到个人中心重新连接。</p>}
     <div className="form-footer">

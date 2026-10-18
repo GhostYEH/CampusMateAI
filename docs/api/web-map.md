@@ -4,6 +4,8 @@
 
 [文档导航](README.md)
 
+作业复习列表使用 getTasks 不传 status，分页筛选已截止的学习通作业（包含未提交）；生成返回 quiz 模式。主课堂和旧播放器按 learningProfile=assignment_review 提供自由选题、递进提示和按需解析。完整契约见[作业自主练习](09-integrations.md#assignment-review-flow)。
+
 ## Web 路由
 
 | 页面路径 | 页面 / 重定向 |

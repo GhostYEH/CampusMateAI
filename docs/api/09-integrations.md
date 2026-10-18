@@ -1,6 +1,6 @@
 # 学习通、教务连接与兼容接口
 
-> 对照日期：2026-10-15。本模块共 34 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-18。本模块共 34 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -21,7 +21,7 @@
 | POST | `/api/v1/chaoxing/sync` | 同步学习通 |
 | POST | `/api/v1/chaoxing/disconnect` | 断开连接学习通 |
 | GET | `/api/v1/chaoxing/assignments/{task_id}/content` | 读取本人学习通作业题干与选项快照 |
-| POST | `/api/v1/chaoxing/assignments/{task_id}/classroom` | 生成已提交作业讲解与相似练习 |
+| POST | `/api/v1/chaoxing/assignments/{task_id}/classroom` | 生成已截止作业自主练习与按需讲解 |
 | GET | `/api/v1/academic/providers` | [deprecated] 委托 EduConnector.detect |
 | GET | `/api/v1/academic/status` | [deprecated] 委托 EduConnector.get_binding |
 | POST | `/api/v1/academic/bind` | [deprecated] 委托 EduConnector.bind |
@@ -52,120 +52,98 @@
 | POST | `/api/v1/edu/discovery/submit-url` | 用户手动提交教务系统 URL |
 
 <a id="assignment-review-flow"></a>
-## 已提交作业与一键讲解接入
+## 已截止作业与自主练习接入
 
-所有下列 API 均以 `/api/v1` 为前缀并携带本站 Bearer access token。列表来源是个人待办 `/tasks`，不是班级作业 `/student/assignments`，也不是独立学习空间自身 Origin 下的 `/api/*`。每天自动同步只采集数据；点击“一键进入讲解”才创建或恢复生成任务，点击前不应批量 POST 为整个列表生成课堂。
+所有下列 API 均以 `/api/v1` 为前缀并携带本站 Bearer access token。列表来自个人待办 `/tasks`，不是班级作业 `/student/assignments`，也不是独立学习空间 Origin 下的 `/api/*`。每日同步只采集数据；学生点击“进入练习与详解”才创建或恢复生成任务。
+
+### 截止规则与兼容性
+
+开放条件改为**有有效截止时间且已到期**，不再要求已提交。`pending` 的漏交作业在截止后也可复习，`completed` 的提前提交作业仍须等到截止。日期/无时区时间按中国标准时间（UTC+08:00）解释，纯日期按当日 23:59:59；当前时间等于截止时间即开放。缺失或无法解析截止时间时不推测已经结束。依据的是最近同步的截止时间，教师延长截止等变化需重新同步；不是每次进入都联网确认。
 
 | 步骤 | 请求 / 处理 | 接入要求 |
 | --- | --- | --- |
-| 读取已提交作业 | `GET /api/v1/tasks?status=completed&page=1&page_size=200` | 接口没有 source 筛选参数；读取每页 items，再保留 source=chaoxing、status=completed 且 deleted_at=null 的作业。total/has_more 是所有符合 completed 筛选的个人待办统计，不能当作学习通作业数量。 |
-| 读取剩余页 | 按返回的 has_more 递增 page，直到 false | 后续页即使没有学习通作业也应继续；不要仅筛选第一页。服务端按 deadline 升序、无截止时间置后，再按 created_at 降序；它不是提交时间排序。 |
-| 展示作业 | id/title/source_name/course_id/completed_at/remote_submitted_at/last_synced_at | id 是后续路径中的 task_id，external_id 只是远端引用。completed_at 是本站确认完成的时间，不能冒充学习通精确提交时间；`remote_submitted_at` 是可空的远端提交时间，未观测到时为 null；成绩字段仍不返回。 |
-| 可选查看题目 | `GET /api/v1/chaoxing/assignments/{task_id}/content` | 只读已同步快照，不会隐式触发学习通网络访问；不必为列表中每份作业预请求题目。 |
-| 点击进入讲解 | `POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 无需请求体或客户端幂等键；仅 completed 且题目状态匹配的本人作业允许生成。保留返回 course_id/workspace_id/job.id，按原始任务继续查询。 |
-| 补同步题目 | POST 返回 409 且 message=assignment_content_not_current 时，`POST /api/v1/chaoxing/sync` 后重试原请求 | Web 自动尝试一次；同步可能部分成功或返回 sync_in_progress，再次失败应提示用户，不无限同步。复习接口本身不会替客户端同步。 |
-| 等待生成 | `GET /api/v1/courses/{course_id}/jobs/{job_id}` | queued/running 时显示 progress；Web 每约 2 秒查询，最长查看 30 分钟。HTTP 201 表示已接受或复用任务，不代表已生成完成。 |
-| 重试失败 | `POST /api/v1/courses/{course_id}/jobs/{job_id}/retry` | failed/cancelled 才显式重试；该接口返回 job 对象，更新本地状态后继续轮询。同一次点击不要无限重试。 |
-| 进入学习 | job.status=completed 后打开 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback` | 这是 Web 路由，不是后端 API。已有 completed 任务直接进入；新任务须等待完成，不把 failed/cancelled 当作可播放。 |
-| 离开后回来 | 停止页面轮询；再次点击调用原 classroom POST | 页面离开不会自动取消服务端任务。相同需求重放会返回同一任务当前状态；无需保存 JWT、内部服务地址或题目正文到跳转参数。 |
+| 读取作业 | `GET /api/v1/tasks?page=1&page_size=200` | 不传 status，逐页保留 source=chaoxing、status 为 pending/completed、未删除且有效 deadline 已到期的作业。接口没有 source 参数。 |
+| 读取剩余页 | 按 has_more 递增 page，直到 false | total/has_more 统计全部个人待办，即使某页没有符合条件的作业也继续；Web 按截止时间倒序展示。 |
+| 展示作业 | id/title/source_name/course_id/deadline/status | 使用本站 id 作为 task_id；区分已提交与未提交，不把过期当成已提交。缺课程时保留条目并提示同步。 |
+| 预览题目 | `GET /api/v1/chaoxing/assignments/{task_id}/content` | 只读取已同步快照，不为列表每条预请求。 |
+| 开始练习 | `POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 无请求体，不接受客户端截止时间、题目、答案、课程归属或生成策略。 |
+| 补同步题目 | 409 assignment_content_not_current 时同步一次后重试 | 调用 `POST /api/v1/chaoxing/sync`；HTTP 200 也可能 complete=false，遇到 sync_in_progress 或再次失败时提示，不循环。 |
+| 等待生成 | `GET /api/v1/courses/{course_id}/jobs/{job_id}` | queued/running 每约 2 秒轮询，最长 30 分钟；201 仅代表已接受/复用任务。 |
+| 重试失败 | `POST /api/v1/courses/{course_id}/jobs/{job_id}/retry` | failed/cancelled 才重试；返回 job 本身，同次点击不无限重试。 |
+| 进入学习 | job.status=completed 后打开 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback` | Web 路由；作业 quiz 使用学生自主练习交互及现有 quiz-attempt 保存协议。 |
+| 离开后回来 | 停止页面轮询，再次调用原 classroom POST | 离开不取消服务端任务；同份需求恢复同一任务，不把 JWT 或题目放入跳转参数。 |
 
-列表脱敏示例（已省略其他 PersonalTaskOut 字段，完整字段见[字段字典](schemas.md#schema-personaltaskout)）：
+列表脱敏示例（省略其他 PersonalTaskOut 字段）：
 
 ```json
-{
-  "items": [
-    {
-      "id": "ptask_demo", "title": "函数练习", "source": "chaoxing",
-      "external_id": "remote_work_demo", "source_name": "高等数学",
-      "course_id": "course_demo", "status": "completed", "deleted_at": null,
-      "completed_at": "2026-10-15T01:00:00+00:00",
-      "last_synced_at": "2026-10-15T01:00:00+00:00"
-    }
-  ],
-  "total": 1, "page": 1, "page_size": 200, "has_more": false
-}
+{"items":[{"id":"ptask_demo","title":"函数练习","source":"chaoxing","external_id":"remote_demo","source_name":"高等数学","course_id":"course_demo","status":"pending","deleted_at":null,"deadline":"2026-10-15T20:00:00+08:00","last_synced_at":"2026-10-16T01:00:00+00:00"}],"total":1,"page":1,"page_size":200,"has_more":false}
 ```
 
-列表能展示不意味着一定能生成。course_id=null 时提示重新同步课程关联；pending 状态只能到学习通提交后再同步，本站完成/恢复/编辑接口对学习通来源只读。登录态过期时，列表和已有快照仍可能可读；同步失败不得清空列表或改成“没有作业”。若只希望显示本次新数据，可根据 last_synced_at/fetched_at 提醒用户刷新，但不可把 `current` 当作时效判断。
+列表不代表一定可生成。登录过期时，已有列表/快照仍可读取；同步失败不得清空列表。completed_at 是本站确认完成的时间，remote_submitted_at 是可空的远端提交时间；二者不能用来判断作业是否截止，不能互相冒充。
 
-错误恢复按 HTTP 与 message/details 共同处理。HTTPException 使用 `{code:"HTTP_ERROR",message:"assignment_content_not_current",details:null,request_id:"req_demo"}` 这类信封；部分中文 AppException 有独立 code，不要只读旧的 detail，也不要按 HTTP_ERROR 一种 code 区分全部业务分支。
+### 练习优先的生成与学习行为
+
+网关指定受管生成模式 `quiz`，通过内部 `assignment_review.question_count` 传递原题数量；这不是公开请求字段，也不按学生输入的提示词前缀识别模式。专用系统提示词要求先重做原题、再做变式、按需求助和解析。生成校验检查首场景为 quiz、至少两个 quiz 且占总场景至少三分之二、最多两页补救 slide、每道原题均有 retry 和 transfer、变式总数至少 3 道、每题 2–3 条不同提示、可用题干/答案/解析；不合格时反馈给模型重生成一次，仍失败则 job 失败，不能用普通讲座或本地模板顶替。
+
+题目语义是否正确、变式是否合适以及提示是否隐含答案仍需真实模型验收；结构校验不能证明教学质量。原题/变式的对应元数据和 Web 交互详见[课堂模块](14-magicclass.md#assignment-practice-profile)。题干和选项不含学生历史作答或官方答案，AI须独立推导并标明不是教师批阅。
+
+工作台采用 v2 策略隔离旧的讲解式课堂；第一次使用新策略创建新工作台，旧课件保留。新策略下按本人/课程/作业复用工作台，相同题目及需求复用 job；题目/标题/策略改变会产生新任务。失败任务重复 POST 仍返回同一 job，需显式 retry。
+
+### 错误恢复
+
+HTTPException 使用统一 `{code:"HTTP_ERROR",message:"assignment_not_ended",details:null,request_id:"req_demo"}` 信封；AppException 保留对应独立 code。按 HTTP 与 message/details 共同处理。
 
 | HTTP / 信号 | 含义 | 恢复方式 |
 | --- | --- | --- |
-| 401 本站认证无效 | 本站会话不可用 | 按本站认证流程刷新或登录；区分第三方同步中的 reauth_required。 |
-| 404 chaoxing_assignment_not_found | 其他用户、非学习通、已删除或不存在的个人待办 | 刷新列表，不用 external_id 或班级作业 ID 重试。 |
-| 409 assignment_not_submitted | 最近同步的作业仍为 pending | 到学习通提交并重新同步。 |
-| 409 assignment_course_unavailable | 作业无 course_id | 重新同步课程关联，继续显示可读的作业信息。 |
-| 409 assignment_content_not_current | 题目缺失或快照提交状态不匹配 | 同步一次后重试；仍失败时检查 assignments 分区警告。 |
-| 409 sync_in_progress | 同进程内已有该用户的同步或账号操作 | 稍后重新查看，不并发堆积同步请求。 |
-| 422 assignment_images_require_text | 题目图片没有可读文字描述 | 当前链路没有 OCR 补录接口；等待资料适配，不把图片占位当作完整题目。 |
-| 422 assignment_content_too_large | 整份生成需求超出 24,000 UTF-16 code units | 当前接口不支持选题或分批生成；提示内容超限，不在客户端截题后绕过。 |
-| 503 MAGICCLASS_FUSION_UNAVAILABLE | 受管服务关闭、不可达、鉴权或模型配置不可用 | 检查 details.reason 和两服务配置；保留作业和当前任务信息。 |
-| job.status=failed/cancelled | 异步生成未完成 | 展示 job.error_code；由用户触发上述 retry，不能当作 HTTP 成功即课堂成功。 |
+| 401 | 本站会话无效 | 刷新令牌或登录，与第三方 reauth_required 区分。 |
+| 404 chaoxing_assignment_not_found | 作业不存在、非本人、非学习通或已删除 | 刷新列表，不换用 external_id 或班级作业 ID。 |
+| 409 assignment_not_ended | 作业尚未截止（包含已提交作业） | 等待截止；怀疑时间不符时同步。 |
+| 409 assignment_deadline_unknown | 截止时间缺失或无效 | 同步后再试，不自行放行。 |
+| 409 assignment_course_unavailable | 无课程关联 | 同步课程，保留列表。 |
+| 409 assignment_content_not_current | 无题目或快照状态与作业不一致 | 同步一次，再失败时检查 assignments 警告。 |
+| 409 sync_in_progress | 已有同步或账号操作 | 等待，避免并发重复同步。 |
+| 422 assignment_images_require_text | 图片无可读文字描述 | 当前没有 OCR 补录接口，不能用占位文字生成。 |
+| 422 assignment_content_too_large | 整份需求超出 24,000 UTF-16 code units | 当前不支持选题/分批，不能截题绕过。 |
+| 503 MAGICCLASS_FUSION_UNAVAILABLE | 服务、鉴权或模型不可用 | 按 details.reason 排查，保留作业和任务。 |
+| job.status=failed/cancelled | 生成未完成 | 显示 error_code，由学生触发 retry。 |
 
-同步题目阶段的 warnings 中也可能出现 `assignment_content:assignment_content_too_large`，它表示远端单页响应超过 4 MiB，与生成 POST 的 24,000 单元限制是两个环节。网络/页面变化可能映射为 assignment_content_unavailable；要结合分区状态、登录状态和日志定位，不能凭警告假定题目为空或平台已提交。
-
-部署与联调顺序：先通过本人 login/status/sync 确认学习通有效、作业列表与内容快照存在，再检查 `GET /api/v1/magicclass/fusion/providers` 中 `providers.llm` 和 `GET /api/v1/magicclass/fusion/status` 的受管服务状态，最后发起单份作业生成、查询 job 并播放 quiz。分别验证首次生成、重复进入复用、未提交拒绝、无题目补同步、模型不可用、任务失败重试及跨用户 404。自动化结果不代替真实账号页面解析和真实模型产物检查。配置、调度、持久化及日志入口见[后端说明](../../backend/README.md#学习通每日同步与作业复习)。
+旧的 assignment_not_submitted 门槛已移除，客户端应改为截止条件。Web 已适配；Android/HarmonyOS/微信小程序当前未消费作业复习接口，无请求形状迁移，但将来接入须使用新条件与 quiz 学习策略。本次不包含移动端构建或真机验证。
 
 ## 接口契约
 
-已连接账号由 FastAPI 后台任务每日同步，首次连接或重新连接后进入下一轮待同步队列；成功后从本轮结束起间隔 24 小时，服务重启后补执行已到期账号。轮询在本批账号处理结束后等待 60 秒，不保证账号连接后 60 秒内执行，也不固定每天零点。普通失败或部分成功 30 分钟后重试，需要重新认证或凭据损坏则等待重新连接或下一天重查。断开连接后不再领取新的后台任务；已在其他进程执行的请求可能仍完成，旧同步不会重新创建已删除凭据或覆盖新登录的 Cookie。后端必须持续运行；浏览器不需要保持打开。
-
-后台同步使用持久化 15 分钟租约和 10 分钟单账号执行预算，重启或共享同一数据库的多进程不会立即重复领取同一账号后台任务；与同进程手动同步、登录和解绑共用用户互斥锁。租约仅覆盖后台领取，不保证其他进程的手动操作与后台任务全局串行。每轮最多处理 25 个账号，单次题目抓取最多 12 份、并发 3、每份预算 12 秒；缺失、采集超过 24 小时或提交状态变化的题目按最近尝试时间轮转，后续重试继续补齐，不保证变化的作业一定在本批内完成。失败不清空已经同步的题目。
-
-`POST /chaoxing/sync` 保留既有结构；题目缺失/抓取失败时 `sections.assignments.status=partial`、`complete=false`，warnings 增加 `assignment_content:<reason>`，包括 `assignment_content_pending`、`assignment_questions_unavailable`、`assignment_content_unavailable`、`network_error`、`reauth_required`、`verification_required`、`assignment_url_not_allowed` 等。`error_message` 为“作业列表已同步，部分题目暂未获取，将在下次同步重试”。列表和提交状态仍可成功同步，不把题目不可读当成没有作业。
+每日同步在 FastAPI lifespan 启动，成功结束后间隔 24 小时，普通失败/部分成功 30 分钟后重试，认证问题等待重新连接或下一天重查；每批后等待 60 秒，非实时推送。后端停止时不执行，重启补执行到期账号。后台每批最多 25 账号、15 分钟持久化租约、10 分钟单账号预算，同进程与手动同步/登录/解绑互斥；后台租约不保证跨进程手动操作串行。题目单次最多 12 份、并发 3、每份预算 12 秒，缺失/状态变化/24 小时过期按最近尝试轮转，不保证本批补齐。失败保留旧题目，sync 的 assignments 分区可为 partial，warnings 为 assignment_content:<reason>；HTTP 200 不代表完整成功。远端响应超过 4 MiB 的 content_too_large 与生成需求的长度限制是两个不同环节。
 
 ### `GET /api/v1/chaoxing/assignments/{task_id}/content`
 
-用途：读取本人学习通作业题干和原始选项，不触发外部请求。
+用途：读取本人作业题目快照，不访问学习通。鉴权：Bearer token、活跃用户；仅本人未删除的 source=chaoxing 个人待办。其他用户、普通待办和不存在的作业均 404。path task_id:string 必填，为本站个人待办 id；无请求体。Web 封装 getChaoxingAssignmentContent，实现 chaoxing_assignments.get_content。
 
-鉴权：Bearer access token；当前活跃用户，仅限本人的 `source=chaoxing` 且未删除的个人待办。`task_id` 是本站个人待办 ID，不是学习通远端作业编号或班级作业 ID。其他用户、普通待办和不存在的作业均返回 404。
+200 application/json 全部顶层字段：task_id:string、course_id:string|null、status:string（pending/completed）、available:boolean、current:boolean、can_generate:boolean、fetched_at:string|null、questions:array。每题 `{number:integer,stem:string,options:string[]}`，number 从 1 连续编号，不含原始 HTML、脚本、Cookie、学生答案或官方评分。
 
-Web 封装：`getChaoxingAssignmentContent`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
-
-实现：[chaoxing_assignments.py](../../backend/app/api/routes/chaoxing_assignments.py)，`get_content`。
-
-参数：path `task_id: string`，必填。请求体：无。
-
-响应：200 `application/json` 动态对象，所有下列顶层字段都会出现：`task_id: string`、`course_id: string|null`、`status: string`（学习通观测映射后的 pending/completed）、`available: boolean`（是否有可读题目）、`current: boolean`（快照采集时的提交状态是否与当前一致）、`can_generate: boolean`（completed、有课程且 current）、`fetched_at: string|null`、`questions: array`。
-
-每个 question 是 `{number: integer, stem: string, options: string[]}`；number 从 1 连续编号。题干、数学文本和选项保留可读文字，不返回原始 HTML、脚本、Cookie、学生答案或官方评分。未采集到内容时 `available/current/can_generate=false`、`questions=[]`、`fetched_at=null`。旧快照可查看，但未同步提交后快照时不可用于生成；`can_generate` 仅反映数据前置条件，课堂服务可用性仍由生成接口决定。
-
-`current` 仅比较快照采集时保存的 pending/completed 与待办当前状态，不表示刚刚刷新过、与学习通实时一致或已取得最终版本。`fetched_at` 是成功采集该快照的同步轮次时间；采集失败保留此时间和旧题目。`can_generate=true` 仍可能因题目中未识别图片、完整需求过长、课程无权访问或模型不可用而被 POST 拒绝。
-
-脱敏示例：
+available 表示有题目；current 仅比较快照采集时的提交状态与待办状态，不表示新鲜度或实时确认；can_generate 要求截止时间有效且到期、current=true、有课程，pending/completed 均可，不含课程权限、图片、长度或服务可用性检查。无题目时 available/current/can_generate=false、questions=[]、fetched_at=null。采集失败保留旧快照和 fetched_at。
 
 ```json
-{"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":true,"current":true,"can_generate":true,"fetched_at":"2026-10-15T01:00:00+00:00","questions":[{"number":1,"stem":"x=2时，x+1是多少？","options":["A. 2","B. 3","C. 4"]}]}
+{"task_id":"ptask_demo","course_id":"course_demo","status":"pending","available":true,"current":true,"can_generate":true,"fetched_at":"2026-10-16T01:00:00+00:00","questions":[{"number":1,"stem":"x=2时，x+1是多少？","options":["A. 2","B. 3","C. 4"]}]}
 ```
 
-异常：401 本站登录无效；404 `message=chaoxing_assignment_not_found`；公共错误信封见接入约定。
+异常：401 本站登录无效；404 message=chaoxing_assignment_not_found。完整路径与返回字段不变，仅 can_generate 业务语义更新。
 
 ### `POST /api/v1/chaoxing/assignments/{task_id}/classroom`
 
-用途：调用现有受管在线课堂，为已在学习通提交的作业生成逐题讲解和至少 3 道可作答的相似练习。
+用途：为已截止作业生成原题重做、至少 3 道变式和按需解析。鉴权：Bearer token、活跃用户、本人未删除的学习通个人待办、关联课程访问权限；服务端读取截止时间/题目/状态，不接受客户端伪造。
 
-鉴权：Bearer access token；本人未删除的学习通个人待办，并检查所关联课程的访问权限。服务端从已同步的真实状态判断是否已提交；不接受客户端伪造提交状态、题目、答案或课程归属。
+path task_id:string 必填，无请求体，不需要客户端 Idempotency-Key。Web 封装 generateChaoxingAssignmentClassroom，实现 chaoxing_assignments.generate_review。例：`POST /api/v1/chaoxing/assignments/ptask_demo/classroom`。
 
-Web 封装：`generateChaoxingAssignmentClassroom`（[webreact/src/data/api.js](../../webreact/src/data/api.js)）
+前置条件：有效截止时间已到期；快照 remote_status 与任务当前 pending/completed 一致且有题目；有关联且有权访问的课程；受管服务与模型已配置。未识别图片/需求过长返回 422。服务端不会隐式同步或截断题目，不要求已提交或已评分。
 
-实现：[chaoxing_assignments.py](../../backend/app/api/routes/chaoxing_assignments.py)，`generate_review`。
-
-参数：path `task_id: string`，必填。请求体：无；无需 `Idempotency-Key` 请求头，服务端按本人、课程、作业和题目内容生成稳定幂等键。例：`POST /api/v1/chaoxing/assignments/ptask_demo/classroom`。
-
-业务前置条件：学习通已同步为 completed（包含已交、待批阅等观测），存在该提交状态下的题目快照，存在可访问课程，并已启用受管课堂与生成模型。题目仅使用文字与带文字描述的图片；无法识别的图片题和超过 24,000 UTF-16 code units 的整份需求返回 422，避免遗漏题目后生成不完整讲解。服务端需求指定独立推导和 AI 讲解标记，不冒充官方答案；相似题改变条件、情境或数据，可复用部分原题选项但重新确定答案。
-
-响应：201 `application/json`，包含 `task_id/course_id/workspace_id: string`、`question_count: integer`，以及既有受管生成结果 `source="provider"`、`job: object`（id/status/progress/artifact_id/mode/error_code）、可选 `job_id/stage_id/stage`。异步返回不代表内容已经生成，须按 job.status 处理。例：
+201 application/json：task_id/course_id/workspace_id:string、question_count:integer，加既有 source="provider"、job:object（id/status/progress/artifact_id/mode/error_code）以及可选 job_id/stage_id/stage。mode 改为 quiz，其余字段不变。
 
 ```json
-{"task_id":"ptask_demo","course_id":"course_demo","workspace_id":"ws_demo","question_count":1,"source":"provider","job_id":"job_demo","job":{"id":"job_demo","status":"queued","progress":0,"artifact_id":null,"mode":"slide","error_code":null}}
+{"task_id":"ptask_demo","course_id":"course_demo","workspace_id":"ws_demo","question_count":1,"source":"provider","job_id":"job_demo","job":{"id":"job_demo","status":"queued","progress":0,"artifact_id":null,"mode":"quiz","error_code":null}}
 ```
 
-工作台按本人/课程/作业复用。相同题目重复点击、刷新或跨客户端请求会复用同一生成任务；题目或标题发生变化会创建新任务。失败/取消后重复 POST 仍返回同一任务，使用 `POST /courses/{course_id}/jobs/{job_id}/retry` 重试；用 `GET /courses/{course_id}/jobs/{job_id}` 轮询，直到 completed/failed/cancelled，断网后可重复 POST 恢复查询。完成后进入 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback`；工作台的 quiz 场景使用现有答题、解析和学习记录流程。
+错误：401/403/404 鉴权与权限错误；409 assignment_not_ended、assignment_deadline_unknown、assignment_course_unavailable、assignment_content_not_current；422 assignment_images_require_text/assignment_content_too_large；503 MAGICCLASS_FUSION_UNAVAILABLE；其余受管权限、限流、幂等错误沿用[课堂契约](14-magicclass.md)。生成、轮询、重试和播放按上表执行。
 
-异常：401 本站登录无效；403 课程权限不足；404 作业不可见或课程不存在；409 的 `message` 为 `assignment_not_submitted`（先到学习通提交并同步）、`assignment_course_unavailable`（重新同步课程关联）或 `assignment_content_not_current`（同步提交后的题目）。422 的 message 为 `assignment_images_require_text` 或 `assignment_content_too_large`。503 为受管服务或模型不可用，沿用 `MAGICCLASS_FUSION_UNAVAILABLE`；受管服务的权限、资源、限流与幂等错误沿用 [课堂契约](14-magicclass.md)。不会用本地模板伪装生成成功。
-
-兼容性：现有 login/status/sync/disconnect 请求和响应字段保留。每日服务端同步对所有已连接客户端生效；Web 已接入题目查看、生成、进度、重试及播放入口。在线课堂首页和学习空间侧栏通过 `GET /tasks?status=completed` 分页读取并筛选 source=chaoxing 的已提交作业；一键进入会复用上述生成接口、必要时同步缺失题目、重试已有失败任务，完成后自动跳转播放器，无需再次确认进入。Android/HarmonyOS/微信小程序尚未接入新增作业复习入口，也未做本次原生端验证；它们可按上述新增接口适配。
+部署验收：先验证本人 login/status/sync 与题目快照，再检查 fusion/providers 的 providers.llm 及 fusion/status；覆盖截止前拒绝、截止后未提交允许、未知截止拒绝、补同步、首次生成、重复复用、失败重试、跨用户 404、自由选题/提示/跳过/解析/保存恢复。自动化测试不代替真实学习通页面与在线模型产物验收。配置和调度见[后端说明](../../backend/README.md#学习通每日同步与作业复习)。
 
 ### `POST /api/v1/chaoxing/login`
 

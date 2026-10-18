@@ -10,7 +10,7 @@
 | 通知提取 | `POST /api/v1/notices/extract` | 手动输入通知原文，优先用已配置的 LLM，失败时规则降级；不确定字段标记需确认 |
 | 手机消息整理 | `POST /api/v1/notices/ingest-batch` | 接收客户端筛选后的消息，去重，规则优先分类；模糊消息可批量交给 LLM，再生成通知和可执行待办 |
 | 学习通 | `/api/v1/chaoxing/login`、`/status`、`/sync`、`/disconnect` | 连接账号并同步课程、通知、作业、考试等；登录态失效或需要验证时返回对应状态 |
-| 学习通作业复习 | `GET /api/v1/tasks?status=completed`、`GET /api/v1/chaoxing/assignments/{task_id}/content`、`POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 读取本人已提交作业、题干与选项，创建或复用受管讲解课堂及相似练习；生成后通过课程 job 接口查询进度 |
+| 学习通作业复习 | `GET /api/v1/tasks`（不传 status）、`GET /api/v1/chaoxing/assignments/{task_id}/content`、`POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 读取本人已截止作业、题干与选项，创建或复用练习优先的受管课堂；生成后通过课程 job 接口查询进度 |
 | 可选教务连接 | `/api/v1/edu/*` | 学校系统探测、用户绑定与课表、成绩、考试同步；真实数据取决于学校适配器及用户授权 |
 | AI 对话 | `POST /api/v1/counselor/chat`，兼容别名 `/api/v1/assistant/chat` | SSE / 非流式回答，可带经过校验的个人任务、课程和学习状态上下文；课堂建议须用户确认后才执行 |
 | 知识库 | `/api/v1/knowledge/status`、`/documents` | 只读查询知识库状态和文档；当前聊天链路仍使用内部 BM25 检索，资料导入由内部数据准备/同步流程提供 |
@@ -71,12 +71,12 @@ CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。
 
 Web 在线课堂首页、学习空间侧栏及作业详情复用同一组后端接口：
 
-1. `GET /api/v1/tasks?status=completed&page=1&page_size=200`，按 `has_more` 翻页，再筛选 `source=chaoxing`、未删除条目。使用返回的本站 `id` 作为 task_id。
-2. `GET /api/v1/chaoxing/assignments/{task_id}/content` 读取题干和选项；`can_generate` 只表示提交状态、课程关联与题目状态匹配，不包含课堂服务可用性检测。
+1. `GET /api/v1/tasks?page=1&page_size=200`，不传 status，按 `has_more` 翻页，再筛选 `source=chaoxing`、未删除且有效截止时间已到期的 pending/completed 条目。使用返回的本站 `id` 作为 task_id。
+2. `GET /api/v1/chaoxing/assignments/{task_id}/content` 读取题干和选项；`can_generate` 要求有效截止时间已到期、课程关联与题目状态匹配，未提交也可复习，不包含课堂服务可用性检测。
 3. 用户点击进入时 `POST /api/v1/chaoxing/assignments/{task_id}/classroom`。服务端按本人、课程、作业、题目需求计算幂等键，创建或复用讲解任务。每日同步只采集作业，不主动生成课堂。
 4. 对 queued/running 用 `GET /api/v1/courses/{course_id}/jobs/{job_id}` 查询；失败/取消可用对应 `/retry` 接口重试；completed 后进入返回工作台学习。Web 在题目未就绪时尝试一次同步，生成成功后自动进入播放。
 
-生成内容包含逐题讲解及至少 3 道可作答的相似练习，可复用原选项并按新条件确定答案；这是模型生成的学习内容，不是学习通官方批阅。未识别的图片、过长题目或模型不可用会返回明确错误，不生成替代模板。
+生成采用作业专用 quiz 策略：先重做全部原题，再做每题对应的变式（总数至少 3 道），至少三分之二场景为练习；学生自由选题、跳过、逐步求助，提交后主动展开解析，简答/证明题自行核对；这是模型生成的学习内容，不是学习通官方批阅。未识别的图片、过长题目或模型不可用会返回明确错误，不生成替代模板。
 
 运行依赖见 [backend/.env.example](.env.example) 与 [受管服务配置](../magicclass-service/.env.example)：后端设置 `MAGICCLASS_FUSION_ENABLED=true`、可达的 `MAGICCLASS_SERVICE_URL`，两服务使用一致的 `MAGICCLASS_INTERNAL_SECRET`；受管服务另需配置 `MAGICCLASS_PROVIDER_BASE_URL`、`MAGICCLASS_PROVIDER_API_KEY`、`MAGICCLASS_PROVIDER_MODEL`。只设置后端通用 LLM 不代表课堂生成模型已配置。独立学习空间的 `MAGICCLASS_ENABLED` / `MAGICCLASS_EMBED_ORIGIN` 控制另一条内嵌链路，不代替受管课堂配置。
 
@@ -89,7 +89,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests/test_chaoxing_assignment_review.py tests/test_chaoxing_sync_service.py tests/test_chaoxing_sync_sections.py tests/test_app_lifespan.py tests/test_openapi_docs.py -q
 ```
 
-自动化测试覆盖用户隔离、提交门槛、题目采集与保留、后台租约与重启恢复、幂等生成和服务不可用分支。真实学习通页面解析、有效账号登录态以及外部模型生成质量仍需在实际部署验证。Web 已适配一键进入；Android、HarmonyOS 和微信小程序尚未接入该作业复习入口。
+自动化测试覆盖用户隔离、截止门槛、题目采集与保留、后台租约与重启恢复、幂等生成和服务不可用分支。真实学习通页面解析、有效账号登录态以及外部模型生成质量仍需在实际部署验证。Web 已适配一键进入；Android、HarmonyOS 和微信小程序尚未接入该作业复习入口。
 
 ## 在线课堂
 
