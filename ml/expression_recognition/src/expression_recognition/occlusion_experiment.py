@@ -213,7 +213,14 @@ def run_experiment(args: argparse.Namespace) -> dict:
     teacher.eval()
     for parameter in teacher.parameters():
         parameter.requires_grad_(False)
-    validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+    # Spawning a worker costs several seconds (torch/CPU-stack import), so keep
+    # workers alive across epochs instead of paying that cost five times per arm.
+    loader_options = {
+        "num_workers": args.num_workers,
+        "persistent_workers": args.num_workers > 0,
+        "pin_memory": device.type == "cuda",
+    }
+    validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False, **loader_options)
     baseline = evaluate_pair(teacher, validation_loader, device, config, seed + 1_000_000)
     save_json(args.output_dir / "baseline_validation.json", baseline)
     results = {"baseline": baseline, "smoke": args.max_train_batches is not None, "arms": {}}
@@ -221,7 +228,7 @@ def run_experiment(args: argparse.Namespace) -> dict:
         generator = torch.Generator().manual_seed(seed)
         train_loader = DataLoader(
             train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True,
-            num_workers=args.num_workers, generator=generator,
+            generator=generator, **loader_options,
         )
         results["arms"][name] = run_arm(
             name, checkpoint["model_state"], teacher, train_loader, validation_loader,

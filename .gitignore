@@ -159,6 +159,7 @@ ml/expression_recognition/data/
 ml/**/fer2013*/
 ml/expression_recognition/.venv/
 ml/expression_recognition/.venv-export/
+ml/expression_recognition/.venv-cu312/
 ml/expression_recognition/manifests/
 ml/expression_recognition/manifests_v2/
 ml/expression_recognition/reports/generated/
