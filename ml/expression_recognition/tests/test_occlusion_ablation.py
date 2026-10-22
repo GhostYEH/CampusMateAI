@@ -96,6 +96,15 @@ def test_arm_losses_dispatch_correctly() -> None:
     assert torch.allclose(c, ce(model(masked), labels), atol=1e-6)
     d = oa.arm_loss("D_clean_anchor", model, clean, masked, teacher_clean, labels, ce, config)
     assert d.item() > 0
+    e = oa.arm_loss("E_clean_occlusion", model, clean, masked, teacher_clean, labels, ce, config)
+    expected_e = 0.5 * ce(model(clean), labels) + 0.5 * ce(model(masked), labels)
+    assert torch.allclose(e, expected_e, atol=1e-6)
+    # E must ignore the teacher entirely: changing it cannot change the loss
+    e_other_teacher = oa.arm_loss(
+        "E_clean_occlusion", model, clean, masked, torch.randn_like(teacher_clean),
+        labels, ce, config,
+    )
+    assert torch.allclose(e, e_other_teacher, atol=1e-6)
 
 
 def _write_tiny_manifest(tmp_path: Path) -> Path:
@@ -111,7 +120,7 @@ def _write_tiny_manifest(tmp_path: Path) -> Path:
     return manifest
 
 
-def test_run_produces_four_arms_from_same_checkpoint(tmp_path: Path, monkeypatch) -> None:
+def test_run_produces_five_arms_from_same_checkpoint(tmp_path: Path, monkeypatch) -> None:
     class TinyModel(nn.Module):
         def __init__(self):
             super().__init__()
@@ -135,11 +144,14 @@ def test_run_produces_four_arms_from_same_checkpoint(tmp_path: Path, monkeypatch
         "epochs": 1, "batch_size": 7, "learning_rate": 1e-3, "num_workers": 0,
         "max_train_batches": 1, "cpu": True, "seed": 8, "overwrite": False,
         "temperature": 2.0, "teacher_weight": 0.5, "lambda_clean": 0.5, "lambda_masked": 0.5,
+        "arms": None, "resume": False,
     })()
     result = oa.run(args)
-    assert set(result["arms"]) == {"A_baseline", "B_plain", "C_hard_occlusion", "D_clean_anchor"}
+    assert set(result["arms"]) == {
+        "A_baseline", "B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor"
+    }
     assert result["smoke"] is True
-    for arm in ("B_plain", "C_hard_occlusion", "D_clean_anchor"):
+    for arm in ("B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor"):
         assert (args.output_dir / arm / "best.pt").is_file()
         assert (args.output_dir / arm / "history.json").is_file()
         assert (args.output_dir / arm / "run_info.json").is_file()
@@ -147,11 +159,21 @@ def test_run_produces_four_arms_from_same_checkpoint(tmp_path: Path, monkeypatch
     assert (args.output_dir / "results.json").is_file()
     # each arm records identical optimizer update count (same data, same schedule)
     updates = {arm: result["arms"][arm]["run_info"]["optimizer_updates"] for arm in
-               ("B_plain", "C_hard_occlusion", "D_clean_anchor")}
+               ("B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor")}
     assert len(set(updates.values())) == 1
-    # D processes two views per update, B/C one
-    assert result["arms"]["D_clean_anchor"]["run_info"]["views_processed"] == 2 * updates["D_clean_anchor"]
-    assert result["arms"]["B_plain"]["run_info"]["views_processed"] == updates["B_plain"]
+    # E and D process two views per update; B/C one. E has no teacher forward.
+    for arm in ("E_clean_occlusion", "D_clean_anchor"):
+        info = result["arms"][arm]["run_info"]
+        assert info["views_processed"] == 2 * updates[arm]
+        assert info["views_per_update"] == 2
+        assert info["two_view_supervision"] is True
+    for arm in ("B_plain", "C_hard_occlusion"):
+        info = result["arms"][arm]["run_info"]
+        assert info["views_processed"] == updates[arm]
+        assert info["views_per_update"] == 1
+        assert info["two_view_supervision"] is False
+    assert result["arms"]["D_clean_anchor"]["run_info"]["teacher_distillation"] is True
+    assert result["arms"]["E_clean_occlusion"]["run_info"]["teacher_distillation"] is False
     # metric payload has the required fields
     ev = result["arms"]["A_baseline"]["eval"]
     for key in ("clean", "occluded", "occluded_stress_severe", "occluded_by_region"):
@@ -160,6 +182,45 @@ def test_run_produces_four_arms_from_same_checkpoint(tmp_path: Path, monkeypatch
     assert len(ev["clean"]["confusion_matrix"]) == 7
     with pytest.raises(FileExistsError):
         oa.run(args)
+
+
+def test_resume_adds_missing_arms_without_retraining_existing(tmp_path: Path, monkeypatch) -> None:
+    class TinyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(3, 7)
+
+        def forward(self, images):
+            return self.fc(images.mean(dim=(2, 3)))
+
+    monkeypatch.setattr(oa, "build_model", lambda config, allow_download=False: TinyModel())
+    manifest = _write_tiny_manifest(tmp_path)
+    config = {
+        "model": "resnet18", "seed": 8, "input_size": 16, "input_channels": 3,
+        "batch_size": 7, "num_workers": 0, "weight_decay": 0.0,
+        "normalization": {"mean": [0.5] * 3, "std": [0.5] * 3},
+        "augmentation": {}, "gradient_clip_norm": 1.0,
+    }
+    checkpoint = tmp_path / "initial.pt"
+    torch.save({"config": config, "model_state": TinyModel().state_dict()}, checkpoint)
+    common = {
+        "checkpoint": checkpoint, "manifest": manifest, "output_dir": tmp_path / "result",
+        "epochs": 1, "batch_size": 7, "learning_rate": 1e-3, "num_workers": 0,
+        "max_train_batches": 1, "cpu": True, "seed": 8, "overwrite": False,
+        "temperature": 2.0, "teacher_weight": 0.5, "lambda_clean": 0.5, "lambda_masked": 0.5,
+    }
+    e_args = type("Args", (), {**common, "arms": ["E_clean_occlusion"], "resume": False})()
+    first = oa.run(e_args)
+    assert set(first["arms"]) == {"E_clean_occlusion"}
+    e_info = first["arms"]["E_clean_occlusion"]["run_info"]
+
+    remaining = ["A_baseline", "B_plain", "C_hard_occlusion", "D_clean_anchor"]
+    resume_args = type("Args", (), {**common, "arms": remaining, "resume": True})()
+    merged = oa.run(resume_args)
+    assert set(merged["arms"]) == set(remaining) | {"E_clean_occlusion"}
+    assert merged["resumed"] is True
+    # E was reused from disk, not retrained, and its record is preserved verbatim
+    assert merged["arms"]["E_clean_occlusion"]["run_info"] == e_info
 
 
 def test_evaluation_masks_are_seed_fixed() -> None:

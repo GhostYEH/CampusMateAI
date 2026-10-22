@@ -1,4 +1,4 @@
-"""Controlled four-arm occlusion-training ablation for the seven-class ResNet18.
+"""Controlled five-arm occlusion-training ablation for the seven-class ResNet18.
 
 Arms (all start from the same existing checkpoint, same fixed train/validation
 split, same optimizer / LR / number of optimizer updates):
@@ -6,13 +6,20 @@ split, same optimizer / LR / number of optimizer updates):
     A  original checkpoint, no training (start reference)
     B  plain clean fine-tuning, no structured occlusion
     C  occluded-view supervision only
+    E  clean + occluded supervision, no teacher (same two student forwards as D)
     D  clean + occluded supervision with a frozen clean-reference teacher (KD)
+
+The E arm closes the attribution gap between C and D: E - C isolates adding
+clean-view supervision, while D - E isolates teacher distillation under the same
+two-view supervision and student forward count. D - C is only the effect of the
+combined package, not of distillation alone.
 
 This is a simplification of the CA-HOFT idea, not a reproduction of HardMix /
 CA-HOFT numbers. Development experiment on already-exposed FER2013 data only.
 
 Locked protocol decisions (fixed before any formal run, never tuned on results):
-  * loss normalization: lambda_clean + lambda_masked = 1 (0.5 / 0.5 for D);
+  * loss normalization: lambda_clean + lambda_masked = 1 (0.5 / 0.5 for D/E);
+    E uses the same supervised term as D with the teacher/KL term removed;
     KD term is 0.5*(KL_clean + KL_masked), scaled by teacher_weight * T**2.
   * C supervises only the occluded view (lambda_clean = 0).
   * B supervises only the clean view.
@@ -64,6 +71,9 @@ STD_BOX_HEIGHT = (0.15, 0.27)
 STRESS_BOX_WIDTH = (0.55, 0.80)
 STRESS_BOX_HEIGHT = (0.30, 0.50)
 REGION_NAMES = ["eyes", "mouth", "random"]
+TRAIN_ARMS = ("B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor")
+TWO_VIEW_ARMS = ("E_clean_occlusion", "D_clean_anchor")
+ALL_ARMS = ("A_baseline",) + TRAIN_ARMS
 
 
 def _occlusion_params(rng: random.Random, width: int, height: int,
@@ -146,11 +156,35 @@ def anchored_loss(
     return supervised + teacher_weight * temperature ** 2 * distillation
 
 
+def supervised_two_view_loss(
+    student_clean: Tensor,
+    student_occluded: Tensor,
+    labels: Tensor,
+    criterion: nn.Module,
+    *,
+    lambda_clean: float = DEFAULT_LAMBDA_CLEAN,
+    lambda_masked: float = DEFAULT_LAMBDA_MASKED,
+) -> Tensor:
+    """Convex clean/occluded supervision without a teacher (arm E)."""
+    if lambda_clean < 0 or lambda_masked < 0 or abs(lambda_clean + lambda_masked - 1.0) > 1e-9:
+        raise ValueError("lambda_clean + lambda_masked must equal 1")
+    return (
+        lambda_clean * criterion(student_clean, labels)
+        + lambda_masked * criterion(student_occluded, labels)
+    )
+
+
 def arm_loss(name: str, model, clean, masked, teacher_clean, labels, criterion, config) -> Tensor:
     if name == "C_hard_occlusion":
         return criterion(model(masked), labels)
     if name == "B_plain":
         return criterion(model(clean), labels)
+    if name == "E_clean_occlusion":
+        return supervised_two_view_loss(
+            model(clean), model(masked), labels, criterion,
+            lambda_clean=float(config["distill_lambda_clean"]),
+            lambda_masked=float(config["distill_lambda_masked"]),
+        )
     if name == "D_clean_anchor":
         return anchored_loss(
             model(clean), model(masked), teacher_clean, labels, criterion,
@@ -318,7 +352,7 @@ def train_arm(
             scaler.update()
             epoch_losses.append(float(loss.detach().cpu()))
             total_updates += 1
-            total_views += 2 if name == "D_clean_anchor" else 1
+            total_views += 2 if name in TWO_VIEW_ARMS else 1
             if device.type == "cuda":
                 peak_vram = max(peak_vram, torch.cuda.max_memory_allocated() / 1e9)
         metrics = evaluate_model(model, validation_loader, device, config, mask_seed, stress_seed)
@@ -362,6 +396,9 @@ def train_arm(
         "weight_decay": weight_decay,
         "optimizer_updates": total_updates,
         "views_processed": total_views,
+        "views_per_update": 2 if name in TWO_VIEW_ARMS else 1,
+        "two_view_supervision": name in TWO_VIEW_ARMS,
+        "teacher_distillation": name == "D_clean_anchor",
         "wall_seconds": time.perf_counter() - started,
         "peak_vram_gb": peak_vram,
         "train_samples": len(train_dataset),
@@ -395,6 +432,13 @@ def run(args: argparse.Namespace) -> dict:
         raise ValueError("epochs, batch_size and learning_rate must be positive")
     if not args.checkpoint.is_file() or not args.manifest.is_file():
         raise FileNotFoundError("A seven-class checkpoint and included.csv manifest are required")
+    requested = tuple(getattr(args, "arms", None) or ALL_ARMS)
+    unknown = [name for name in requested if name not in ALL_ARMS]
+    if unknown:
+        raise ValueError(f"Unknown arm(s): {unknown}")
+    if len(set(requested)) != len(requested):
+        raise ValueError("Arms must be requested once each")
+    resume = bool(getattr(args, "resume", False))
     seed = int(args.seed)
     mask_seed = seed + 1_000_000
     stress_seed = seed + 2_000_000
@@ -414,7 +458,7 @@ def run(args: argparse.Namespace) -> dict:
     if len(train_dataset) < args.batch_size:
         raise ValueError("Training split has fewer samples than batch_size")
 
-    if args.output_dir.exists() and not args.overwrite:
+    if args.output_dir.exists() and not args.overwrite and not resume:
         raise FileExistsError(f"Output dir already exists: {args.output_dir}")
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -426,14 +470,8 @@ def run(args: argparse.Namespace) -> dict:
     }
     validation_loader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False, **loader_options)
 
-    # frozen clean-reference teacher copied from the same starting checkpoint
-    teacher = build_model(config, allow_download=False).to(device)
-    teacher.load_state_dict(checkpoint["model_state"])
-    teacher.eval()
-    for parameter in teacher.parameters():
-        parameter.requires_grad_(False)
-
-    results: dict = {
+    results_path = args.output_dir / "results.json"
+    metadata = {
         "seed": seed,
         "mask_seed": mask_seed,
         "stress_seed": stress_seed,
@@ -447,21 +485,54 @@ def run(args: argparse.Namespace) -> dict:
         "lambda_clean": args.lambda_clean,
         "lambda_masked": args.lambda_masked,
         "smoke": args.max_train_batches is not None,
-        "arms": {},
     }
+    if resume and results_path.is_file():
+        results = json.loads(results_path.read_text(encoding="utf-8"))
+        for key, value in metadata.items():
+            if key in results and results[key] != value:
+                raise ValueError(f"Existing run has different {key}: {results[key]!r} != {value!r}")
+    else:
+        results = dict(metadata)
+        results["arms"] = {}
+    results.update(metadata)
+    results["arms"] = dict(results.get("arms", {}))
+    results["requested_arms"] = list(requested)
+    results["resumed"] = resume
+
+    # The frozen clean-reference teacher is only needed for A (same weights) and D.
+    teacher = None
+    if "A_baseline" in requested or "D_clean_anchor" in requested:
+        teacher = build_model(config, allow_download=False).to(device)
+        teacher.load_state_dict(checkpoint["model_state"])
+        teacher.eval()
+        for parameter in teacher.parameters():
+            parameter.requires_grad_(False)
 
     # Arm A: original checkpoint, no training (start reference)
-    a_dir = args.output_dir / "A_baseline"
-    a_dir.mkdir(exist_ok=True)
-    results["arms"]["A_baseline"] = {"eval": evaluate_model(teacher, validation_loader, device, config, mask_seed, stress_seed)}
-    save_json(a_dir / "metrics.json", results["arms"]["A_baseline"]["eval"])
-    print(json.dumps({"arm": "A_baseline", "seed": seed,
-                      "clean_macro_f1": results["arms"]["A_baseline"]["eval"]["clean"]["macro_f1"],
-                      "occluded_macro_f1": results["arms"]["A_baseline"]["eval"]["occluded"]["macro_f1"]},
-                     ensure_ascii=False), flush=True)
+    if "A_baseline" in requested:
+        if resume and "A_baseline" in results["arms"]:
+            print(json.dumps({"arm": "A_baseline", "seed": seed, "status": "already recorded; skipped"},
+                             ensure_ascii=False), flush=True)
+        else:
+            a_dir = args.output_dir / "A_baseline"
+            a_dir.mkdir(exist_ok=True)
+            results["arms"]["A_baseline"] = {
+                "eval": evaluate_model(teacher, validation_loader, device, config, mask_seed, stress_seed)
+            }
+            save_json(a_dir / "metrics.json", results["arms"]["A_baseline"]["eval"])
+            print(json.dumps({"arm": "A_baseline", "seed": seed,
+                              "clean_macro_f1": results["arms"]["A_baseline"]["eval"]["clean"]["macro_f1"],
+                              "occluded_macro_f1": results["arms"]["A_baseline"]["eval"]["occluded"]["macro_f1"]},
+                             ensure_ascii=False), flush=True)
 
-    for name in ("B_plain", "C_hard_occlusion", "D_clean_anchor"):
+    for name in TRAIN_ARMS:
+        if name not in requested:
+            continue
         arm_dir = args.output_dir / name
+        if resume and (arm_dir / "best.pt").is_file() and name in results["arms"]:
+            print(json.dumps({"arm": name, "seed": seed, "status": "already recorded; skipped"},
+                             ensure_ascii=False), flush=True)
+            continue
         arm_dir.mkdir(exist_ok=True)
         if device.type == "cuda":
             torch.cuda.empty_cache()
@@ -478,16 +549,20 @@ def run(args: argparse.Namespace) -> dict:
         )
         results["arms"][name] = out
 
-    save_json(args.output_dir / "results.json", results)
+    save_json(results_path, results)
     return results
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Controlled four-arm occlusion-training ablation.")
+    parser = argparse.ArgumentParser(description="Controlled five-arm occlusion-training ablation.")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=20261022)
+    parser.add_argument("--arms", nargs="+", choices=ALL_ARMS, default=None,
+                        help="Subset of arms to run (default: all). With --resume, add one arm without retraining the rest.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Reuse an existing output dir and skip arms already recorded there. Never re-runs a recorded arm.")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=1e-5)
