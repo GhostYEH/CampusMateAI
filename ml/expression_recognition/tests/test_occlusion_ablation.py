@@ -43,6 +43,26 @@ def test_severe_stress_geometry_differs_from_standard() -> None:
     assert int((stress_masked[0] != 0).sum()) > int((std_masked[0] != 0).sum())
 
 
+def test_random_erasing_is_deterministic_black_and_does_not_mutate_clean() -> None:
+    mean = [0.5] * 3
+    std = [0.5] * 3
+    clean = torch.ones(4, 3, 96, 96)  # normalized RGB white
+    before = clean.clone()
+    rng_before = torch.random.get_rng_state().clone()
+    first = oa.random_erasing_batch(clean, mean=mean, std=std, seed=123)
+    second = oa.random_erasing_batch(clean, mean=mean, std=std, seed=123)
+    rng_after = torch.random.get_rng_state().clone()
+    assert torch.equal(first, second)
+    assert torch.equal(clean, before)
+    assert torch.equal(rng_before, rng_after)
+    # The erased normalized value is exactly black under mean=.5, std=.5.
+    erased = (first != clean).all(dim=1)
+    assert erased.any(dim=(1, 2)).all()
+    assert set(first[0, :, erased[0]].unique().tolist()) == {-1.0}
+    # Per-sample local RNG means the four rectangles need not be batch-identical.
+    assert len({tuple(torch.nonzero(mask).flatten().tolist()) for mask in erased}) > 1
+
+
 def test_anchored_loss_normalization_is_fixed_convex_combination() -> None:
     torch.manual_seed(0)
     clean = torch.randn(4, 7)
@@ -231,6 +251,61 @@ def test_resume_adds_missing_arms_without_retraining_existing(tmp_path: Path, mo
     assert merged["resumed"] is True
     # E was reused from disk, not retrained, and its record is preserved verbatim
     assert merged["arms"]["E_clean_occlusion"]["run_info"] == e_info
+
+    add_r_args = type("Args", (), {**common, "arms": ["R_random_erasing"], "resume": True})()
+    merged_with_r = oa.run(add_r_args)
+    assert set(merged_with_r["arms"]) == set(remaining) | {"E_clean_occlusion", "R_random_erasing"}
+    assert merged_with_r["random_erasing"]["probability"] == 1.0
+    b_resume_args = type("Args", (), {**common, "arms": ["B_plain"], "resume": True})()
+    after_b_resume = oa.run(b_resume_args)
+    assert after_b_resume["random_erasing"]["probability"] == 1.0
+
+
+def test_random_erasing_arm_is_explicit_and_used_only_for_training(tmp_path: Path, monkeypatch) -> None:
+    class TinyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(3, 7)
+
+        def forward(self, images):
+            return self.fc(images.mean(dim=(2, 3)))
+
+    monkeypatch.setattr(oa, "build_model", lambda config, allow_download=False: TinyModel())
+    calls = []
+    original_erasing = oa.random_erasing_batch
+
+    def tracked_erasing(images, **kwargs):
+        calls.append((images.clone(), dict(kwargs)))
+        return original_erasing(images, **kwargs)
+
+    monkeypatch.setattr(oa, "random_erasing_batch", tracked_erasing)
+    manifest = _write_tiny_manifest(tmp_path)
+    config = {
+        "model": "resnet18", "seed": 8, "input_size": 16, "input_channels": 3,
+        "batch_size": 7, "num_workers": 0, "weight_decay": 0.0,
+        "normalization": {"mean": [0.5] * 3, "std": [0.5] * 3},
+        "augmentation": {}, "gradient_clip_norm": 1.0,
+    }
+    checkpoint = tmp_path / "initial.pt"
+    torch.save({"config": config, "model_state": TinyModel().state_dict()}, checkpoint)
+    args = type("Args", (), {
+        "checkpoint": checkpoint, "manifest": manifest, "output_dir": tmp_path / "random_erasing",
+        "epochs": 1, "batch_size": 7, "learning_rate": 1e-3, "num_workers": 0,
+        "max_train_batches": 1, "cpu": True, "seed": 8, "overwrite": False,
+        "temperature": 2.0, "teacher_weight": 0.5, "lambda_clean": 0.5, "lambda_masked": 0.5,
+        "arms": ["R_random_erasing"], "resume": False,
+    })()
+
+    result = oa.run(args)
+    assert set(result["arms"]) == {"R_random_erasing"}
+    assert len(calls) == 1
+    run_info = result["arms"]["R_random_erasing"]["run_info"]
+    assert run_info["random_erasing"] is True
+    assert run_info["random_erasing_probability"] == 1.0
+    assert run_info["random_erasing_scale"] == list(oa.RANDOM_ERASING_SCALE)
+    assert run_info["random_erasing_ratio"] == list(oa.RANDOM_ERASING_RATIO)
+    assert result["random_erasing"]["fill"] == "black_rgb"
+    assert result["smoke"] is True
 
 
 def test_final_checkpoint_does_not_replace_earlier_selected_best(tmp_path: Path, monkeypatch) -> None:

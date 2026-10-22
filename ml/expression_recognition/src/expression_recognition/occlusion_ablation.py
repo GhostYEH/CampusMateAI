@@ -43,6 +43,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torchvision.transforms import RandomErasing
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -71,10 +72,47 @@ STD_BOX_HEIGHT = (0.15, 0.27)
 # locked synthetic severe-occlusion stress geometry (never used for selection)
 STRESS_BOX_WIDTH = (0.55, 0.80)
 STRESS_BOX_HEIGHT = (0.30, 0.50)
+RANDOM_ERASING_PROBABILITY = 1.0
+RANDOM_ERASING_SCALE = (0.0486, 0.1458)
+RANDOM_ERASING_RATIO = (0.3, 3.3)
 REGION_NAMES = ["eyes", "mouth", "random"]
 TRAIN_ARMS = ("B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor")
 TWO_VIEW_ARMS = ("E_clean_occlusion", "D_clean_anchor")
 ALL_ARMS = ("A_baseline",) + TRAIN_ARMS
+OPTIONAL_ARMS = ("R_random_erasing",)
+CLI_ARMS = ALL_ARMS + OPTIONAL_ARMS
+
+
+def random_erasing_batch(
+    images: Tensor,
+    *,
+    mean: list[float],
+    std: list[float],
+    seed: int,
+    first_index: int = 0,
+) -> Tensor:
+    """Apply one deterministic, per-sample RandomErasing without mutating input.
+
+    A CPU-only RNG fork keeps erasing draws independent of the DataLoader and
+    model RNG streams. The normalized fill is exactly the representation of
+    black RGB pixels under the configured normalization.
+    """
+    if images.ndim != 4 or images.shape[1] != len(mean) or len(mean) != len(std):
+        raise ValueError("Expected NCHW images with normalization matching channels")
+    fill = [-m / s for m, s in zip(mean, std)]
+    eraser = RandomErasing(
+        p=RANDOM_ERASING_PROBABILITY,
+        scale=RANDOM_ERASING_SCALE,
+        ratio=RANDOM_ERASING_RATIO,
+        value=fill,
+        inplace=False,
+    )
+    output = []
+    for index, image in enumerate(images):
+        with torch.random.fork_rng(devices=[]):
+            torch.random.default_generator.manual_seed(seed + first_index + index)
+            output.append(eraser(image))
+    return torch.stack(output)
 
 
 def _occlusion_params(rng: random.Random, width: int, height: int,
@@ -176,7 +214,7 @@ def supervised_two_view_loss(
 
 
 def arm_loss(name: str, model, clean, masked, teacher_clean, labels, criterion, config) -> Tensor:
-    if name == "C_hard_occlusion":
+    if name in ("C_hard_occlusion", "R_random_erasing"):
         return criterion(model(masked), labels)
     if name == "B_plain":
         return criterion(model(clean), labels)
@@ -331,10 +369,16 @@ def train_arm(
             if max_train_batches is not None and batch_index >= max_train_batches:
                 break
             # training occlusion seed is per-sample deterministic but changes each epoch
-            masked, _ = occlude_batch(
-                clean, mean=mean, std=std,
-                seed=seed + epoch * 10_000_019 + batch_index * clean.shape[0],
-            )
+            if name == "R_random_erasing":
+                masked = random_erasing_batch(
+                    clean, mean=mean, std=std,
+                    seed=seed + epoch * 10_000_019 + batch_index * clean.shape[0],
+                )
+            else:
+                masked, _ = occlude_batch(
+                    clean, mean=mean, std=std,
+                    seed=seed + epoch * 10_000_019 + batch_index * clean.shape[0],
+                )
             clean = clean.to(device, non_blocking=True)
             masked = masked.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
@@ -424,6 +468,11 @@ def train_arm(
         "peak_vram_gb": peak_vram,
         "train_samples": len(train_dataset),
         "max_train_batches": max_train_batches,
+        "random_erasing": name == "R_random_erasing",
+        "random_erasing_probability": RANDOM_ERASING_PROBABILITY if name == "R_random_erasing" else None,
+        "random_erasing_scale": list(RANDOM_ERASING_SCALE) if name == "R_random_erasing" else None,
+        "random_erasing_ratio": list(RANDOM_ERASING_RATIO) if name == "R_random_erasing" else None,
+        "random_erasing_fill": "black_rgb",
     }
     save_json(arm_dir / "run_info.json", run_info)
     return {
@@ -460,7 +509,7 @@ def run(args: argparse.Namespace) -> dict:
     if not args.checkpoint.is_file() or not args.manifest.is_file():
         raise FileNotFoundError("A seven-class checkpoint and included.csv manifest are required")
     requested = tuple(getattr(args, "arms", None) or ALL_ARMS)
-    unknown = [name for name in requested if name not in ALL_ARMS]
+    unknown = [name for name in requested if name not in CLI_ARMS]
     if unknown:
         raise ValueError(f"Unknown arm(s): {unknown}")
     if len(set(requested)) != len(requested):
@@ -511,11 +560,23 @@ def run(args: argparse.Namespace) -> dict:
         "teacher_weight": args.teacher_weight,
         "lambda_clean": args.lambda_clean,
         "lambda_masked": args.lambda_masked,
+        "random_erasing": ({
+            "probability": RANDOM_ERASING_PROBABILITY,
+            "scale": list(RANDOM_ERASING_SCALE),
+            "ratio": list(RANDOM_ERASING_RATIO),
+            "fill": "black_rgb",
+            "rng": "per-sample deterministic CPU RNG isolated from loader/model RNG",
+        } if "R_random_erasing" in requested else None),
         "smoke": args.max_train_batches is not None,
     }
     if resume and results_path.is_file():
         results = json.loads(results_path.read_text(encoding="utf-8"))
+        if "R_random_erasing" in results.get("arms", {}) and "R_random_erasing" not in requested:
+            metadata["random_erasing"] = results.get("random_erasing")
         for key, value in metadata.items():
+            if (key == "random_erasing" and "R_random_erasing" not in results.get("arms", {})
+                    and "R_random_erasing" in requested):
+                continue
             if key in results and results[key] != value:
                 raise ValueError(f"Existing run has different {key}: {results[key]!r} != {value!r}")
     else:
@@ -552,7 +613,7 @@ def run(args: argparse.Namespace) -> dict:
                               "occluded_macro_f1": results["arms"]["A_baseline"]["eval"]["occluded"]["macro_f1"]},
                              ensure_ascii=False), flush=True)
 
-    for name in TRAIN_ARMS:
+    for name in TRAIN_ARMS + OPTIONAL_ARMS:
         if name not in requested:
             continue
         arm_dir = args.output_dir / name
@@ -586,7 +647,7 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=20261022)
-    parser.add_argument("--arms", nargs="+", choices=ALL_ARMS, default=None,
+    parser.add_argument("--arms", nargs="+", choices=CLI_ARMS, default=None,
                         help="Subset of arms to run (default: all). With --resume, add one arm without retraining the rest.")
     parser.add_argument("--resume", action="store_true",
                         help="Reuse an existing output dir and skip arms already recorded there. Never re-runs a recorded arm.")

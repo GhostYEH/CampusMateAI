@@ -129,6 +129,18 @@ python -m expression_recognition.occlusion_experiment `
 输出在 `runs/paper_occlusion/comparison.json`。若提供的是目标域清单，
 应以该清单的 train/validation 两个分组运行；严禁以 test 调参。
 
+需要拆分普通微调、单遮挡监督、双视图监督和教师蒸馏时，使用
+`python -m expression_recognition.occlusion_ablation`。默认仍为原有 A/B/C/E/D
+五组；`--arms B_plain R_random_erasing` 可显式运行普通微调与受控随机擦除
+对照。R 为单视图 CE，使用独立 CPU 随机状态逐样本调用 torchvision
+RandomErasing：p=1、面积比例范围 0.0486–0.1458、宽高比范围 0.3–3.3、黑色
+像素填充；数据变换中的另一层随机擦除保持关闭。这些不是 torchvision
+默认参数，也不代表与结构化遮挡的实际面积/形状分布完全匹配。
+
+每组分别保存原选择规则的 `best.pt` 与训练预算终点的 `last.pt`；正式对比
+应预先固定主要终点、验证图片和掩码，输出使用新目录。已完成实验的预算、
+遮挡分布审计及限制见[下一阶段实验规划](../../论文/下一阶段实验规划.md)。
+
 ### CPM 前摄目标域训练
 
 CPM 场景的新数据必须先提供 `annotations.csv`，字段为
