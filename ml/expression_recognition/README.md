@@ -141,6 +141,24 @@ RandomErasing：p=1、面积比例范围 0.0486–0.1458、宽高比范围 0.3�
 应预先固定主要终点、验证图片和掩码，输出使用新目录。已完成实验的预算、
 遮挡分布审计及限制见[下一阶段实验规划](../../论文/下一阶段实验规划.md)。
 
+### 冻结逐样本复评与配对误差分析
+
+`frozen_eval` 只推理、不训练：它复用锁定权重、清单顺序和四个固定掩码，
+保存逐样本七类概率与 logits，并统计"候选修正了哪些错误、又引入了哪些错误"。
+净差只能解释 Accuracy，Macro-F1 必须单独报告。
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m expression_recognition.frozen_eval audit --manifest <候选清单> --reference-manifest artifacts/occlusion_baseline_20261019/fer2013_manifest.csv --output artifacts/<新目录>/candidate_audit.json
+python -m expression_recognition.frozen_eval smoke --checkpoint <起点> --output artifacts/<新目录>/gpu_smoke.json
+python -m expression_recognition.frozen_eval evaluate --checkpoint <起点> --manifest <清单> --baseline-root <B/R 根> --duration-root <C/D 根> --output-dir artifacts/<新目录> --batch-size 128
+```
+
+`audit` 只核对文件、标签映射、精确哈希重复与缺类，不能证明数据独立性；
+未提供 `--exposure-evidence` 时报告固定写为"独立性未验证"。`evaluate` 拒绝覆盖
+已有 `metrics.json` 的目录，`--cpu` 可显式降级。`smoke` 在合成输入上检查
+设备、形状和数值契约，其识别结果无意义，不得用于选择方法。
+
 ### CPM 前摄目标域训练
 
 CPM 场景的新数据必须先提供 `annotations.csv`，字段为
