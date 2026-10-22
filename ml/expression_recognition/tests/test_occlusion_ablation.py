@@ -1,4 +1,5 @@
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -153,8 +154,17 @@ def test_run_produces_five_arms_from_same_checkpoint(tmp_path: Path, monkeypatch
     assert result["smoke"] is True
     for arm in ("B_plain", "C_hard_occlusion", "E_clean_occlusion", "D_clean_anchor"):
         assert (args.output_dir / arm / "best.pt").is_file()
+        assert (args.output_dir / arm / "last.pt").is_file()
+        assert (args.output_dir / arm / "best_validation.json").is_file()
+        assert (args.output_dir / arm / "last_validation.json").is_file()
         assert (args.output_dir / arm / "history.json").is_file()
         assert (args.output_dir / arm / "run_info.json").is_file()
+        best_checkpoint = torch.load(args.output_dir / arm / "best.pt", map_location="cpu", weights_only=False)
+        final_checkpoint = torch.load(args.output_dir / arm / "last.pt", map_location="cpu", weights_only=False)
+        assert best_checkpoint["checkpoint_role"] == "selected"
+        assert final_checkpoint["checkpoint_role"] == "final"
+        assert best_checkpoint["epoch"] == 1
+        assert final_checkpoint["epoch"] == 1
     assert (args.output_dir / "A_baseline" / "metrics.json").is_file()
     assert (args.output_dir / "results.json").is_file()
     # each arm records identical optimizer update count (same data, same schedule)
@@ -221,6 +231,58 @@ def test_resume_adds_missing_arms_without_retraining_existing(tmp_path: Path, mo
     assert merged["resumed"] is True
     # E was reused from disk, not retrained, and its record is preserved verbatim
     assert merged["arms"]["E_clean_occlusion"]["run_info"] == e_info
+
+
+def test_final_checkpoint_does_not_replace_earlier_selected_best(tmp_path: Path, monkeypatch) -> None:
+    class TinyModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(3, 7)
+
+        def forward(self, images):
+            return self.fc(images.mean(dim=(2, 3)))
+
+    monkeypatch.setattr(oa, "build_model", lambda config, allow_download=False: TinyModel())
+    scores = iter([0.8, 0.8, 0.7, 0.7])
+
+    def controlled_evaluation(*args, **kwargs):
+        clean_score = next(scores)
+        occluded_score = next(scores)
+        return {
+            "clean": {"macro_f1": clean_score, "accuracy": clean_score},
+            "occluded": {"macro_f1": occluded_score, "accuracy": occluded_score},
+        }
+
+    monkeypatch.setattr(oa, "evaluate_model", controlled_evaluation)
+    manifest = _write_tiny_manifest(tmp_path)
+    config = {
+        "model": "resnet18", "seed": 8, "input_size": 16, "input_channels": 3,
+        "batch_size": 7, "num_workers": 0, "weight_decay": 0.0,
+        "normalization": {"mean": [0.5] * 3, "std": [0.5] * 3},
+        "augmentation": {}, "gradient_clip_norm": 1.0,
+    }
+    checkpoint = tmp_path / "initial.pt"
+    torch.save({"config": config, "model_state": TinyModel().state_dict()}, checkpoint)
+    args = type("Args", (), {
+        "checkpoint": checkpoint, "manifest": manifest, "output_dir": tmp_path / "duration",
+        "epochs": 2, "batch_size": 7, "learning_rate": 1e-3, "num_workers": 0,
+        "max_train_batches": 1, "cpu": True, "seed": 8, "overwrite": False,
+        "temperature": 2.0, "teacher_weight": 0.5, "lambda_clean": 0.5, "lambda_masked": 0.5,
+        "arms": ["C_hard_occlusion"], "resume": False,
+    })()
+
+    result = oa.run(args)
+    arm_dir = args.output_dir / "C_hard_occlusion"
+    best_checkpoint = torch.load(arm_dir / "best.pt", map_location="cpu", weights_only=False)
+    final_checkpoint = torch.load(arm_dir / "last.pt", map_location="cpu", weights_only=False)
+    assert result["arms"]["C_hard_occlusion"]["best_epoch"] == 1
+    assert result["arms"]["C_hard_occlusion"]["final_epoch"] == 2
+    assert best_checkpoint["checkpoint_role"] == "selected"
+    assert final_checkpoint["checkpoint_role"] == "final"
+    assert best_checkpoint["selection_score"] == pytest.approx(0.8)
+    assert final_checkpoint["selection_score"] == pytest.approx(0.7)
+    assert json.loads((arm_dir / "best_validation.json").read_text())["clean"]["macro_f1"] == pytest.approx(0.8)
+    assert json.loads((arm_dir / "last_validation.json").read_text())["clean"]["macro_f1"] == pytest.approx(0.7)
 
 
 def test_evaluation_masks_are_seed_fixed() -> None:

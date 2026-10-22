@@ -9,10 +9,11 @@ split, same optimizer / LR / number of optimizer updates):
     E  clean + occluded supervision, no teacher (same two student forwards as D)
     D  clean + occluded supervision with a frozen clean-reference teacher (KD)
 
-The E arm closes the attribution gap between C and D: E - C isolates adding
-clean-view supervision, while D - E isolates teacher distillation under the same
-two-view supervision and student forward count. D - C is only the effect of the
-combined package, not of distillation alone.
+The E arm separates the two-view supervised package from D's teacher term:
+D - E compares teacher distillation under the same two-view student forwards,
+while E - C also changes the clean/masked loss weights and student BatchNorm
+update count. D - C is only the effect of the combined package, not of
+distillation alone.
 
 This is a simplification of the CA-HOFT idea, not a reproduction of HardMix /
 CA-HOFT numbers. Development experiment on already-exposed FER2013 data only.
@@ -377,12 +378,32 @@ def train_arm(
                     "history": history,
                     "arm": name,
                     "seed": seed,
+                    "epoch": epoch + 1,
+                    "checkpoint_role": "selected",
                     "selection_score": score,
                     "validation_mask_seed": mask_seed,
                 },
                 arm_dir / "best.pt",
             )
             save_json(arm_dir / "best_validation.json", metrics)
+
+        # Keep the fixed-budget terminal weights separately from the selected
+        # checkpoint; writing last.pt must never replace best.pt.
+        torch.save(
+            {
+                "model_state": model.state_dict(),
+                "config": config,
+                "history": history,
+                "arm": name,
+                "seed": seed,
+                "epoch": epoch + 1,
+                "checkpoint_role": "final",
+                "selection_score": score,
+                "validation_mask_seed": mask_seed,
+            },
+            arm_dir / "last.pt",
+        )
+        save_json(arm_dir / "last_validation.json", metrics)
 
     save_json(arm_dir / "history.json", history)
     if device.type == "cuda":
@@ -405,7 +426,13 @@ def train_arm(
         "max_train_batches": max_train_batches,
     }
     save_json(arm_dir / "run_info.json", run_info)
-    return {"run_info": run_info, "best": json.loads((arm_dir / "best_validation.json").read_text(encoding="utf-8"))}
+    return {
+        "run_info": run_info,
+        "best": json.loads((arm_dir / "best_validation.json").read_text(encoding="utf-8")),
+        "final": json.loads((arm_dir / "last_validation.json").read_text(encoding="utf-8")),
+        "best_epoch": int(torch.load(arm_dir / "best.pt", map_location="cpu", weights_only=False)["epoch"]),
+        "final_epoch": int(torch.load(arm_dir / "last.pt", map_location="cpu", weights_only=False)["epoch"]),
+    }
 
 
 def build_protocol_config(checkpoint_config: dict, *, seed: int, batch_size: int, num_workers: int,
