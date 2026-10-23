@@ -4,6 +4,8 @@
 
 整理于 2026-09-30；2026-10-02 复核：§2 的 7 个部署模型 SHA-256 逐个重算，与本文记录逐位一致；§2.3 的 `ml/` 产物清单、§6 各端现状、§7 源码入口索引和 §8 新增缺口为本次按代码现状补充，行号对应复核时的文件状态。
 
+2026-10-23 分发范围调整：表情识别训练、评估源码及论文资料仅在本地保留，不随仓库分发。下文对 `ml/expression_recognition/` 的记录描述历史本地工作区，克隆仓库不会取得该目录；客户端部署模型及其运行契约仍随各端工程保留。
+
 统一口径：两项能力都在设备本地推理，画面**不上传服务器、不保存原始图像、不写图像日志**；识别结果只是辅助观察，不代表专注度、心理状态或学习效果。后端不加载任何推理运行时（`backend/requirements.txt` 无 onnxruntime / torch / tensorflow / mindspore / mediapipe），工作区内也没有任何模型权重文件；它只接收端侧算好的结构化信号。
 
 ## 1. 能力与运行时总览
@@ -244,7 +246,7 @@ CameraKit → CoreVisionKit faceDetector
 | Android 表情识别 / Focus 架构 / 行为识别演进 | [android/README.md](../android/README.md) |
 | HarmonyOS 本地表情与学习行为识别 | [harmony/README.md](../harmony/README.md) |
 | 行为模型训练、导出与 MindSpore 转换 | [ml/behavior_recognition/README.md](../ml/behavior_recognition/README.md) |
-| 表情模型训练与 LiteRT 导出 | [ml/expression_recognition/README.md](../ml/expression_recognition/README.md) |
+| 表情模型训练与 LiteRT 导出 | 仅本地保留，不随仓库分发；部署资产与客户端运行契约见本表对应入口 |
 | Android 运行时契约与元数据 | [model_metadata.json](../android/app/src/main/assets/model_metadata.json)、[preprocessing.json](../android/app/src/main/assets/preprocessing.json)、[labels.txt](../android/app/src/main/assets/labels.txt) |
 | HarmonyOS 运行时契约 | [model_card.json](../harmony/entry/src/main/resources/rawfile/models/behavior/model_card.json)、[expression/preprocessing.json](../harmony/entry/src/main/resources/rawfile/models/expression/preprocessing.json) |
 | 后端透传与样本共建接口 | [AI 助手接口](api/10-assistant-knowledge.md)、[学习陪伴接口](api/05-study.md) |

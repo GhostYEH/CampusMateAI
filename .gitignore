@@ -153,30 +153,18 @@ magicclass-service/*.db-journal
 magicclass-service/*.db-wal
 magicclass-service/*.db-shm
 
-# CNN 训练产物与工程验证模型(不纳入版本控制)
-ml/expression_recognition/artifacts/
-ml/expression_recognition/data/
+# Local expression-recognition research, including code and training outputs
+/ml/expression_recognition/
+/论文/
+
+# Local recognition datasets
 ml/**/fer2013*/
-ml/expression_recognition/.venv/
-ml/expression_recognition/.venv-export/
-ml/expression_recognition/.venv-cu312/
-ml/expression_recognition/manifests/
-ml/expression_recognition/manifests_v2/
-ml/expression_recognition/reports/generated/
-ml/expression_recognition/runs/
-ml/expression_recognition/exports/
-ml/expression_recognition/**/litert_verification.json
-# v2 导出物由导出脚本生成,部署资产存放在 Android 工程中
-ml/expression_recognition/exports_v2/
 
 # SDK / 工具下载(非项目代码)
 jdk17.zip
 *.zip
 android/.tools/
 android/.gradle-user-home/
-ml/expression_recognition/.torch-cache/
-ml/expression_recognition/.uv-cache/
-ml/expression_recognition/.tmp/
 
 # Student behavior recognition local data and training artifacts
 ml/behavior_recognition/artifacts/

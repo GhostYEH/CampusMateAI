@@ -40,7 +40,7 @@ CampusMate AI 面向学生的学习与日常事务管理，围绕“通知整理
 | [`android/`](android/README.md) | Kotlin + Jetpack Compose；系统通知接入、学习通、专注辅助等移动端能力 |
 | [`harmony/`](harmony/README.md) | ArkTS / ArkUI 客户端；部分系统能力受 HarmonyOS 权限资质限制 |
 | [`wx/`](wx/README.md) | TypeScript 微信小程序；部分功能为 Mock 演示 |
-| [`ml/`](ml/) | 行为与表情模型训练、评估和导出 |
+| [`ml/`](ml/) | 行为模型训练、评估和导出，以及学习状态评估；表情识别训练、评估与科研资料仅在本地保留 |
 | `magicclass-service/` | CampusMate 互动课堂的受管服务 |
 | `magicclass-app/` | 导航栏“学习空间”使用的上游独立应用；本地改动通过品牌规则、可逆功能补丁和逐项声明的偏离审计 |
 | `render-service/` | 可选的互动课堂 MP4 导出渲染服务；需要单独配置与启动 |

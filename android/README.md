@@ -228,4 +228,4 @@ Debug 构建可在专注页的开发者工具中采集 `idle` 与 `visible_study
 
 - 项目规范: 参见仓库根目录 [`AGENTS.md`](../AGENTS.md)
 - 后端 API: 参见 [`backend/README.md`](../backend/README.md)
-- 表情识别训练: 参见 [`ml/expression_recognition/README.md`](../ml/expression_recognition/README.md)
+- 表情识别训练、评估与科研资料仅在本地保留，不随仓库分发；客户端运行所需模型与元数据保留在 `app/src/main/assets/`。
