@@ -17,7 +17,7 @@ struct TwilightHomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let sceneWidth = min(proxy.size.width, 760)
+            let sceneWidth = proxy.size.width
             let sceneHeight = sceneWidth * (1870.0 / 841.0)
             ScrollView(.vertical, showsIndicators: false) {
                 scene(width: sceneWidth, height: sceneHeight)
