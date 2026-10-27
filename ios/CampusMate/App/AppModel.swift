@@ -91,11 +91,13 @@ final class AppModel {
     }
 
     func refreshProfile() async {
+        let previousUniversity = session?.user.universityID
         do {
             let value = try await client.request(path: "auth/me")
             let user = try UserProfile(json: value["user"])
             await client.updateUser(user)
             session = await client.currentSession
+            if previousUniversity != session?.user.universityID { scope = UUID() }
         } catch is CancellationError { }
         catch { errorMessage = error.localizedDescription }
     }

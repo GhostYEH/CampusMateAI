@@ -5,7 +5,7 @@ public struct PersonalService: Sendable {
     public init(client: APIClient) { self.client = client }
 
     public func universities(query: String = "") async throws -> JSONValue {
-        try await client.request(path: "universities", query: query.isEmpty ? [:] : ["query": query])
+        try await client.request(path: "universities", query: query.isEmpty ? [:] : ["q": query])
     }
     public func updateProfile(_ fields: [String: JSONValue]) async throws -> UserProfile {
         let result = try await client.request(.patch, path: "auth/me", body: .object(fields))

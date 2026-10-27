@@ -36,6 +36,12 @@ public struct APIError: Error, LocalizedError, Sendable, Equatable {
 
 public typealias HTTPTransport = @Sendable (URLRequest) async throws -> HTTPResponse
 
+public struct DownloadedResource: Sendable {
+    public let url: URL
+    public let filename: String
+    public let mimeType: String?
+}
+
 private final class SameOriginRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
@@ -50,7 +56,7 @@ private enum HTTPRuntime {
     static let session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 120
+        configuration.timeoutIntervalForResource = 600
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
         return URLSession(configuration: configuration, delegate: SameOriginRedirectDelegate(), delegateQueue: nil)
@@ -65,7 +71,7 @@ private enum HTTPRuntime {
 }
 
 public actor APIClient {
-    public let baseURL: URL
+    public nonisolated let baseURL: URL
     public private(set) var currentSession: Session?
     private let transport: HTTPTransport
     private var generation: UInt64 = 0
@@ -139,6 +145,38 @@ public actor APIClient {
         return try JSONValue(data: response.data)
     }
 
+    /// Large resources go directly to a temporary file instead of being held in memory.
+    public func download(path: String) async throws -> DownloadedResource {
+        let epoch = generation
+        guard currentSession != nil else { throw APIError(statusCode: 401, code: "UNAUTHORIZED", message: "请先登录。") }
+        for attempt in 0...1 {
+            let token = currentSession?.tokens.accessToken
+            let request = try makeRequest(.get, path: path, token: token)
+            let (file, response) = try await HTTPRuntime.session.download(for: request)
+            do {
+                try validate(epoch)
+                guard let http = response as? HTTPURLResponse else { throw APIError(code: "INVALID_RESPONSE", message: "下载响应无效。") }
+                let headers = http.allHeaderFields.reduce(into: [String: String]()) { $0[String(describing: $1.key)] = String(describing: $1.value) }
+                if !(200..<300).contains(http.statusCode) {
+                    let data = (try? Data(contentsOf: file)) ?? Data()
+                    let result = HTTPResponse(data: data, statusCode: http.statusCode, headers: headers)
+                    if attempt == 0 && authenticationFailed(result), let token {
+                        try? FileManager.default.removeItem(at: file)
+                        try await refresh(expectedGeneration: epoch, failedToken: token)
+                        continue
+                    }
+                    throw APIError(response: result)
+                }
+                let filename = URL(fileURLWithPath: response.suggestedFilename ?? "资源").lastPathComponent
+                return DownloadedResource(url: file, filename: filename, mimeType: response.mimeType)
+            } catch {
+                try? FileManager.default.removeItem(at: file)
+                throw error
+            }
+        }
+        throw APIError(code: "DOWNLOAD_FAILED", message: "下载失败，请重试。")
+    }
+
     private func send(_ method: HTTPMethod, path: String, query: [String: String], data: Data?, authenticated: Bool,
                       contentType: String?, headers: [String: String]) async throws -> HTTPResponse {
         let epoch = generation
@@ -147,10 +185,7 @@ public actor APIClient {
         var request = try makeRequest(method, path: path, query: query, token: token, data: data, contentType: contentType, headers: headers)
         var response = try await transport(request)
         try validate(epoch)
-        let failure = response.statusCode == 401 ? APIError(response: response) : nil
-        let isAppAuthenticationFailure = failure.map { ["UNAUTHORIZED", "TOKEN_EXPIRED", "INVALID_TOKEN"].contains($0.code) } == true
-            || response.header("WWW-Authenticate")?.lowercased().contains("bearer") == true
-        if response.statusCode == 401 && authenticated && isAppAuthenticationFailure, let token {
+        if authenticated && authenticationFailed(response), let token {
             try await refresh(expectedGeneration: epoch, failedToken: token)
             try validate(epoch)
             request.setValue(currentSession.map { "Bearer \($0.tokens.accessToken)" }, forHTTPHeaderField: "Authorization")
@@ -201,6 +236,12 @@ public actor APIClient {
 
     private func check(_ response: HTTPResponse) throws {
         if !(200..<300).contains(response.statusCode) { throw APIError(response: response) }
+    }
+
+    private func authenticationFailed(_ response: HTTPResponse) -> Bool {
+        guard response.statusCode == 401 else { return false }
+        return ["UNAUTHORIZED", "TOKEN_EXPIRED", "INVALID_TOKEN"].contains(APIError(response: response).code)
+            || response.header("WWW-Authenticate")?.lowercased().contains("bearer") == true
     }
 
     private func makeRequest(_ method: HTTPMethod, path: String, query: [String: String] = [:], body: JSONValue? = nil,

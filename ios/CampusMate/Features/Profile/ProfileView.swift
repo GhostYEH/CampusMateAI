@@ -19,8 +19,14 @@ struct ProfileView: View {
             }
             Section("个人资料") {
                 NavigationLink { AccountView() } label: { Label("账号与个人资料", systemImage: "person.text.rectangle") }
-                NavigationLink { SimpleRemoteList(title: "我的文件", path: "personal-hub/files", icon: "folder") } label: { Label("我的文件", systemImage: "folder") }
-                NavigationLink { SimpleRemoteList(title: "我的收藏", path: "personal-hub/favorites", icon: "star") } label: { Label("我的收藏", systemImage: "star") }
+                NavigationLink { UniversityPickerView() } label: { Label("我的学校", systemImage: "building.columns") }
+                NavigationLink { PersonalHubView() } label: { Label("我的文件", systemImage: "folder") }
+                NavigationLink { PersonalHubView(favorites: true) } label: { Label("我的收藏", systemImage: "star") }
+            }
+            Section("外部连接") {
+                NavigationLink { QRLoginView() } label: { Label("扫码登录网页", systemImage: "qrcode.viewfinder") }
+                NavigationLink { ChaoxingView() } label: { Label("学习通", systemImage: "arrow.triangle.2.circlepath") }
+                NavigationLink { EduSystemView() } label: { Label("教务系统", systemImage: "network") }
             }
             Section {
                 NavigationLink { SettingsView() } label: { Label("设置", systemImage: "gearshape") }

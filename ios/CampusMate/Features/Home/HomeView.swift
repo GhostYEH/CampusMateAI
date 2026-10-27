@@ -27,14 +27,17 @@ struct HomeView: View {
             Section("学习与生活") {
                 NavigationLink { SimpleRemoteList(title: "专注记录", path: "study/sessions", icon: "timer") } label: { Label("自习室与学习足迹", systemImage: "timer") }
                 NavigationLink { SimpleRemoteList(title: "互动课堂", path: "self-classroom", icon: "rectangle.on.rectangle") } label: { Label("互动课堂", systemImage: "rectangle.on.rectangle") }
-                NavigationLink { SimpleRemoteList(title: "校园社区", path: "community/posts", icon: "bubble.left.and.bubble.right") } label: { Label("校园社区", systemImage: "bubble.left.and.bubble.right") }
-                NavigationLink { SimpleRemoteList(title: "考试安排", path: "student/exams", icon: "calendar.badge.clock") } label: { Label("考试安排", systemImage: "calendar.badge.clock") }
-                NavigationLink { SimpleRemoteList(title: "通知中心", path: "notices", icon: "bell") } label: { Label("通知中心", systemImage: "bell") }
+                NavigationLink { CommunityView() } label: { Label("校园社区", systemImage: "bubble.left.and.bubble.right") }
+                NavigationLink { ExamsView() } label: { Label("考试安排", systemImage: "calendar.badge.clock") }
+                NavigationLink { NoticesView() } label: { Label("通知中心", systemImage: "bell") }
             }
             Section("学习计划") {
                 NavigationLink { SimpleRemoteList(title: "目标与计划", path: "student-goals", icon: "target") } label: { Label("目标与计划", systemImage: "target") }
                 NavigationLink { SimpleRemoteList(title: "期末复习", path: "final-review/campaigns", icon: "book.closed") } label: { Label("期末复习", systemImage: "book.closed") }
                 NavigationLink { SimpleRemoteList(title: "课程研究", path: "course-research/runs", icon: "magnifyingglass") } label: { Label("课程研究", systemImage: "magnifyingglass") }
+            }
+            Section {
+                NavigationLink { CommunityView(initialSort: "hot") } label: { Label("校园热搜", systemImage: "flame") }
             }
         }
         .navigationTitle("首页")
