@@ -65,9 +65,22 @@ final class NativeWorkflowTests: XCTestCase {
     }
 
     private func back(_ app: XCUIApplication) {
-        let button = app.buttons["返回"].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 8), "二级页面应提供返回校园的控件")
-        button.tap()
+        // Several pushed screens keep their own glass back control in the
+        // hierarchy; tap the one that is actually on screen.
+        let query = app.buttons.matching(NSPredicate(format: "label == %@", "返回"))
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            for index in 0..<query.count {
+                let button = query.element(boundBy: index)
+                if button.exists, button.isHittable {
+                    button.tap()
+                    Thread.sleep(forTimeInterval: 0.4)
+                    return
+                }
+            }
+            usleep(200_000)
+        }
+        XCTFail("二级页面应提供返回校园的控件")
     }
 
     // MARK: - Workflow
@@ -191,8 +204,18 @@ final class NativeWorkflowTests: XCTestCase {
 
     private func openFromHome(_ app: XCUIApplication, _ label: String) {
         let button = app.buttons[label]
+        // Let the pop transition finish before scrolling; otherwise the first
+        // swipe is swallowed by the navigation animation.
+        Thread.sleep(forTimeInterval: 0.5)
+        // The scene is taller than the screen on iPad: the arch row sits below
+        // the fold, so scroll towards the bottom first and only fall back to
+        // scrolling up when the target is above the current position.
+        for _ in 0..<6 where !button.isHittable { app.swipeUp() }
         for _ in 0..<4 where !button.isHittable { app.swipeDown() }
         XCTAssertTrue(button.isHittable, "首页入口 \(label) 应可点击")
         button.tap()
     }
 }
+
+
+

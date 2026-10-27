@@ -120,9 +120,12 @@ struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
             enable()
         }
         func enable() {
-            guard let navigation = navigationController ?? parent?.navigationController else { return }
-            navigation.interactivePopGestureRecognizer?.isEnabled = true
-            navigation.interactivePopGestureRecognizer?.delegate = nil
+            guard let navigation = navigationController ?? parent?.navigationController,
+                  let gesture = navigation.interactivePopGestureRecognizer else { return }
+            gesture.isEnabled = true
+            // Keep the system delegate; overriding it makes the recognizer
+            // compete with taps on controls near the leading edge.
+            gesture.cancelsTouchesInView = false
         }
     }
 }
@@ -147,7 +150,8 @@ struct CampusRootView: View {
     @State private var router = CampusRouter()
 
     var body: some View {
-        NavigationStack(path: Binding(get: { router.path }, set: { router.path = $0 })) {
+        @Bindable var router = router
+        return NavigationStack(path: $router.path) {
             TwilightHomeView(router: router)
                 .navigationDestination(for: CampusRoute.self) { route in
                     CampusRouteView(route: route, router: router)

@@ -7,6 +7,7 @@ import CampusCore
 /// card that decides goal, duration and mode before entering the scene.
 struct FocusSetupView: View {
     @Environment(AppModel.self) private var app
+    @Environment(CampusRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     var initialGoal = ""
     var relatedTaskID: String?
@@ -61,13 +62,18 @@ struct FocusSetupView: View {
                     historyLink
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.top, 28)
                 .padding(.bottom, 34)
                 .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
             }
         }
-        .campusImmersive()
+        .overlay(alignment: .topLeading) {
+            CampusBackButton(tint: .white, onDarkBackground: true) { pop() }
+                .padding(.leading, 16)
+                .padding(.top, 8)
+        }
+        .toolbar(.hidden, for: .navigationBar)
         .task {
             if !initialGoal.isEmpty, goal.isEmpty { goal = initialGoal }
             await model.bootstrap(client: app.client, scope: app.serverURL + "|" + (app.session?.user.id ?? "") + "|focus")
@@ -83,7 +89,7 @@ struct FocusSetupView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            CampusBackButton(tint: .white, onDarkBackground: true) { dismiss() }
+            Color.clear.frame(width: CampusMetric.backButton, height: CampusMetric.backButton)
             VStack(alignment: .leading, spacing: 2) {
                 Text("自习室").font(.system(size: 23, weight: .bold)).foregroundStyle(.white)
                 Text("选好节奏，再进入专注空间").font(.system(size: 12)).foregroundStyle(.white.opacity(0.8))
@@ -311,6 +317,10 @@ struct FocusSetupView: View {
             let started = await model.start(goal: goal, minutes: minutes, mode: mode, relatedTaskID: relatedTaskID)
             if started { showingSession = true }
         }
+    }
+
+    private func pop() {
+        if router.path.isEmpty { dismiss() } else { router.pop() }
     }
 
     private func loadStats() async {
