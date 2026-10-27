@@ -147,7 +147,10 @@ public actor APIClient {
         var request = try makeRequest(method, path: path, query: query, token: token, data: data, contentType: contentType, headers: headers)
         var response = try await transport(request)
         try validate(epoch)
-        if response.statusCode == 401 && authenticated, let token {
+        let failure = response.statusCode == 401 ? APIError(response: response) : nil
+        let isAppAuthenticationFailure = failure.map { ["UNAUTHORIZED", "TOKEN_EXPIRED", "INVALID_TOKEN"].contains($0.code) } == true
+            || response.header("WWW-Authenticate")?.lowercased().contains("bearer") == true
+        if response.statusCode == 401 && authenticated && isAppAuthenticationFailure, let token {
             try await refresh(expectedGeneration: epoch, failedToken: token)
             try validate(epoch)
             request.setValue(currentSession.map { "Bearer \($0.tokens.accessToken)" }, forHTTPHeaderField: "Authorization")
