@@ -29,6 +29,11 @@ final class AppModel {
             ?? (try! ServerConfiguration("http://localhost:8000", allowsInsecureHTTP: true))
         serverURL = configuration.baseURL.absoluteString
         client = APIClient(baseURL: configuration.baseURL)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-campus.resetLocalState") {
+            UserDefaults.standard.removeObject(forKey: "campus.lastUsername")
+        }
+        #endif
         theme = UserDefaults.standard.string(forKey: "campus.theme") ?? "system"
         remindersEnabled = UserDefaults.standard.bool(forKey: "campus.reminders")
         reduceMotion = UserDefaults.standard.bool(forKey: "campus.reduceMotion")
@@ -46,6 +51,13 @@ final class AppModel {
         guard !hasStarted else { return }
         hasStarted = true
         await installObserver()
+        #if DEBUG
+        // UI tests start from a known signed-out state without depending on the
+        // device keychain left over from a previous run.
+        if ProcessInfo.processInfo.arguments.contains("-campus.signOutOnLaunch") {
+            try? KeychainStore.save(nil, server: serverURL)
+        }
+        #endif
         let saved = KeychainStore.load(server: serverURL)
         await client.restore(saved)
         session = saved
@@ -64,6 +76,13 @@ final class AppModel {
         scope = UUID()
         session = nil
         await installObserver()
+        #if DEBUG
+        // UI tests start from a known signed-out state without depending on the
+        // device keychain left over from a previous run.
+        if ProcessInfo.processInfo.arguments.contains("-campus.signOutOnLaunch") {
+            try? KeychainStore.save(nil, server: serverURL)
+        }
+        #endif
         let saved = KeychainStore.load(server: serverURL)
         await client.restore(saved)
         session = saved

@@ -40,7 +40,7 @@ struct ChaoxingView: View {
                 }.disabled(working)
                 Button("解除连接", role: .destructive) { confirmingDisconnect = true }.disabled(working)
             }
-        }.navigationTitle("学习通").task { await load() }.refreshable { await load() }
+        }.campusWorkflowChrome("学习通").task { await load() }.refreshable { await load() }
         .confirmationDialog("解除学习通连接？", isPresented: $confirmingDisconnect, titleVisibility: .visible) {
             Button("解除连接", role: .destructive) { perform { try await PersonalService(client: app.client).disconnectChaoxing(); result = "连接已解除。" } }
         }.errorAlert($error)
@@ -86,7 +86,7 @@ struct UniversityPickerView: View {
                 }.disabled(selected != nil)
             }
             LoadMoreRow(resource: resource) { await resource.load(client: app.client, path: "universities", query: query, reset: false) }
-        }.navigationTitle("选择学校").searchable(text: $search, prompt: "搜索学校")
+        }.campusWorkflowChrome("选择学校").searchable(text: $search, prompt: "搜索学校")
         .task(id: search) { if !search.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }; guard !Task.isCancelled else { return }; await load() }
         .errorAlert($error)
     }
@@ -131,7 +131,7 @@ struct EduSystemView: View {
                     }
                 }
             }
-        }.navigationTitle("教务系统").task { await load() }.refreshable { await load() }.errorAlert($error)
+        }.campusWorkflowChrome("教务系统").task { await load() }.refreshable { await load() }.errorAlert($error)
         .confirmationDialog("解除教务系统连接？", isPresented: $confirmDisconnect, titleVisibility: .visible) {
             Button("解除连接", role: .destructive) { Task { do { _ = try await app.client.request(.delete, path: "edu/binding"); await load() } catch { self.error = error.localizedDescription } } }
         }
@@ -185,7 +185,7 @@ struct EduLoginView: View {
                     }
                 }
             }
-        }.navigationTitle("连接教务").navigationBarTitleDisplayMode(.inline).task { await prepare() }.errorAlert($error)
+        }.campusWorkflowChrome("连接教务").task { await prepare() }.errorAlert($error)
         .sheet(isPresented: $showWebLogin) {
             if let url = URL(string: connection["portal_url"].text) {
                 NavigationStack {
@@ -238,7 +238,7 @@ struct EduWebLoginView: View {
     @State private var working = false
     var body: some View {
         TrustedWebView(url: url, origins: origins, loginMode: true, bridge: bridge) { error = $0 }
-            .navigationTitle("学校登录").navigationBarTitleDisplayMode(.inline)
+            .campusWorkflowChrome("学校登录")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {

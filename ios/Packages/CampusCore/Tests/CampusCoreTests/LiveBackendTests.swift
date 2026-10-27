@@ -5,6 +5,60 @@ import Testing
 /// Opt-in integration uses only the disposable loopback validation server, never a configured user service.
 @Suite("Disposable backend integration", .enabled(if: ProcessInfo.processInfo.environment["CAMPUS_RUN_LOCAL_INTEGRATION"] == "1"))
 struct LiveBackendTests {
+    @Test func collaborativeRoomsEnforceInvitationOwnershipAndIncrementalMessages() async throws {
+        let root = URL(string: "http://127.0.0.1:18927/api/v1/")!
+        let host = APIClient(baseURL: root), guest = APIClient(baseURL: root)
+        let health = try await host.request(path: "health", authenticated: false)
+        try #require(health["env"].text == "test")
+        for client in [host, guest] {
+            let username = "ios_room_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(14)
+            let password = UUID().uuidString + "aA!"
+            _ = try await client.request(.post, path: "auth/register", body: ["username": .string(username), "password": .string(password), "display_name": "iOS 协作验证"], authenticated: false)
+            _ = try await client.login(username: username, password: password)
+        }
+        let guestID = try #require(await guest.currentSession?.user.id)
+        let control = "magicclass/learning-space"
+        let room = try await host.request(.post, path: control + "/rooms/native", body: ["title": "双账号隔离验证"])
+        let id = try #require(room["id"].string)
+        let roomPath = control + "/rooms/" + id.pathComponent
+        _ = try await host.request(.post, path: roomPath + "/invitations", body: ["uid": .string(guestID)])
+        do { _ = try await guest.request(path: roomPath); Issue.record("Pending invitation must not read the room") }
+        catch let error as APIError { #expect(error.statusCode == 404) }
+        let invitations = try await guest.request(path: control + "/invitations")
+        #expect(invitations.items.contains { $0["room_id"].text == id })
+        _ = try await guest.request(.post, path: control + "/invitations/\(id.pathComponent)/accept")
+        var draft = RoomMessageDraft()
+        let first = draft.prepare("验证消息重试")
+        let sent = try await guest.request(.post, path: roomPath + "/messages", body: first)
+        let repeated = try await guest.request(.post, path: roomPath + "/messages", body: first)
+        #expect(sent["id"] == repeated["id"])
+        for number in 1...100 {
+            _ = try await host.request(.post, path: roomPath + "/messages", body: ["content": .string("分页验证 \(number)"), "client_id": .string(UUID().uuidString)])
+        }
+        let page1 = try await guest.request(path: roomPath + "/messages", query: ["after":"0"])
+        #expect(page1.items.count == 100)
+        let last = try #require(page1.items.last?["id"].int)
+        let page2 = try await guest.request(path: roomPath + "/messages", query: ["after": String(last)])
+        #expect(page2.items.count == 1)
+        do { _ = try await guest.request(.patch, path: roomPath + "/cursor", body: ["scene_index": 0]); Issue.record("Guest must not update host cursor") }
+        catch let error as APIError { #expect(error.statusCode == 403) }
+        let goalOperation = GovernedOperation(path: "student-goals", body: ["name": "复习计划验证", "category":"academic"], keyInBody: true)
+        let goal = try await goalOperation.perform(client: host)
+        let replayedGoal = try await goalOperation.perform(client: host)
+        #expect(goal["goal"]["goal_id"] == replayedGoal["goal"]["goal_id"])
+        #expect(replayedGoal["created"].bool == false)
+        let goalID = try #require(goal["goal"]["goal_id"].string)
+        _ = try await GovernedOperation(path: "student-goals/\(goalID.pathComponent)/progress", body: ["progress_percent": 25], keyInBody: true).perform(client: host)
+        let fetchedGoal = try await host.request(path: "student-goals/" + goalID.pathComponent)
+        #expect(fetchedGoal["progress_percent"].double == 25)
+        let capability = try await host.request(path: "agent-runtime/capabilities")
+        #expect(!capability["capabilities"].items.isEmpty)
+        _ = try await host.request(.post, path: roomPath + "/leave")
+        do { _ = try await guest.request(path: roomPath); Issue.record("Ended room must not remain readable") }
+        catch let error as APIError { #expect([404,410].contains(error.statusCode)) }
+        await host.logout(); await guest.logout()
+    }
+
     @Test func realAuthenticationTaskAndExamLifecycle() async throws {
         let client = APIClient(baseURL: URL(string: "http://127.0.0.1:18927/api/v1/")!)
         let health = try await client.request(path: "health", authenticated: false)

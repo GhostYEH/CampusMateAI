@@ -28,7 +28,7 @@ struct QRLoginView: View {
                     Button(working ? "正在识别…" : "识别并查看设备", action: scan).disabled(working || input.isEmpty)
                 } header: { Text("登录二维码") } footer: { Text("仅识别 CampusMate 网页登录二维码。确认前请核对设备；二维码过期后需在电脑上刷新。") }
             }
-        }.navigationTitle("扫码登录").navigationBarTitleDisplayMode(.inline).errorAlert($error)
+        }.campusWorkflowChrome("扫码登录").errorAlert($error)
         .alert("登录请求已处理", isPresented: $completed) { Button("好", role: .cancel) { } }
     }
     private func scan() {

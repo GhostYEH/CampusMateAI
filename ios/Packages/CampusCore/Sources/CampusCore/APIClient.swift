@@ -220,12 +220,12 @@ public actor APIClient {
         }
     }
 
-    public func upload(path: String, fieldName: String = "file", filename: String, mimeType: String, data: Data) async throws -> JSONValue {
+    public func upload(path: String, fieldName: String = "file", filename: String, mimeType: String, data: Data, headers: [String: String] = [:]) async throws -> JSONValue {
         let boundary = "CampusMate-\(UUID().uuidString)"
         let cleanFilename = filename.replacingOccurrences(of: "\"", with: "_").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
         var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(cleanFilename)\"\r\nContent-Type: \(mimeType)\r\n\r\n".utf8)
         body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
-        let response = try await requestData(.post, path: path, data: body, contentType: "multipart/form-data; boundary=\(boundary)")
+        let response = try await requestData(.post, path: path, data: body, contentType: "multipart/form-data; boundary=\(boundary)", headers: headers)
         return try JSONValue(data: response.data)
     }
 

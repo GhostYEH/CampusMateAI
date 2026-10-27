@@ -1,0 +1,13 @@
+{
+  "images": [
+    {
+      "filename": "service_clipboard_hero.png",
+      "idiom": "universal",
+      "scale": "1x"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}
