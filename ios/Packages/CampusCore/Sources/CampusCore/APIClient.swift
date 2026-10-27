@@ -35,6 +35,17 @@ public struct APIError: Error, LocalizedError, Sendable, Equatable {
 }
 
 public typealias HTTPTransport = @Sendable (URLRequest) async throws -> HTTPResponse
+public typealias HTTPStreamTransport = @Sendable (URLRequest) async throws -> HTTPStreamResponse
+
+public struct HTTPStreamResponse: Sendable {
+    public let statusCode: Int
+    public let headers: [String: String]
+    public let chunks: AsyncThrowingStream<Data, any Error>
+    public init(statusCode: Int, headers: [String: String] = [:], chunks: AsyncThrowingStream<Data, any Error>) {
+        self.statusCode = statusCode; self.headers = headers; self.chunks = chunks
+    }
+    public func header(_ name: String) -> String? { headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value }
+}
 
 public struct DownloadedResource: Sendable {
     public let url: URL
@@ -68,12 +79,34 @@ private enum HTTPRuntime {
         return HTTPResponse(data: data, statusCode: http.statusCode,
                             headers: http.allHeaderFields.reduce(into: [:]) { result, field in result[String(describing: field.key)] = String(describing: field.value) })
     }
+
+    static func openStream(_ request: URLRequest) async throws -> HTTPStreamResponse {
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError(code: "INVALID_RESPONSE", message: "流式响应无效。") }
+        let chunks = AsyncThrowingStream<Data, any Error> { continuation in
+            let worker = Task {
+                do {
+                    var data = Data()
+                    for try await byte in bytes {
+                        try Task.checkCancellation(); data.append(byte)
+                        if byte == 10 || data.count >= 8192 { continuation.yield(data); data.removeAll(keepingCapacity: true) }
+                    }
+                    if !data.isEmpty { continuation.yield(data) }
+                    continuation.finish()
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in worker.cancel() }
+        }
+        let headers = http.allHeaderFields.reduce(into: [String: String]()) { $0[String(describing: $1.key)] = String(describing: $1.value) }
+        return HTTPStreamResponse(statusCode: http.statusCode, headers: headers, chunks: chunks)
+    }
 }
 
 public actor APIClient {
     public nonisolated let baseURL: URL
     public private(set) var currentSession: Session?
     private let transport: HTTPTransport
+    private let streamTransport: HTTPStreamTransport
     private var generation: UInt64 = 0
     private var refreshTask: Task<TokenPair, any Error>?
     private var sessionObserver: (@Sendable (Session?) -> Void)?
@@ -81,6 +114,13 @@ public actor APIClient {
     public init(baseURL: URL, transport: HTTPTransport? = nil) {
         self.baseURL = baseURL
         self.transport = transport ?? HTTPRuntime.send
+        self.streamTransport = HTTPRuntime.openStream
+    }
+
+    public init(baseURL: URL, transport: HTTPTransport?, streamTransport: @escaping HTTPStreamTransport) {
+        self.baseURL = baseURL
+        self.transport = transport ?? HTTPRuntime.send
+        self.streamTransport = streamTransport
     }
 
     public func observeSession(_ observer: @escaping @Sendable (Session?) -> Void) { sessionObserver = observer }
@@ -134,6 +174,50 @@ public actor APIClient {
     public func requestData(_ method: HTTPMethod = .get, path: String, query: [String: String] = [:], data: Data? = nil,
                             contentType: String? = nil, headers: [String: String] = [:]) async throws -> HTTPResponse {
         try await send(method, path: path, query: query, data: data, authenticated: true, contentType: contentType, headers: headers)
+    }
+
+    public func events(_ method: HTTPMethod = .get, path: String, query: [String: String] = [:], body: JSONValue? = nil,
+                       headers: [String: String] = [:]) throws -> AsyncThrowingStream<SSEEvent, any Error> {
+        guard let session = currentSession else { throw APIError(statusCode: 401, code: "UNAUTHORIZED", message: "请先登录。") }
+        let epoch = generation
+        let token = session.tokens.accessToken
+        var initial = try makeRequest(method, path: path, query: query, body: body, token: token, headers: headers)
+        initial.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        let streamTransport = self.streamTransport
+        let firstRequest = initial
+        return AsyncThrowingStream { continuation in
+            let worker = Task.detached { [weak self] in
+                guard let self else { continuation.finish(); return }
+                do {
+                    var request = firstRequest
+                    for attempt in 0...1 {
+                        let response = try await streamTransport(request)
+                        try await self.validate(epoch)
+                        if !(200..<300).contains(response.statusCode) {
+                            var data = Data()
+                            for try await chunk in response.chunks { data.append(chunk); if data.count > 65536 { break } }
+                            let failure = HTTPResponse(data: data, statusCode: response.statusCode, headers: response.headers)
+                            if attempt == 0, await self.authenticationFailed(failure) {
+                                try await self.refresh(expectedGeneration: epoch, failedToken: token)
+                                let current = await self.currentSession
+                                request.setValue(current.map { "Bearer \($0.tokens.accessToken)" }, forHTTPHeaderField: "Authorization")
+                                continue
+                            }
+                            throw APIError(response: failure)
+                        }
+                        guard response.header("Content-Type")?.lowercased().contains("text/event-stream") == true else { throw APIError(code: "INVALID_STREAM", message: "服务器未返回流式事件，请重试。") }
+                        var parser = SSEParser()
+                        for try await data in response.chunks {
+                            try await self.validate(epoch)
+                            for event in parser.feed(data) { continuation.yield(event) }
+                        }
+                        try await self.validate(epoch)
+                        continuation.finish(); return
+                    }
+                } catch { continuation.finish(throwing: error) }
+            }
+            continuation.onTermination = { _ in worker.cancel() }
+        }
     }
 
     public func upload(path: String, fieldName: String = "file", filename: String, mimeType: String, data: Data) async throws -> JSONValue {

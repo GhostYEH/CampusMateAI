@@ -101,8 +101,8 @@ struct PersonalFileView: View {
         Task {
             defer { working = false }
             do {
-                current = try await PersonalService(client: app.client).favoriteFile(id: item["id"].text)
-                let favoriteID = "file_" + item["id"].text
+                current = try await PersonalService(client: app.client).favoriteFile(id: item["id"].text, favorite: value["is_favorite"].bool != true)
+                let favoriteID = "file:" + item["id"].text
                 if current["is_favorite"].bool == true {
                     _ = try await app.client.request(.post, path: "personal-hub/favorites", body: ["id": .string(favoriteID), "title": item["name"], "type": "文件", "subtitle": item["category"], "source_route": "files"])
                 } else { try await PersonalService(client: app.client).removeFavorite(id: favoriteID) }
@@ -119,7 +119,7 @@ struct SavedDestinationView: View {
         if parts.count >= 2 && parts[0] == "courses" { CourseDetailView(courseID: parts[1]) }
         else if parts.count >= 2 && parts[0] == "community_detail" { CommunityDetailView(postID: parts[1]) }
         else if parts.count >= 2 && parts[0] == "task_detail", let task = try? TaskItem(json: ["id": .string(parts[1]), "title": value["title"]]) { TaskDetailView(initial: task) }
-        else if route == "files" && value["id"].text.hasPrefix("file_") {
+        else if route == "files" && value["id"].text.hasPrefix("file:") {
             PersonalFileView(item: ["id": .string(String(value["id"].text.dropFirst(5))), "name": value["title"]])
         } else { RecordDetailView(value: value, title: "收藏详情") }
     }

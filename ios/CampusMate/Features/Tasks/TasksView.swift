@@ -183,6 +183,10 @@ struct TaskDetailView: View {
                 if let text = item.json["submission_method"].string?.nonEmpty { LabeledContent("提交方式", value: text) }
                 if let courseID = item.courseID { NavigationLink("查看课程") { CourseDetailView(courseID: courseID) } }
             }
+            Section("学习支持") {
+                NavigationLink { FocusSetupView(initialGoal: item.title, relatedTaskID: item.id) } label: { Label("围绕这项任务专注", systemImage: "timer") }
+                NavigationLink { AssistantView(initialPrompt: "请帮我梳理这项任务：" + item.title + "\n" + item.description, relatedTaskID: item.id) } label: { Label("请 CPM 帮我梳理", systemImage: "sparkles") }
+            }
             if !item.canChangeCompletion {
                 Section { Label("此任务由来源系统同步，请在原系统办理，再同步最新状态。", systemImage: "arrow.triangle.2.circlepath").font(.footnote).foregroundStyle(.secondary) }
             } else {

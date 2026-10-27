@@ -26,9 +26,11 @@ struct LoginView: View {
                         .textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($focusedField, equals: .username).submitLabel(.next)
                         .onSubmit { focusedField = .password }
+                        .accessibilityIdentifier("login.username")
                     SecureField("密码", text: $password)
                         .textContentType(.password).focused($focusedField, equals: .password).submitLabel(.go)
                         .onSubmit(signIn)
+                        .accessibilityIdentifier("login.password")
                 }
                 Section {
                     Button(action: signIn) {
@@ -38,7 +40,7 @@ struct LoginView: View {
                             Text(app.isSigningIn ? "正在登录…" : "登录").fontWeight(.semibold)
                             Spacer()
                         }.padding(.vertical, 5)
-                    }.disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty || app.isSigningIn)
+                    }.disabled(username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || password.isEmpty || app.isSigningIn).accessibilityIdentifier("login.submit")
                 } footer: { Text("登录凭据保存在本机钥匙串，密码不会保存在应用中。") }
 
                 Section {

@@ -22,6 +22,8 @@ public struct PersonalService: Sendable {
     public func files() async throws -> [JSONValue] { try await client.request(path: "personal-hub/files").items }
     public func favorites() async throws -> [JSONValue] { try await client.request(path: "personal-hub/favorites").items }
     public func removeFile(id: String) async throws { _ = try await client.request(.delete, path: "personal-hub/files/\(id.pathComponent)") }
-    public func favoriteFile(id: String) async throws -> JSONValue { try await client.request(.post, path: "personal-hub/files/\(id.pathComponent)/favorite") }
+    public func favoriteFile(id: String, favorite: Bool = true) async throws -> JSONValue {
+        try await client.request(.post, path: "personal-hub/files/\(id.pathComponent)/favorite", body: ["favorite": .bool(favorite)])
+    }
     public func removeFavorite(id: String) async throws { _ = try await client.request(.delete, path: "personal-hub/favorites/\(id.pathComponent)") }
 }

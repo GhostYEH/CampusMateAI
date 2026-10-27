@@ -66,6 +66,16 @@ struct LearningContractTests {
         #expect(APIDate.parse("2026-10-27T08:00:00.123+08:00") != nil)
         #expect(APIDate.parse("not-a-date") == nil)
     }
+
+    @Test func fileFavoriteSetsExplicitDesiredState() async throws {
+        let client = APIClient(baseURL: URL(string: "https://example.com/api/v1/")!) { request in
+            let body = try JSONValue(data: request.httpBody ?? Data())
+            #expect(body["favorite"].bool == false)
+            return HTTPResponse(data: Data(#"{"id":"f1","is_favorite":false}"#.utf8), statusCode: 200)
+        }
+        await client.restore(Session(tokens: TokenPair(accessToken: "access", refreshToken: "refresh"), user: UserProfile(id: "u1", username: "u1")))
+        _ = try await PersonalService(client: client).favoriteFile(id: "f1", favorite: false)
+    }
 }
 
 private actor RequestCounter {

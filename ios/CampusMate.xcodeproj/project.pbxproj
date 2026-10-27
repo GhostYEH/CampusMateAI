@@ -10,6 +10,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A20000000000000000000004 /* CampusMateUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = CampusMateUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000004 /* CampusMate.app */ = {
 			isa = PBXFileReference;
 			explicitFileType = wrapper.application;
@@ -20,6 +21,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A20000000000000000000003 /* CampusMateUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = CampusMateUITests; sourceTree = "<group>"; };
 		A10000000000000000000003 /* CampusMate */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = CampusMate;
@@ -28,6 +30,7 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		A20000000000000000000005 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -41,19 +44,32 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000003 /* CampusMate */,
+				A20000000000000000000003 /* CampusMateUITests */,
 				A10000000000000000000002 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
 		A10000000000000000000002 /* Products */ = {
 			isa = PBXGroup;
-			children = (A10000000000000000000004 /* CampusMate.app */,);
+			children = (A10000000000000000000004 /* CampusMate.app */, A20000000000000000000004 /* CampusMateUITests.xctest */,);
 			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A20000000000000000000008 /* CampusMateUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A2000000000000000000000F;
+			buildPhases = (A20000000000000000000007, A20000000000000000000005, A20000000000000000000006,);
+			buildRules = ();
+			dependencies = (A20000000000000000000011,);
+			fileSystemSynchronizedGroups = (A20000000000000000000003,);
+			name = CampusMateUITests;
+			productName = CampusMateUITests;
+			productReference = A20000000000000000000004;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		A10000000000000000000008 /* CampusMate */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A1000000000000000000000F /* Build configuration list for PBXNativeTarget "CampusMate" */;
@@ -82,6 +98,7 @@
 				LastUpgradeCheck = 2710;
 				TargetAttributes = {
 					A10000000000000000000008 = { CreatedOnToolsVersion = 27.1; };
+					A20000000000000000000008 = { CreatedOnToolsVersion = 27.1; TestTargetID = A10000000000000000000008; };
 				};
 			};
 			buildConfigurationList = A1000000000000000000000E /* Build configuration list for PBXProject "CampusMate" */;
@@ -95,11 +112,12 @@
 			productRefGroup = A10000000000000000000002 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A10000000000000000000008 /* CampusMate */,);
+			targets = (A10000000000000000000008 /* CampusMate */, A20000000000000000000008 /* CampusMateUITests */,);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		A20000000000000000000006 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -109,6 +127,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A20000000000000000000007 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		A10000000000000000000007 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -118,6 +137,35 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		A2000000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.campusmate.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CampusMate;
+			};
+			name = Debug;
+		};
+		A2000000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.campusmate.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = CampusMate;
+			};
+			name = Release;
+		};
 		A1000000000000000000000A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -214,6 +262,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A2000000000000000000000F = {isa = XCConfigurationList; buildConfigurations = (A2000000000000000000000C, A2000000000000000000000D,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		A1000000000000000000000E /* Build configuration list for PBXProject "CampusMate" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (A1000000000000000000000A /* Debug */, A1000000000000000000000B /* Release */,);
@@ -227,6 +276,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin PBXContainerItemProxy section */
+		A20000000000000000000010 = {isa = PBXContainerItemProxy; containerPortal = A10000000000000000000009; proxyType = 1; remoteGlobalIDString = A10000000000000000000008; remoteInfo = CampusMate; };
+/* End PBXContainerItemProxy section */
+/* Begin PBXTargetDependency section */
+		A20000000000000000000011 = {isa = PBXTargetDependency; target = A10000000000000000000008; targetProxy = A20000000000000000000010; };
+/* End PBXTargetDependency section */
 
 /* Begin XCLocalSwiftPackageReference section */
 		A10000000000000000000022 /* XCLocalSwiftPackageReference "Packages/CampusCore" */ = {

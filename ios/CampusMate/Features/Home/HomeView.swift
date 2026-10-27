@@ -25,7 +25,7 @@ struct HomeView: View {
             }
 
             Section("学习与生活") {
-                NavigationLink { SimpleRemoteList(title: "专注记录", path: "study/sessions", icon: "timer") } label: { Label("自习室与学习足迹", systemImage: "timer") }
+                NavigationLink { FocusSetupView() } label: { Label("自习室与学习足迹", systemImage: "timer") }
                 NavigationLink { SimpleRemoteList(title: "互动课堂", path: "self-classroom", icon: "rectangle.on.rectangle") } label: { Label("互动课堂", systemImage: "rectangle.on.rectangle") }
                 NavigationLink { CommunityView() } label: { Label("校园社区", systemImage: "bubble.left.and.bubble.right") }
                 NavigationLink { ExamsView() } label: { Label("考试安排", systemImage: "calendar.badge.clock") }
