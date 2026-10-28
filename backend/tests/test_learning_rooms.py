@@ -5,6 +5,7 @@ import json
 import asyncio
 import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
@@ -225,6 +226,25 @@ def test_message_catchup_across_multiple_pages_and_retry(setup):
     assert client.get(url, headers=g).status_code == 404
     assert client.post(f"{BASE}/rooms/{room}/leave", headers=h).status_code == 204
     assert client.get(url, headers=h).status_code in (404, 410)
+
+
+def test_concurrent_message_retry_is_idempotent_across_connections(setup):
+    container, client, room, (host, h), _, _ = joined(setup)
+    repositories = [
+        LearningRoomRepository(Database(container.settings.database_path))
+        for _ in range(2)
+    ]
+    barrier = threading.Barrier(2)
+
+    def send(repo):
+        barrier.wait(timeout=5)
+        return repo.send(room, host, "不确定是否送达", "concurrent-attempt")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(send, repositories))
+    assert results[0]["id"] == results[1]["id"]
+    messages = client.get(f"{BASE}/rooms/{room}/messages", headers=h).json()["items"]
+    assert [message["id"] for message in messages] == [results[0]["id"]]
 
 
 def test_host_cursor_and_leave_revoke_access(setup):

@@ -140,6 +140,7 @@ fun FocusScreen(
     onOpenCounselorPlan: (String) -> Unit,
     onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode, relatedTaskId: String?) -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenLearningRooms: () -> Unit,
     planRepository: FocusPlanRepository,
 ) {
     val stats by repository.stats.collectAsStateWithLifecycle()
@@ -309,6 +310,19 @@ fun FocusScreen(
                     onSelectMode = { sessionMode = it },
                     onStart = startFocus,
                 )
+            }
+            item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF0E2CA),
+                    border = BorderStroke(1.dp, Color(0xFFBD9B72)),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("和同学交流", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold)
+                        Text("进入共同课堂邀请同学，使用文字或音视频交流；目前不支持多人同步计时。", color = FocusStudyPalette.Muted)
+                        OutlinedButton(onClick = onOpenLearningRooms) { Text("进入共同课堂") }
+                    }
+                }
             }
             if (effectiveTaskId != null) {
                 item {
