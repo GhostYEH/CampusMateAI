@@ -432,8 +432,18 @@ struct TaskEditorView: View {
                         .background(Color.white.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
                     Toggle("设置截止时间", isOn: $hasDeadline.animation()).tint(CampusJournal.clay)
                     if hasDeadline {
-                        DatePicker("截止时间", selection: $deadline, displayedComponents: [.date, .hourAndMinute])
+                        DatePicker("截止时间", selection: $deadline, displayedComponents: .date)
+                            .datePickerStyle(.graphical)
                             .tint(CampusJournal.clay)
+                            .fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("时间").campusFont(.caption).foregroundStyle(CampusJournal.muted)
+                            DatePicker("时间", selection: $deadline, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.wheel)
+                                .labelsHidden()
+                                .frame(maxWidth: .infinity)
+                                .tint(CampusJournal.clay)
+                        }
                     }
                     HStack(spacing: 8) {
                         ForEach([("low", "低"), ("medium", "中"), ("high", "高")], id: \.0) { value, label in
@@ -462,12 +472,17 @@ struct TaskEditorView: View {
             }
             .journalSheet()
             .padding(12)
+            // The journal page is always light paper: keep system-provided
+            // labels, values and controls in light appearance even when the
+            // app is in dark mode. The date and time pickers are inline, so
+            // no dark popover is presented.
+            .environment(\.colorScheme, .light)
         }
         .campusImmersive()
         .safeAreaInset(edge: .top) {
             HStack {
                 CampusBackButton { dismiss() }
-                Text("编辑待办").font(.system(size: 18, weight: .bold)).foregroundStyle(CampusJournal.ink)
+                Text("编辑待办").font(.system(size: 18, weight: .bold)).foregroundStyle(CampusJournal.paper)
                 Spacer()
             }
             .padding(.horizontal, 16).frame(height: 56)

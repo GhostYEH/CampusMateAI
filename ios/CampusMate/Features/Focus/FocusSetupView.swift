@@ -8,6 +8,7 @@ import CampusCore
 struct FocusSetupView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var initialGoal = ""
     var relatedTaskID: String?
     @State private var model = FocusModel()
@@ -49,7 +50,8 @@ struct FocusSetupView: View {
                     if let loadError {
                         HStack(spacing: 8) {
                             Image(systemName: "icloud.slash").foregroundStyle(.white)
-                            Text(loadError).font(.system(size: 12)).foregroundStyle(.white)
+                            Text(loadError).campusFont(.caption).foregroundStyle(.white)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer()
                         }
                         .padding(12)
@@ -87,7 +89,7 @@ struct FocusSetupView: View {
         .fullScreenCover(isPresented: $showingSession, onDismiss: { Task { await model.refresh(); await loadStats() } }) {
             FocusSessionView(model: model)
         }
-        .sheet(isPresented: $showCustom) { customSheet.presentationDetents([.height(260)]) }
+        .sheet(isPresented: $showCustom) { customSheet }
         .errorAlert(Binding(get: { model.error }, set: { model.error = $0 }))
     }
 
@@ -95,8 +97,9 @@ struct FocusSetupView: View {
         HStack(spacing: 12) {
             Color.clear.frame(width: CampusMetric.backButton, height: CampusMetric.backButton)
             VStack(alignment: .leading, spacing: 2) {
-                Text("自习室").font(.system(size: 23, weight: .bold)).foregroundStyle(.white)
-                Text("选好节奏，再进入专注空间").font(.system(size: 12)).foregroundStyle(.white.opacity(0.8))
+                Text("自习室").campusFont(.headline).foregroundStyle(.white)
+                Text("选好节奏，再进入专注空间").campusFont(.caption).foregroundStyle(.white.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
         }
@@ -108,11 +111,11 @@ struct FocusSetupView: View {
                 Image(systemName: session.isPaused ? "pause.circle.fill" : "timer")
                     .font(.system(size: 22)).foregroundStyle(wood)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("有一场专注还在进行").font(.system(size: 14, weight: .bold)).foregroundStyle(ink)
-                    Text(session.goal.nonEmpty ?? "专注学习").font(.system(size: 12)).foregroundStyle(Color(hex: 0x5D7066)).lineLimit(1)
+                    Text("有一场专注还在进行").campusFont(.body).fontWeight(.bold).foregroundStyle(ink)
+                    Text(session.goal.nonEmpty ?? "专注学习").campusFont(.caption).foregroundStyle(Color(hex: 0x5D7066)).lineLimit(2)
                 }
                 Spacer()
-                Text("继续").font(.system(size: 13, weight: .bold)).foregroundStyle(wood)
+                Text("继续").campusFont(.bodySmall).fontWeight(.bold).foregroundStyle(wood)
             }
             .padding(14)
             .background(paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -124,52 +127,51 @@ struct FocusSetupView: View {
     private var studyCard: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("CAMPUSMATE  /  STUDY ROOM").font(.system(size: 10, weight: .bold)).tracking(1).foregroundStyle(ink)
+                Text("CAMPUSMATE  /  STUDY ROOM")
+                    .font(.system(size: 10, weight: .bold)).tracking(1).foregroundStyle(ink)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Text("✦  01").font(.system(size: 12, weight: .bold)).foregroundStyle(copper)
             }
             Spacer().frame(height: 8)
             Rectangle().fill(copper.opacity(0.52)).frame(height: 1)
             Spacer().frame(height: 9)
-            Text("从现在开始，专注一件事").font(.system(size: 22, weight: .bold)).foregroundStyle(ink)
+            Text("从现在开始，专注一件事").campusFont(.headline).foregroundStyle(ink)
+                .fixedSize(horizontal: false, vertical: true)
             if initialGoal.isEmpty {
                 Text("进入后可以切换雨夜、图书馆与林间场景")
-                    .font(.system(size: 13)).foregroundStyle(Color(hex: 0x5D7066))
+                    .campusFont(.bodySmall).foregroundStyle(Color(hex: 0x5D7066))
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text(initialGoal).font(.system(size: 14)).foregroundStyle(Color(hex: 0x5D7066)).lineLimit(2)
+                Text(initialGoal).campusFont(.body).foregroundStyle(Color(hex: 0x5D7066)).lineLimit(2)
             }
             Spacer().frame(height: 18)
-            Text("这次准备完成什么？").font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
+            Text("这次准备完成什么？").campusFont(.subtitle).foregroundStyle(ink)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer().frame(height: 8)
             if initialGoal.isEmpty {
                 TextField("", text: $goal, prompt: Text("例如：做完两道习题（可以跳过）").foregroundStyle(Color(hex: 0x8A9A90)))
-                    .font(.system(size: 14))
+                    .campusFont(.body)
                     .foregroundStyle(ink)
+                    .tint(copper)
                     .padding(.horizontal, 13).padding(.vertical, 12)
                     .background(paper, in: RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(line, lineWidth: 1))
                     .accessibilityIdentifier("focus.goal")
             } else {
-                Text(initialGoal).font(.system(size: 15, weight: .medium)).foregroundStyle(copper)
+                Text(initialGoal).campusFont(.body).fontWeight(.medium).foregroundStyle(copper)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer().frame(height: 19)
             Rectangle().fill(line).frame(height: 1)
             Spacer().frame(height: 16)
-            Text("01  专注时长").font(.system(size: 13, weight: .bold)).foregroundStyle(ink)
+            Text("01  专注时长").campusFont(.bodySmall).fontWeight(.bold).foregroundStyle(ink)
             Spacer().frame(height: 8)
-            HStack(spacing: 6) {
-                ForEach([25, 45, 60], id: \.self) { value in
-                    chip("\(value) 分钟", selected: minutes == value) { minutes = value }
-                }
-                chip(minutes != 25 && minutes != 45 && minutes != 60 ? "\(minutes) 分" : "自定义",
-                     selected: minutes != 25 && minutes != 45 && minutes != 60) {
-                    customMinutes = String(minutes); showCustom = true
-                }
-            }
+            durationChips
             Spacer().frame(height: 15)
             Rectangle().fill(line).frame(height: 1)
             Spacer().frame(height: 16)
-            Text("02  专注方式").font(.system(size: 13, weight: .bold)).foregroundStyle(ink)
+            Text("02  专注方式").campusFont(.bodySmall).fontWeight(.bold).foregroundStyle(ink)
             Spacer().frame(height: 8)
             ForEach(Self.modes, id: \.value) { option in
                 let selected = mode == option.value
@@ -179,10 +181,16 @@ struct FocusSetupView: View {
                 } label: {
                     HStack(spacing: 9) {
                         Circle().fill(selected ? copper : Color(hex: 0xAEBBB0)).frame(width: 8, height: 8)
-                        Text(option.title).font(.system(size: 13, weight: selected ? .bold : .regular)).foregroundStyle(ink)
+                        Text(option.title)
+                            .campusFont(.bodySmall)
+                            .fontWeight(selected ? .bold : .regular)
+                            .foregroundStyle(ink)
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer()
-                        if option.value == "SMART_GUARD" { Text("暂未接入").font(.caption2).foregroundStyle(copper) }
-                        if selected { Text("✓").font(.system(size: 15, weight: .bold)).foregroundStyle(copper) }
+                        if option.value == "SMART_GUARD" {
+                            Text("暂未接入").campusFont(.micro).fontWeight(.regular).foregroundStyle(copper)
+                        }
+                        if selected { Text("✓").campusFont(.subtitle).foregroundStyle(copper) }
                     }
                     .padding(.horizontal, 12).padding(.vertical, 12)
                     .background(selected ? Color(hex: 0xF0DFC1) : Color(hex: 0xFFFCF4),
@@ -194,7 +202,8 @@ struct FocusSetupView: View {
                 .padding(.bottom, 6)
             }
             Text(Self.modes.first { $0.value == mode }?.description ?? "")
-                .font(.system(size: 12)).lineSpacing(4).foregroundStyle(Color(hex: 0x5D7066))
+                .campusFont(.caption).lineSpacing(4).foregroundStyle(Color(hex: 0x5D7066))
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 16).padding(.bottom, 15)
             Button {
                 start()
@@ -206,11 +215,14 @@ struct FocusSetupView: View {
                         Image(systemName: "play.fill").font(.system(size: 15))
                     }
                     Text(model.isWorking ? "正在准备…" : model.session?.isActive == true ? "返回专注" : "开始专注")
-                        .font(.system(size: 15, weight: .bold))
+                        .campusFont(.subtitle).fontWeight(.bold)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .padding(.vertical, 12)
+                .frame(minHeight: 52)
                 .background(wood, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             }
             .buttonStyle(CampusPressStyle())
@@ -235,10 +247,31 @@ struct FocusSetupView: View {
         .shadow(color: .black.opacity(0.3), radius: 14, y: 6)
     }
 
+    private var durationChips: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 6) { durationChipItems }
+            } else {
+                HStack(spacing: 6) { durationChipItems }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var durationChipItems: some View {
+        ForEach([25, 45, 60], id: \.self) { value in
+            chip("\(value) 分钟", selected: minutes == value) { minutes = value }
+        }
+        let customSelected = minutes != 25 && minutes != 45 && minutes != 60
+        chip(customSelected ? "\(minutes) 分" : "自定义", selected: customSelected) {
+            customMinutes = String(minutes); showCustom = true
+        }
+    }
+
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .campusFont(.label)
                 .foregroundStyle(ink)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
@@ -251,7 +284,8 @@ struct FocusSetupView: View {
 
     private var statsStrip: some View {
         HStack(spacing: 9) {
-            Text("今日\n学习").font(.system(size: 12, weight: .bold)).lineSpacing(3).foregroundStyle(ink)
+            Text("今日\n学习").campusFont(.caption).fontWeight(.bold).lineSpacing(3).foregroundStyle(ink)
+                .fixedSize(horizontal: false, vertical: true)
             Rectangle().fill(Color(hex: 0xAA7548, opacity: 0.4)).frame(width: 1, height: 35)
             stat(stats.minutes, "分钟", "专注")
             stat(stats.streak, "天", "连续")
@@ -266,11 +300,16 @@ struct FocusSetupView: View {
 
     private func stat(_ value: String, _ unit: String, _ label: String) -> some View {
         VStack(spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(.system(size: 18, weight: .bold)).foregroundStyle(ink)
-                Text(unit).font(.system(size: 9)).foregroundStyle(Color(hex: 0x5D7066))
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(value).campusFont(.title).foregroundStyle(ink)
+                Text(unit).campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x5D7066))
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(value).campusFont(.title).foregroundStyle(ink)
+                    Text(unit).campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x5D7066))
+                }
             }
-            Text(label).font(.system(size: 10)).foregroundStyle(Color(hex: 0x5D7066))
+            Text(label).campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x5D7066))
         }
         .frame(maxWidth: .infinity)
     }
@@ -279,7 +318,7 @@ struct FocusSetupView: View {
         NavigationLink { FocusHistoryView() } label: {
             HStack {
                 Image(systemName: "clock.arrow.circlepath").font(.system(size: 15))
-                Text("学习足迹").font(.system(size: 14, weight: .semibold))
+                Text("学习足迹").campusFont(.body).fontWeight(.semibold)
                 Spacer()
                 Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
             }
@@ -291,30 +330,50 @@ struct FocusSetupView: View {
     }
 
     private var customSheet: some View {
-        VStack(spacing: 14) {
-            Text("自定义专注时长").font(.system(size: 19, weight: .bold)).foregroundStyle(ink)
-            Text("给这段学习留一段完整的时间").font(.system(size: 13)).foregroundStyle(Color(hex: 0x5D7066))
-            TextField("分钟", text: $customMinutes)
-                .keyboardType(.numberPad)
-                .font(.system(size: 20, weight: .semibold))
-                .multilineTextAlignment(.center)
-                .padding(12)
-                .background(paperSoft, in: RoundedRectangle(cornerRadius: 14))
-            Text("可设置 5–240 分钟").font(.system(size: 12)).foregroundStyle(Color(hex: 0x5D7066))
-            Button {
-                if let value = Int(customMinutes), (5...240).contains(value) {
-                    minutes = value; showCustom = false
+        ScrollView {
+            VStack(spacing: 14) {
+                Text("自定义专注时长").campusFont(.title).foregroundStyle(ink)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("给这段学习留一段完整的时间").campusFont(.bodySmall)
+                    .foregroundStyle(Color(hex: 0x5D7066))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("分钟", text: $customMinutes)
+                    .keyboardType(.numberPad)
+                    .campusFont(.title).fontWeight(.semibold)
+                    .foregroundStyle(ink)
+                    .tint(wood)
+                    .multilineTextAlignment(.center)
+                    .padding(12)
+                    .background(paperSoft, in: RoundedRectangle(cornerRadius: 14))
+                Text("可设置 5–240 分钟").campusFont(.caption)
+                    .foregroundStyle(Color(hex: 0x5D7066))
+                Button {
+                    if let value = Int(customMinutes), (5...240).contains(value) {
+                        minutes = value; showCustom = false
+                    }
+                } label: {
+                    Text("确定").campusFont(.subtitle).fontWeight(.bold).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .frame(minHeight: 46)
+                        .background(wood, in: RoundedRectangle(cornerRadius: 14))
                 }
-            } label: {
-                Text("确定").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                    .frame(maxWidth: .infinity).frame(height: 46)
-                    .background(wood, in: RoundedRectangle(cornerRadius: 14))
+                .disabled(!customMinutesValid)
+                .opacity(customMinutesValid ? 1 : 0.5)
             }
-            .disabled(Int(customMinutes).map { !(5...240).contains($0) } ?? true)
-            .opacity(Int(customMinutes).map { (5...240).contains($0) } ?? false ? 1 : 0.5)
+            .padding(22)
+            .frame(maxWidth: .infinity)
         }
-        .padding(22)
-        .background(paper)
+        .scrollDismissesKeyboard(.interactively)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(paper)
+    }
+
+    private var customMinutesValid: Bool {
+        Int(customMinutes).map { (5...240).contains($0) } ?? false
     }
 
     private func start() {

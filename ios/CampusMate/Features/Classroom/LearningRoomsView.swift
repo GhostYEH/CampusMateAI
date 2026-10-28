@@ -6,6 +6,7 @@ private let roomRoot = "magicclass/learning-space"
 struct LearningRoomsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.campus) private var palette
     @State private var rooms = RemoteResource()
     @State private var invitations = RemoteResource()
     @State private var title = ""
@@ -20,7 +21,7 @@ struct LearningRoomsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     headerCard
                     if !invitations.value.items.isEmpty {
-                        Text("课堂邀请").campusFont(.body).fontWeight(.bold).foregroundStyle(Color(hex: 0x1B2730))
+                        Text("课堂邀请").campusFont(.body).fontWeight(.bold).foregroundStyle(palette.textPrimary)
                         ForEach(Array(invitations.value.items.enumerated()), id: \.offset) { _, invitation in
                             invitationCard(invitation)
                         }
@@ -28,7 +29,7 @@ struct LearningRoomsView: View {
                     if let invitationError = invitations.error {
                         Text("邀请列表：" + invitationError).campusFont(.caption).foregroundStyle(.secondary)
                     }
-                    Text("已加入的课堂").campusFont(.body).fontWeight(.bold).foregroundStyle(Color(hex: 0x1B2730))
+                    Text("已加入的课堂").campusFont(.body).fontWeight(.bold).foregroundStyle(palette.textPrimary)
                         .padding(.top, 2)
                     if rooms.isLoading && rooms.value == .null {
                         CampusLoadingState(message: "读取共同课堂…")
@@ -66,7 +67,7 @@ struct LearningRoomsView: View {
             HStack(spacing: 10) {
                 Image(systemName: "person.2.badge.plus").font(.system(size: 20)).foregroundStyle(Color(hex: 0x285B4B))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("你的 UID").campusFont(.caption).foregroundStyle(.secondary)
+                    Text("你的 UID").campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
                     Text(app.session?.user.id ?? "")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundStyle(Color(hex: 0x1B2730))
@@ -89,7 +90,8 @@ struct LearningRoomsView: View {
                 showingCreate = true
             }
             Text("最多 8 人。当前 iOS 支持邀请、文字交流与共享页码；音视频 SDK 尚未接入。")
-                .campusFont(.caption).foregroundStyle(.secondary)
+                .campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
         .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -99,7 +101,7 @@ struct LearningRoomsView: View {
     private func invitationCard(_ invitation: JSONValue) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(invitation["title"].text).campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
-            Text("来自 " + invitation["host_name"].text).campusFont(.caption).foregroundStyle(.secondary)
+            Text("来自 " + invitation["host_name"].text).campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
             HStack(spacing: 10) {
                 Button { decide(invitation, action: "accept") } label: {
                     Text("接受").font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
@@ -127,10 +129,10 @@ struct LearningRoomsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(room["title"].text).campusFont(.body).fontWeight(.semibold).foregroundStyle(Color(hex: 0x1B2730)).lineLimit(1)
                 Text("\(room["members"].items.count) 位成员 · 第 \((room["scene_index"].int ?? 0) + 1) 页")
-                    .campusFont(.caption).foregroundStyle(.secondary)
+                    .campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
             }
             Spacer()
-            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.secondary)
+            Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(Color(hex: 0x667784))
         }
         .padding(14)
         .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 16))
@@ -230,6 +232,7 @@ struct LearningRoomView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let roomID: String
     @State private var model = LearningRoomModel()
     @State private var input = ""
@@ -251,12 +254,14 @@ struct LearningRoomView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if model.unavailable {
                             CampusEmptyState(title: "课堂已不可访问", message: "课堂可能已结束，或你已不再是成员。请返回课堂列表查看。", systemImage: "person.2.slash")
+                                .campusPalette(.light)
                         } else if model.room != .null {
                             roomControls
                             memberRow
                             messages
                         } else {
                             CampusLoadingState(message: "读取共同课堂…")
+                                .campusPalette(.light)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -291,17 +296,18 @@ struct LearningRoomView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            CampusBackButton { dismiss() }
+            CampusBackButton(tint: Color(hex: 0x1B2730)) { dismiss() }
             VStack(alignment: .leading, spacing: 2) {
                 Text(model.room["title"].text.isEmpty ? "共同课堂" : model.room["title"].text)
-                    .font(.system(size: 18, weight: .bold)).foregroundStyle(Color(hex: 0x1B2730)).lineLimit(1)
+                    .campusFont(.title).foregroundStyle(Color(hex: 0x1B2730)).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("共享第 \((model.room["scene_index"].int ?? 0) + 1) / \(max(1, model.room["scene_count"].int ?? 1)) 页")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x667784))
             }
-            Spacer()
+            Spacer(minLength: 6)
             Button { leaving = true } label: {
                 Text(isHost ? "结束" : "离开")
-                    .font(.system(size: 12, weight: .semibold))
+                    .campusFont(.caption).fontWeight(.semibold)
                     .foregroundStyle(Color(hex: 0xC25450))
                     .padding(.horizontal, 12).padding(.vertical, 7)
                     .background(Color(hex: 0xF6DAD8), in: Capsule())
@@ -311,6 +317,7 @@ struct LearningRoomView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .environment(\.colorScheme, .light)
     }
 
     private var roomControls: some View {
@@ -328,7 +335,9 @@ struct LearningRoomView: View {
                     }
                     .accessibilityLabel("邀请同学")
                 } else {
-                    Text("发起人控制共享页码，你可以跟随阅读。").campusFont(.caption).foregroundStyle(.secondary)
+                    Text("发起人控制共享页码，你可以跟随阅读。").campusFont(.caption)
+                        .foregroundStyle(Color(hex: 0x667784))
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                 }
             }
@@ -359,10 +368,13 @@ struct LearningRoomView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 11, weight: .bold))
-                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(title).campusFont(.caption).fontWeight(.semibold)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(enabled ? Color(hex: 0x285B4B) : Color(hex: 0xA6B5BE))
-            .padding(.horizontal, 12).frame(height: 42)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(minHeight: 42)
             .background(Color(hex: 0xE4EEE5).opacity(enabled ? 1 : 0.5), in: RoundedRectangle(cornerRadius: 12))
         }
         .disabled(!enabled || working)
@@ -375,9 +387,9 @@ struct LearningRoomView: View {
                     HStack(spacing: 6) {
                         Circle().fill(member["status"].text == "accepted" ? Color(hex: 0x4E8C6A) : Color(hex: 0xE08A4E))
                             .frame(width: 6, height: 6)
-                        Text(member["name"].text).font(.system(size: 11)).foregroundStyle(Color(hex: 0x1B2730))
+                        Text(member["name"].text).campusFont(.label).foregroundStyle(Color(hex: 0x1B2730))
                         if member["uid"].text == model.room["host_uid"].text {
-                            Text("发起人").font(.system(size: 9)).foregroundStyle(.secondary)
+                            Text("发起人").campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x667784))
                         }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 7)
@@ -390,26 +402,27 @@ struct LearningRoomView: View {
     private var messages: some View {
         VStack(alignment: .leading, spacing: 8) {
             if model.messages.isEmpty {
-                Text("发一条消息，和同学开始讨论。").campusFont(.caption).foregroundStyle(.secondary)
+                Text("发一条消息，和同学开始讨论。").campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 20)
             }
             ForEach(Array(model.messages.enumerated()), id: \.offset) { _, message in
                 let mine = message["uid"].text == app.session?.user.id
                 HStack {
-                    if mine { Spacer(minLength: 40) }
+                    if mine { Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 12 : 40) }
                     VStack(alignment: .leading, spacing: 3) {
                         if !mine {
-                            Text(message["name"].text).font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text(message["name"].text).campusFont(.micro).fontWeight(.regular)
+                                .foregroundStyle(Color(hex: 0x667784))
                         }
                         Text(message["content"].text)
-                            .font(.system(size: 14))
+                            .campusFont(.body)
                             .foregroundStyle(Color(hex: 0x1B2730))
                             .textSelection(.enabled)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(mine ? Color(hex: 0xF4F0E5) : Color(hex: 0xEAF0E8),
                                 in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    if !mine { Spacer(minLength: 40) }
+                    if !mine { Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 8 : 40) }
                 }
             }
         }
@@ -419,7 +432,9 @@ struct LearningRoomView: View {
         HStack(alignment: .bottom, spacing: 10) {
             TextField("和同学聊聊…", text: $input, axis: .vertical)
                 .lineLimit(1...5)
-                .font(.system(size: 14))
+                .campusFont(.body)
+                .foregroundStyle(Color(hex: 0x1B2730))
+                .tint(Color(hex: 0x285B4B))
                 .focused($inputFocused)
                 .padding(.horizontal, 12).padding(.vertical, 9)
                 .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 18))
@@ -429,15 +444,25 @@ struct LearningRoomView: View {
                     if await model.send(input, client: app.client, roomID: roomID) { input = "" }
                 }
             } label: {
-                Text("发送").font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                    .padding(.horizontal, 18).frame(height: 40)
+                Text("发送").campusFont(.body).fontWeight(.bold).foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(minHeight: 40)
                     .background(Color(hex: 0x285B4B), in: Capsule())
             }
-            .disabled(model.isSending || model.unavailable || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || input.count > 2000)
+            .disabled(!canSend)
+            .opacity(canSend ? 1 : 0.5)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
+        .environment(\.colorScheme, .light)
+    }
+
+    private var canSend: Bool {
+        !model.isSending && !model.unavailable
+            && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && input.count <= 2000
     }
 
     private func changePage(_ delta: Int) {
@@ -460,6 +485,7 @@ struct LearningRoomView: View {
 private struct InviteRoomMemberView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.campus) private var palette
     let roomID: String
     @State private var uid = ""
     @State private var target: JSONValue = .null
@@ -472,7 +498,7 @@ private struct InviteRoomMemberView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     CampusCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("通过账号 UID 邀请").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
+                            Text("通过账号 UID 邀请").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                             CampusTextField(placeholder: "同学的 UID", text: $uid)
                                 .onChange(of: uid) { _, _ in target = .null }
                             CampusSecondaryButton(title: "查找同学", enabled: !working && !uid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {

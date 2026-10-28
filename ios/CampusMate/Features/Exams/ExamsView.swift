@@ -449,8 +449,10 @@ struct ExamDetailView: View {
 struct ExamEditorView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.campus) private var palette
     var existing: JSONValue?
     var onSaved: ((JSONValue) -> Void)? = nil
+
     @State private var name = ""
     @State private var date = Date.now
     @State private var start = Date.now
@@ -469,24 +471,24 @@ struct ExamEditorView: View {
                 VStack(spacing: 12) {
                     CampusCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("考试信息").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
+                            Text("考试信息").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                             CampusTextField(placeholder: "课程名称", text: $name, systemImage: "book")
-                            DatePicker("日期", selection: $date, displayedComponents: .date).tint(Color(hex: 0x285B4B))
-                            DatePicker("开始", selection: $start, displayedComponents: .hourAndMinute).tint(Color(hex: 0x285B4B))
-                            DatePicker("结束", selection: $end, displayedComponents: .hourAndMinute).tint(Color(hex: 0x285B4B))
+                            DatePicker("日期", selection: $date, displayedComponents: .date).tint(palette.primary)
+                            DatePicker("开始", selection: $start, displayedComponents: .hourAndMinute).tint(palette.primary)
+                            DatePicker("结束", selection: $end, displayedComponents: .hourAndMinute).tint(palette.primary)
                             CampusTextField(placeholder: "考试类型（可选）", text: $examType)
                         }
                     }
                     CampusCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("考场").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
+                            Text("考场").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                             CampusTextField(placeholder: "地点", text: $location, systemImage: "mappin.and.ellipse")
                             CampusTextField(placeholder: "座位号", text: $seat)
                         }
                     }
                     CampusCard {
                         VStack(alignment: .leading, spacing: 12) {
-                            Toggle("考试提醒", isOn: $reminder).tint(Color(hex: 0x285B4B))
+                            Toggle("考试提醒", isOn: $reminder).tint(palette.primary)
                             CampusTextField(placeholder: "备注", text: $notes)
                             Text("系统提醒需允许通知；考试前 1 小时提醒。").campusFont(.caption).foregroundStyle(.secondary)
                         }
