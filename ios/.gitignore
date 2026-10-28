@@ -1,0 +1,12 @@
+.DS_Store
+._*
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+__pycache__/
+*.xcscmblueprint
+*.xccheckout
+*.ipa
+*.dSYM/
+*.dSYM.zip
