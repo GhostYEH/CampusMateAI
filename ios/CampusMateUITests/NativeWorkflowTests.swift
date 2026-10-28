@@ -155,7 +155,7 @@ final class NativeWorkflowTests: XCTestCase {
         let complete = app.buttons["标记为已完成"]
         if !complete.isHittable { app.swipeUp() }
         XCTAssertTrue(complete.waitForExistence(timeout: 6))
-        complete.tap()
+        tap(complete, until: app.buttons["恢复为待完成"])
         XCTAssertTrue(app.buttons["恢复为待完成"].waitForExistence(timeout: 10))
         app.buttons["删除待办"].tap()
         app.buttons["删除"].firstMatch.tap()
