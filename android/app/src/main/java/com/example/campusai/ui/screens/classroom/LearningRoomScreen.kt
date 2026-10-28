@@ -69,7 +69,12 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) model.foreground(true)
         onDispose { owner.lifecycle.removeObserver(observer); model.foreground(false) }
     }
-    LaunchedEffect(state.sentVersion) { if (state.sentVersion > 0) draft = "" }
+    LaunchedEffect(state.sentVersion) {
+        // A send can finish after the user has started another message or changed rooms.
+        if (state.sentVersion > 0 && state.sentRoomId == state.room?.id && state.sentDraft == draft) {
+            draft = ""
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),

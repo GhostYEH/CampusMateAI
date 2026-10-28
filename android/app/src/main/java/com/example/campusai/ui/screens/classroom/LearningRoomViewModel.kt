@@ -31,6 +31,8 @@ data class LearningRoomUiState(
     val busy: Boolean = false,
     val notice: String? = null,
     val sentVersion: Int = 0,
+    val sentRoomId: String? = null,
+    val sentDraft: String? = null,
 )
 
 class LearningRoomViewModel(application: Application) : AndroidViewModel(application) {
@@ -174,7 +176,9 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
             ?: Triple(room.id, text, UUID.randomUUID().toString()).also { messageAttempt = it }
         api.send(room.id, LearningMessageRequest(text, attempt.third))
         messageAttempt = null
-        mutableState.update { it.copy(sentVersion = it.sentVersion + 1) }
+        mutableState.update {
+            it.copy(sentVersion = it.sentVersion + 1, sentRoomId = room.id, sentDraft = content)
+        }
     }
     fun page(index: Int) = action {
         val room = mutableState.value.room ?: return@action
