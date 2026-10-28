@@ -684,6 +684,7 @@ fun AppNavHost(
                     go("focus_session?durationSeconds=$durationSeconds&taskName=$encodedTaskName&sessionMode=${sessionMode.name}&taskId=${Uri.encode(taskId.orEmpty())}")
                 },
                 onOpenHistory = { go("focus_history") },
+                onOpenLearningRooms = { go("learning_rooms") },
                 planRepository = modules.focusPlans,
             )
         }

@@ -31,6 +31,9 @@ data class LearningRoomUiState(
     val busy: Boolean = false,
     val notice: String? = null,
     val sentVersion: Int = 0,
+    val sentRoomId: String? = null,
+    val sentDraft: String? = null,
+    val pendingMessage: PendingRoomMessage? = null,
 )
 
 class LearningRoomViewModel(application: Application) : AndroidViewModel(application) {
@@ -49,7 +52,8 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private var epoch = 0
     private var cursor = 0L
     private var tokenDeadlineMs = 0L
-    private var messageAttempt: Triple<String, String, String>? = null
+    private val messageOutbox = MessageOutbox()
+    private var sessionToken = ApiClient.currentAccessToken()
 
     init {
         viewModelScope.launch {
@@ -77,39 +81,55 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         foreground = true
         pollJob = viewModelScope.launch {
             while (true) {
+                if (!checkSession()) {
+                    delay(3_000)
+                    continue
+                }
                 val selected = mutableState.value.room?.id
                 val requestEpoch = epoch
-                var backlog = false
                 try {
-                    if (mutableState.value.identity == null) {
-                        val identity = api.identity()
-                        mutableState.update { it.copy(identity = identity) }
+                    val identity = api.identity()
+                    val previousIdentity = mutableState.value.identity
+                    if (previousIdentity != null && previousIdentity.uid != identity.uid) {
+                        select(null)
+                        messageOutbox.clear()
+                        mutableState.update { it.copy(identity = identity, rooms = emptyList(), invitations = emptyList(), pendingMessage = null) }
+                        continue
                     }
+                    mutableState.update { it.copy(identity = identity) }
                     val rooms = api.rooms().items
                     val invitations = api.invitations().items
                     val status = api.rtcStatus()
                     mutableState.update { it.copy(rooms = rooms, invitations = invitations, rtcStatus = status) }
                     if (selected != null) {
                         val room = api.room(selected)
-                        val messages = api.messages(selected, cursor).items
-                        if (epoch == requestEpoch) {
+                        if (epoch == requestEpoch) mutableState.update { it.copy(room = room) }
+                        while (epoch == requestEpoch) {
+                            val messages = api.messages(selected, cursor).items
+                            if (epoch != requestEpoch) break
                             if (messages.isNotEmpty()) cursor = messages.last().id
-                            backlog = messages.size == 100
-                            mutableState.update { it.copy(room = room,
-                                messages = (it.messages + messages).distinctBy { message -> message.id }.takeLast(300)) }
+                            mutableState.update {
+                                it.copy(messages = (it.messages + messages).distinctBy { message -> message.id }.takeLast(300))
+                            }
+                            if (messages.size < 100) break
+                            delay(100)
                         }
                     }
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Exception) {
                     if (epoch == requestEpoch) {
-                        if (selected != null && error is HttpException && error.code() in listOf(401, 403, 404, 410)) {
+                        if (error is HttpException && error.code() == 401) {
+                            select(null)
+                            messageOutbox.clear()
+                            mutableState.update { it.copy(identity = null, rooms = emptyList(), invitations = emptyList(), pendingMessage = null) }
+                        } else if (selected != null && error is HttpException && error.code() in listOf(403, 404, 410)) {
                             select(null)
                         }
                         mutableState.update { it.copy(notice = readable(error)) }
                     }
                 }
-                delay(if (backlog) 100 else 3_000)
+                delay(if (uiVisible) 3_000 else 15_000)
             }
         }
     }
@@ -124,11 +144,26 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         epoch++
         disconnect()
         cursor = 0
-        messageAttempt = null
-        mutableState.update { it.copy(room = room, messages = emptyList()) }
+        mutableState.update { it.copy(room = room, messages = emptyList(), pendingMessage = room?.id?.let(messageOutbox::get)) }
+    }
+
+    private fun checkSession(): Boolean {
+        val current = ApiClient.currentAccessToken()
+        if (current != sessionToken) {
+            sessionToken = current
+            select(null)
+            messageOutbox.clear()
+            mutableState.update {
+                it.copy(identity = null, rooms = emptyList(), invitations = emptyList(), pendingMessage = null,
+                    notice = "登录状态已变更，请重新进入课堂并检查未确认的消息")
+            }
+            return false
+        }
+        return !current.isNullOrBlank()
     }
 
     private fun action(block: suspend () -> Unit) {
+        if (!checkSession()) return
         if (mutableState.value.busy) return
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true, notice = null) }
@@ -163,18 +198,41 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         // Release the device immediately, even when the HTTP leave request fails.
         disconnect()
         api.leave(room.id)
+        messageOutbox.get(room.id)?.let(messageOutbox::remove)
         select(null)
     }
     fun returnToList() { select(null) } // Keeps membership; does not end the shared classroom.
     fun send(content: String) = action {
         val room = mutableState.value.room ?: return@action
-        val text = content.trim()
-        if (text.isEmpty()) return@action
-        val attempt = messageAttempt?.takeIf { it.first == room.id && it.second == text }
-            ?: Triple(room.id, text, UUID.randomUUID().toString()).also { messageAttempt = it }
-        api.send(room.id, LearningMessageRequest(text, attempt.third))
-        messageAttempt = null
-        mutableState.update { it.copy(sentVersion = it.sentVersion + 1) }
+        if (content.isBlank()) return@action
+        val attempt = messageOutbox.begin(room.id, content, UUID.randomUUID().toString())
+        if (attempt == null) {
+            mutableState.update { it.copy(notice = "请先重试或放弃上一条发送结果不确定的消息") }
+            return@action
+        }
+        mutableState.update { it.copy(pendingMessage = attempt) }
+        deliver(attempt)
+    }
+
+    fun retryMessage() = action {
+        val roomId = mutableState.value.room?.id ?: return@action
+        messageOutbox.get(roomId)?.let { deliver(it) }
+    }
+
+    fun discardPendingMessage() {
+        val roomId = mutableState.value.room?.id ?: return
+        messageOutbox.get(roomId)?.let(messageOutbox::remove)
+        mutableState.update { it.copy(pendingMessage = null) }
+    }
+
+    private suspend fun deliver(attempt: PendingRoomMessage) {
+        if (!checkSession()) return
+        api.send(attempt.roomId, LearningMessageRequest(attempt.draft.trim(), attempt.clientId))
+        messageOutbox.remove(attempt)
+        mutableState.update {
+            it.copy(sentVersion = it.sentVersion + 1, sentRoomId = attempt.roomId, sentDraft = attempt.draft,
+                pendingMessage = if (it.room?.id == attempt.roomId) null else it.pendingMessage)
+        }
     }
     fun page(index: Int) = action {
         val room = mutableState.value.room ?: return@action
@@ -183,6 +241,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun connect() {
+        if (!checkSession()) return
         if (!uiVisible) return
         if (tokenJob?.isActive == true && call.state.value.phase != ClassroomCallPhase.ERROR) return
         tokenJob?.cancel()
