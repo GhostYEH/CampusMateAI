@@ -73,7 +73,15 @@ private struct AssistantConversationView: View {
         .confirmationDialog("清空本机当前对话？", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("清空并开始新对话", role: .destructive) { model.clear() }
         }
-        .sheet(isPresented: $showPlans) { plansSheet.presentationDetents([.medium]) }
+        .sheet(isPresented: $showPlans) {
+            NavigationStack {
+                plansSheet
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("关闭") { showPlans = false } }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .errorAlert(Binding(get: { model.error }, set: { model.error = $0 }))
         .errorAlert(Binding(get: { speech.error }, set: { speech.error = $0 }))
     }
@@ -234,7 +242,11 @@ private struct AssistantConversationView: View {
                 .disabled(model.isSending || speech.isWorking || speech.isPlaying)
                 .accessibilityLabel(speech.isRecording ? "结束录音" : "语音输入")
 
-                TextField("发消息…", text: $input, axis: .vertical)
+                TextField(text: $input, axis: .vertical) {
+                    Text("发消息…").foregroundStyle(Color(hex: 0x667784))
+                }
+                    .foregroundStyle(Color(hex: 0x1B2730))
+                    .accessibilityIdentifier("assistant.input")
                     .lineLimit(1...6)
                     .font(.system(size: 14))
                     .focused($inputFocused)
@@ -267,18 +279,18 @@ private struct AssistantConversationView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("学习计划与工作流").font(.system(size: 18, weight: .bold)).foregroundStyle(Color(hex: 0x1B2730))
                 .padding(.bottom, 8)
-            planRow("目标与计划", icon: "target", detail: "执行目标、更新进度") { GoalsView() }
-            planRow("期末复习", icon: "book.closed", detail: "生成复习计划并运行") { FinalReviewView() }
-            planRow("课程研究", icon: "magnifyingglass", detail: "围绕课程做资料研究") { CourseResearchView() }
+            planRow("目标与计划", id: "goals", icon: "target", detail: "执行目标、更新进度") { GoalsView() }
+            planRow("期末复习", id: "review", icon: "book.closed", detail: "生成复习计划并运行") { FinalReviewView() }
+            planRow("课程研究", id: "research", icon: "magnifyingglass", detail: "围绕课程做资料研究") { CourseResearchView() }
             Spacer()
         }
         .padding(20)
         .background(Color(hex: 0xF1F3EA))
     }
 
-    private func planRow<Destination: View>(_ title: String, icon: String, detail: String, @ViewBuilder destination: () -> Destination) -> some View {
+    private func planRow<Destination: View>(_ title: String, id: String, icon: String, detail: String, @ViewBuilder destination: () -> Destination) -> some View {
         NavigationLink {
-            destination().onDisappear { showPlans = false }
+            destination()
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon).font(.system(size: 17)).foregroundStyle(Color(hex: 0x285B4B)).frame(width: 26)
@@ -293,6 +305,9 @@ private struct AssistantConversationView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("assistant.workflow." + id)
+        .accessibilityLabel(title)
+        .accessibilityHint(detail)
     }
 
     private func send() {

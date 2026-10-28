@@ -2,6 +2,7 @@ import SwiftUI
 import CampusCore
 
 struct GoalsView: View {
+    @Environment(\.campus) private var palette
     @Environment(AppModel.self) private var app
     @State private var resource = PagedResource()
     @State private var creating = false
@@ -19,7 +20,7 @@ struct GoalsView: View {
                         link("服务能力", detail: "当前后端可用的能力", icon: "info.circle") { AgentCapabilitiesView() }
                     }
                 }
-                Text("我的目标").campusFont(.subtitle).foregroundStyle(CampusJournal.ink)
+                Text("我的目标").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
                 if resource.isLoading && resource.items.isEmpty { CampusLoadingState() }
                 else if let error = resource.error, resource.items.isEmpty { CampusErrorState(message: error) { Task { await load() } } }
@@ -31,7 +32,7 @@ struct GoalsView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(goal["name"].text).campusFont(.body).fontWeight(.semibold)
-                                        .foregroundStyle(CampusJournal.ink).lineLimit(2)
+                                        .foregroundStyle(palette.textPrimary).lineLimit(2)
                                     Spacer()
                                     Text(goal["status"].text.localizedStatus)
                                         .campusFont(.caption).foregroundStyle(.secondary)
@@ -43,14 +44,14 @@ struct GoalsView: View {
                             }
                             .padding(15)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 16))
+                            .background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
                             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(hex: 0xD7DED5, opacity: 0.7), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
                     if resource.hasMore {
                         Button("加载更多") { Task { await resource.load(client: app.client, path: "student-goals", reset: false) } }
-                            .campusFont(.caption).foregroundStyle(Color(hex: 0x285B4B))
+                            .campusFont(.caption).foregroundStyle(palette.primary)
                     }
                 }
             }
@@ -58,19 +59,18 @@ struct GoalsView: View {
             .frame(maxWidth: 700)
             .frame(maxWidth: .infinity)
         }
-        .campusWorkflowChrome("目标与计划")
+        .campusWorkflowChrome("目标与计划", actionTitle: "新建目标", action: { creating = true })
         .task { await load() }
         .refreshable { await load() }
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("新建目标") { creating = true } } }
         .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) { NavigationStack { GoalEditorView() } }
     }
 
     private func link<Destination: View>(_ title: String, detail: String, icon: String, @ViewBuilder destination: () -> Destination) -> some View {
         NavigationLink { destination() } label: {
             HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 16)).foregroundStyle(Color(hex: 0x285B4B)).frame(width: 24)
+                Image(systemName: icon).font(.system(size: 16)).foregroundStyle(palette.primary).frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).campusFont(.body).foregroundStyle(CampusJournal.ink)
+                    Text(title).campusFont(.body).foregroundStyle(palette.textPrimary)
                     Text(detail).campusFont(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -86,6 +86,7 @@ struct GoalsView: View {
 }
 
 private struct GoalEditorView: View {
+    @Environment(\.campus) private var palette
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -98,11 +99,11 @@ private struct GoalEditorView: View {
             VStack(alignment: .leading, spacing: 12) {
                 CampusCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("目标内容").campusFont(.subtitle).foregroundStyle(CampusJournal.ink)
+                        Text("目标内容").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                         TextField("目标名称", text: $name, axis: .vertical).lineLimit(2...5)
                             .campusFont(.body)
                             .padding(12)
-                            .background(Color(hex: 0xF1F3EA), in: RoundedRectangle(cornerRadius: 10))
+                            .background(palette.background, in: RoundedRectangle(cornerRadius: 10))
                             .accessibilityIdentifier("goals.name")
                         Picker("类别", selection: $category) {
                             ForEach(Self.categories, id: \.0) { Text($0.1).tag($0.0) }
@@ -314,7 +315,7 @@ private struct LearnerRecordsView: View {
                 }
             }
             LoadMoreRow(resource: resource) { await resource.load(client: app.client, path: path, query: query, reset: false) }
-        }.navigationTitle(title).task { await load() }.refreshable { await load() }
+        }.campusWorkflowChrome(title).task { await load() }.refreshable { await load() }
     }
     private func load() async { await resource.load(client: app.client, path: path, query: query) }
 }
@@ -324,6 +325,6 @@ struct WorkflowRemoteDocumentView: View {
     let title: String
     let path: String
     @State private var resource = RemoteResource()
-    var body: some View { List { ResourceStateView(resource: resource, isEmpty: resource.value == .null, retry: load); if resource.value != .null { WorkflowContentView(value: resource.value) } }.navigationTitle(title).task { await load() }.refreshable { await load() } }
+    var body: some View { List { ResourceStateView(resource: resource, isEmpty: resource.value == .null, retry: load); if resource.value != .null { WorkflowContentView(value: resource.value) } }.campusWorkflowChrome(title).task { await load() }.refreshable { await load() } }
     private func load() async { await resource.load(client: app.client, path: path) }
 }

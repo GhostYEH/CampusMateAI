@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ui", action="store_true", help="also run native UI tests")
     parser.add_argument("--device", help="installed simulator UDID (required for --ui)")
+    parser.add_argument("--derived-data", type=Path, help="reuse an external Xcode build cache between devices")
     args = parser.parse_args()
     if args.ui and not args.device:
         parser.error("--ui requires --device from xcrun simctl list devices available")
@@ -67,7 +68,7 @@ def main():
                 commands.append([
                     "xcodebuild", "-project", str(repo / "ios/CampusMate.xcodeproj"), "-scheme", "CampusMate",
                     "-configuration", "Debug", "-destination", f"platform=iOS Simulator,id={args.device}",
-                    "-derivedDataPath", str(scratch / "DerivedData"), "-resultBundlePath", str(scratch / "NativeUI.xcresult"),
+                    "-derivedDataPath", str(args.derived_data.absolute() if args.derived_data else scratch / "DerivedData"), "-resultBundlePath", str(scratch / "NativeUI.xcresult"),
                     "CODE_SIGNING_ALLOWED=NO", "-parallel-testing-enabled", "NO", "test",
                 ])
             for index, command in enumerate(commands):

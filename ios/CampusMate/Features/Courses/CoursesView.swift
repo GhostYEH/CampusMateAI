@@ -294,7 +294,7 @@ struct CoursesView: View {
     }
 
     private func load() async {
-        await resource.load(client: app.client, path: "courses", query: search.isEmpty ? [:] : ["query": search])
+        await resource.loadAll(client: app.client, path: "courses")
     }
 
     private func sync() async {

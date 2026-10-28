@@ -4,6 +4,8 @@ import CampusCore
 /// Port of `NotificationsScreen`, adapted to the real iOS notification
 /// boundary: server-synced notices, manual extraction and local reminders.
 struct NoticesView: View {
+    @Environment(\.campus) private var palette
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var resource = PagedResource()
@@ -50,16 +52,19 @@ struct NoticesView: View {
     private var syncedCard: some View {
         CampusCard {
             VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("课程与校园通知").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
-                    Spacer()
-                    HStack(spacing: 6) {
-                        Text("只看未读").campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
-                        Toggle("", isOn: $unreadOnly)
-                            .labelsHidden()
-                            .tint(Color(hex: 0x285B4B))
-                            .scaleEffect(0.86)
-                            .accessibilityLabel("只看未读")
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("课程与校园通知").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
+                        Toggle("只看未读", isOn: $unreadOnly)
+                            .campusFont(.caption).foregroundStyle(palette.muted).tint(palette.primary)
+                    }
+                } else {
+                    HStack {
+                        Text("课程与校园通知").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
+                        Spacer()
+                        Toggle("只看未读", isOn: $unreadOnly)
+                            .campusFont(.caption).foregroundStyle(palette.muted)
+                            .tint(palette.primary).fixedSize()
                     }
                 }
                 if resource.isLoading && resource.items.isEmpty {
@@ -76,7 +81,7 @@ struct NoticesView: View {
                         Button { selected = NoticeSelection(value: notice) } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(notice.displayTitle).campusFont(.body).fontWeight(.semibold)
-                                    .foregroundStyle(Color(hex: 0x1B2730)).lineLimit(2)
+                                    .foregroundStyle(palette.textPrimary).lineLimit(2)
                                 Text([notice["source_name"].text, notice["published_at"].text].filter { !$0.isEmpty }.joined(separator: " · "))
                                     .campusFont(.caption).foregroundStyle(.secondary).lineLimit(1)
                                 let body = notice["content"].text
@@ -94,7 +99,7 @@ struct NoticesView: View {
                         Button(showAll ? "收起通知" : "查看全部 \(resource.items.count) 条") {
                             withAnimation(.easeOut(duration: 0.2)) { showAll.toggle() }
                         }
-                        .campusFont(.caption).foregroundStyle(Color(hex: 0x285B4B))
+                        .campusFont(.caption).foregroundStyle(palette.primary)
                     }
                 }
             }
@@ -104,7 +109,7 @@ struct NoticesView: View {
     private var sourcesCard: some View {
         CampusCard {
             VStack(alignment: .leading, spacing: 0) {
-                Text("通知来源与连接").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
+                Text("通知来源与连接").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                     .padding(.bottom, 8)
                 sourceRow(icon: "doc.on.clipboard", title: "手动粘贴提取", subtitle: "复制通知原文，整理成待办",
                           status: "可用", tone: .success) { showExtract = true }
@@ -119,7 +124,7 @@ struct NoticesView: View {
                 Divider().padding(.vertical, 2)
                 NavigationLink { NotificationSourcesView() } label: {
                     HStack {
-                        Text("查看通知来源设置").campusFont(.body).foregroundStyle(Color(hex: 0x285B4B))
+                        Text("查看通知来源设置").campusFont(.body).foregroundStyle(palette.primary)
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.secondary)
                     }
@@ -132,24 +137,31 @@ struct NoticesView: View {
 
     private var boundaryCard: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(Color(hex: 0x285B4B))
+            Image(systemName: "info.circle").font(.system(size: 15)).foregroundStyle(palette.primary)
             Text("iOS 不允许应用读取微信、企业微信或 QQ 的通知内容。这里只展示服务端同步的通知，手动提取与本地提醒是真实可用的替代方式。")
                 .campusFont(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(hex: 0xE4EEE5).opacity(0.7), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(palette.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func sourceRow(icon: String, title: String, subtitle: String, status: String, tone: CampusStatusTone, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon).font(.system(size: 17)).foregroundStyle(Color(hex: 0x285B4B)).frame(width: 26)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).campusFont(.body).foregroundStyle(Color(hex: 0x1B2730))
-                    Text(subtitle).campusFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return Button(action: action) {
+            layout {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon).font(.system(size: 17)).foregroundStyle(palette.primary).frame(width: 26)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(title).campusFont(.body).foregroundStyle(palette.textPrimary)
+                        Text(subtitle).campusFont(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                Spacer(minLength: 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 4) }
                 CampusStatusTag(text: status, tone: tone)
             }
             .padding(.vertical, 8)
@@ -159,7 +171,7 @@ struct NoticesView: View {
     }
 
     private func load() async {
-        await resource.load(client: app.client, path: "notices", query: query)
+        await resource.loadAll(client: app.client, path: "notices", query: query)
     }
 }
 
@@ -169,6 +181,7 @@ struct NoticeSelection: Identifiable {
 }
 
 struct NoticeDetailView: View {
+    @Environment(\.campus) private var palette
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     let notice: JSONValue
@@ -179,9 +192,9 @@ struct NoticeDetailView: View {
         CampusSecondaryScaffold(title: "通知详情") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(notice.displayTitle).campusFont(.title).foregroundStyle(Color(hex: 0x1B2730))
+                    Text(notice.displayTitle).campusFont(.title).foregroundStyle(palette.textPrimary)
                     Text(notice["content"].string ?? notice["source_text"].text)
-                        .campusFont(.body).foregroundStyle(Color(hex: 0x1B2730)).textSelection(.enabled)
+                        .campusFont(.body).foregroundStyle(palette.textPrimary).textSelection(.enabled)
                     Divider()
                     if let source = notice["source_name"].string?.nonEmpty {
                         LabeledContent("来源", value: source).campusFont(.caption)
@@ -194,7 +207,7 @@ struct NoticeDetailView: View {
                         NavigationLink { NoticeWorkflowView(noticeID: noticeID) } label: {
                             HStack {
                                 Label("通知办理与动作确认", systemImage: "checklist")
-                                    .campusFont(.body).foregroundStyle(Color(hex: 0x285B4B))
+                                    .campusFont(.body).foregroundStyle(palette.primary)
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.system(size: 12)).foregroundStyle(.secondary)
                             }

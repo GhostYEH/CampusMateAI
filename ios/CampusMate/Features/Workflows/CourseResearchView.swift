@@ -13,8 +13,7 @@ struct CourseResearchView: View {
                     VStack(alignment: .leading, spacing: 7) { Text(run["question"].text).lineLimit(3); Text(run["status"].text.agentStatus).font(.caption).foregroundStyle(.secondary) }
                 }
             }
-        }.campusWorkflowChrome("课程研究").task { await load() }.refreshable { await load() }
-        .toolbar { Button("发起研究", systemImage: "plus") { creating = true } }
+        }.campusWorkflowChrome("课程研究", actionTitle: "发起研究", action: { creating = true }).task { await load() }.refreshable { await load() }
         .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) { NavigationStack { ResearchEditorView() } }
     }
     private func load() async { await runs.load(client: app.client, path: "course-research/runs") }

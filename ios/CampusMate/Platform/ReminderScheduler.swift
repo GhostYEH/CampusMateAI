@@ -10,6 +10,7 @@ final class ReminderScheduler {
     static let shared = ReminderScheduler()
     private let center = UNUserNotificationCenter.current()
     private let prefix = "campus.reminder."
+    private var revision = UUID()
 
     var isAuthorized: Bool {
         get async {
@@ -27,59 +28,52 @@ final class ReminderScheduler {
         await center.notificationSettings().authorizationStatus
     }
 
-    /// Replaces pending reminders with the current deadline set. Only personal
-    /// tasks and personal exams are scheduled; read-only synced items keep
-    /// their source system's own reminders.
-    func reschedule(tasks: [TaskItem], exams: [JSONValue]) async {
+    /// Invalidates any suspended scheduling operation before removing the old account's requests.
+    func invalidate() {
+        revision = UUID()
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+    }
+
+    func reschedule(plan: ReminderPlan) async {
+        let run = UUID(); revision = run
         guard await isAuthorized else { return }
-        let existing = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
-        center.removePendingNotificationRequests(withIdentifiers: existing)
-        for task in tasks where task.canChangeCompletion {
-            guard let deadline = task.deadline, deadline > .now.addingTimeInterval(60) else { continue }
-            let fire = deadline.addingTimeInterval(-30 * 60)
-            guard fire > .now else { continue }
-            await add(id: prefix + "task." + task.id,
-                      title: "待办快到期",
-                      body: task.title,
-                      fire: fire,
-                      deepLink: "campus://tasks")
-        }
-        for exam in exams {
-            guard let fire = Self.examFireDate(exam) else { continue }
-            await add(id: prefix + "exam." + exam["id"].text,
-                      title: "考试提醒",
-                      body: [exam["course_name"].text, exam["location"].text].filter { !$0.isEmpty }.joined(separator: " · "),
-                      fire: fire,
-                      deepLink: "campus://exams")
+        guard revision == run, !Task.isCancelled else { return }
+        let existing = await center.pendingNotificationRequests().filter { $0.identifier.hasPrefix(prefix) }
+        let delivered = await center.deliveredNotifications()
+        guard revision == run, !Task.isCancelled else { return }
+        let deliveredKeys = Set(delivered.compactMap { $0.request.content.userInfo["event_key"] as? String })
+        let desiredKeys = Set(plan.entries.map(\.eventKey))
+        var retainedKeys: Set<String> = []
+        let obsolete = existing.filter { request in
+            guard let key = request.content.userInfo["event_key"] as? String,
+                  desiredKeys.contains(key), !deliveredKeys.contains(key),
+                  let entry = plan.entries.first(where: { $0.eventKey == key }), entry.body == request.content.body else { return true }
+            retainedKeys.insert(key); return false
+        }.map(\.identifier)
+        center.removePendingNotificationRequests(withIdentifiers: obsolete)
+        for entry in plan.entries {
+            guard revision == run, !Task.isCancelled else { return }
+            guard !deliveredKeys.contains(entry.eventKey), !retainedKeys.contains(entry.eventKey) else { continue }
+            let id = prefix + run.uuidString + "." + entry.id
+            await add(id: id, entry: entry)
+            // A logout can occur while UNUserNotificationCenter is adding the request.
+            if revision != run || Task.isCancelled { center.removePendingNotificationRequests(withIdentifiers: [id]); return }
         }
     }
 
     func cancelAll() async {
-        let existing = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(prefix) }
-        center.removePendingNotificationRequests(withIdentifiers: existing)
+        invalidate()
     }
 
-    private func add(id: String, title: String, body: String, fire: Date, deepLink: String) async {
+    private func add(id: String, entry: LocalReminder) async {
         let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body.isEmpty ? "打开 CampusMate 查看详情。" : body
+        content.title = entry.title
+        content.body = entry.body.isEmpty ? "打开 CampusMate 查看详情。" : entry.body
         content.sound = .default
-        content.userInfo = ["deep_link": deepLink]
-        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        content.userInfo = ["event_key": entry.eventKey]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, entry.fire.timeIntervalSinceNow), repeats: false)
         try? await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
-    static func examFireDate(_ exam: JSONValue) -> Date? {
-        let date = exam["exam_date"].string ?? ""
-        let time = exam["start_time"].string ?? "08:00"
-        guard !date.isEmpty else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        let normalized = time.count >= 5 ? String(time.prefix(5)) : "08:00"
-        guard let start = formatter.date(from: "\(date.prefix(10)) \(normalized)") else { return nil }
-        let fire = start.addingTimeInterval(-3600)
-        return fire > .now ? fire : nil
-    }
 }

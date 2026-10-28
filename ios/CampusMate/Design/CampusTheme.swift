@@ -110,7 +110,7 @@ enum CampusScene {
     static let cream = Color(hex: 0xFFEBCB)
     static let libraryCream = Color(hex: 0xF5F2E8)
     static let libraryGreen = Color(hex: 0x214E3D)
-    static let libraryPaper = Color(hex: 0xEAF5F0E3)
+    static let libraryPaper = Color(hex: 0xF5F0E3, opacity: 234.0 / 255.0)
     static let libraryShelfEdge = Color(hex: 0xE4BD7C)
     static let libraryGold = Color(hex: 0xEBD5A8)
     static let twilightDusk = Color(hex: 0x14243D)
@@ -369,6 +369,7 @@ struct CampusStatusTag: View {
 
 struct CampusPrimaryButton: View {
     @Environment(\.campus) private var palette
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     var systemImage: String?
     var loading = false
@@ -382,13 +383,14 @@ struct CampusPrimaryButton: View {
             action()
         } label: {
             HStack(spacing: 8) {
-                if loading { ProgressView().tint(.white).controlSize(.small) }
+                if loading { ProgressView().tint(colorScheme == .dark ? palette.background : .white).controlSize(.small) }
                 else if let systemImage { Image(systemName: systemImage).font(.system(size: 15, weight: .semibold)) }
                 Text(loading ? "请稍候…" : title).campusFont(.subtitle)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(colorScheme == .dark ? palette.background : .white)
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(minHeight: 48)
+            .fixedSize(horizontal: false, vertical: true)
             .background(
                 RoundedRectangle(cornerRadius: CampusMetric.controlRadius, style: .continuous)
                     .fill(palette.primary.opacity(enabled ? 1 : 0.45))
@@ -419,7 +421,8 @@ struct CampusSecondaryButton: View {
             }
             .foregroundStyle(palette.primary)
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(minHeight: 44)
+            .fixedSize(horizontal: false, vertical: true)
             .background(
                 RoundedRectangle(cornerRadius: CampusMetric.controlRadius, style: .continuous)
                     .fill(palette.primarySoft.opacity(0.7))
@@ -619,7 +622,7 @@ struct CampusEmptyState: View {
 
 // MARK: - Haptics
 
-enum CampusHaptics {
+@MainActor enum CampusHaptics {
     static func tap() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }

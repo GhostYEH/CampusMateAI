@@ -16,8 +16,7 @@ struct FinalReviewView: View {
                     }
                 }
             }
-        }.campusWorkflowChrome("期末复习").task { await load() }.refreshable { await load() }
-        .toolbar { Button("新建复习活动", systemImage: "plus") { creating = true } }
+        }.campusWorkflowChrome("期末复习", actionTitle: "新建复习活动", action: { creating = true }).task { await load() }.refreshable { await load() }
         .sheet(isPresented: $creating, onDismiss: { Task { await load() } }) { NavigationStack { ReviewCampaignEditor() } }
     }
     private func load() async { await resource.load(client: app.client, path: "final-review/campaigns") }

@@ -37,6 +37,7 @@ final class FocusModel {
     }
     func start(goal: String, minutes: Int, mode: String, relatedTaskID: String?, stepNumber: Int? = nil) async -> Bool {
         guard let client, !isWorking, !isLoading else { return false }
+        guard mode != "SMART_GUARD" else { error = "iOS 摄像头模型尚未接入，请选择安静专注或 AI 陪伴。"; return false }
         isWorking = true; defer { isWorking = false }
         do {
             session = try await StudyService(client: client).start(goal: goal, durationSeconds: minutes * 60, mode: mode, relatedTaskID: relatedTaskID)

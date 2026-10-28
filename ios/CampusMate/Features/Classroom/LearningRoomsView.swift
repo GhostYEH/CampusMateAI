@@ -88,7 +88,7 @@ struct LearningRoomsView: View {
             CampusPrimaryButton(title: "新建讨论课堂", systemImage: "plus", loading: working) {
                 showingCreate = true
             }
-            Text("最多 8 人。默认入会关闭麦克风与摄像头，分别授权后开启。")
+            Text("最多 8 人。当前 iOS 支持邀请、文字交流与共享页码；音视频 SDK 尚未接入。")
                 .campusFont(.caption).foregroundStyle(.secondary)
         }
         .padding(16)

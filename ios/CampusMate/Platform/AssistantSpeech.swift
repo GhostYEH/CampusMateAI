@@ -26,6 +26,7 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
         let run = generation
         guard await AVAudioApplication.requestRecordPermission() else { error = "请在系统设置中允许麦克风后再使用语音输入。"; return }
         guard run == generation, !Task.isCancelled else { return }
+        guard UIApplication.shared.applicationState == .active else { return }
         do {
             try acquire(recording: true)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")

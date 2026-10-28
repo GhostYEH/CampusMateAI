@@ -11,6 +11,18 @@ final class PagedResource {
     private var requestID = UUID()
     private var queryIdentity = ""
 
+    func loadAll(client: APIClient, path: String, query: [String: String] = [:]) async {
+        let id = UUID(); requestID = id; queryIdentity = key(path: path, query: query)
+        isLoading = true; error = nil
+        defer { if requestID == id { isLoading = false } }
+        do {
+            let items = try await client.allRecords(path: path, query: query)
+            guard !Task.isCancelled, requestID == id else { return }
+            collection.apply(try RecordPage(json: .array(items)), reset: true)
+        } catch is CancellationError { }
+        catch { if requestID == id { self.error = error.localizedDescription } }
+    }
+
     func load(client: APIClient, path: String, query: [String: String] = [:], reset: Bool = true) async {
         let identity = key(path: path, query: query)
         if !reset && (isLoading || identity != queryIdentity) { return }

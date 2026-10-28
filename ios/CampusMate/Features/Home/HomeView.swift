@@ -6,10 +6,8 @@ import CampusCore
 /// destinations along the bottom of the scene.
 struct TwilightHomeView: View {
     @Environment(AppModel.self) private var app
-    let router: CampusRouter
 
     @State private var entrance: Double = 0
-    @State private var pendingRoute: CampusRoute?
     @State private var entrancePlayed = false
 
     private let archLabels = ["社区", "学习足迹", "待办", "CPM", "我的"]
@@ -49,21 +47,6 @@ struct TwilightHomeView: View {
         entrancePlayed = true
     }
 
-    private func enter(_ route: CampusRoute) {
-        guard pendingRoute == nil else { return }
-        if app.reduceMotion {
-            router.push(route)
-            return
-        }
-        CampusHaptics.tap()
-        pendingRoute = route
-        Task {
-            try? await Task.sleep(for: .milliseconds(170))
-            router.push(route)
-            pendingRoute = nil
-        }
-    }
-
     private func scene(width: CGFloat, height: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             Image("campus_twilight_original")
@@ -72,6 +55,7 @@ struct TwilightHomeView: View {
                 .scaledToFill()
                 .frame(width: width, height: height)
                 .clipped()
+                .accessibilityHidden(true)
                 .scaleEffect(1 + 0.018 * (1 - entranceProgress))
                 .animation(app.reduceMotion ? nil : .easeOut(duration: 0.85), value: entranceProgress)
 
@@ -90,7 +74,6 @@ struct TwilightHomeView: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 18)
-            .padding(.top, safeAreaTop)
             .opacity(titleReveal)
             .offset(y: (1 - titleReveal) * 6)
             .animation(app.reduceMotion ? nil : .easeOut(duration: 0.6), value: entranceProgress)
@@ -107,10 +90,11 @@ struct TwilightHomeView: View {
                      route: .classroomHub)
 
             ForEach(Array(archLabels.enumerated()), id: \.offset) { index, label in
+                let x = width * (0.065 + Double(index) * 0.19)
                 arch(label: label, route: archRoutes[index], index: index,
-                     x: width * (0.065 + Double(index) * 0.19),
+                     x: x,
                      y: height * 0.835,
-                     width: width * 0.18, height: height * 0.087)
+                     width: min(width * 0.18, width - x), height: height * 0.087)
             }
         }
         .frame(width: width, height: height)
@@ -121,45 +105,32 @@ struct TwilightHomeView: View {
         min(max((entranceProgress - 0.12) / 0.45, 0), 1)
     }
 
-    private var safeAreaTop: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.keyWindow?.safeAreaInsets.top ?? 44
-    }
-
     @ViewBuilder
     private func landmark(title: String, sign: String, alignment: Alignment,
                           x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat,
                           route: CampusRoute) -> some View {
-        let active = pendingRoute == route
-        Button { enter(route) } label: {
-            ZStack(alignment: alignment) {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(
-                        RadialGradient(colors: [CampusScene.cream.opacity(active ? 0.18 : 0), .clear],
-                                       center: .center, startRadius: 0, endRadius: max(width, height) * 0.7)
-                    )
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(CampusScene.cream.opacity(active ? 0.65 : 0), lineWidth: 1)
-                Text(sign)
-                    .font(.system(size: 11, weight: .medium))
-                    .tracking(0.5)
-                    .foregroundStyle(CampusScene.cream)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(CampusScene.ink.opacity(active ? 0.84 : 0.72), in: RoundedRectangle(cornerRadius: 3))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(CampusScene.cream.opacity(active ? 0.64 : 0.34), lineWidth: 0.5)
-                    )
-                    .padding(8)
-            }
-            .frame(width: width, height: height)
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        NavigationLink(value: route) {
+            Rectangle()
+                .fill(.clear)
+                .frame(width: width, height: height)
+                .overlay(alignment: alignment) {
+                    Text(sign)
+                        .font(.system(size: 11, weight: .medium))
+                        .tracking(0.5)
+                        .foregroundStyle(CampusScene.cream)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(CampusScene.ink.opacity(0.72), in: RoundedRectangle(cornerRadius: 3))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(CampusScene.cream.opacity(0.34), lineWidth: 0.5)
+                        )
+                        .padding(8)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         }
-        .buttonStyle(LandmarkButtonStyle())
+        .buttonStyle(LandmarkButtonStyle(reduceMotion: app.reduceMotion))
         .offset(x: x, y: y)
-        .animation(app.reduceMotion ? nil : .easeOut(duration: 0.22), value: active)
         .accessibilityLabel("进入\(title)")
         .accessibilityHint("打开\(title)页面")
     }
@@ -167,32 +138,25 @@ struct TwilightHomeView: View {
     @ViewBuilder
     private func arch(label: String, route: CampusRoute, index: Int,
                       x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> some View {
-        let active = pendingRoute == route
         let reveal = min(max((entranceProgress - (0.42 + Double(index) * 0.07)) / 0.22, 0), 1)
-        Button { enter(route) } label: {
-            ZStack(alignment: .bottom) {
-                ArchShape(topRadius: 36, bottomRadius: 8)
-                    .fill(
-                        LinearGradient(colors: [CampusScene.cream.opacity(active ? 0.12 : 0), .clear],
-                                       startPoint: .top, endPoint: .bottom)
-                    )
-                ArchShape(topRadius: 36, bottomRadius: 8)
-                    .stroke(CampusScene.cream.opacity(active ? 0.72 : 0), lineWidth: 1)
-                Text(label)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .background(CampusScene.ink.opacity(active ? 0.73 : 0.58), in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.bottom, 5)
-                    .opacity(reveal)
-                    .offset(y: (1 - reveal) * 4)
-            }
-            .frame(width: width, height: height)
-            .contentShape(ArchShape(topRadius: 36, bottomRadius: 8))
+        NavigationLink(value: route) {
+            Rectangle()
+                .fill(.clear)
+                .frame(width: width, height: height)
+                .overlay(alignment: .bottom) {
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .background(CampusScene.ink.opacity(0.58), in: RoundedRectangle(cornerRadius: 8))
+                        .padding(.bottom, 5)
+                        .opacity(reveal)
+                        .offset(y: (1 - reveal) * 4)
+                }
+                .contentShape(ArchShape(topRadius: 36, bottomRadius: 8))
         }
-        .buttonStyle(LandmarkButtonStyle())
+        .buttonStyle(LandmarkButtonStyle(reduceMotion: app.reduceMotion))
         .offset(x: x, y: y)
-        .animation(app.reduceMotion ? nil : .easeOut(duration: 0.22), value: active)
         .accessibilityLabel("打开\(label)")
     }
 }
@@ -224,9 +188,10 @@ struct ArchShape: Shape {
 }
 
 struct LandmarkButtonStyle: ButtonStyle {
+    var reduceMotion = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 1.012 : 1)
-            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: configuration.isPressed)
     }
 }

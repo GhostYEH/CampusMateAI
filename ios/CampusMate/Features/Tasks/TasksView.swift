@@ -50,45 +50,47 @@ struct TasksView: View {
     private var pendingCount: Int { allTasks.filter { !$0.isCompleted }.count }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack {
             JournalBackdrop()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 5) {
-                    header
-                    if let error {
-                        HStack(spacing: 7) {
-                            Image(systemName: "icloud.slash").font(.system(size: 14)).foregroundStyle(CampusJournal.amber)
-                            Text(error).font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E3430)).lineLimit(2)
-                            Spacer()
-                            Button("重试") { Task { await load() } }.font(.system(size: 12, weight: .semibold))
+            HStack(alignment: .top, spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 5) {
+                        header
+                        if let error {
+                            HStack(spacing: 7) {
+                                Image(systemName: "icloud.slash").font(.system(size: 14)).foregroundStyle(CampusJournal.amber)
+                                Text(error).font(.system(size: 12)).foregroundStyle(Color(hex: 0x8E3430)).lineLimit(2)
+                                Spacer()
+                                Button("重试") { Task { await load() } }.font(.system(size: 12, weight: .semibold))
+                            }
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 9)
+                            .background(Color(hex: 0xF6DAD8), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                         }
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 9)
-                        .background(Color(hex: 0xF6DAD8), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        journalMeta
+                        sectionHeader
+                        taskSections
+                        if let toast {
+                            Text(toast).font(.system(size: 11)).foregroundStyle(CampusJournal.clay).padding(.top, 4)
+                        }
                     }
-                    journalMeta
-                    sectionHeader
-                    taskSections
-                    if let toast {
-                        Text(toast).font(.system(size: 11)).foregroundStyle(CampusJournal.clay).padding(.top, 4)
-                    }
+                    .padding(.leading, 26)
+                    .padding(.trailing, 40)
+                    .padding(.top, 9)
+                    .padding(.bottom, 34)
+                    .frame(maxWidth: 760)
                 }
-                .padding(.leading, 26)
-                .padding(.trailing, 40)
-                .padding(.top, 9)
-                .padding(.bottom, 34)
-                .frame(maxWidth: 760)
-            }
-            .scrollIndicators(.hidden)
-            .journalBookPage()
-            .padding(.leading, 12)
-            .padding(.trailing, 4)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
+                .scrollIndicators(.hidden)
+                .journalBookPage()
+                .padding(.leading, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
 
-            filterTabs
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 6)
+                filterTabs
+                    .padding(.top, 8)
+            }
+            .frame(maxWidth: 820)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .campusImmersive()
         .task { await load() }
@@ -311,8 +313,9 @@ struct TasksView: View {
     }
 
     private func load() async {
-        await resource.load(client: app.client, path: "tasks")
+        await resource.loadAll(client: app.client, path: "tasks")
         error = resource.error
+        if app.remindersEnabled { app.refreshReminders() }
     }
 
     private func toggle(_ task: TaskItem) async {

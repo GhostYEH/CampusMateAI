@@ -5,6 +5,7 @@ import CampusCore
 /// Muted, looping campus film used behind the login form. Falls back to the
 /// poster frame when the film is unavailable or motion is reduced.
 struct LoopingVideoBackground: View {
+    @Environment(\.scenePhase) private var scenePhase
     let resource: String
     let poster: String
     var playing: Bool = true
@@ -26,7 +27,10 @@ struct LoopingVideoBackground: View {
         .onAppear(perform: prepare)
         .onDisappear { player?.pause() }
         .onChange(of: playing) { _, value in
-            if value { player?.play() } else { player?.pause() }
+            if value && scenePhase == .active { player?.play() } else { player?.pause() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && playing { player?.play() } else { player?.pause() }
         }
     }
 
@@ -39,7 +43,7 @@ struct LoopingVideoBackground: View {
         queue.actionAtItemEnd = .none
         looper = AVPlayerLooper(player: queue, templateItem: item)
         player = queue
-        if playing { queue.play() }
+        if playing && scenePhase == .active { queue.play() }
     }
 }
 

@@ -8,13 +8,21 @@ public struct RecordCollection: Sendable {
     public init() { }
 
     public mutating func apply(_ page: RecordPage, reset: Bool) {
-        if reset { items = [] }
-        for item in page.items {
-            if let id = item["id"].string?.nonEmpty, let position = items.firstIndex(where: { $0["id"].string == id }) { items[position] = item }
-            else { items.append(item) }
+        if reset { items = []; nextPage = 1; hasMore = false; total = 0 }
+        var positions: [String: Int] = [:]
+        for (index, item) in items.enumerated() {
+            if let id = item["id"].string?.nonEmpty { positions[id] = index }
         }
-        nextPage = page.nextPage; total = page.total
-        hasMore = page.hasMore && !page.items.isEmpty
+        let previousCount = items.count
+        for item in page.items {
+            if let id = item["id"].string?.nonEmpty {
+                if let position = positions[id] { items[position] = item }
+                else { positions[id] = items.count; items.append(item) }
+            } else { items.append(item) }
+        }
+        let advanced = page.nextPage > nextPage
+        nextPage = max(nextPage, page.nextPage); total = page.total
+        hasMore = page.hasMore && !page.items.isEmpty && advanced && (reset || items.count > previousCount)
     }
 }
 

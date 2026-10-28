@@ -98,7 +98,7 @@ struct ExamsView: View {
     private var overview: some View {
         Group {
             if let next = upcoming.first {
-                Button { editing = next; showEditor = true } label: {
+                NavigationLink { ExamDetailView(exam: next) { Task { await load() } } } label: {
                     ZStack(alignment: .trailing) {
                         LinearGradient(colors: [Color(hex: 0x285B4B), Color(hex: 0x1B473B)],
                                        startPoint: .leading, endPoint: .trailing)
@@ -148,7 +148,7 @@ struct ExamsView: View {
     }
 
     private func examRow(_ exam: JSONValue) -> some View {
-        Button { editing = exam; showEditor = true } label: {
+        NavigationLink { ExamDetailView(exam: exam) { Task { await load() } } } label: {
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 2) {
                     Text(exam["start_time"].text.isEmpty ? "--:--" : String(exam["start_time"].text.prefix(5)))
@@ -203,6 +203,7 @@ struct ExamsView: View {
     private func load() async {
         await resource.load(client: app.client, path: "student/exams")
         now = .now
+        if app.remindersEnabled { app.refreshReminders() }
     }
 }
 
@@ -218,10 +219,238 @@ extension JSONValue {
     }
 }
 
+
+/// Full exam page with countdown, reminder control and destructive actions.
+/// Reached from the timeline rows and the next-exam hero.
+struct ExamDetailView: View {
+    @Environment(\.campus) private var palette
+    @Environment(AppModel.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    @State private var exam: JSONValue
+    @State private var showEditor = false
+    @State private var confirmDelete = false
+    @State private var working = false
+    @State private var error: String?
+    let onChanged: () -> Void
+
+    init(exam: JSONValue, onChanged: @escaping () -> Void = {}) {
+        _exam = State(initialValue: exam)
+        self.onChanged = onChanged
+    }
+
+    private var name: String { exam["course_name"].text }
+    private var date: String { exam["exam_date"].string ?? "" }
+    private var startTime: String { exam["start_time"].string ?? "" }
+    private var endTime: String { exam["end_time"].string ?? "" }
+    private var location: String { exam["location"].string ?? "" }
+    private var seat: String { exam["seat_number"].string ?? "" }
+    private var notes: String { exam["notes"].string ?? "" }
+    private var examType: String { exam["exam_type"].text }
+    private var reminderEnabled: Bool { exam["reminder_enabled"].bool ?? false }
+    private var start: Date? { exam.startDate }
+
+    var body: some View {
+        CampusSecondaryScaffold(title: "考试详情") {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    details
+                    reminderCard
+                    actions
+                }
+                .padding(20)
+                .frame(maxWidth: 700)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .sheet(isPresented: $showEditor) {
+            NavigationStack {
+                ExamEditorView(existing: exam, onSaved: { saved in
+                    exam = saved
+                    app.refreshReminders()
+                    onChanged()
+                })
+            }
+        }
+        .confirmationDialog("删除这场考试？", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("删除", role: .destructive) { delete() }
+        } message: {
+            Text("删除后无法恢复，相关本地提醒也会一并清理。")
+        }
+        .errorAlert($error)
+    }
+
+    private var header: some View {
+        CampusCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(name)
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundStyle(palette.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    CampusStatusTag(text: statusText, tone: statusTone)
+                }
+                if !examType.isEmpty {
+                    CampusStatusTag(text: examType, tone: .neutral)
+                }
+                if let start, start > .now {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        HStack(spacing: 7) {
+                            Image(systemName: "timer").font(.system(size: 13))
+                            Text(countdown(start: start, now: context.date))
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundStyle(palette.primary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var details: some View {
+        CampusCard {
+            VStack(alignment: .leading, spacing: 0) {
+                detailRow(icon: "calendar", label: "日期", value: dateText)
+                divider
+                detailRow(icon: "clock", label: "时间", value: timeText)
+                divider
+                detailRow(icon: "mappin.and.ellipse", label: "地点", value: location.nonEmpty ?? "未填写")
+                divider
+                detailRow(icon: "chair.lounge", label: "座位", value: seat.nonEmpty ?? "未填写")
+                if !notes.isEmpty {
+                    divider
+                    detailRow(icon: "note.text", label: "备注", value: notes)
+                }
+            }
+        }
+    }
+
+    private var reminderCard: some View {
+        CampusCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("考试提醒", isOn: Binding(get: { reminderEnabled }, set: { setReminder($0) }))
+                    .tint(palette.primary)
+                    .campusFont(.body)
+                    .disabled(working)
+                Text(reminderEnabled ? "已开启，考试开始前 1 小时提醒。" : "关闭后不会为这场考试安排本机提醒。")
+                    .campusFont(.caption).foregroundStyle(palette.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            CampusPrimaryButton(title: "编辑考试", systemImage: "pencil", enabled: !working) {
+                showEditor = true
+            }
+            .accessibilityIdentifier("exam.detail.edit")
+            Button(role: .destructive) {
+                confirmDelete = true
+            } label: {
+                Text(working ? "正在处理…" : "删除考试")
+                    .campusFont(.body).fontWeight(.semibold)
+                    .foregroundStyle(palette.dangerText)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 46)
+                    .background(palette.dangerText.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .disabled(working)
+            .accessibilityIdentifier("exam.detail.delete")
+        }
+    }
+
+    private var divider: some View {
+        Divider().padding(.vertical, 6)
+    }
+
+    private func detailRow(icon: String, label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16)).foregroundStyle(palette.primary).frame(width: 24)
+            Text(label).campusFont(.caption).foregroundStyle(palette.muted).frame(width: 52, alignment: .leading)
+            Text(value).campusFont(.body).foregroundStyle(palette.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var dateText: String {
+        guard let start else { return date.isEmpty ? "待定" : date }
+        return start.formatted(.dateTime.year().month(.wide).day().weekday(.wide))
+    }
+
+    private var timeText: String {
+        let start = startTime.prefix(5)
+        guard !start.isEmpty else { return "待定" }
+        let end = endTime.prefix(5)
+        return end.isEmpty ? String(start) : "\(start) – \(end)"
+    }
+
+    private var statusText: String {
+        guard let start else { return "日期待定" }
+        return start > .now ? "即将开始" : "已结束"
+    }
+
+    private var statusTone: CampusStatusTone {
+        guard let start else { return .neutral }
+        return start > .now ? .info : .neutral
+    }
+
+    private func countdown(start: Date, now: Date) -> String {
+        let seconds = max(0, Int(start.timeIntervalSince(now)))
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
+        let minutes = (seconds % 3_600) / 60
+        if days > 0 { return "距离考试还有 \(days) 天 \(hours) 小时" }
+        if hours > 0 { return "距离考试还有 \(hours) 小时 \(minutes) 分钟" }
+        return "距离考试还有 \(minutes) 分钟"
+    }
+
+    private func setReminder(_ enabled: Bool) {
+        guard !working else { return }
+        working = true
+        Task {
+            defer { working = false }
+            do {
+                let draft = ExamDraft(courseName: name, examDate: date,
+                                      startTime: startTime, endTime: endTime,
+                                      location: location, notes: notes,
+                                      reminderEnabled: enabled, seatNumber: seat,
+                                      examType: examType)
+                let saved = try await LearningService(client: app.client).saveExam(draft, id: exam["id"].string)
+                exam = saved
+                if enabled { _ = await ReminderScheduler.shared.requestAuthorization() }
+                app.refreshReminders()
+                onChanged()
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    private func delete() {
+        guard !working, let id = exam["id"].string else { return }
+        working = true
+        Task {
+            defer { working = false }
+            do {
+                try await LearningService(client: app.client).deleteExam(id: id)
+                app.refreshReminders()
+                onChanged()
+                dismiss()
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+}
+
 struct ExamEditorView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     var existing: JSONValue?
+    var onSaved: ((JSONValue) -> Void)? = nil
     @State private var name = ""
     @State private var date = Date.now
     @State private var start = Date.now
@@ -298,7 +527,8 @@ struct ExamEditorView: View {
                                       startTime: APIDate.timeOnly(start), endTime: APIDate.timeOnly(end),
                                       location: location, notes: notes, reminderEnabled: reminder,
                                       seatNumber: seat, examType: examType)
-                _ = try await LearningService(client: app.client).saveExam(draft, id: existing?["id"].string)
+                let saved = try await LearningService(client: app.client).saveExam(draft, id: existing?["id"].string)
+                onSaved?(saved)
                 if reminder { _ = await ReminderScheduler.shared.requestAuthorization() }
                 CampusHaptics.success()
                 dismiss()

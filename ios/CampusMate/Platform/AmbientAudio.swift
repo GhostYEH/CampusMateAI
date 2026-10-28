@@ -8,13 +8,15 @@ final class AmbientAudio {
     private var player: AVAudioPlayer?
     private var current: String?
     private var baseVolume: Float = 0.35
+    private var ducked = false
+    private var effectiveVolume: Float { ducked ? baseVolume * 0.28 : baseVolume }
 
     var isPlaying: Bool { player?.isPlaying == true }
 
     func play(scene: String, volume: Float = 0.35) {
         baseVolume = volume
         if current == scene, let player {
-            player.volume = volume
+            player.volume = effectiveVolume
             if !player.isPlaying { player.play() }
             return
         }
@@ -23,7 +25,7 @@ final class AmbientAudio {
         do {
             let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
-            player.volume = volume
+            player.volume = effectiveVolume
             player.prepareToPlay()
             player.play()
             self.player = player
@@ -35,12 +37,13 @@ final class AmbientAudio {
 
     func setVolume(_ volume: Float) {
         baseVolume = volume
-        player?.volume = volume
+        player?.volume = effectiveVolume
     }
 
     /// Voice replies take priority over the ambience.
     func duck(_ ducked: Bool) {
-        player?.setVolume(ducked ? baseVolume * 0.28 : baseVolume, fadeDuration: 0.35)
+        self.ducked = ducked
+        player?.setVolume(effectiveVolume, fadeDuration: 0.35)
     }
 
     func pause() { player?.pause() }

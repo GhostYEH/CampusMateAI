@@ -113,7 +113,7 @@ struct CommunityView: View {
                     Text("更多 ›").font(.system(size: 13)).foregroundStyle(Color(hex: 0x285B4B))
                 }
                 if hot.isEmpty {
-                    Text("还没有热门话题，发一篇帖子开启讨论。").campusFont(.caption).foregroundStyle(.secondary)
+                    Text("还没有热门话题，发一篇帖子开启讨论。").campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
                 } else {
                     ForEach(Array(hot.prefix(3).enumerated()), id: \.offset) { index, post in
                         HStack(spacing: 8) {
@@ -251,11 +251,12 @@ struct CommunityHotTopicsView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .task { await resource.load(client: app.client, path: "community/posts", query: ["sort": "hot"]) }
+        .task { await resource.loadAll(client: app.client, path: "community/posts", query: ["sort": "hot"]) }
     }
 }
 
 struct CommunityDetailView: View {
+    @Environment(\.campus) private var palette
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     let postID: String
@@ -276,12 +277,12 @@ struct CommunityDetailView: View {
                     if resource.isLoading && post == .null { CampusLoadingState() }
                     else if let error = resource.error, post == .null { CampusErrorState(message: error) { Task { await load() } } }
                     else if post != .null {
-                        Text(post["title"].text).campusFont(.title).foregroundStyle(Color(hex: 0x1B2730))
+                        Text(post["title"].text).campusFont(.title).foregroundStyle(palette.textPrimary)
                         HStack(spacing: 8) {
                             Text(post["author_name"].string ?? "同学").campusFont(.caption).foregroundStyle(.secondary)
                             Text(post["created_at"].text.prefix(10)).campusFont(.caption).foregroundStyle(.secondary)
                         }
-                        Text(post["content"].text).campusFont(.body).foregroundStyle(Color(hex: 0x1B2730)).textSelection(.enabled)
+                        Text(post["content"].text).campusFont(.body).foregroundStyle(palette.textPrimary).textSelection(.enabled)
                         ForEach(Array(post["images"].items.enumerated()), id: \.offset) { _, item in
                             if let url = imageURL(item.string ?? item["url"].text) {
                                 AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { ProgressView() }
@@ -298,10 +299,10 @@ struct CommunityDetailView: View {
                             }
                             Spacer()
                         }
-                        .font(.system(size: 13)).foregroundStyle(Color(hex: 0x285B4B))
+                        .font(.system(size: 13)).foregroundStyle(palette.primary)
                         .buttonStyle(.plain).disabled(working)
                         Divider()
-                        Text("讨论").campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
+                        Text("讨论").campusFont(.subtitle).foregroundStyle(palette.textPrimary)
                         if comments.isLoading && comments.items.isEmpty { CampusLoadingState() }
                         else if comments.items.isEmpty {
                             Text("还没有评论，说说你的想法。").campusFont(.caption).foregroundStyle(.secondary)
@@ -309,18 +310,18 @@ struct CommunityDetailView: View {
                         ForEach(Array(comments.items.enumerated()), id: \.offset) { _, comment in
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(comment["author_name"].string ?? "同学").campusFont(.caption).foregroundStyle(.secondary)
-                                Text(comment["content"].text).campusFont(.body).foregroundStyle(Color(hex: 0x1B2730)).textSelection(.enabled)
+                                Text(comment["content"].text).campusFont(.body).foregroundStyle(palette.textPrimary).textSelection(.enabled)
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 12))
+                            .background(palette.surface, in: RoundedRectangle(cornerRadius: 12))
                         }
                         if comments.hasMore {
                             Button("加载更多评论") { Task { await comments.load(client: app.client, path: endpoint + "/comments", reset: false) } }
-                                .campusFont(.caption).foregroundStyle(Color(hex: 0x285B4B))
+                                .campusFont(.caption).foregroundStyle(palette.primary)
                         }
                         CampusTextField(placeholder: "写评论…", text: $reply)
-                        Toggle("匿名评论", isOn: $anonymous).tint(Color(hex: 0x285B4B))
+                        Toggle("匿名评论", isOn: $anonymous).tint(palette.primary)
                         CampusPrimaryButton(title: working ? "正在发送…" : "发表评论", loading: working,
                                             enabled: !reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) { sendReply() }
                         if post["author_id"].string == app.session?.user.id || post["is_owner"].bool == true {
@@ -380,6 +381,7 @@ struct CommunityDetailView: View {
 }
 
 struct PublishPostView: View {
+    @Environment(\.campus) private var palette
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
@@ -395,7 +397,8 @@ struct PublishPostView: View {
                               ("recruit", "招募"), ("errand", "互助"), ("other", "其他")]
 
     var body: some View {
-        CampusSecondaryScaffold(title: "发布帖子") {
+        let photoCount = photos.count
+        return CampusSecondaryScaffold(title: "发布帖子") {
             ScrollView {
                 VStack(spacing: 12) {
                     CampusCard {
@@ -406,7 +409,7 @@ struct PublishPostView: View {
                                 .frame(minHeight: 180)
                                 .scrollContentBackground(.hidden)
                                 .padding(8)
-                                .background(Color(hex: 0xF1F3EA), in: RoundedRectangle(cornerRadius: 10))
+                                .background(palette.background, in: RoundedRectangle(cornerRadius: 10))
                                 .accessibilityLabel("帖子正文")
                         }
                     }
@@ -418,7 +421,7 @@ struct PublishPostView: View {
                             .tint(Color(hex: 0x285B4B))
                             Toggle("匿名发布", isOn: $anonymous).tint(Color(hex: 0x285B4B))
                             PhotosPicker(selection: $photos, maxSelectionCount: 9, matching: .images) {
-                                photoLabel
+                                PhotoAttachmentLabel(count: photoCount)
                             }
                             Text("只上传你选择的图片；单张图片需小于 5 MB。").campusFont(.caption).foregroundStyle(.secondary)
                         }
@@ -434,12 +437,6 @@ struct PublishPostView: View {
             }
         }
         .errorAlert($error)
-    }
-
-    private var photoLabel: some View {
-        Label("选择图片（\(photos.count)/9）", systemImage: "photo.on.rectangle")
-            .campusFont(.body)
-            .foregroundStyle(Color(hex: 0x285B4B))
     }
 
     private func publish() {
@@ -471,5 +468,16 @@ struct PublishPostView: View {
             } catch is CancellationError { }
             catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+private struct PhotoAttachmentLabel: View {
+    @Environment(\.campus) private var palette
+    let count: Int
+    nonisolated init(count: Int) { self.count = count }
+    var body: some View {
+        Label("选择图片（\(count)/9）", systemImage: "photo.on.rectangle")
+            .campusFont(.body)
+            .foregroundStyle(palette.primary)
     }
 }

@@ -4,6 +4,7 @@ import CampusCore
 struct ContentView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.scenePhase) private var scenePhase
 
     private var palette: CampusPalette {
         switch app.theme {
@@ -45,5 +46,8 @@ struct ContentView: View {
         .campusPalette(palette)
         .preferredColorScheme(preferredScheme)
         .task { await app.start() }
+        .task(id: "\(app.scope)-\(app.remindersEnabled)-\(scenePhase == .active)") {
+            if scenePhase == .active { app.refreshReminders() }
+        }
     }
 }

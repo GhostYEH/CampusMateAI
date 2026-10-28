@@ -1,4 +1,5 @@
 import AVFoundation
+import UIKit
 import Observation
 import CampusCore
 
@@ -103,6 +104,7 @@ final class RealtimeVoiceEngine {
     }
 
     private func beginAudio(run: UUID) throws {
+        guard UIApplication.shared.applicationState == .active else { throw APIError(code: "AUDIO_FOREGROUND", message: "请回到应用后重新开启语音。") }
         let owner = UUID(); audioOwner = owner
         try CampusAudioSession.shared.acquire(owner: owner, recording: true) { [weak self] in self?.fail("音频已被其他功能接管。") }
         let engine = AVAudioEngine()

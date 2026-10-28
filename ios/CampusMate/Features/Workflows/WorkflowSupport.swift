@@ -85,7 +85,7 @@ struct ApprovalDecisionView: View {
                     Button("拒绝此操作", role: .destructive) { decision = "REJECTED" }.disabled(action.isWorking || reason.count > 256)
                 }
             } header: { Text("你的决定") } footer: { Text("服务端会再次检查权限、有效期及操作状态。过期或冲突不会视为已同意。") }
-        }.navigationTitle("操作确认").navigationBarTitleDisplayMode(.inline)
+        }.campusWorkflowChrome("操作确认")
         .task { await action.restore(scope: app.serverURL + "|" + (app.session?.user.id ?? "") + "|approval|" + approvalID) }
         .confirmationDialog("确认\(decision == "APPROVED" ? "同意" : "拒绝")这项操作？", isPresented: Binding(get: { decision != nil }, set: { if !$0 { decision = nil } }), titleVisibility: .visible) {
             Button("确认决定") {

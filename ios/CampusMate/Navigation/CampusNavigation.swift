@@ -30,26 +30,6 @@ enum CampusRoute: Hashable {
     case notificationSettings
 }
 
-@MainActor
-@Observable
-final class CampusRouter {
-    var path: [CampusRoute] = []
-
-    func push(_ route: CampusRoute) {
-        guard path.last != route else { return }
-        path.append(route)
-    }
-
-    func pop() {
-        guard !path.isEmpty else { return }
-        path.removeLast()
-    }
-
-    func popToRoot() {
-        path.removeAll()
-    }
-}
-
 // MARK: - Chrome
 
 /// Secondary navigation bar from `StickySecondaryNavigation`: a 44 pt glass
@@ -80,10 +60,8 @@ struct CampusSecondaryScaffold<Content: View>: View {
     @Environment(\.campus) private var palette
     @Environment(\.dismiss) private var dismiss
     let title: String
-    var subtitle: String?
     var tint: Color?
     var background: Color?
-    var contentPadding: CGFloat = 20
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -122,10 +100,9 @@ struct InteractivePopGestureEnabler: UIViewControllerRepresentable {
         func enable() {
             guard let navigation = navigationController ?? parent?.navigationController,
                   let gesture = navigation.interactivePopGestureRecognizer else { return }
-            gesture.isEnabled = true
+            gesture.isEnabled = navigation.viewControllers.count > 1
             // Keep the system delegate; overriding it makes the recognizer
             // compete with taps on controls near the leading edge.
-            gesture.cancelsTouchesInView = false
         }
     }
 }
@@ -147,25 +124,22 @@ extension View {
 struct CampusRootView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.campus) private var palette
-    @State private var router = CampusRouter()
+    @State private var path: [CampusRoute] = []
 
     var body: some View {
-        @Bindable var router = router
-        return NavigationStack(path: $router.path) {
-            TwilightHomeView(router: router)
+        NavigationStack(path: $path) {
+            TwilightHomeView()
                 .navigationDestination(for: CampusRoute.self) { route in
-                    CampusRouteView(route: route, router: router)
+                    CampusRouteView(route: route)
                 }
         }
         .tint(palette.primary)
-        .environment(router)
         .id(app.scope)
     }
 }
 
 struct CampusRouteView: View {
     let route: CampusRoute
-    let router: CampusRouter
 
     var body: some View {
         switch route {
@@ -203,6 +177,8 @@ struct CampusWorkflowChrome: ViewModifier {
     @Environment(\.campus) private var palette
     @Environment(\.dismiss) private var dismiss
     let title: String
+    var actionTitle: String?
+    var action: (() -> Void)?
 
     func body(content: Content) -> some View {
         content
@@ -216,9 +192,17 @@ struct CampusWorkflowChrome: ViewModifier {
                         .foregroundStyle(palette.textPrimary)
                         .lineLimit(1)
                     Spacer()
+                    if let actionTitle, let action {
+                        Button(action: action) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 18, weight: .semibold))
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityLabel(actionTitle)
+                    }
                 }
                 .padding(.horizontal, 16)
-                .frame(height: 56)
+                .frame(minHeight: 56)
                 .background(.ultraThinMaterial)
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -227,7 +211,7 @@ struct CampusWorkflowChrome: ViewModifier {
 }
 
 extension View {
-    func campusWorkflowChrome(_ title: String) -> some View {
-        modifier(CampusWorkflowChrome(title: title))
+    func campusWorkflowChrome(_ title: String, actionTitle: String? = nil, action: (() -> Void)? = nil) -> some View {
+        modifier(CampusWorkflowChrome(title: title, actionTitle: actionTitle, action: action))
     }
 }
