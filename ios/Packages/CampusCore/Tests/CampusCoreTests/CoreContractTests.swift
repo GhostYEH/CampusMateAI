@@ -77,6 +77,59 @@ struct CoreContractTests {
         #expect(await client.currentSession?.tokens.accessToken == "new")
     }
 
+    @Test func cancelledWaiterStillPersistsRotatedTokens() async throws {
+        let server = SuspendedRefreshServer()
+        let client = APIClient(baseURL: URL(string: "https://example.com/api/v1/")!) { request in
+            await server.respond(request)
+        }
+        await client.restore(Session(tokens: TokenPair(accessToken: "old", refreshToken: "refresh-old"), user: UserProfile(id: "u1", username: "student")))
+        let request = Task { try await client.request(.get, path: "courses") }
+        await server.waitUntilRefreshStarted()
+        request.cancel()
+        await server.completeRefresh()
+        do {
+            _ = try await request.value
+            Issue.record("Cancelled request must not return a response")
+        } catch is CancellationError { }
+        #expect(await client.currentSession?.tokens == TokenPair(accessToken: "new", refreshToken: "refresh-new"))
+        _ = try await client.request(.get, path: "courses")
+        #expect(await server.refreshCount == 1)
+    }
+
+    @Test func refreshCannotOverwriteReplacementSession() async throws {
+        let server = SuspendedRefreshServer()
+        let client = APIClient(baseURL: URL(string: "https://example.com/api/v1/")!) { request in
+            await server.respond(request)
+        }
+        await client.restore(Session(tokens: TokenPair(accessToken: "old", refreshToken: "refresh-old"), user: UserProfile(id: "a", username: "a")))
+        let request = Task { try await client.request(.get, path: "courses") }
+        await server.waitUntilRefreshStarted()
+        let replacement = Session(tokens: TokenPair(accessToken: "b", refreshToken: "rb"), user: UserProfile(id: "b", username: "b"))
+        await client.restore(replacement)
+        await server.completeRefresh()
+        do {
+            _ = try await request.value
+            Issue.record("Previous session request must be cancelled")
+        } catch is CancellationError { }
+        #expect(await client.currentSession == replacement)
+    }
+
+    @Test func sessionSnapshotsHaveMonotonicRevisions() async {
+        let client = APIClient(baseURL: URL(string: "https://example.com/api/v1/")!)
+        let (events, continuation) = AsyncStream<SessionSnapshot>.makeStream()
+        await client.observeSession { continuation.yield($0) }
+        let session = Session(tokens: TokenPair(accessToken: "a", refreshToken: "ra"), user: UserProfile(id: "u", username: "before"))
+        await client.restore(session)
+        await client.updateUser(UserProfile(id: "u", username: "after"))
+        await client.restore(nil)
+        continuation.finish()
+        var snapshots: [SessionSnapshot] = []
+        for await snapshot in events { snapshots.append(snapshot) }
+        #expect(snapshots.map(\.revision) == [1, 2, 3])
+        #expect(snapshots.map { $0.session?.user.username } == ["before", "after", nil])
+        #expect(await client.sessionSnapshot == snapshots.last)
+    }
+
     @Test func discardsResponseFromPreviousAccount() async throws {
         let server = SuspendedServer()
         let client = APIClient(baseURL: URL(string: "https://example.com/api/v1/")!) { request in
@@ -103,6 +156,34 @@ struct CoreContractTests {
             _ = try await client.request(.get, path: "https://evil.example/collect", authenticated: false)
             Issue.record("Absolute paths must fail")
         } catch { }
+    }
+}
+
+private actor SuspendedRefreshServer {
+    private var continuation: CheckedContinuation<HTTPResponse, Never>?
+    private(set) var refreshCount = 0
+
+    func respond(_ request: URLRequest) async -> HTTPResponse {
+        if request.url?.path.hasSuffix("auth/refresh") == true {
+            refreshCount += 1
+            if refreshCount > 1 {
+                return HTTPResponse(data: Data(#"{"code":"UNAUTHORIZED","message":"refresh token revoked"}"#.utf8), statusCode: 401)
+            }
+            return await withCheckedContinuation { continuation = $0 }
+        }
+        if request.value(forHTTPHeaderField: "Authorization") == "Bearer old" {
+            return HTTPResponse(data: Data(#"{"code":"UNAUTHORIZED","message":"expired"}"#.utf8), statusCode: 401)
+        }
+        return HTTPResponse(data: Data("{}".utf8), statusCode: 200)
+    }
+
+    func waitUntilRefreshStarted() async {
+        while continuation == nil { await Task.yield() }
+    }
+
+    func completeRefresh() {
+        continuation?.resume(returning: HTTPResponse(data: Data(#"{"access_token":"new","refresh_token":"refresh-new"}"#.utf8), statusCode: 200))
+        continuation = nil
     }
 }
 

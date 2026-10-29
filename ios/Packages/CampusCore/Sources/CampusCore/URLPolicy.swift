@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public enum URLPolicy {
     public static func origin(_ address: String) -> String? {
@@ -23,15 +24,21 @@ public enum URLPolicy {
 
     public static func isPrivateHost(_ host: String) -> Bool {
         let value = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if value == "localhost" || value.hasSuffix(".localhost") || value.hasSuffix(".local") || value == "::" || value == "::1" { return true }
-        if value.contains(":") {
-            return value.hasPrefix("fc") || value.hasPrefix("fd") || value.hasPrefix("fe80:") || value.hasPrefix("::ffff:")
+        if value == "localhost" || value.hasSuffix(".localhost") || value.hasSuffix(".local") { return true }
+        var ipv6 = in6_addr()
+        if inet_pton(AF_INET6, value, &ipv6) == 1 {
+            let bytes = withUnsafeBytes(of: &ipv6) { Array($0) }
+            let unspecifiedOrLoopback = bytes.prefix(15).allSatisfy { $0 == 0 } && bytes[15] <= 1
+            let mappedIPv4 = bytes.prefix(10).allSatisfy { $0 == 0 } && bytes[10] == 0xff && bytes[11] == 0xff
+            return unspecifiedOrLoopback || mappedIPv4 || bytes[0] & 0xfe == 0xfc
+                || (bytes[0] == 0xfe && bytes[1] & 0xc0 == 0x80) || bytes[0] == 0xff
         }
-        let octets = value.split(separator: ".").compactMap { Int($0) }
-        if octets.count == 4 {
+        var ipv4 = in_addr()
+        if inet_aton(value, &ipv4) == 1 {
+            let octets = withUnsafeBytes(of: &ipv4) { Array($0) }
             return octets[0] == 0 || octets[0] == 10 || octets[0] == 127 || octets[0] >= 224
                 || (octets[0] == 169 && octets[1] == 254) || (octets[0] == 192 && octets[1] == 168)
-                || (octets[0] == 172 && (16...31).contains(octets[1]))
+                || (octets[0] == 172 && (16...31).contains(Int(octets[1])))
         }
         return false
     }

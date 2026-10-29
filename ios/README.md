@@ -52,10 +52,10 @@ ios/
 ```bash
 xcodebuild -project CampusMate.xcodeproj -scheme CampusMate -configuration Debug \
   -destination 'platform=iOS Simulator,id=<UDID>' \
-  -derivedDataPath /tmp/campus-dd CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath /tmp/campus-dd build
 ```
 
-`ios/scripts/validate.py` 会启动一个显式指定临时数据库的隔离后端，运行 CampusCore 测试；加 `--ui --device <UDID>` 会继续运行原生 UI 测试。脚本拒绝复用已占用 18927 端口的服务。
+`ios/scripts/validate.py` 会启动一个显式指定临时数据库的隔离后端，运行 CampusCore 测试；加 `--ui --device <UDID>` 会继续运行原生 UI 测试。脚本拒绝复用已占用 18927 端口的服务。模拟器构建使用 Xcode 默认签名，不要设置 `CODE_SIGNING_ALLOWED=NO`：禁用签名可能使模拟器应用缺少钥匙串访问所需的签名权限，导致登录和会话恢复测试失败。
 
 在受限沙箱中（SwiftPM 无法应用 sandbox profile 时）需要额外传入：
 

@@ -34,14 +34,14 @@ struct NoticesView: View {
             }
             .refreshable { await load() }
         }
+        .task(id: unreadOnly) { await load() }
         .task {
-            await load()
             if let value = try? await app.client.request(path: "chaoxing/status") {
                 chaoxingStatus = value["status"].string
                 lastSynced = value["last_synced_at"].string
             }
         }
-        .sheet(item: $selected) { notice in
+        .sheet(item: $selected, onDismiss: { Task { await load() } }) { notice in
             NavigationStack { NoticeDetailView(notice: notice.value) }
         }
         .sheet(isPresented: $showExtract, onDismiss: { Task { await load() } }) {

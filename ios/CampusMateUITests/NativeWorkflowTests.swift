@@ -5,7 +5,10 @@ import UIKit
 final class NativeWorkflowTests: XCTestCase {
     private let root = URL(string: "http://localhost:18927/api/v1/")!
 
-    override func setUpWithError() throws { continueAfterFailure = false }
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        XCUIDevice.shared.orientation = .portrait
+    }
 
     // MARK: - Helpers
 
@@ -33,6 +36,26 @@ final class NativeWorkflowTests: XCTestCase {
         return (String(username), password)
     }
 
+    /// The system may offer to save these disposable test credentials when
+    /// password editing ends. Dismiss only that prompt, never save them.
+    private func dismissSavePasswordPrompt(_ app: XCUIApplication, timeout: TimeInterval = 1) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for owner in [springboard, app] {
+                let title = owner.staticTexts.matching(NSPredicate(
+                    format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "保存密码", "Save Password"
+                )).firstMatch
+                guard title.exists else { continue }
+                for label in ["以后", "稍后", "Not Now", "Later"] {
+                    let button = owner.buttons[label]
+                    if button.exists && button.isHittable { button.tap(); return }
+                }
+            }
+            usleep(150_000)
+        } while Date() < deadline
+    }
+
     private func launchSignedOut(theme: String = "light", largeText: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-campus.serverURL", root.absoluteString,
@@ -43,7 +66,8 @@ final class NativeWorkflowTests: XCTestCase {
         return app
     }
 
-    private func signIn(_ app: XCUIApplication, account provided: (username: String, password: String)? = nil) async throws {
+    private func signIn(_ app: XCUIApplication, account provided: (username: String, password: String)? = nil,
+                        remember: Bool = true) async throws {
         let account: (username: String, password: String)
         if let provided { account = provided } else { account = try await registerAccount() }
         let usernameField = app.textFields["login.username"]
@@ -56,8 +80,29 @@ final class NativeWorkflowTests: XCTestCase {
         passwordField.tap()
         XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "点击密码后应出现键盘")
         passwordField.typeText(account.password)
-        app.buttons["login.submit"].tap()
+        dismissSavePasswordPrompt(app)
+        if !remember {
+            let toggle = app.buttons["login.remember"]
+            for _ in 0..<5 where !toggle.isHittable { app.swipeUp() }
+            XCTAssertTrue(toggle.isHittable)
+            toggle.tap()
+        }
+        let submit = app.buttons["login.submit"]
+        for _ in 0..<5 where !submit.isHittable { app.swipeUp() }
+        submit.tap()
+        dismissSavePasswordPrompt(app, timeout: 2)
         XCTAssertTrue(app.buttons["打开待办"].waitForExistence(timeout: 25), "首页场景应在登录后出现")
+    }
+
+    private func recordFailureDiagnostics(_ app: XCUIApplication, _ name: String) {
+        let screenshot = XCTAttachment(image: flattened(XCUIScreen.main.screenshot().image))
+        screenshot.name = "\(name)-screen"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.name = "\(name)-hierarchy"
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
     }
 
     private func snapshot(_ app: XCUIApplication, _ name: String) {
@@ -128,6 +173,133 @@ final class NativeWorkflowTests: XCTestCase {
             }
             usleep(150_000)
         }
+    }
+
+    private func assertKeyboardDismisses(_ app: XCUIApplication, beside field: XCUIElement, atMargin: Bool = true) {
+        let keyboard = app.keyboards.element
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5))
+        let window = app.windows.firstMatch
+        let frame = window.frame
+        // Stay inside the horizontal safe area in landscape, and above the keyboard.
+        let targetY = atMargin ? field.frame.midY : field.frame.minY - 14
+        let y = max(frame.minY + 50, min(targetY, keyboard.frame.minY - 20))
+        let x = frame.width * (atMargin ? 0.08 : 0.5)
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+            .withOffset(CGVector(dx: x, dy: y - frame.minY)).tap()
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: keyboard)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed, "点击页面空白应收起键盘")
+    }
+
+    private func exerciseLoginKeyboardDismissal(_ app: XCUIApplication) {
+        let username = app.textFields["login.username"]
+        XCTAssertTrue(username.waitForExistence(timeout: 10))
+        username.tap()
+        username.typeText("student")
+        assertKeyboardDismisses(app, beside: username)
+        username.tap()
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "收起后应能重新聚焦账号")
+
+        let password = app.secureTextFields["login.password"]
+        password.tap()
+        password.typeText("password123")
+        assertKeyboardDismisses(app, beside: password)
+        dismissSavePasswordPrompt(app, timeout: 2)
+        password.tap()
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "收起后应能重新聚焦密码")
+        app.buttons["显示密码"].tap()
+        dismissSavePasswordPrompt(app, timeout: 2)
+        let visiblePassword = app.textFields["login.password.visible"]
+        XCTAssertTrue(visiblePassword.waitForExistence(timeout: 5), "切换密码可见性应保持可操作")
+        let window = app.windows.firstMatch
+        let frame = visiblePassword.frame
+        let keyboard = app.keyboards.element
+        guard !frame.isEmpty, window.frame.contains(frame),
+              !keyboard.exists || !keyboard.frame.intersects(frame) else {
+            recordFailureDiagnostics(app, "login-visible-password-outside-viewport")
+            XCTFail("明文密码输入框应位于可见区域")
+            return
+        }
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: visiblePassword)
+        if XCTWaiter.wait(for: [hittable], timeout: 3) == .completed {
+            visiblePassword.tap()
+        } else {
+            // After SecureField becomes TextField, XCTest can report a visible
+            // field as non-hittable. Tap the verified on-screen field itself.
+            let windowFrame = window.frame
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+                .withOffset(CGVector(dx: frame.midX - windowFrame.minX, dy: frame.midY - windowFrame.minY)).tap()
+        }
+        guard keyboard.waitForExistence(timeout: 5) else {
+            recordFailureDiagnostics(app, "login-visible-password-keyboard-missing")
+            XCTFail("点击明文密码输入框后应出现键盘")
+            return
+        }
+        app.typeText("z")
+        let editedPassword = visiblePassword.value as? String ?? ""
+        XCTAssertEqual(editedPassword.count, "password123".count + 1, "明文密码应能编辑")
+        XCTAssertEqual(editedPassword.replacingOccurrences(of: "z", with: ""), "password123")
+        assertKeyboardDismisses(app, beside: visiblePassword, atMargin: false)
+        dismissSavePasswordPrompt(app, timeout: 2)
+
+        let serverButton = app.buttons["服务连接"]
+        for _ in 0..<5 where !serverButton.isHittable { app.swipeUp() }
+        XCTAssertTrue(serverButton.isHittable)
+        serverButton.tap()
+        let server = app.textFields["login.server"]
+        for _ in 0..<5 where !server.isHittable { app.swipeUp() }
+        XCTAssertTrue(server.isHittable)
+        server.tap()
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5))
+        assertKeyboardDismisses(app, beside: server)
+        server.tap()
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "收起后应能重新聚焦服务地址")
+        let originalAddress = server.value as? String ?? ""
+        let marker = "x" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(8)
+        server.typeText(marker)
+        let editedAddress = server.value as? String ?? ""
+        XCTAssertTrue(editedAddress.contains(marker), "重新聚焦后服务地址应可编辑")
+        XCTAssertEqual(editedAddress.replacingOccurrences(of: marker, with: ""), originalAddress)
+        assertKeyboardDismisses(app, beside: server)
+    }
+
+    func testRememberAccountControlsSessionRestoration() async throws {
+        try await requireDisposableBackend()
+        let account = try await registerAccount()
+        let app = launchSignedOut()
+        try await signIn(app, account: account, remember: false)
+        dismissSavePasswordPrompt(app)
+
+        app.terminate()
+        app.launchArguments = ["-campus.serverURL", root.absoluteString, "-campus.reduceMotion", "YES"]
+        app.launch()
+        let username = app.textFields["login.username"]
+        XCTAssertTrue(username.waitForExistence(timeout: 15), "未记住账号时重启应回到登录页")
+        // XCTest may report an empty field's placeholder as its value.
+        // Typing one character distinguishes that from a retained username.
+        username.tap()
+        username.typeText("z")
+        XCTAssertEqual(username.value as? String, "z", "未记住账号时不应保留用户名")
+        username.typeText(XCUIKeyboardKey.delete.rawValue)
+
+        try await signIn(app, account: account)
+        dismissSavePasswordPrompt(app)
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["打开待办"].waitForExistence(timeout: 25), "记住账号后重启应恢复会话")
+    }
+
+    func testLoginKeyboardDismissal() {
+        exerciseLoginKeyboardDismissal(launchSignedOut())
+    }
+
+    func testLoginKeyboardDismissalInLandscape() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
+        let app = launchSignedOut()
+        let window = app.windows.firstMatch
+        for _ in 0..<20 where window.frame.width <= window.frame.height { usleep(250_000) }
+        XCTAssertGreaterThan(window.frame.width, window.frame.height)
+        exerciseLoginKeyboardDismissal(app)
     }
 
     // MARK: - Workflow
@@ -215,6 +387,13 @@ final class NativeWorkflowTests: XCTestCase {
         let notices = app.buttons["profile.notices"]
         XCTAssertTrue(notices.waitForExistence(timeout: 5)); notices.tap()
         XCTAssertTrue(app.staticTexts["课程与校园通知"].waitForExistence(timeout: 10))
+        let unreadOnly = app.switches["只看未读"]
+        XCTAssertTrue(unreadOnly.waitForExistence(timeout: 5))
+        let initialValue = unreadOnly.value as? String
+        unreadOnly.tap()
+        XCTAssertNotEqual(unreadOnly.value as? String, initialValue, "未读筛选开关应可切换")
+        unreadOnly.tap()
+        XCTAssertEqual(unreadOnly.value as? String, initialValue)
         snapshot(app, "12-notices")
         back(app, expecting: app.staticTexts["更多服务"])
         back(app, expecting: app.buttons["打开待办"])
@@ -262,6 +441,7 @@ final class NativeWorkflowTests: XCTestCase {
     }
 
     private func openFromHome(_ app: XCUIApplication, _ label: String) {
+        dismissSavePasswordPrompt(app)
         let button = app.buttons[label]
         // Let the pop transition finish before scrolling; otherwise the first
         // swipe is swallowed by the navigation animation.
@@ -279,6 +459,7 @@ final class NativeWorkflowTests: XCTestCase {
         }
         for _ in 0..<6 where !isVisible() { app.swipeUp() }
         for _ in 0..<6 where !isVisible() { app.swipeDown() }
+        if !button.isHittable { recordFailureDiagnostics(app, "home-entry-not-hittable") }
         XCTAssertTrue(button.isHittable, "首页入口 \(label) 应可点击")
         button.tap()
     }

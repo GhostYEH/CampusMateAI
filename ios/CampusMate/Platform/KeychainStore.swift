@@ -16,7 +16,11 @@ enum KeychainStore {
     }
 
     static func save(_ session: Session?, server: String) throws {
-        guard let session else { SecItemDelete(baseQuery(server) as CFDictionary); return }
+        guard let session else {
+            let result = SecItemDelete(baseQuery(server) as CFDictionary)
+            guard result == errSecSuccess || result == errSecItemNotFound else { throw StoreError(status: result) }
+            return
+        }
         let data = try JSONEncoder().encode(session)
         let query = baseQuery(server)
         let update = SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
