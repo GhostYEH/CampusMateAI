@@ -1,0 +1,20 @@
+{
+  "protocol_version": 2,
+  "frozen_before_validation_inference": true,
+  "candidate": "gain",
+  "reason_for_new_iteration": "OA plus gain failed the first independent validation. Gain alone had no development-condition regression; it targets amplitude sensitivity rather than noise removal.",
+  "validation": "32 new unique FLEURS dev references after skipping the first 32; explicitly reject all development and first-validation audio/text hashes",
+  "environmental_noise": "Reuse six ESC-50 sources as regression controls, not as unseen noise sources",
+  "gain": {"target_rms": 0.02, "max_gain": 20.0, "peak_limit": 0.95},
+  "research_acceptance": {
+    "quiet_1pct_relative_cer_reduction_at_least": 0.05,
+    "quiet_1pct_utterance_grouped_paired_bootstrap_95ci_upper_below": 0,
+    "overall_cer_regression_at_most": 0,
+    "aggregate_noise_cer_regression_at_most": 0,
+    "clean_cer_regression_at_most": 0,
+    "each_condition_cer_regression_at_most": 0.005,
+    "additional_non_speech_false_positives_at_most": 0,
+    "mean_real_time_factor_below": 0.15
+  },
+  "automatic_application_default_change": false
+}
