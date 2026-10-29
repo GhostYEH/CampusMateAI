@@ -1,0 +1,22 @@
+{
+  "protocol_version": 1,
+  "frozen_before_validation_inference": true,
+  "seed": 73029,
+  "candidate": "oa_gain",
+  "selection_basis": "Lowest development CER tied with OA alone; combination has fewer errors in the three synthetic noise conditions. No validation predictions used.",
+  "development": "Existing five unique FLEURS test utterances, six deterministic conditions, thirteen synthetic non-speech controls",
+  "validation": "First 32 unique references encountered in pinned FLEURS cmn_hans_cn dev archive; six fixed ESC-50 fold-2 sources; nine conditions per utterance",
+  "normalization": {"target_rms": 0.02, "max_gain": 20.0, "peak_limit": 0.95},
+  "enhancement": {"model": "gtcrn_simple.onnx", "original_audio_weight": 0.5},
+  "research_acceptance": {
+    "overall_relative_cer_reduction_at_least": 0.05,
+    "noise_relative_cer_reduction_at_least": 0.05,
+    "clean_cer_regression_at_most": 0,
+    "quiet_1pct_cer_regression_at_most": 0,
+    "each_condition_cer_regression_at_most": 0.005,
+    "additional_non_speech_false_positives_at_most": 0,
+    "utterance_grouped_paired_bootstrap_95ci_upper_below": 0,
+    "mean_real_time_factor_below": 0.15
+  },
+  "automatic_application_default_change": false
+}

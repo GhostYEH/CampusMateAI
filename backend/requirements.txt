@@ -24,6 +24,12 @@ volcengine==1.0.227
 beautifulsoup4==4.12.3
 cryptography==42.0.8
 
+# ===== 本地语音识别(离线 ASR,可选能力) =====
+# SenseVoice 模型在本机 CPU 推理，不联网、不产生调用费用。
+# 模型文件不随仓库分发，安装后运行 python scripts/download_asr_model.py 获取；
+# 缺少本依赖或模型时后端仍可正常启动，仅 /api/v1/assistant/asr 返回 503。
+sherpa-onnx==1.13.8
+
 # ===== 文档解析(可选,按需启用) =====
 # 仅支持 Markdown/TXT 时可注释掉下面两行
 PyPDF2==3.0.1

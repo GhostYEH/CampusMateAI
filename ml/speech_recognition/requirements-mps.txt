@@ -1,0 +1,8 @@
+# Isolated MPS preflight and frozen INT8-encoder / float-CTC-head experiment.
+# This is not the full FunASR training environment.
+torch==2.15.0
+numpy==2.5.4
+onnx==1.23.2
+onnxruntime==1.31.1
+sentencepiece==0.2.2
+kaldi-native-fbank==1.22.4

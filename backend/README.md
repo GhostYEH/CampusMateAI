@@ -147,6 +147,69 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 Docker 镜像仅分发 `data/universities.json`、`data/edu_system_candidates.json` 和 `data/banner_images/` 这三类发布资源，保存于数据卷外的 `/opt/campusmate-release-data`。容器启动时会向 `/app/data` 补齐缺失资源，包括已有卷内缺失的文件；已有同名文件、数据库和用户数据保持原样，重复启动不会覆盖。更新已有发布资源须由维护者单独处理；不要为补齐资源删除数据卷。初始化后入口进程直接执行 Uvicorn，保留可信代理环境变量和正常停止信号。
 
+## 本地语音输入与评测
+
+公开数据下载、VAD 参数扫描、INT8／FP32 和增强对照集中在 [`ml/speech_recognition/`](../ml/speech_recognition/README.md)。该目录提供独立的可复现实验流程，数据、模型和结果不会纳入应用源码或自动改写运行参数。
+
+`POST /api/v1/assistant/asr` 在后端机器运行 SenseVoice INT8，不上传第三方，区别于手机系统语音识别或专注会话实时语音。Web 已接入，移动端本接口仍待适配；完整约定见[语音输入接口](../docs/api/10-assistant-knowledge.md#post-apiv1assistantasr)。
+
+在 `backend/` 中执行以下命令获取声学模型及可选 Silero VAD，模型保存在被忽略的 `data/asr_models/`，不提交仓库。下载时需要网络，推理时不需要：
+
+```powershell
+.venv/Scripts/python.exe scripts/download_asr_model.py --with-vad
+.venv/Scripts/python.exe scripts/download_asr_model.py --with-vad --check
+```
+
+默认 `ASR_VAD_MODEL_PATH=data/asr_models/silero_vad.onnx`，文件存在时用 VAD 判断是否含语音，阈值 `ASR_VAD_THRESHOLD=0.4`；通过后保留整段录音，避免裁掉轻声起音。文件缺失或路径留空会兼容旧能量门控，仍可能漏掉小声和长留白，已有文件损坏则返回 503。Web 不按固定正音量阈值丢弃录音；编码前做低通重采样，后端非 16k 输入使用 sherpa-onnx 原生重采样。VAD 不能分离背景人声或消除混响，强噪声下仍需实录验证。
+
+0.4 现作为实际试用的默认方案，原 0.5 路线保留为历史对照，不再优先推荐。已有 20 句新留出集上，总体 CER 从 11.71% 降至 10.37%，1% 幅度条件从 20.90% 降至 12.85%，非语音非空输出均为 3/60；成对置信区间仍触及 0，不能据此声称普遍稳健或统计显著。决策依据、局限和历史实验见[语音识别实验说明](../ml/speech_recognition/README.md)。已有环境或 `.env` 中显式设置的 `ASR_VAD_THRESHOLD=0.5` 会覆盖新默认；如需采用新默认，改为 0.4 或移除该显式配置后重启后端。阈值仍可在 `(0, 1)` 内按需配置。
+
+`ASR_VAD_RECHECK_ENABLED` 默认开启，使用受限参数（目标 RMS 0.005、最大增益 20、峰值上限 0.95）：首次按配置阈值拒绝且输入可受限增响时，只对分析副本沿用同一阈值再检测一次，识别仍使用完整原音。该默认由新独立验证集决定——24 条未使用中文原句、20 个未使用 ESC-50 fold 5 噪声源、3 个未使用实测 RIR，共 204 条变体，按推理前冻结的协议通过全部门槛：总体 CER 12.97%→10.93%，1% 幅度 CER 21.97%→9.75%，空转写 4→0，噪声非空输出 1→1，clean/10% 幅度/两档噪声/混响零退化，总体分组 95% CI `[-4.33, -0.41]` 个百分点不触零，P95 中位数 +6.4%。历史 0.5 阈值 + 0.02/100 宽增益复检未通过其自身门槛，保持为已停止采用的对照，不能与本次受限组合混同。GTCRN 仍默认关闭；说话人不相交无法证明，真实麦克风与远场待验证，详见[验证结果与复现](../ml/speech_recognition/README.md)。
+
+在 0.4 基线上，受限分析复检（目标 RMS 0.005、最大增益 20，峰值上限 0.95）先在开发集改善小声漏检、通过已查看数据回归，随后在新独立验证集上按预先冻结协议通过全部门槛，因此已成为应用默认。现有实验 CLI 仍支持单独比较检测时长、复检参数和语言模式，不改变应用的 0.1 秒最短语音时长及中文语言默认。最大复检增益必须是大于等于 1 的有限数。
+
+方法依据：[FunAudioLLM / SenseVoice 技术报告（2024）](https://arxiv.org/abs/2407.04051)用于核对现有模型能力；[WhisperX（Interspeech 2023）](https://www.isca-archive.org/interspeech_2023/bain23_interspeech.html)提供 VAD 辅助转写的研究依据，但其 Whisper 分段/批处理收益不能直接移用于本项目；具体检测器复用 [Silero VAD](https://github.com/snakers4/silero-vad) 与现有 sherpa-onnx，不新增训练或推理依赖。本实现只检测语音存在，不宣称复现 WhisperX 的分段算法。
+
+准确率用人工或数据集标注衡量，不能拿模型自己的输出作真值。准备 UTF-8 JSONL，每行 `{"audio":"recording.wav","text":"人工参考转写"}`，音频路径相对清单文件解析；纯噪声样本的 `text` 设为空字符串。录音须为 PCM16LE 单声道 WAV，并与 `ASR_USE_ITN` 的数字格式一致。使用自己有权处理的录音，音频、标注和报告保存在仓库外或被忽略的数据目录。
+
+```powershell
+.venv/Scripts/python.exe scripts/evaluate_asr.py --manifest data/asr_models/evaluation/manifest.jsonl --output data/asr_models/evaluation/report.json
+# 同一份标注对比旧能量门控；空参数显式禁用 VAD
+.venv/Scripts/python.exe scripts/evaluate_asr.py --manifest data/asr_models/evaluation/manifest.jsonl --vad-model-path=
+```
+
+工具报告逐条和微平均字错率 CER、非语音误报率、预热时间及热推理实时率 RTF（推理秒数/音频秒数，越低越快）。评分统一 Unicode NFKC、小写并去掉标点/空白，不自动把口述数字改成阿拉伯数字。冷启动与 WAV 读取不计入热推理 RTF。未安装模型时报告失败，不自动下载。正式评估应覆盖多说话人、实际距离、混响和真实环境噪声；同一句样例的衰减/加噪变体只能定位问题，不能代表真实场景准确率。
+
+### 可选增强：GTCRN 与 Observation Adding
+
+[GTCRN（ICASSP 2024）](https://ieeexplore.ieee.org/document/10448310)提供轻量语音增强，但听感改善不能直接等同于识别改善。[Iwamoto 等（Interspeech 2022）](https://www.isca-archive.org/interspeech_2022/iwamoto22_interspeech.html)及[后续研究（2023）](https://arxiv.org/abs/2311.11599)分析了增强伪影导致 ASR 退化的问题，并用 Observation Adding 混合原音减轻失真。本项目提供同类推理路径：`mixed = w * observed + (1-w) * enhanced`，使用现有 sherpa-onnx 的 GTCRN，不新增 Python 依赖、不训练模型。它是论文方法在当前模型上的可选实验，不是原论文实验的复现。
+
+`ASR_DENOISE_ENABLED=false` 为默认值，`ASR_DENOISE_MODEL_PATH` 默认 `data/asr_models/gtcrn_simple.onnx`。用下载脚本的 `--with-denoiser` 获取约 0.54MB 模型并校验 SHA256；文件存在也不会自动启用。原音先通过 VAD/兼容门控，再进入增强；不根据增强结果再次做 VAD，不裁剪静音或语音片段。`ASR_DENOISE_OBSERVATION_WEIGHT` 范围 `[0,1]`，默认实验值 0.5；0 为纯增强，1 完全使用原音且不要求增强模型。增强输出按 16kHz 与原音对齐，短尾用原音补齐，防止吞掉句尾。显式启用且权重小于 1 时，缺失/损坏模型返回安全 503，推理异常返回 500，不静默改变处理策略。
+
+先按原始录音划分开发集与留出集，同一句的加噪变体必须属于同一划分。在开发集选择权重后，再固定参数测留出集，并逐项查看纯净、小声和不同噪声下的错字，避免总体均值掩盖回退：
+
+```powershell
+.venv/Scripts/python.exe scripts/download_asr_model.py --with-vad --with-denoiser --check
+.venv/Scripts/python.exe scripts/evaluate_asr.py --manifest data/asr_models/evaluation/manifest.jsonl --no-denoise --output data/asr_models/evaluation/raw.json
+.venv/Scripts/python.exe scripts/evaluate_asr.py --manifest data/asr_models/evaluation/manifest.jsonl --denoise --observation-weight 0 --output data/asr_models/evaluation/enhanced.json
+.venv/Scripts/python.exe scripts/evaluate_asr.py --manifest data/asr_models/evaluation/manifest.jsonl --denoise --observation-weight 0.5 --output data/asr_models/evaluation/oa.json
+```
+
+评测报告补充模型、词表、已启用可选模型的 SHA256 和 sherpa-onnx 版本；哈希计算不计入热推理 RTF。`configuration.enhancement_active` 区分配置启用与权重为 1 的原音旁路。增强会增加 CPU 时延，不能仅按听感或降噪模型的 PESQ/STOI 指标决定上线。若使用 [FLEURS](https://huggingface.co/datasets/google/fleurs)等公开样本，保留版本、官方参考、许可证和转换过程；小规模确定性抽样不代表完整公开基准或真实远距离场景。
+
+2026-10-24 的本地诊断使用 FLEURS `cmn_hans_cn/test`、固定版本 `70bb2e84b976b7e960aa89f1c648e09c59f894dd`（CC-BY-4.0）。取官方压缩包前 10 条不同文本，按采集索引偶/奇预先划分 5 条开发、5 条留出；官方 float32/16k 原音直接量化 PCM16，未用识别输出生成标注。每句产生原音、1% 音量、10/0dB 白噪声及 5dB 粉红噪声共五种条件，噪声为固定种子的合成信号，SNR 按整句 RMS 计算。开发集 25 个变体中原音总体 CER 9.94%，纯增强 15.97%，OA 原音权重 0.5 为 11.07%，没有足够依据默认开启。固定该候选权重后，留出集结果如下（208 个参考字符按五种条件重复评分，共 1040 字符）：
+
+| 留出条件 | 原音 CER | 纯增强 CER | OA 原音权重 0.5 CER |
+| --- | ---: | ---: | ---: |
+| 原音 | 6.25% | 6.25% | 6.25% |
+| 1% 音量 | 16.35% | 16.83% | 16.35% |
+| 10dB 白噪声 | 7.69% | 8.17% | 6.73% |
+| 0dB 白噪声 | 13.46% | 26.44% | 13.94% |
+| 5dB 粉红噪声 | 9.62% | 17.31% | 11.06% |
+| 全部变体 | 10.67% | 15.00% | 10.87% |
+
+OA 在中等白噪声的这 5 句中少错 2 字，但总体多错 2 字，不能据此声称普遍提升；该样本规模也不足以给出真实场景准确率。留出变体共约 299 秒，原音热推理约 7.71 秒，OA 约 20.42 秒；时延受 CPU 和负载影响。GTCRN SHA256 为 `e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534`，本轮使用 sherpa-onnx 1.13.8。诊断材料位于被忽略的 `data/asr_models/evaluation_public_v2/`，不作为应用或 CI 依赖。因此保留默认原音路径，需用实际麦克风、噪声和距离另行验证增强是否值得启用。
+
 ## 验证
 
 数据库启动会恢复旧教务绑定及学习反馈表原本声明的外键 / CHECK 约束；历史记录违反约束时会使升级整体回滚并停止启动，保留原数据，不自动删除或猜测修正。内存库借用连接未提交的写入会回滚，组合仓储事务须使用 `Database.transaction()` / `query()` 共享连接，嵌套事务使用保存点。

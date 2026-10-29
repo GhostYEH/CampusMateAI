@@ -243,8 +243,9 @@
 | [webreact/src/data/api.js:671](../../webreact/src/data/api.js) | decideAgentApproval | POST | `/agent-approvals/{approvalId}/decision` | [Agent 运行时、审批、记忆、产物](12-agents.md) |
 | [webreact/src/data/api.js:680](../../webreact/src/data/api.js) | chatStream | POST | `/counselor/chat` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
 | [webreact/src/data/api.js:739](../../webreact/src/data/api.js) | streamAssistantSpeech | POST | `/assistant/tts` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
-| [webreact/src/data/api.js:751](../../webreact/src/data/api.js) | extractNotice | POST | `/notices/extract-multi` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
-| [webreact/src/data/api.js:753](../../webreact/src/data/api.js) | downloadAssignmentAttachment | GET | `/assignments/{assignmentId}/attachments/{attachmentId}` | [课程、班级、公告、作业与提交](03-courses.md) |
+| [webreact/src/data/api.js:765](../../webreact/src/data/api.js) | transcribeSpeech | POST | `/assistant/asr` | [AI 对话、语音与知识库](10-assistant-knowledge.md) |
+| [webreact/src/data/api.js:785](../../webreact/src/data/api.js) | extractNotice | POST | `/notices/extract-multi` | [个人待办、通知提取与通知事务](04-tasks-notices.md) |
+| [webreact/src/data/api.js:787](../../webreact/src/data/api.js) | downloadAssignmentAttachment | GET | `/assignments/{assignmentId}/attachments/{attachmentId}` | [课程、班级、公告、作业与提交](03-courses.md) |
 | [webreact/src/data/http/authEndpoints.js:5](../../webreact/src/data/http/authEndpoints.js) | probeBackend | GET | `/health` | [首页、今日待办、横幅与壁纸](02-home.md) |
 | [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | POST | `/auth/login` | [认证、账号与扫码登录](01-auth.md) |
 | [webreact/src/data/http/authEndpoints.js:9](../../webreact/src/data/http/authEndpoints.js) | login | GET | `/auth/me` | [认证、账号与扫码登录](01-auth.md) |
@@ -306,7 +307,9 @@
 | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | addMagicClassWhiteboard | 受管服务有内部实现，但 CampusMate 网关未注册该公开路径；新前端不能直接调用内部服务 |
 | POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用[课程场景 quiz-attempt 契约](14-magicclass.md) |
 
-覆盖方式：324 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+覆盖方式：325 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+
+`POST /assistant/asr`（本地语音识别）已由 [transcribeSpeech](../../webreact/src/data/api.js) 与 [useVoiceInput](../../webreact/src/hooks/useVoiceInput.js) 接入：MediaRecorder 录音经低通重采样转成 WAV/PCM16LE/16kHz/单声道，以 FormData 的 `audio` 上传；空 `text` 提示"没听清，请再说一次"。前端保留非零小声，由后端可选 Silero VAD 检测。Android、HarmonyOS、微信小程序仍待适配；本轮未验证真机录音。详见[语音输入契约](10-assistant-knowledge.md#post-apiv1assistantasr)。
 
 ## 动态地址与流式调用补充
 

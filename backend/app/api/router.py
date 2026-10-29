@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from .routes import (
     agenda,
     announcements,
+    asr,
     assignments,
     auth,
     classes,
@@ -73,6 +74,8 @@ api_router.include_router(knowledge.router)
 # AI 校园助手:保留 /counselor 兼容旧客户端,并由 counselor 路由显式提供 /assistant/chat 别名
 api_router.include_router(counselor.router)
 api_router.include_router(tts.router)
+# 本地(离线)SenseVoice 语音识别:浏览器录音 → 文本,供 AI 助手语音输入
+api_router.include_router(asr.router)
 api_router.include_router(contributions.router)
 # 认证与用户管理
 api_router.include_router(auth.router)

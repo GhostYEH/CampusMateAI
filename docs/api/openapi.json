@@ -24803,6 +24803,69 @@
           }
         ]
       }
+    },
+    "/api/v1/assistant/asr": {
+      "post": {
+        "tags": [
+          "语音识别"
+        ],
+        "summary": "识别语音输入",
+        "description": "把学生按住说话录到的音频转成文本，供 AI 助手输入框回填。\n\n- 请求为 `multipart/form-data`，字段名 `audio`。\n- 音频约定 WAV / PCM16LE / 16000Hz / 单声道（由客户端录制后就地转换）。\n- 成功一律 200；`text` 为空字符串表示没听清（静音、噪声或只剩标点）。\n- 音频非法或超时长返回 422/413，本地识别未就绪返回 503。",
+        "operationId": "recognize_speech_api_v1_assistant_asr_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_recognize_speech_api_v1_assistant_asr_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "识别完成；text 可能为空字符串，表示没听清",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsrResponse"
+                },
+                "examples": {
+                  "成功": {
+                    "summary": "正常识别",
+                    "value": {
+                      "text": "开饭时间早上9点至下午5点。",
+                      "duration_seconds": 5.59
+                    }
+                  },
+                  "没听清": {
+                    "summary": "静音或噪声，没有可用语音",
+                    "value": {
+                      "text": "",
+                      "duration_seconds": 1.2
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -47327,6 +47390,43 @@
           "file"
         ],
         "title": "Body_upload_self_classroom_material_api_v1_self_classroom_materials_post"
+      },
+      "AsrResponse": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "识别文本；空字符串表示没听清"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Duration Seconds",
+            "description": "服务端实际送入识别的音频时长(秒)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "duration_seconds"
+        ],
+        "title": "AsrResponse",
+        "description": "本地语音识别结果。\n\n`text` 为空字符串表示\"没听清\"（静音、噪声或只剩标点），\n属于正常成功响应，客户端应提示用户重说而不是当错误处理。"
+      },
+      "Body_recognize_speech_api_v1_assistant_asr_post": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "format": "binary",
+            "title": "Audio",
+            "description": "WAV/PCM16LE/16kHz/单声道 音频"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio"
+        ],
+        "title": "Body_recognize_speech_api_v1_assistant_asr_post"
       }
     },
     "securitySchemes": {

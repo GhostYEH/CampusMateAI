@@ -1,6 +1,6 @@
 # AI 对话、语音与知识库
 
-> 对照日期：2026-10-05。本模块共 7 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-24。本模块共 8 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -25,6 +25,7 @@ Web、Android、HarmonyOS、微信小程序的聊天调用已核对：普通短�
 | POST | `/api/v1/assistant/chat` | chat |
 | POST | `/api/v1/counselor/chat` | chat |
 | POST | `/api/v1/assistant/tts` | 合成语音 |
+| POST | `/api/v1/assistant/asr` | 识别语音输入 |
 | POST | `/api/v1/contributions/expression-samples` | 接收用户明确同意后上传的一张已打标图片 |
 | DELETE | `/api/v1/contributions/expression-samples/{sample_id}` | 允许贡献者删除自己上传的样本及其元数据 |
 
@@ -273,6 +274,113 @@ StreamingResponse(container.tts.stream_pcm(text, (req.style or '').strip()), med
 | 422 | HTTPException | '朗读文本不能为空' |
 | 422 | HTTPException | '朗读文本过长' |
 | 503 | HTTPException | '语音服务未配置' |
+
+### `POST /api/v1/assistant/asr`
+
+用途：识别语音输入。
+
+鉴权：Bearer access token；已登录用户。
+
+实现：[backend/app/api/routes/asr.py](../../backend/app/api/routes/asr.py)，`recognize_speech`。
+
+Web 封装：[transcribeSpeech](../../webreact/src/data/api.js)，由 [useVoiceInput](../../webreact/src/hooks/useVoiceInput.js) 调用。
+
+AI 助手对话页"按住说话"的语音输入：客户端录音后转成约定格式上传，服务端用**本地 SenseVoice 模型离线转写**，回填聊天输入框。推理不联网、不调用第三方、不产生费用，音频不落盘。
+
+音频格式约定：**WAV / PCM16LE / 16000Hz / 单声道**，由客户端录制后就地转换。非单声道、非 16 位 PCM、非 WAV 内容返回 422；时长或体积超限返回 413。
+
+空文本语义：`text` 为空字符串**不是错误**，而是约定的"没听清"信号（语音检测未通过、静音、噪声或识别结果只剩标点），客户端应提示用户重说。空文本不能证明录音一定不含语音。
+
+服务端在 `ASR_VAD_MODEL_PATH` 指向的本地文件存在时启用 **Silero VAD**（默认 `data/asr_models/silero_vad.onnx`，通过 `python scripts/download_asr_model.py --with-vad` 获取）；`ASR_VAD_THRESHOLD` 默认 0.4，范围 `(0, 1)`。检测器只判断是否含语音，通过后仍将完整录音交给 SenseVoice，不裁剪轻声起音，不拼接多段文本；不再叠加固定 RMS 或 crest 门限。每次请求重置检测状态，避免上一条录音影响下一条。VAD 不负责降噪，强噪声、背景人声和远距离混响仍可能导致误报或错字。
+
+默认门控由 0.5 调整为 0.4，客户端上传协议与响应不变；服务端改变的是语音检测的放行阈值。0.4 是当前实际试用选择，不代表已证明跨设备或真实远场稳健，依据与局限见[实验记录](../../ml/speech_recognition/README.md)。已有环境或 `.env` 中显式的 `ASR_VAD_THRESHOLD=0.5` 会继续覆盖默认值；要采用新默认，应改为 0.4 或移除该显式配置并重启后端。0.5 仍是有效可配值，但不再作为当前首选默认方案。
+
+可选低幅度复检：`ASR_VAD_RECHECK_ENABLED` 默认 `true`（当前应用默认）。启用且本地 VAD 可用时，仅在首次检测拒绝后计算受限增益；增益大于 1 才对用于分析的增响副本再检测一次，每条录音最多复检一次，沿用 `ASR_VAD_THRESHOLD`。增响副本仅用于 VAD，完整原音和原采样率保留给后续识别流程（包括另行启用的可选增强），不裁剪、不拼接，也不改变 ASR 输入音量。任一次检测通过即可进入后续流程；两次均拒绝或无需增响时返回空 `text`。复检的启用与否不新增请求字段，也不改变响应结构；需要退回单次门控时把 `ASR_VAD_RECHECK_ENABLED` 设为 `false`。
+
+复检参数均为服务端配置，无客户端请求字段：`ASR_VAD_RECHECK_TARGET_RMS` 默认 0.005、范围 `(0, 1)`；`ASR_VAD_RECHECK_MAX_GAIN` 默认 20、范围 `[1, +∞)`；`ASR_VAD_RECHECK_PEAK_LIMIT` 默认 0.95、范围 `(0, 1)`。实际增益取最大增益、目标 RMS / 原音 RMS、峰值上限 / 原音峰值三者的最小值，仅放大且限制峰值；纯静音不复检。数字增益不会提高物理信噪比。默认值来自新独立验证集：24 条未使用中文原句、20 个未使用 ESC-50 fold 5 噪声源、3 个未使用实测 RIR，共 204 条变体；按预先冻结协议（候选、门槛与 3 次重复均在推理前写入）通过全部门槛——总体 CER 12.97%→10.93%，1% 幅度 CER 21.97%→9.75%，空转写 4→0，噪声非空输出保持 1→1，clean/10% 幅度/两档噪声/混响零退化，总体分组 95% CI `[-4.33, -0.41]` 个百分点不触零，P95 中位数 0.495→0.526 秒（+6.4%，在 20% 门槛内）。历史 0.5 阈值 + 0.02/100 宽增益复检仍未通过其自身门槛，保持为已停止采用的对照；本默认只对应受限的 0.005/20 组合，不要把两者混为一谈。说话人不相交无法证明，真实麦克风、远场与浏览器默认降噪仍未验证，详见[验证结果与复现](../../ml/speech_recognition/README.md)。两个检测器按录音重置；复检检测器加载失败仍返回 503 `ASR_UNAVAILABLE`，检测或状态重置失败仍返回 500 `ASR_FAILED`，不增加错误码或暴露内部异常。
+
+VAD 文件缺失或路径留空时，兼容原有能量门控：整段 RMS 低于 `ASR_MIN_RMS`（默认 0.008）或峰值因子 `crest = 最大帧RMS/整段RMS` 低于 `ASR_MIN_CREST`（默认 1.5）返回空文本；短于 `ASR_MIN_DYNAMIC_SECONDS`（默认 0.35 秒）跳过 crest 判据。该回退可能误拒小声、持续语音和留白较多的录音，也可能放过脉冲噪声。已有 VAD 文件损坏或加载失败时返回 503，不静默回退。
+
+配置校验补充：`ASR_VAD_RECHECK_MAX_GAIN` 必须为大于等于 1 的有限数，不接受 NaN 或正负无穷。显式把 `ASR_VAD_RECHECK_ENABLED` 设为 `false` 可回到单次门控；已有环境或 `.env` 中残留的 `ASR_VAD_RECHECK_TARGET_RMS=0.02` / `ASR_VAD_RECHECK_MAX_GAIN=100` 会继续覆盖新默认，要采用受限复检应改为 0.005 与 20，或移除这两项显式配置并重启后端。本接口不因此新增请求字段或改变响应约定。
+
+可选论文增强：`ASR_DENOISE_ENABLED` 默认 `false`，仅服务端配置，无客户端请求字段。显式启用后，原音先通过上述检测，再由本地 GTCRN 增强，并以 `w*原音+(1-w)*增强音` 混合交给 SenseVoice；`w=ASR_DENOISE_OBSERVATION_WEIGHT`，范围 `[0,1]`，默认实验值 0.5。0 为纯增强，1 完全旁路增强且不要求模型。模型默认路径 `ASR_DENOISE_MODEL_PATH=data/asr_models/gtcrn_simple.onnx`，下载命令 `python scripts/download_asr_model.py --with-denoiser`；文件存在不会自动开启。增强可能引入伪影并增加错字，必须用独立标注集验证后再启用；原音 VAD 不重复运行于增强音，不使用 VAD 区间裁剪录音，增强短尾保留原音。显式启用且权重小于 1 时模型缺失/加载失败为 503 `ASR_UNAVAILABLE`，推理失败为 500 `ASR_FAILED`。详见[方法与消融评测](../../backend/README.md#可选增强gtcrn-与-observation-adding)。
+
+Web 下采样到 16kHz 前使用低通滤波抑制混叠；上传前仅拦截空录音、短于 500ms 的误触和电平可用时的全零录音，非零小声和环境噪声交服务端检测。服务端也能将其他有效采样率的单声道 PCM16 WAV 交给 sherpa-onnx 原生重采样；采样率必须大于 0 且不超过 192000Hz，超范围返回 422 `ASR_AUDIO_INVALID`，客户端仍推荐发送约定的 16kHz 格式。WAV 声明的帧数与实际数据不符同样返回 422，不把截断文件当作有效短录音。
+
+模型为可选能力：`sherpa-onnx` 未安装或模型文件缺失时，后端仍正常启动，仅本接口返回 503。模型约 230MB，不随仓库分发，用 [backend/scripts/download_asr_model.py](../../backend/scripts/download_asr_model.py) 获取。
+
+参数：无 path / query / header 参数；Bearer 头按鉴权说明提供。
+
+请求体：`multipart/form-data`，必填；[Body_recognize_speech_api_v1_assistant_asr_post](schemas.md#schema-body_recognize_speech_api_v1_assistant_asr_post)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `audio` | string (binary) | 是 | format="binary" | WAV/PCM16LE/16kHz/单声道 音频 |
+
+上传使用 FormData；字段名按上表；浏览器由运行时生成 multipart boundary。
+
+请求结构示例（占位符需替换；业务约束见字段字典与流程）：
+
+```text
+POST /api/v1/assistant/asr
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data; boundary=<boundary>
+
+--<boundary>
+Content-Disposition: form-data; name="audio"; filename="speech.wav"
+Content-Type: audio/wav
+
+<WAV 二进制：PCM16LE / 16000Hz / 单声道>
+--<boundary>--
+```
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [AsrResponse](schemas.md#schema-asrresponse)；`text` 可能为空字符串表示没听清 |
+| 413 | application/json | 音频超出体积或时长上限，`ASR_AUDIO_TOO_LARGE` / `ASR_AUDIO_TOO_LONG` |
+| 422 | application/json | 音频格式非法或字段缺失，`ASR_AUDIO_INVALID`；运行时为 [统一错误结构](integration.md#errors) |
+| 503 | application/json | 本地识别未就绪（依赖或模型缺失），`ASR_UNAVAILABLE` |
+
+200 响应顶层字段：
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `text` | string | 是 | — | 识别文本；空字符串表示没听清 |
+| `duration_seconds` | number | 是 | minimum=0.0 | 服务端实际送入识别的音频时长(秒) |
+
+响应示例：
+
+```json
+{"text": "开饭时间早上9点至下午5点。", "duration_seconds": 5.592}
+```
+
+没听清时：
+
+```json
+{"text": "", "duration_seconds": 1.0}
+```
+
+路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
+
+| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
+| --- | --- | --- |
+| 413 | 'ASR_AUDIO_TOO_LARGE' | f'录音文件不能超过 {settings.asr_max_upload_mb} MB' |
+| 413 | 'ASR_AUDIO_TOO_LONG' | f'音频时长不能超过 {max_seconds:g} 秒' |
+| 422 | 'ASR_AUDIO_INVALID' | '录音文件为空' |
+| 422 | 'ASR_AUDIO_INVALID' | '音频不是有效的 WAV 文件' |
+| 422 | 'ASR_AUDIO_INVALID' | '音频必须是单声道' |
+| 422 | 'ASR_AUDIO_INVALID' | '音频必须是 16 位 PCM(WAV PCM16LE)' |
+| 422 | 'ASR_AUDIO_INVALID' | '音频数据不完整' |
+| 422 | 'ASR_AUDIO_INVALID' | '音频采样率无效' |
+| 503 | 'ASR_UNAVAILABLE' | '本地语音识别未就绪' |
+| 503 | 'ASR_UNAVAILABLE' | '本地语音识别模型缺失' |
+| 503 | 'ASR_UNAVAILABLE' | '本地语音检测模型加载失败' |
+| 503 | 'ASR_UNAVAILABLE' | '本地语音增强模型缺失' / '本地语音增强模型加载失败' |
+| 500 | 'ASR_FAILED' | '语音识别失败，请重试' |
+
+客户端兼容性：路径、请求字段、响应字段和空文本约定均保持兼容，默认阈值调整不要求客户端新增参数。Web 已接入本接口，继续使用现有编码、录音状态与小声上传逻辑；浏览器麦克风实录和真机环境未验证。Android、HarmonyOS、微信小程序尚未发现调用本接口，仍**待适配**；各端须转换上述 WAV 格式并处理空 `text`。本地识别指后端机器离线推理，不代表这些客户端已在设备端运行模型。服务端单次识别串行执行（模型实例加锁），并发请求排队；时延取决于录音长度、CPU、VAD 和冷启动，可通过[评测工具](../../backend/scripts/evaluate_asr.py)单独测量。
 
 ### `POST /api/v1/contributions/expression-samples`
 

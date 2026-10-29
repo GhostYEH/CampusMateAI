@@ -25,6 +25,17 @@
 
 路径均省略 `/api/v1`。health 的 document_count/chunk_count 及 provider 状态用于诊断；知识库初始化不等于已经存在可回答资料，仍以 knowledge/status 的细分字段判断。
 
+<a id="local-asr"></a>
+## 本地语音输入
+
+`POST /api/v1/assistant/asr` 的完整上传、错误码及客户端适配范围见[语音输入契约](10-assistant-knowledge.md#post-apiv1assistantasr)。成功为 `{ "text": "…", "duration_seconds": 5.592 }`，`text=""` 表示未获得可用文本，客户端提示重说；不保证录音实际不含语音。`duration_seconds` 始终是原上传 WAV 解析出的完整时长，VAD 不裁剪送入识别的录音。
+
+本地 Silero VAD 文件存在时先检测语音，`ASR_VAD_THRESHOLD` 默认由 0.5 调整为 0.4，仍可在 `(0, 1)` 内配置；环境或 `.env` 中显式的 0.5 会继续覆盖默认，如需采用新默认须改为 0.4 或移除该显式值并重启后端。VAD 未安装或配置留空时回退旧能量门控，已有文件加载失败返回 503 `ASR_UNAVAILABLE`。检测与识别失败统一返回 500 `ASR_FAILED`，不透出模型路径或堆栈。截断 WAV 或不在 `(0, 192000]Hz` 范围内的采样率返回 422 `ASR_AUDIO_INVALID`。本轮没有新增接口或字段，Web 沿用现有调用，Android、HarmonyOS、微信小程序仍待适配，Web 真机录音未验证。
+
+可选低幅度复检由服务端 `ASR_VAD_RECHECK_ENABLED` 控制，默认 `true`（本次变更新默认）。启用且本地 VAD 可用时，首次拒绝后，仅对可在目标 RMS 0.005、最大增益 20 和峰值限制 0.95 内放大的分析副本按同一配置阈值再检测一次；每条录音最多复检一次，纯静音和无需增响的输入跳过。副本仅用于检测，后续识别/可选增强仍接收完整原音；`duration_seconds`、客户端请求字段、响应字段和空 `text` 约定保持不变。默认值来自新独立验证集按预先冻结协议通过全部门槛（总体 CER 12.97%→10.93%，1% 幅度 CER 21.97%→9.75%，空转写 4→0，噪声非空输出不增加，其余条件零退化，总体分组 95% CI `[-4.33, -0.41]` 个百分点）；历史 0.5 阈值 + 0.02/100 宽增益复检仍未通过其自身门槛，二者不可混同。复检检测器加载失败使用既有 503 `ASR_UNAVAILABLE`，检测或重置失败使用既有 500 `ASR_FAILED`。参数名称、默认值、范围与依据见[ASR 契约](10-assistant-knowledge.md#post-apiv1assistantasr)。
+
+可选 GTCRN/Observation Adding 默认关闭，由服务端 `ASR_DENOISE_ENABLED` 与原音权重 `ASR_DENOISE_OBSERVATION_WEIGHT` 控制，客户端无需新增参数。启用且权重小于 1 时，缺失/损坏增强模型返回 503 `ASR_UNAVAILABLE`；增强推理或非法输出返回 500 `ASR_FAILED`。不把增强失败伪装成成功，也不透出路径。权重为 1 时原音旁路。无论是否增强，`duration_seconds` 仍为原上传完整时长；详细前置条件见[ASR 契约](10-assistant-knowledge.md#post-apiv1assistantasr)。
+
 <a id="notices"></a>
 ## 通用 Page 的具体元素
 
