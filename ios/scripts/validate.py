@@ -69,7 +69,7 @@ def main():
                     "xcodebuild", "-project", str(repo / "ios/CampusMate.xcodeproj"), "-scheme", "CampusMate",
                     "-configuration", "Debug", "-destination", f"platform=iOS Simulator,id={args.device}",
                     "-derivedDataPath", str(args.derived_data.absolute() if args.derived_data else scratch / "DerivedData"), "-resultBundlePath", str(scratch / "NativeUI.xcresult"),
-                    "CODE_SIGNING_ALLOWED=NO", "-parallel-testing-enabled", "NO", "test",
+                    "-parallel-testing-enabled", "NO", "test",
                 ])
             for index, command in enumerate(commands):
                 log = scratch / f"check-{index + 1}.log"

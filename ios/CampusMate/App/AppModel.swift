@@ -24,7 +24,9 @@ final class AppModel {
         didSet { UserDefaults.standard.set(reduceMotion, forKey: "campus.reduceMotion") }
     }
     @ObservationIgnored private var clientIdentity = UUID()
+    @ObservationIgnored private var appliedSessionRevision: UInt64 = 0
     @ObservationIgnored private var hasStarted = false
+    @ObservationIgnored private var persistSession = false
     @ObservationIgnored private var reminderTask: Task<Void, Never>?
     @ObservationIgnored private var reminderRevision = UUID()
 
@@ -86,24 +88,34 @@ final class AppModel {
         }
         #endif
         let saved = KeychainStore.load(server: serverURL)
-        await client.restore(saved)
-        session = saved
+        persistSession = saved != nil
+        let observedClient = client; let identity = clientIdentity
+        await observedClient.restore(saved)
+        let snapshot = await observedClient.sessionSnapshot
+        guard clientIdentity == identity else { isRestoring = false; return }
+        applySession(snapshot)
         isRestoring = false
-        if saved != nil { await refreshProfile() }
+        if session != nil { await refreshProfile() }
     }
 
     func configureServer(_ address: String) async throws {
         let configuration = try ServerConfiguration(address, allowsInsecureHTTP: Self.allowsHTTP)
         if configuration.baseURL.absoluteString == serverURL { return }
         invalidateReminders()
-        clientIdentity = UUID()
-        await client.restore(nil)
+        let previousClient = client
+        let identity = UUID(); clientIdentity = identity
+        appliedSessionRevision = 0
+        persistSession = false
         client = APIClient(baseURL: configuration.baseURL)
+        let configuredClient = client
         serverURL = configuration.baseURL.absoluteString
         UserDefaults.standard.set(serverURL, forKey: "campus.serverURL")
         scope = UUID()
         session = nil
+        await previousClient.restore(nil)
+        guard clientIdentity == identity else { throw CancellationError() }
         await installObserver()
+        guard clientIdentity == identity else { throw CancellationError() }
         #if DEBUG
         // UI tests start from a known signed-out state without depending on the
         // device keychain left over from a previous run.
@@ -111,21 +123,37 @@ final class AppModel {
             try? KeychainStore.save(nil, server: serverURL)
         }
         #endif
-        let saved = KeychainStore.load(server: serverURL)
-        await client.restore(saved)
-        session = saved
+        // A manual login must authenticate the supplied credentials, even if
+        // the destination server already has a remembered session.
+        let saved = isSigningIn ? nil : KeychainStore.load(server: serverURL)
+        persistSession = saved != nil
+        await configuredClient.restore(saved)
+        let snapshot = await configuredClient.sessionSnapshot
+        guard clientIdentity == identity else { throw CancellationError() }
+        applySession(snapshot, save: !isSigningIn)
     }
 
-    func signIn(username: String, password: String, server: String) async {
+    func signIn(username: String, password: String, server: String, remember: Bool) async {
         guard !isSigningIn else { return }
         isSigningIn = true; errorMessage = nil
         defer { isSigningIn = false }
         do {
             try await configureServer(server)
-            let result = try await client.login(username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
-            try KeychainStore.save(result, server: serverURL)
-            session = result; scope = UUID()
-            UserDefaults.standard.set(username, forKey: "campus.lastUsername")
+            let identity = clientIdentity; let observedClient = client
+            let normalizedUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let result = try await observedClient.login(username: normalizedUsername, password: password)
+            let snapshot = await observedClient.sessionSnapshot
+            guard clientIdentity == identity, let current = snapshot.session, current.user.id == result.user.id else { return }
+            do {
+                try KeychainStore.save(remember ? current : nil, server: serverURL)
+            } catch {
+                await observedClient.restore(nil)
+                throw error
+            }
+            persistSession = remember
+            applySession(snapshot, save: false)
+            if remember { UserDefaults.standard.set(normalizedUsername, forKey: "campus.lastUsername") }
+            else { UserDefaults.standard.removeObject(forKey: "campus.lastUsername") }
         } catch is CancellationError { }
         catch { errorMessage = error.localizedDescription }
     }
@@ -133,44 +161,54 @@ final class AppModel {
     func signOut() async {
         invalidateReminders()
         let previousClient = client
+        clientIdentity = UUID()
+        appliedSessionRevision = 0
+        client = APIClient(baseURL: previousClient.baseURL)
         session = nil; scope = UUID()
-        try? KeychainStore.save(nil, server: serverURL)
+        persistSession = false
+        do { try KeychainStore.save(nil, server: serverURL) }
+        catch { errorMessage = error.localizedDescription }
+        await installObserver()
         await previousClient.logout()
     }
 
     func refreshProfile() async {
         let identity = clientIdentity
         let observedClient = client
-        let userID = session?.user.id
-        let previousUniversity = session?.user.universityID
+        guard let userID = session?.user.id else { return }
         do {
             let value = try await observedClient.request(path: "auth/me")
             let user = try UserProfile(json: value["user"])
             guard clientIdentity == identity, session?.user.id == userID, user.id == userID else { return }
             await observedClient.updateUser(user)
-            let current = await observedClient.currentSession
-            guard clientIdentity == identity, current?.user.id == userID else { return }
-            session = current
-            if previousUniversity != session?.user.universityID { scope = UUID() }
+            let snapshot = await observedClient.sessionSnapshot
+            guard clientIdentity == identity, session?.user.id == userID, snapshot.session?.user.id == userID else { return }
+            applySession(snapshot)
         } catch is CancellationError { }
         catch { if clientIdentity == identity { errorMessage = error.localizedDescription } }
     }
 
     private func installObserver() async {
         let identity = clientIdentity
-        let address = serverURL
         let observedClient = client
-        await client.observeSession { [weak self] session in
+        await observedClient.observeSession { [weak self] snapshot in
             Task { @MainActor [weak self] in
-                let current = await observedClient.currentSession
-                guard let self, self.clientIdentity == identity, current == session else { return }
-                let previousID = self.session?.user.id
-                if previousID != session?.user.id { self.invalidateReminders() }
-                self.session = session
-                if previousID != session?.user.id { self.scope = UUID() }
-                do { try KeychainStore.save(session, server: address) }
-                catch { self.errorMessage = error.localizedDescription }
+                guard let self, self.clientIdentity == identity, !self.isSigningIn else { return }
+                self.applySession(snapshot)
             }
         }
+    }
+
+    private func applySession(_ snapshot: SessionSnapshot, save: Bool = true) {
+        guard snapshot.revision > appliedSessionRevision else { return }
+        appliedSessionRevision = snapshot.revision
+        let previousID = session?.user.id
+        let previousUniversity = session?.user.universityID
+        session = snapshot.session
+        if previousID != session?.user.id { invalidateReminders() }
+        if previousID != session?.user.id || previousUniversity != session?.user.universityID { scope = UUID() }
+        guard save else { return }
+        do { try KeychainStore.save(persistSession ? session : nil, server: serverURL) }
+        catch { errorMessage = error.localizedDescription }
     }
 }

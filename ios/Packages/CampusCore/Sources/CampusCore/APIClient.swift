@@ -53,6 +53,11 @@ public struct DownloadedResource: Sendable {
     public let mimeType: String?
 }
 
+public struct SessionSnapshot: Sendable, Equatable {
+    public let session: Session?
+    public let revision: UInt64
+}
+
 private final class SameOriginRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
@@ -105,11 +110,13 @@ private enum HTTPRuntime {
 public actor APIClient {
     public nonisolated let baseURL: URL
     public private(set) var currentSession: Session?
+    public var sessionSnapshot: SessionSnapshot { SessionSnapshot(session: currentSession, revision: sessionRevision) }
     private let transport: HTTPTransport
     private let streamTransport: HTTPStreamTransport
     private var generation: UInt64 = 0
-    private var refreshTask: Task<TokenPair, any Error>?
-    private var sessionObserver: (@Sendable (Session?) -> Void)?
+    private var refreshTask: Task<Void, any Error>?
+    private var sessionRevision: UInt64 = 0
+    private var sessionObserver: (@Sendable (SessionSnapshot) -> Void)?
 
     public init(baseURL: URL, transport: HTTPTransport? = nil) {
         self.baseURL = baseURL
@@ -123,11 +130,16 @@ public actor APIClient {
         self.streamTransport = streamTransport
     }
 
-    public func observeSession(_ observer: @escaping @Sendable (Session?) -> Void) { sessionObserver = observer }
+    public func observeSession(_ observer: @escaping @Sendable (SessionSnapshot) -> Void) { sessionObserver = observer }
+
+    private func publishSession() {
+        sessionRevision &+= 1
+        sessionObserver?(sessionSnapshot)
+    }
 
     public func restore(_ session: Session?) {
         generation &+= 1; refreshTask?.cancel(); refreshTask = nil
-        currentSession = session; sessionObserver?(session)
+        currentSession = session; publishSession()
     }
 
     @discardableResult
@@ -146,7 +158,7 @@ public actor APIClient {
             user = try UserProfile(json: try JSONValue(data: response.data)["user"])
         }
         let session = Session(tokens: tokens, user: user)
-        currentSession = session; sessionObserver?(session)
+        currentSession = session; publishSession()
         return session
     }
 
@@ -161,7 +173,7 @@ public actor APIClient {
 
     public func updateUser(_ user: UserProfile) {
         guard currentSession?.user.id == user.id else { return }
-        currentSession?.user = user; sessionObserver?(currentSession)
+        currentSession?.user = user; publishSession()
     }
 
     public func request(_ method: HTTPMethod = .get, path: String, query: [String: String] = [:], body: JSONValue? = nil,
@@ -284,24 +296,25 @@ public actor APIClient {
         try validate(epoch)
         guard let session = currentSession else { throw APIError(statusCode: 401, code: "UNAUTHORIZED", message: "登录已失效，请重新登录。") }
         if session.tokens.accessToken != failedToken { return }
-        let task: Task<TokenPair, any Error>
+        let task: Task<Void, any Error>
         if let existing = refreshTask { task = existing }
         else {
             let request = try makeRequest(.post, path: "auth/refresh", body: ["refresh_token": .string(session.tokens.refreshToken)])
-            let transport = self.transport
-            task = Task {
-                let response = try await transport(request)
-                guard (200..<300).contains(response.statusCode) else { throw APIError(response: response) }
-                return try TokenPair(json: JSONValue(data: response.data))
-            }
+            task = Task { try await self.performRefresh(request, expectedGeneration: epoch, failedToken: failedToken) }
             refreshTask = task
         }
+        try await task.value
+        try validate(epoch)
+    }
+
+    private func performRefresh(_ request: URLRequest, expectedGeneration epoch: UInt64, failedToken: String) async throws {
         do {
-            let tokens = try await task.value
+            let response = try await transport(request)
+            guard (200..<300).contains(response.statusCode) else { throw APIError(response: response) }
+            let tokens = try TokenPair(json: JSONValue(data: response.data))
             try validate(epoch)
-            // Another waiter may already have published the same rotation.
             if currentSession?.tokens.accessToken == failedToken {
-                currentSession?.tokens = tokens; sessionObserver?(currentSession)
+                currentSession?.tokens = tokens; publishSession()
             }
             refreshTask = nil
         } catch {

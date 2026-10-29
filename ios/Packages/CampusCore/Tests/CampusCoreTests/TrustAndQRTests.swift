@@ -11,6 +11,11 @@ struct TrustAndQRTests {
         #expect(!URLPolicy.isTrusted("https://user:password@class.example/player", origins: ["https://class.example"]))
         #expect(!URLPolicy.isTrusted("https://127.0.0.1/player", origins: ["https://127.0.0.1"]))
         #expect(!URLPolicy.isTrusted("https://192.168.1.3/player", origins: ["https://192.168.1.3"]))
+        #expect(!URLPolicy.isTrusted("https://127.1/player", origins: ["https://127.1"]))
+        #expect(!URLPolicy.isTrusted("https://2130706433/player", origins: ["https://2130706433"]))
+        #expect(!URLPolicy.isTrusted("https://[fe90::1]/player", origins: ["https://[fe90::1]"]))
+        #expect(!URLPolicy.isTrusted("https://[0:0:0:0:0:ffff:7f00:1]/player", origins: ["https://[0:0:0:0:0:ffff:7f00:1]"]))
+        #expect(URLPolicy.isTrusted("https://[2606:4700:4700::1111]/player", origins: ["https://[2606:4700:4700::1111]"]))
     }
 
     @Test func localDebugIsExplicitAndNeverAnArbitraryOriginException() {

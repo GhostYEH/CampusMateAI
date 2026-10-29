@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import AVFoundation
 import CampusCore
 
@@ -35,8 +36,11 @@ struct LoopingVideoBackground: View {
     }
 
     private func prepare() {
-        guard player == nil,
-              let url = Bundle.main.url(forResource: resource, withExtension: "mp4") else { return }
+        if let player {
+            if playing && scenePhase == .active { player.play() }
+            return
+        }
+        guard let url = Bundle.main.url(forResource: resource, withExtension: "mp4") else { return }
         let item = AVPlayerItem(url: url)
         let queue = AVQueuePlayer(playerItem: item)
         queue.isMuted = true
@@ -75,7 +79,7 @@ struct LoginView: View {
     @State private var remember = true
     @State private var error = ""
     @FocusState private var focusedField: Field?
-    private enum Field { case username, password }
+    private enum Field { case username, passwordHidden, passwordVisible, server }
 
     private let ink = Color(hex: 0x111A31)
     private let blue = Color(hex: 0x596AF0)
@@ -101,29 +105,36 @@ struct LoginView: View {
             ], startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    brand
-                    Spacer().frame(height: 66)
-                    Text("欢迎回到校园")
-                        .font(.system(size: 32, weight: .bold))
-                        .tracking(-0.5)
-                        .foregroundStyle(.white)
-                    Spacer().frame(height: 8)
-                    Text("课程、通知与每一个重要截止，\n都替你稳稳记着。")
-                        .font(.system(size: 13))
-                        .lineSpacing(5)
-                        .foregroundStyle(.white.opacity(0.82))
-                    Spacer().frame(height: 42)
-                    form
+            GeometryReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        brand
+                        Spacer().frame(height: 66)
+                        Text("欢迎回到校园")
+                            .font(.system(size: 32, weight: .bold))
+                            .tracking(-0.5)
+                            .foregroundStyle(.white)
+                        Spacer().frame(height: 8)
+                        Text("课程、通知与每一个重要截止，\n都替你稳稳记着。")
+                            .font(.system(size: 13))
+                            .lineSpacing(5)
+                            .foregroundStyle(.white.opacity(0.82))
+                        Spacer().frame(height: 42)
+                        form
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    .padding(.bottom, 32)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .top)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            KeyboardDismissGesture { dismissKeyboard() }
+                .allowsHitTesting(false)
         }
         .onAppear { address = app.serverURL }
         .errorAlert(Binding(get: { app.errorMessage }, set: { app.errorMessage = $0 }))
@@ -157,7 +168,7 @@ struct LoginView: View {
                     .autocorrectionDisabled()
                     .submitLabel(.next)
                     .focused($focusedField, equals: .username)
-                    .onSubmit { focusedField = .password }
+                    .onSubmit { focusedField = showPassword ? .passwordVisible : .passwordHidden }
                     .accessibilityIdentifier("login.username")
                     .foregroundStyle(formText)
                     .font(.system(size: 14))
@@ -168,28 +179,29 @@ struct LoginView: View {
                     Group {
                         if showPassword {
                             TextField("", text: $password, prompt: Text("请输入密码").foregroundStyle(formMuted))
+                                .focused($focusedField, equals: .passwordVisible)
                                 .accessibilityIdentifier("login.password.visible")
                         } else {
                             SecureField("", text: $password, prompt: Text("请输入密码").foregroundStyle(formMuted))
+                                .focused($focusedField, equals: .passwordHidden)
                                 .accessibilityIdentifier("login.password")
                         }
                     }
                     .textContentType(.password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .submitLabel(.go)
-                    .focused($focusedField, equals: .password)
                     .onSubmit(signIn)
                     .foregroundStyle(formText)
                     .font(.system(size: 14))
 
-                    Button {
+                    PasswordVisibilityButton(isVisible: showPassword) {
+                        let wasFocused = focusedField == .passwordHidden || focusedField == .passwordVisible
                         showPassword.toggle()
+                        if wasFocused { focusedField = showPassword ? .passwordVisible : .passwordHidden }
                         CampusHaptics.selection()
-                    } label: {
-                        Image(systemName: showPassword ? "eye.slash" : "eye")
-                            .font(.system(size: 15))
-                            .foregroundStyle(formMuted)
                     }
-                    .accessibilityLabel(showPassword ? "隐藏密码" : "显示密码")
+                    .frame(width: 44, height: 44)
                 }
             }
 
@@ -217,6 +229,7 @@ struct LoginView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("login.remember")
             .accessibilityAddTraits(remember ? [.isSelected, .isButton] : .isButton)
 
             Button(action: signIn) {
@@ -267,6 +280,7 @@ struct LoginView: View {
     private var serverSettings: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button {
+                if showServer && focusedField == .server { focusedField = nil }
                 withAnimation(.easeInOut(duration: 0.22)) { showServer.toggle() }
             } label: {
                 HStack(spacing: 6) {
@@ -284,6 +298,8 @@ struct LoginView: View {
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($focusedField, equals: .server)
+                        .accessibilityIdentifier("login.server")
                         .font(.system(size: 12))
                         .foregroundStyle(formText)
                         .padding(.horizontal, 12)
@@ -298,15 +314,131 @@ struct LoginView: View {
         .padding(.top, 4)
     }
 
+    private func dismissKeyboard() { focusedField = nil }
+
     private func signIn() {
         guard !app.isSigningIn else { return }
-        focusedField = nil
+        dismissKeyboard()
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             error = "请输入学号、工号或用户名。"; return
         }
         guard !password.isEmpty else { error = "请输入密码后继续。"; return }
         error = ""
-        if remember { UserDefaults.standard.set(username, forKey: "campus.lastUsername") }
-        Task { await app.signIn(username: username, password: password, server: address) }
+        Task { await app.signIn(username: username, password: password, server: address, remember: remember) }
+    }
+}
+
+/// Listens within the login viewport without cancelling controls or scrolling.
+private struct KeyboardDismissGesture: UIViewRepresentable {
+    let dismiss: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(dismiss: dismiss) }
+
+    func makeUIView(context: Context) -> Anchor {
+        let anchor = Anchor()
+        anchor.isUserInteractionEnabled = false
+        anchor.windowChanged = { [weak coordinator = context.coordinator, weak anchor] in
+            guard let coordinator, let anchor else { return }
+            coordinator.attach(to: anchor)
+        }
+        return anchor
+    }
+
+    func updateUIView(_ view: Anchor, context: Context) {
+        context.coordinator.dismiss = dismiss
+        context.coordinator.attach(to: view)
+    }
+
+    static func dismantleUIView(_ view: Anchor, coordinator: Coordinator) {
+        view.windowChanged = nil
+        coordinator.detach()
+    }
+
+    final class Anchor: UIView {
+        var windowChanged: (() -> Void)?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            windowChanged?()
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var dismiss: () -> Void
+        weak var anchor: UIView?
+        weak var window: UIWindow?
+        private var recognizer: UITapGestureRecognizer?
+
+        init(dismiss: @escaping () -> Void) { self.dismiss = dismiss }
+
+        func attach(to anchor: UIView) {
+            self.anchor = anchor
+            guard window !== anchor.window else { return }
+            detach()
+            self.anchor = anchor
+            guard let window = anchor.window else { return }
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(tapped))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            window.addGestureRecognizer(recognizer)
+            self.window = window
+            self.recognizer = recognizer
+        }
+
+        func detach() {
+            if let recognizer { window?.removeGestureRecognizer(recognizer) }
+            recognizer = nil
+            window = nil
+            anchor = nil
+        }
+
+        @objc private func tapped() {
+            window?.endEditing(true)
+            dismiss()
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard let anchor, let window,
+                  anchor.convert(anchor.bounds, to: window).contains(touch.location(in: window)) else { return false }
+            var hit = touch.view
+            while let view = hit {
+                if view is UIControl || view is UITextView { return false }
+                hit = view.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+    }
+}
+
+/// A native button lets the dismiss recognizer distinguish the eye control
+/// from empty space while keeping password editing active.
+private struct PasswordVisibilityButton: UIViewRepresentable {
+    let isVisible: Bool
+    let toggle: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(toggle: toggle) }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        button.addTarget(context.coordinator, action: #selector(Coordinator.pressed), for: .touchUpInside)
+        button.tintColor = UIColor(red: 235 / 255, green: 240 / 255, blue: 1, alpha: 0.74)
+        return button
+    }
+
+    func updateUIView(_ button: UIButton, context: Context) {
+        context.coordinator.toggle = toggle
+        let configuration = UIImage.SymbolConfiguration(pointSize: 15)
+        button.setImage(UIImage(systemName: isVisible ? "eye.slash" : "eye", withConfiguration: configuration), for: .normal)
+        button.accessibilityLabel = isVisible ? "隐藏密码" : "显示密码"
+    }
+
+    final class Coordinator: NSObject {
+        var toggle: () -> Void
+        init(toggle: @escaping () -> Void) { self.toggle = toggle }
+        @objc func pressed() { toggle() }
     }
 }

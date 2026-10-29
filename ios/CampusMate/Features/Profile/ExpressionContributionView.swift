@@ -63,10 +63,12 @@ struct ExpressionContributionView: View {
                           let image = UIImage(data: data) else {
                         throw APIError(code: "IMAGE_UNREADABLE", message: "无法读取这张图片，请换一张 JPG 或 PNG。")
                     }
+                    guard consent, photoItem == item else { return }
                     preview = image
                     label = nil
                     status = nil
                 } catch {
+                    guard consent, photoItem == item else { return }
                     statusIsError = true
                     status = error.localizedDescription
                 }
@@ -128,7 +130,8 @@ struct ExpressionContributionView: View {
     }
 
     private var sourceCard: some View {
-        CampusCard {
+        let primary = palette.primary
+        return CampusCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("选择一张自然状态的正面照片")
                     .campusFont(.subtitle).foregroundStyle(palette.textPrimary)
@@ -154,7 +157,7 @@ struct ExpressionContributionView: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 46)
-                        .background(palette.primary, in: RoundedRectangle(cornerRadius: 14))
+                        .background(primary, in: RoundedRectangle(cornerRadius: 14))
                 }
                 .accessibilityIdentifier("contribution.photo")
                 Text("照片在设备上转换为 JPEG 后才会上传；应用不会保留相册中的原图副本。")

@@ -24,6 +24,9 @@ final class WebLoginBridge {
             return .object(fields)
         }
         let agent = (try? await webView.evaluateJavaScript("navigator.userAgent")) as? String
+        guard self.webView === webView, webView.url?.absoluteString == address else {
+            throw APIError(code: "UNTRUSTED_LOGIN", message: "登录页面已变化，请确认当前页面后重试。")
+        }
         var result: [String: JSONValue] = ["cookie_jar": .array(jar), "current_url": .string(address)]
         if let agent { result["user_agent"] = .string(agent) }
         return .object(result)
@@ -57,7 +60,10 @@ struct TrustedWebView: UIViewRepresentable {
         guard trusted(url) else { Task { @MainActor in onError("页面地址不在可信服务列表中，已停止打开。") }; return }
         view.load(URLRequest(url: url))
     }
-    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) { uiView.stopLoading(); uiView.navigationDelegate = nil }
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        uiView.stopLoading(); uiView.navigationDelegate = nil
+        if coordinator.parent.bridge?.webView === uiView { coordinator.parent.bridge?.webView = nil }
+    }
     private func trusted(_ url: URL) -> Bool { URLPolicy.isTrusted(url.absoluteString, origins: origins, allowLocalDebug: AppModel.allowsHTTP, requiresPublicOrigin: !loginMode) }
 
     @MainActor final class Coordinator: NSObject, WKNavigationDelegate {
