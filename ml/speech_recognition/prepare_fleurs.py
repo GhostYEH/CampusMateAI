@@ -1,4 +1,4 @@
-"""Download a bounded, pinned FLEURS Mandarin validation subset for local research.
+"""Download a bounded, pinned FLEURS Mandarin subset for local research.
 
 Only this preparation command uses the network. Data stays in the ignored data/
 directory; retain official references and provenance rather than model labels.
@@ -12,13 +12,29 @@ import hashlib
 import io
 import json
 import struct
+import time
 import tarfile
+import urllib.error
 import urllib.request
 import wave
 from pathlib import Path
 
 REVISION = "70bb2e84b976b7e960aa89f1c648e09c59f894dd"
 BASE = f"https://huggingface.co/datasets/google/fleurs/resolve/{REVISION}/data/cmn_hans_cn"
+
+
+def open_source(url):
+    """Retry transient public-source connection failures without disabling TLS."""
+    for attempt in range(3):
+        try:
+            return urllib.request.urlopen(url, timeout=30)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if isinstance(exc, urllib.error.HTTPError) and exc.code not in (408, 429, 500, 502, 503, 504):
+                raise
+            if attempt == 2:
+                raise
+            print(f"Transient source connection failure; retry {attempt + 1}/2", flush=True)
+            time.sleep(attempt + 1)
 
 
 def pcm16_wav(data):
@@ -73,27 +89,30 @@ class BoundedReader:
 
 
 def prepare(output, count, max_bytes, *, split="dev", stride=1, offset=0):
-    if not 1 <= count <= 100:
-        raise ValueError("Choose between 1 and 100 source utterances")
-    if split not in ("dev", "test") or not 1 <= stride <= 10:
-        raise ValueError("Use official dev/test split and stride between 1 and 10")
+    if not 1 <= count <= 1000:
+        raise ValueError("Choose between 1 and 1000 source utterances")
+    if split not in ("train", "dev", "test") or not 1 <= stride <= 10:
+        raise ValueError("Use official train/dev/test split and stride between 1 and 10")
     if not 0 <= offset <= 1000:
         raise ValueError("Unique-reference offset must be between 0 and 1000")
     if output.exists():
         raise ValueError("Output directory already exists; preserve prior data/provenance")
     tsv_url = f"{BASE}/{split}.tsv?download=true"
     archive_url = f"{BASE}/audio/{split}.tar.gz?download=true"
-    with urllib.request.urlopen(tsv_url, timeout=30) as response:
+    with open_source(tsv_url) as response:
         tsv = response.read(2 * 1024 * 1024)
     references = {}
     for row in csv.reader(io.StringIO(tsv.decode("utf-8")), delimiter="\t"):
         if len(row) < 4:
             raise ValueError("Unexpected official TSV layout")
         references[row[1]] = {"id": row[0], "raw_text": row[2], "text": row[3]}
+    available = len({row["text"] for row in references.values()})
+    if count > max(0, (available - offset + stride - 1) // stride):
+        raise ValueError("Requested unique-reference count/offset exceeds official metadata")
     records, seen = [], set()
     output.mkdir(parents=True)
     (output / f"{split}.tsv").write_bytes(tsv)
-    with urllib.request.urlopen(archive_url, timeout=30) as response:
+    with open_source(archive_url) as response:
         bounded = BoundedReader(response, max_bytes)
         with tarfile.open(fileobj=bounded, mode="r|gz") as archive:
             for member in archive:
@@ -144,7 +163,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--count", type=int, default=32)
-    parser.add_argument("--split", choices=("dev", "test"), default="dev")
+    parser.add_argument("--split", choices=("train", "dev", "test"), default="dev")
     parser.add_argument("--stride", type=int, default=1,
                         help="Select every Nth unique reference; test/stride=2 reproduces legacy development selection")
     parser.add_argument("--offset", type=int, default=0,

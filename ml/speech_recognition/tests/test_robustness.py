@@ -172,13 +172,32 @@ def test_archive_download_budget_is_enforced():
     assert reader.bytes_read == 4
 
 
+def test_preparation_retries_transient_tls_connections_without_changing_verification(monkeypatch):
+    import urllib.error
+
+    calls = []
+
+    def fetch(url, **kwargs):
+        calls.append((url, kwargs))
+        if len(calls) == 1:
+            raise urllib.error.URLError("transient TLS failure")
+        return io.BytesIO(b"pinned source")
+
+    monkeypatch.setattr(prepare_fleurs.urllib.request, "urlopen", fetch)
+    monkeypatch.setattr(prepare_fleurs.time, "sleep", lambda seconds: None)
+    with prepare_fleurs.open_source("https://example.invalid/pinned") as response:
+        assert response.read() == b"pinned source"
+    assert len(calls) == 2 and all(call[1] == {"timeout": 30} for call in calls)
+
+
 def test_validation_rejects_multiple_candidates_before_inference(tmp_path):
     assert research.main(["--manifest", "missing.jsonl", "--output", str(tmp_path / "out.json"),
                           "--candidates", "baseline", "gain", "oa", "--development-report", "dev.json"]) == 2
     assert not (tmp_path / "out.json").exists()
 
 
-def test_download_selection_strides_unique_references_not_duplicate_recordings(tmp_path, monkeypatch):
+@pytest.mark.parametrize("split", ["test", "train"])
+def test_download_selection_strides_unique_references_not_duplicate_recordings(tmp_path, monkeypatch, split):
     names = ["a.wav", "a2.wav", "b.wav", "c.wav"]
     tsv = "".join(f"{i}\t{name}\traw\t{text}\n" for i, (name, text) in enumerate(
         zip(names, ("相同", "相同", "第二句", "第三句")))).encode()
@@ -186,13 +205,13 @@ def test_download_selection_strides_unique_references_not_duplicate_recordings(t
     with tarfile.open(fileobj=output, mode="w:gz") as archive:
         for name in names:
             audio = float_wav([0.001, -0.001] * 10)
-            member = tarfile.TarInfo("test/" + name)
+            member = tarfile.TarInfo(split + "/" + name)
             member.size = len(audio)
             archive.addfile(member, io.BytesIO(audio))
     monkeypatch.setattr(prepare_fleurs.urllib.request, "urlopen",
                         lambda url, **kwargs: io.BytesIO(tsv if url.split("?")[0].endswith(".tsv") else output.getvalue()))
     target = tmp_path / "data"
-    prepare_fleurs.prepare(target, 2, 1024 * 1024, split="test", stride=2)
+    prepare_fleurs.prepare(target, 2, 1024 * 1024, split=split, stride=2)
     entries = [json.loads(line) for line in (target / "manifest.jsonl").read_text().splitlines()]
     assert [entry["text"] for entry in entries] == ["相同", "第三句"]
     assert [entry["audio"] for entry in entries] == ["000_a.wav", "001_c.wav"]
