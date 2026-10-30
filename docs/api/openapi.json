@@ -24607,7 +24607,7 @@
         "tags": [
           "互动课堂"
         ],
-        "summary": "Self Classroom Status",
+        "summary": "读取自主选题课堂服务状态",
         "operationId": "self_classroom_status_api_v1_self_classroom_status_get",
         "responses": {
           "200": {
@@ -24625,7 +24625,8 @@
           {
             "HTTPBearer": []
           }
-        ]
+        ],
+        "description": "返回课堂生成服务是否可用。服务未启用时安全降级为 enabled=false，不影响课程基础功能。"
       }
     },
     "/api/v1/self-classroom/generate": {
@@ -24633,7 +24634,7 @@
         "tags": [
           "互动课堂"
         ],
-        "summary": "Generate Self Classroom",
+        "summary": "生成自主选题课堂",
         "operationId": "generate_self_classroom_api_v1_self_classroom_generate_post",
         "requestBody": {
           "content": {
@@ -24679,7 +24680,7 @@
         "tags": [
           "互动课堂"
         ],
-        "summary": "Upload Self Classroom Material",
+        "summary": "上传自主选题课堂资料",
         "operationId": "upload_self_classroom_material_api_v1_self_classroom_materials_post",
         "security": [
           {
@@ -24736,7 +24737,7 @@
         "tags": [
           "互动课堂"
         ],
-        "summary": "Self Classroom Job",
+        "summary": "读取自主选题课堂生成进度",
         "operationId": "self_classroom_job_api_v1_self_classroom_jobs__session_id__get",
         "security": [
           {
@@ -24783,7 +24784,7 @@
         "tags": [
           "互动课堂"
         ],
-        "summary": "List Self Classrooms",
+        "summary": "列出我的自主选题课堂",
         "operationId": "list_self_classrooms_api_v1_self_classroom_get",
         "responses": {
           "200": {

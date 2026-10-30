@@ -68,16 +68,26 @@ def _self_student(user: UserRow) -> None:
         raise Forbidden("仅学生可生成互动课堂")
 
 
-@self_router.get("/status", response_model=MagicClassStatusOut)
+@self_router.get(
+    "/status",
+    response_model=MagicClassStatusOut,
+    summary="读取自主选题课堂服务状态",
+)
 async def self_classroom_status(
     user: UserRow = Depends(current_user),
     service: MagicClassClassroomService = Depends(_service),
 ) -> MagicClassStatusOut:
+    """返回课堂生成服务是否可用。服务未启用时安全降级为 enabled=false，不影响课程基础功能。"""
     _self_student(user)
     return MagicClassStatusOut(**await service.status())
 
 
-@self_router.post("/generate", response_model=MagicClassGenerateOut, status_code=202)
+@self_router.post(
+    "/generate",
+    response_model=MagicClassGenerateOut,
+    status_code=202,
+    summary="生成自主选题课堂",
+)
 async def generate_self_classroom(
     req: MagicClassGenerateRequest,
     user: UserRow = Depends(current_user),
@@ -117,7 +127,12 @@ async def generate_self_classroom(
     )
 
 
-@self_router.post("/materials", response_model=MaterialOut, status_code=status.HTTP_201_CREATED)
+@self_router.post(
+    "/materials",
+    response_model=MaterialOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="上传自主选题课堂资料",
+)
 async def upload_self_classroom_material(
     file: UploadFile = File(...),
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
@@ -142,7 +157,11 @@ async def upload_self_classroom_material(
     return MaterialOut(**{key: payload[key] for key in MaterialOut.model_fields if key in payload})
 
 
-@self_router.get("/jobs/{session_id}", response_model=MagicClassSessionOut)
+@self_router.get(
+    "/jobs/{session_id}",
+    response_model=MagicClassSessionOut,
+    summary="读取自主选题课堂生成进度",
+)
 async def self_classroom_job(
     session_id: str,
     user: UserRow = Depends(current_user),
@@ -156,7 +175,11 @@ async def self_classroom_job(
     return MagicClassSessionOut.from_session(await service.poll(session), settings=container.settings)
 
 
-@self_router.get("", response_model=MagicClassClassroomsOut)
+@self_router.get(
+    "",
+    response_model=MagicClassClassroomsOut,
+    summary="列出我的自主选题课堂",
+)
 async def list_self_classrooms(
     user: UserRow = Depends(current_user),
     service: MagicClassClassroomService = Depends(_service),
