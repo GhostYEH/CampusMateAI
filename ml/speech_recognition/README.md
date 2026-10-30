@@ -200,3 +200,29 @@ backend/.venv/bin/python ml/speech_recognition/evaluate_trained_head.py --manife
 FP32 主候选比原始模型多 31 个错误，差值的原句分组 95% 区间为 `[-0.010, +0.531]` 个百分点；纯净条件 84 → 87 个错误、1% 音量 105 → 106、0dB 实录环境噪声 209 → 217。未通过总体/噪声改善、纯净/小声不退化、单条件退化上限和区间门槛。INT8 控制少 1 个错误不能作为测试后切换采用对象的理由；该版本前一独立批也未改善。
 
 这轮证明本机 MPS 训练和兼容导出路径可运行，不能证明准确率优化成功。开发回归集上的浮点收益没有在新测试原句上复现，也不能把失效简单归因于量化。应用默认模型保留原样。后续需要扩大、改进与目标麦克风场景相符的标注数据，并使用另一批未查看的最终留出集；本轮已查看的两批 test 数据只再作为回归数据使用。
+
+## 真实会议语音试探：ARM 端侧候选（2026-10-31）
+
+以 SenseVoice INT8 和原有 Silero VAD 为基线，比较 `padded_trim`、既有 558 步 INT8 输出层和检测阈值 0.2（原应用默认 0.4）。仅探索推理参数，没有重新训练或更改应用配置。目标是未来 ARM Linux CPU 的离线机器人，当前测量在 Apple Silicon Mac 完成，不能作为树莓派的速度、内存或功耗指标。模型约 228 MiB，还不包括运行时内存。
+
+语音来自 [WenetSpeech TEST_MEETING](https://github.com/wenet-e2e/WenetSpeech)，通过 `TwinkStart/WenetSpeech` 镜像的数据服务获取，固定数据修订 `ec930f771e48837e9ec246b1e128a1662ab9ce87`。探索集取索引 4000–4039，固定候选 0.2 后取索引 7000–7039 复核；按音频及标准化文本哈希排除与探索集完全相同的样本。服务返回 Opus，解码后用 sherpa 原生重采样到 16 kHz、保存为 PCM16；记录原音频和转换后哈希。连续抽样并不代表整套数据；数据服务没有提供可验证的会议和说话人身份，**不能证明两个子集按会议或说话人独立，也不能证明预训练未见过这些样本**。分组区间按语句抽样，可能低估相关性；这不是官方完整测试集成绩。此批测试已查看，后续只能作为回归集。
+
+| 指标 | 探索：默认 0.4 | 探索：0.2 | 新片段：默认 0.4 | 新片段：0.2 |
+| --- | ---: | ---: | ---: | ---: |
+| 语音字错误率 CER | 269/1032 = 26.07% | 193/1032 = 18.70% | 86/717 = 11.99% | 73/717 = 10.18% |
+| 语音空转写 | 9/40 | 5/40 | 2/40 | 1/40 |
+| 非语音误报 | 0/13 | 0/13 | 0/19 | 1/19 |
+
+探索控制为 13 条合成噪声/静音；新片段另加 6 条 ESC-50 实录环境噪声控制，这些控制曾用于其他实验，并非新独立噪声测试。新片段 0.2 减去基线的逐句配对 CER 差值 95% 区间为 `[-6.06, 0.00]` 个百分点，触及零；其中一条实录噪声被转为“我”。边界裁剪在新片段上 CER 为 17.57%，已训练输出层仍为 11.99%，均未证明改善。原应用模型与配置保持不变；不得将 0.2 作为通过验收的默认值。语音检测阈值会影响误唤醒，需真实机器人麦克风采集的未见说话人及持续环境噪声、背景人声验证。
+
+运行前在后端环境安装 `requests==2.34.2` 和 `soundfile==0.14.0`，其余依赖复用本模块既有环境。模型及 `head_augmented_558.int8.onnx` 使用上文流程准备；下载涉及外部数据和网络，遵守来源及素材许可。数据服务可能失败或变更修订，脚本拒绝覆盖已有目录并在修订变化时停止。原始数据可能包含其发布方未持有版权的素材；WenetSpeech 官方数据说明对用途有额外限制，正式使用前核对原始素材权利。ESC-50 原始音频为 CC BY-NC 3.0。
+
+```sh
+backend/.venv/bin/python -m pip install requests==2.34.2 soundfile==0.14.0
+backend/.venv/bin/python ml/speech_recognition/meeting_pilot.py fetch --output ml/speech_recognition/data/meeting_pilot_holdout_v2 --offset 4000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_pilot.py fetch --output ml/speech_recognition/data/meeting_pilot_fresh_v1 --offset 7000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_pilot.py run --manifest ml/speech_recognition/data/meeting_pilot_holdout_v2/manifest.jsonl --candidate ml/speech_recognition/runs/head_augmented_558.int8.onnx --output ml/speech_recognition/runs/meeting_exploration_vad.json
+backend/.venv/bin/python ml/speech_recognition/meeting_pilot.py run --manifest ml/speech_recognition/data/meeting_pilot_fresh_v1/manifest.jsonl --candidate ml/speech_recognition/runs/head_augmented_558.int8.onnx --prior ml/speech_recognition/runs/meeting_exploration_vad.json --noise-manifest ml/speech_recognition/data/esc50_head_mixed_test/manifest.jsonl --output ml/speech_recognition/runs/meeting_fresh_reproduced.json
+```
+
+脚本验证两批文本/音频指纹和模型哈希，报告记录完整逐条结果、计分、时间及文件指纹；第一次探索记录的样本和噪声控制须与上表一致。实时率包含识别和门控，不含模型冷加载或机器人系统端到端延迟。数据、报告、`.venv` 和模型均不提交。
