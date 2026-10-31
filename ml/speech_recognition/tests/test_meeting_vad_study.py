@@ -48,10 +48,13 @@ class _FakeEngine:
 
 
 def test_engine_presets_define_baseline_and_gate_variants():
-    assert study.ENGINE_PRESETS["baseline"] == ("default", False)
-    assert study.ENGINE_PRESETS["vad01_gate"] == (0.1, True)
-    assert study.ENGINE_PRESETS["vad02_gate"] == (0.2, True)
-    assert study.ENGINE_PRESETS["vad01"] == (0.1, False)
+    assert study.ENGINE_PRESETS["baseline"][:2] == ("default", False)
+    assert study.ENGINE_PRESETS["vad01_gate"][:2] == (0.1, True)
+    assert study.ENGINE_PRESETS["vad02_gate"][:2] == (0.2, True)
+    assert study.ENGINE_PRESETS["vad01"][:2] == (0.1, False)
+    # Route A and Route B presets carry gate overrides.
+    assert study.ENGINE_PRESETS["vad01_gate_recheck"][2].get("periodic_recheck") is True
+    assert "energy_floor" in study.ENGINE_PRESETS["vad01_gate_lowef"][2]
 
 
 def test_run_refuses_to_overwrite_existing_report(tmp_path, monkeypatch):

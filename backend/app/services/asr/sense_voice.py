@@ -388,6 +388,9 @@ class LocalAsrEngine:
         vad_recheck_peak_limit: float = 0.95,
         vad_periodic_gate_enabled: bool = False,
         vad_periodic_min_voiced_fraction: float = 0.15,
+        vad_periodic_recheck: bool = False,
+        vad_periodic_energy_floor: float = 5e-4,
+        vad_periodic_min_frames: int = 20,
         denoise_enabled: bool = False,
         denoise_model_path: str | Path | None = None,
         denoise_observation_weight: float = 0.5,
@@ -421,6 +424,13 @@ class LocalAsrEngine:
         if not 0 <= vad_periodic_min_voiced_fraction <= 1:
             raise ValueError("VAD periodic minimum voiced fraction must be within [0, 1]")
         self._vad_periodic_min_voiced_fraction = vad_periodic_min_voiced_fraction
+        self._vad_periodic_recheck = bool(vad_periodic_recheck)
+        if not 0 < vad_periodic_energy_floor < 1:
+            raise ValueError("VAD periodic energy floor must be between 0 and 1")
+        self._vad_periodic_energy_floor = vad_periodic_energy_floor
+        if not 1 <= int(vad_periodic_min_frames) <= 10000:
+            raise ValueError("VAD periodic minimum frames must be within 1..10000")
+        self._vad_periodic_min_frames = int(vad_periodic_min_frames)
         self._denoise_enabled = denoise_enabled
         self._denoise_model_path = (
             Path(denoise_model_path) if denoise_model_path else None
@@ -516,7 +526,9 @@ class LocalAsrEngine:
             return
         try:
             self._vad = self._make_vad()
-            if self._vad_recheck_enabled:
+            if self._vad_recheck_enabled or (
+                self._vad_periodic_gate_enabled and self._vad_periodic_recheck
+            ):
                 self._recheck_vad = self._make_vad()
         except Exception as exc:
             self._vad = None
@@ -533,15 +545,20 @@ class LocalAsrEngine:
         self._ensure_vad()
         try:
             if self._vad_periodic_gate_enabled:
-                spans = collect_speech_spans(self._vad, samples, sample_rate)
-                if not spans:
-                    return False
-                fraction, frames = voiced_fraction(samples, sample_rate, spans)
-                # 有能量帧过少（极短/极轻）时无统计意义，保守判为非语音，
-                # 避免把一次噪声脉冲当成语音。
-                if frames < 20:
-                    return False
-                return fraction >= self._vad_periodic_min_voiced_fraction
+                if self._periodic_accepts(samples, sample_rate, self._vad):
+                    return True
+                # 可选：对低幅度输入用既有受限增益的增响副本再做一次检测+确认，
+                # 把原低音量复检并入门控路径，缓解极轻语音被“有能量帧不足”挡掉。
+                if self._vad_periodic_recheck:
+                    boosted, gain = bounded_analysis_gain(
+                        samples,
+                        target_rms=self._vad_recheck_target_rms,
+                        max_gain=self._vad_recheck_max_gain,
+                        peak_limit=self._vad_recheck_peak_limit,
+                    )
+                    if gain > 1.0 and self._periodic_accepts(boosted, sample_rate, self._recheck_vad):
+                        return True
+                return False
             if contains_speech(self._vad, samples, sample_rate):
                 return True
             if not self._vad_recheck_enabled:
@@ -559,6 +576,19 @@ class LocalAsrEngine:
             self._vad = None
             self._recheck_vad = None
             raise AsrError("本地语音检测失败") from exc
+
+    def _periodic_accepts(self, samples, sample_rate, detector) -> bool:
+        """检测段 + 浊音占比确认；能量下限与最少帧数可配置。"""
+        spans = collect_speech_spans(detector, samples, sample_rate)
+        if not spans:
+            return False
+        fraction, frames = voiced_fraction(
+            samples, sample_rate, spans,
+            energy_floor=self._vad_periodic_energy_floor,
+        )
+        if frames < self._vad_periodic_min_frames:
+            return False
+        return fraction >= self._vad_periodic_min_voiced_fraction
 
     def _enhance_audio(
         self, samples: List[float], sample_rate: int

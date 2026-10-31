@@ -56,15 +56,20 @@ def _settings():
     return Settings(_env_file=None, **defaults)
 
 
-# Engine presets: name -> (vad_threshold, periodic_gate)
+# Engine presets: name -> (vad_threshold, gate, gate_overrides)
+# gate_overrides keys: periodic_recheck / energy_floor / min_frames / min_voiced_fraction
 ENGINE_PRESETS = {
-    "baseline": ("default", False),
-    "vad01": (0.1, False),
-    "vad02": (0.2, False),
-    "vad03": (0.3, False),
-    "vad01_gate": (0.1, True),
-    "vad02_gate": (0.2, True),
-    "vad03_gate": (0.3, True),
+    "baseline": ("default", False, {}),
+    "vad01": (0.1, False, {}),
+    "vad02": (0.2, False, {}),
+    "vad03": (0.3, False, {}),
+    "vad01_gate": (0.1, True, {}),
+    "vad02_gate": (0.2, True, {}),
+    "vad03_gate": (0.3, True, {}),
+    # Route A: gate + low-amplitude recheck on the boosted copy.
+    "vad01_gate_recheck": (0.1, True, {"periodic_recheck": True}),
+    # Route B: gate with lower energy floor / min frames (quiet frames count).
+    "vad01_gate_lowef": (0.1, True, {"energy_floor": 1e-4, "min_frames": 8}),
 }
 
 
@@ -75,10 +80,18 @@ def build_engines(names):
     for name in names:
         if name not in ENGINE_PRESETS:
             raise ValueError(f"unknown engine {name}")
-        threshold, gate = ENGINE_PRESETS[name]
+        threshold, gate, overrides = ENGINE_PRESETS[name]
         args = engine_arguments(settings)
         args["vad_threshold"] = settings.asr_vad_threshold if threshold == "default" else threshold
         args["vad_periodic_gate_enabled"] = gate
+        if overrides.get("periodic_recheck"):
+            args["vad_periodic_recheck"] = True
+        if "energy_floor" in overrides:
+            args["vad_periodic_energy_floor"] = overrides["energy_floor"]
+        if "min_frames" in overrides:
+            args["vad_periodic_min_frames"] = overrides["min_frames"]
+        if "min_voiced_fraction" in overrides:
+            args["vad_periodic_min_voiced_fraction"] = overrides["min_voiced_fraction"]
         engines[name] = engine_cls(**args)
         engines[name].ensure_available()
     return engines

@@ -297,3 +297,48 @@ backend/.venv/bin/python -m pytest ml/speech_recognition/tests -q
 ```
 
 数据来源与许可同前（WenetSpeech 官方说明与原始素材权利、ESC-50 CC BY-NC 3.0）。上述数据、模型、报告和日志均留在被忽略目录，不提交。
+
+## 第四轮：门控路径的小声补救，两条路线对比（2026-10-31）
+
+第三轮的“已知退化”表明：门控的单段路径**跳过低幅度复检**且只计 ≥5e-4 的帧，极轻语音会被判空。本轮在**全新留出**会议语音上比较两条补救路线，并同时检查轻声找回与噪声误报：
+- **路线 A（`asr_vad_periodic_recheck`）**：门控检测/确认失败时，对既有低幅度受限增益（目标 RMS 0.005、最大 20、峰值 0.95）的**增响副本**再走一次“检测+浊音确认”，把原复检并入门控路径。
+- **路线 B（`asr_vad_periodic_energy_floor`/`min_frames`）**：不重采样、不增响，仅调低浊音统计能量下限与最少帧数（1e-4 / 8），让更轻帧参与确认。
+
+数据：新开发=索引 2000–2039（40 条），新最终留出=索引 6000–6039（40 条），与 4000/7000/5500/1500 及历史批次按哈希互斥；噪声控制开发 fold 1、最终 fold 2。**小声用音量衰减模拟，非真实耳语/远场**；控制集是回归探针，不是真实误报率；均为 Apple Silicon 开发机结果。选择在最终测试前冻结于 `runs/quiet_selection.json`（本地）。
+
+**开发（40 条，1148 参考字；CER / 空转写）**：
+
+| 条件 | 基线 | 0.1+门（第三轮） | 路线 A：门+复检 | 路线 B：低能量门 |
+| --- | ---: | ---: | ---: | ---: |
+| 原始 | 14.81% / 4 | 6.10% / 0 | **6.10% / 0** | 6.10% / 0 |
+| ×0.1 | 17.51% / 7 | 22.65% / 9 | **6.10% / 0** | 20.91% / 8 |
+| ×0.03 | 19.34% / 7 | 63.85% / 26 | **8.71% / 1** | 39.55% / 16 |
+| ×0.01 | 65.85% / 24 | 100% / 40 | **20.73% / 7** | 87.02% / 35 |
+| 非语音误报 | 0/25 | 0/25 | 0/25 | 0/25 |
+| 平均 RTF | 0.035 | 0.029 | 0.050 | 0.034 |
+
+路线 A 在**所有条件都优于基线**（含原始 6.10% vs 14.81%）、把第三轮在 3%/1% 音量的崩溃基本消除（63.85%→8.71%、100%→20.73%），且 0 噪声误报。路线 B 仅部分缓解（1% 仍 87%），淘汰。据此按冻结规则选 **路线 A（`vad01_gate_recheck`）**。
+
+**最终留出（6000–6039，40 条，此前未查看）**：
+
+| 条件 | 基线 CER | 路线 A CER | 空转写(基线→A) | 配对 95% CI(百分点) |
+| --- | ---: | ---: | ---: | --- |
+| 原始 | 10.10% | **7.10%** | 1→0 | `[-9.60, 0.00]` |
+| ×0.1 | 12.40% | **6.89%** | 3→0 | `[-13.80, 0.00]` |
+| ×0.03 | 13.30% | **6.96%** | 4→0 | `[-14.31, −0.35]` |
+| ×0.01 | 48.96% | **16.09%** | 19→5 | `[-47.70, −19.09]` |
+| 非语音误报 | 0/19 | 0/19 | — | — |
+
+最终测试上路线 A **四个条件全部优于基线**、原始语音无逐句退化（0 句变差、1 句变好）、0 噪声误报；×0.03/×0.01 配对区间上界 <0（显著），原始/×0.1 区间触零（这些条件里漏检是稀疏事件、功效不足，但点估计仍更好且空转写更少）。平均 RTF 约 0.035（基线约 0.028，仍远低于 0.15），门+复检的单条边际开销约 15–20 ms。
+
+**结论与边界**：路线 A 是一个有依据的改进——它保留了门控对正常/近场语音的找回，同时用**既有**受限增益复检补回了小声退化，且未增加所测噪声误报。但：(1) 小声仍是**音量衰减模拟**，真实耳语、远场、混响、指向性麦克风未测；(2) “0 误报”只对所测控制样本成立，持续机器噪声、背景人声未覆盖；(3) 仍未在树莓派/目标机器人实测资源与延迟。因此**仍不设为默认**（`asr_vad_periodic_recheck` 默认关闭、`asr_vad_periodic_gate_enabled` 默认关闭、`ASR_VAD_THRESHOLD` 仍 0.4）。下一轮须在真实机器人麦克风采集的耳语/远场/背景人声与持续机器噪声上复现，并在确定树莓派型号上测 RTF/内存/功耗后，再评估路线 A 是否作为端侧默认。
+
+复现（后端环境需 `requests`/`soundfile`；数据、模型、报告、日志、`.venv` 均不提交）：
+
+```sh
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_quiet_dev  --offset 2000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_quiet_test --offset 6000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_quiet_study.py --manifest ml/speech_recognition/data/meeting_vad_quiet_dev/manifest.jsonl  --engines baseline vad01_gate vad01_gate_recheck vad01_gate_lowef --noise-manifest ml/speech_recognition/data/esc50_vad_study/manifest.jsonl --noise-manifest ml/speech_recognition/data/esc50_head_mixed_test/manifest.jsonl --output ml/speech_recognition/runs/quiet_dev.json
+backend/.venv/bin/python ml/speech_recognition/meeting_quiet_study.py --manifest ml/speech_recognition/data/meeting_vad_quiet_test/manifest.jsonl --engines baseline vad01_gate_recheck --noise-manifest ml/speech_recognition/data/esc50_vad_test/manifest.jsonl --exclude ml/speech_recognition/runs/quiet_dev.json --output ml/speech_recognition/runs/quiet_final.json
+backend/.venv/bin/python -m pytest ml/speech_recognition/tests -q
+```

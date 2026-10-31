@@ -133,3 +133,61 @@ def test_disabled_gate_preserves_any_detected_segment_behaviour():
 def test_invalid_min_voiced_fraction_rejected(value):
     with pytest.raises(ValueError, match="voiced fraction"):
         LocalAsrEngine("m", "t", vad_periodic_min_voiced_fraction=value)
+
+
+def _quiet_harmonic(seconds=1.0, f0=200.0, rate=16000, rms=1e-4):
+    t = np.arange(int(seconds * rate)) / rate
+    signal = (0.5 * np.sin(2 * math.pi * f0 * t) + 0.25 * np.sin(2 * math.pi * 2 * f0 * t))
+    signal = signal / np.sqrt(np.mean(signal * signal)) * rms
+    return signal.astype(np.float64)
+
+
+def test_gate_rejects_quiet_speech_by_default():
+    # Quiet speech sits below the 5e-4 energy floor: no energetic frames -> reject.
+    quiet = _quiet_harmonic()
+    engine = _engine(vad_periodic_gate_enabled=True)
+    engine._ensure_vad = lambda: None
+    engine._vad = _Detector(spans=[_Segment(0, list(quiet))])
+    assert engine._contains_speech(quiet.tolist(), 16000) is False
+
+
+def test_gate_recheck_recovers_quiet_speech():
+    # Route A: recheck boosts the copy to target RMS, so the voiced gate then passes.
+    quiet = _quiet_harmonic()
+    engine = _engine(vad_periodic_gate_enabled=True, vad_periodic_recheck=True)
+    engine._ensure_vad = lambda: None
+    engine._vad = _Detector(spans=[_Segment(0, list(quiet))])
+    engine._recheck_vad = _Detector(spans=[_Segment(0, list(quiet))])
+    assert engine._contains_speech(quiet.tolist(), 16000) is True
+
+
+def test_gate_low_energy_floor_recovers_quiet_speech():
+    # Route B: lowering the energy floor lets quiet frames count without recheck.
+    quiet = _quiet_harmonic()
+    engine = _engine(vad_periodic_gate_enabled=True, vad_periodic_energy_floor=1e-5,
+                     vad_periodic_min_frames=8)
+    engine._ensure_vad = lambda: None
+    engine._vad = _Detector(spans=[_Segment(0, list(quiet))])
+    assert engine._contains_speech(quiet.tolist(), 16000) is True
+
+
+def test_gate_recheck_still_rejects_noise():
+    rng = np.random.default_rng(7)
+    noise = (0.1 * rng.standard_normal(16000)).astype(np.float64)
+    engine = _engine(vad_periodic_gate_enabled=True, vad_periodic_recheck=True)
+    engine._ensure_vad = lambda: None
+    engine._vad = _Detector(spans=[_Segment(0, list(noise))])
+    engine._recheck_vad = _Detector(spans=[_Segment(0, list(noise))])
+    assert engine._contains_speech(noise.tolist(), 16000) is False
+
+
+@pytest.mark.parametrize("value", [0.0, 1.0, -0.1])
+def test_invalid_periodic_energy_floor_rejected(value):
+    with pytest.raises(ValueError, match="energy floor"):
+        LocalAsrEngine("m", "t", vad_periodic_energy_floor=value)
+
+
+@pytest.mark.parametrize("value", [0, -1, 10001])
+def test_invalid_periodic_min_frames_rejected(value):
+    with pytest.raises(ValueError, match="minimum frames"):
+        LocalAsrEngine("m", "t", vad_periodic_min_frames=value)

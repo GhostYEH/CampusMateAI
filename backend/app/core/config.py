@@ -240,6 +240,14 @@ class Settings(BaseSettings):
     # 非语音误报，但尚未在目标机器人麦克风/远场验证，故不设为默认。
     asr_vad_periodic_gate_enabled: bool = False
     asr_vad_periodic_min_voiced_fraction: float = Field(default=0.15, ge=0, le=1)
+    # 门控路径的两项可选补救（默认关闭/保持现状），用于评估极轻语音退化：
+    # periodic_recheck：检测/确认失败时，用既有低幅度受限增益的增响副本再走一次
+    #   检测+浊音确认（即把原低音量复检并入门控路径）。
+    # energy_floor/min_frames：浊音统计的能量下限与最少有能量帧数，调低可让更轻的
+    #   语音参与确认，但也需重新检查噪声误报。
+    asr_vad_periodic_recheck: bool = False
+    asr_vad_periodic_energy_floor: float = Field(default=5e-4, gt=0, lt=1)
+    asr_vad_periodic_min_frames: int = Field(default=20, ge=1, le=10000)
     # 论文 Observation Adding：w*原音 + (1-w)*GTCRN增强音；默认关闭，需独立录音验证。
     asr_denoise_enabled: bool = False
     asr_denoise_model_path: str = "data/asr_models/gtcrn_simple.onnx"
