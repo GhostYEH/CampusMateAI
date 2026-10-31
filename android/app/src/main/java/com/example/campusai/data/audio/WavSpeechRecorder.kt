@@ -90,14 +90,16 @@ class WavSpeechRecorder(
 
     /**
      * Stops capture and writes a PCM16 WAV file. Returns the file, or null if the
-     * recording was cancelled or too short to be useful (< ~0.3s).
+     * recording was cancelled or too short to be useful (< 0.1s).
      */
     fun stop(): File? {
         if (!recording) return null
         recording = false
+        // Stop the recorder first so a blocked AudioRecord.read returns immediately;
+        // only then join the capture thread to avoid racing on `pcm`.
+        try { audioRecord?.stop() } catch (_: Exception) { }
         try { thread?.join(1500) } catch (_: InterruptedException) { }
         thread = null
-        try { audioRecord?.stop() } catch (_: Exception) { }
         try { audioRecord?.release() } catch (_: Exception) { }
         audioRecord = null
         if (cancelled) { outputFile.delete(); return null }
@@ -123,9 +125,10 @@ class WavSpeechRecorder(
     fun cancel() {
         cancelled = true
         recording = false
+        // See stop(): unblock the read before joining the capture thread.
+        try { audioRecord?.stop() } catch (_: Exception) { }
         try { thread?.join(1500) } catch (_: InterruptedException) { }
         thread = null
-        try { audioRecord?.stop() } catch (_: Exception) { }
         try { audioRecord?.release() } catch (_: Exception) { }
         audioRecord = null
         pcm.reset()

@@ -26,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.campusai.data.classroom.ClassroomCall
 import com.example.campusai.data.classroom.ClassroomCallPhase
+import com.example.campusai.ui.components.SpeechInputButton
 
 @Composable
 fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewModel()) {
@@ -36,6 +37,7 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
     var title by remember { mutableStateOf("") }
     var inviteUid by remember(state.room?.id) { mutableStateOf("") }
     var draft by remember(state.room?.id) { mutableStateOf("") }
+    var speechNotice by remember(state.room?.id) { mutableStateOf<String?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
     var microphoneRequestRoom by remember { mutableStateOf<String?>(null) }
     var cameraRequestRoom by remember { mutableStateOf<String?>(null) }
@@ -172,7 +174,15 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
                 Text("${message.name}：${message.content}")
             }
             item {
-                OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000) }, label = { Text("课堂文字消息") }, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000) }, label = { Text("课堂文字消息") }, modifier = Modifier.weight(1f))
+                    SpeechInputButton(
+                        onText = { text -> speechNotice = null; draft = (draft + text).take(2000) },
+                        onMessage = { message -> speechNotice = message },
+                        enabled = !state.busy,
+                    )
+                }
+                speechNotice?.let { Text(it, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.bodySmall) }
                 Button(onClick = { model.send(draft) }, enabled = !state.busy && draft.isNotBlank()) { Text("发送") }
                 TextButton(onClick = model::returnToList, enabled = !state.busy) { Text("断开通话并返回课堂列表") }
                 TextButton(onClick = { confirmLeave = true }, enabled = !state.busy) { Text(if (host) "结束共同课堂" else "退出共同课堂") }
