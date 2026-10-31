@@ -39,6 +39,7 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
     var draft by remember(state.room?.id) { mutableStateOf("") }
     var speechNotice by remember(state.room?.id) { mutableStateOf<String?>(null) }
     var confirmLeave by remember { mutableStateOf(false) }
+    var confirmDiscardMessage by remember { mutableStateOf(false) }
     var microphoneRequestRoom by remember { mutableStateOf<String?>(null) }
     var cameraRequestRoom by remember { mutableStateOf<String?>(null) }
     var microphoneRequestSession by remember { mutableStateOf(-1) }
@@ -71,15 +72,20 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) model.foreground(true)
         onDispose { owner.lifecycle.removeObserver(observer); model.foreground(false) }
     }
-    LaunchedEffect(state.sentVersion) { if (state.sentVersion > 0) draft = "" }
+    LaunchedEffect(state.sentVersion) {
+        // A send can finish after the user has started another message or changed rooms.
+        if (state.sentVersion > 0 && state.sentRoomId == state.room?.id && state.sentDraft == draft) {
+            draft = ""
+        }
+    }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).imePadding(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            TextButton(onClick = onBack) { Text("返回课程") }
+            TextButton(onClick = onBack) { Text("返回") }
             Text("同学一起学", style = MaterialTheme.typography.headlineSmall)
             state.identity?.let { SelectionContainer { Text("我的 UID：${it.uid}") } }
             Text("最多 8 人自由讨论；麦克风和摄像头由你分别开启。", style = MaterialTheme.typography.bodySmall)
@@ -153,11 +159,13 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
                 val peer = call.peers[member.uid]
                 val status = when {
                     member.status == "pending" -> "等待接受邀请"
-                    peer == null -> "未连接通话"
+                    peer == null && !connected -> "加入通话后可查看通话状态"
+                    peer == null -> "未观察到通话状态"
                     peer.audio -> "麦克风已开"
                     else -> "已静音"
                 }
-                VideoTile(model.call, member.uid, "${member.name} · $status", peer?.video == true)
+                VideoTile(model.call, member.uid, "${member.name} · $status", peer?.video == true,
+                    if (peer == null) "暂无视频状态" else "摄像头关闭")
             }
             if (host) item {
                 OutlinedTextField(value = inviteUid, onValueChange = { inviteUid = it.take(128) }, label = { Text("同学 UID") }, modifier = Modifier.fillMaxWidth())
@@ -179,11 +187,16 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
                     SpeechInputButton(
                         onText = { text -> speechNotice = null; draft = (draft + text).take(2000) },
                         onMessage = { message -> speechNotice = message },
-                        enabled = !state.busy,
+                        enabled = !state.busy && state.pendingMessage == null,
                     )
                 }
                 speechNotice?.let { Text(it, color = Color(0xFF8A8A8A), style = MaterialTheme.typography.bodySmall) }
-                Button(onClick = { model.send(draft) }, enabled = !state.busy && draft.isNotBlank()) { Text("发送") }
+                Button(onClick = { model.send(draft) }, enabled = !state.busy && draft.isNotBlank() && state.pendingMessage == null) { Text("发送") }
+                state.pendingMessage?.let { pending ->
+                    Text("上一条消息发送结果不确定，重试会使用原消息 ID：${pending.draft}")
+                    TextButton(onClick = model::retryMessage, enabled = !state.busy) { Text("重试上一条消息") }
+                    TextButton(onClick = { confirmDiscardMessage = true }, enabled = !state.busy) { Text("放弃重试") }
+                }
                 TextButton(onClick = model::returnToList, enabled = !state.busy) { Text("断开通话并返回课堂列表") }
                 TextButton(onClick = { confirmLeave = true }, enabled = !state.busy) { Text(if (host) "结束共同课堂" else "退出共同课堂") }
             }
@@ -196,10 +209,17 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         confirmButton = { TextButton(onClick = { confirmLeave = false; model.leave() }) { Text("确认") } },
         dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("取消") } },
     )
+    if (confirmDiscardMessage) AlertDialog(
+        onDismissRequest = { confirmDiscardMessage = false },
+        title = { Text("放弃重试这条消息？") },
+        text = { Text("服务器可能已经收到这条消息。放弃后再次发送相同内容可能产生重复。") },
+        confirmButton = { TextButton(onClick = { confirmDiscardMessage = false; model.discardPendingMessage() }) { Text("放弃重试") } },
+        dismissButton = { TextButton(onClick = { confirmDiscardMessage = false }) { Text("取消") } },
+    )
 }
 
 @Composable
-private fun VideoTile(call: ClassroomCall, uid: String, label: String, video: Boolean) {
+private fun VideoTile(call: ClassroomCall, uid: String, label: String, video: Boolean, noVideoText: String = "摄像头关闭") {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp)) {
             Text(label)
@@ -210,7 +230,7 @@ private fun VideoTile(call: ClassroomCall, uid: String, label: String, video: Bo
                     onRelease = { call.unbindVideo(uid, it) },
                     update = { call.bindVideo(uid, it) },
                 )
-            } else Text("摄像头关闭", modifier = Modifier.padding(vertical = 20.dp))
+            } else Text(noVideoText, modifier = Modifier.padding(vertical = 20.dp))
         }
     }
 }
