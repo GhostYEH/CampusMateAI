@@ -1,0 +1,63 @@
+{
+  "protocol_version": 1,
+  "stage": "route_A_field_validation",
+  "frozen_at": "2026-10-31",
+  "status": "PRE-REGISTERED PLAN ONLY — no field data collected yet; no result claimed here",
+  "objective": "Decide whether Route A (asr_vad_periodic_gate_enabled + asr_vad_periodic_recheck + ASR_VAD_THRESHOLD lowered) may replace the current default (Silero threshold 0.4 + recheck) as the on-device default, using REAL robot-microphone recordings and a named Raspberry Pi / ARM target.",
+  "comparison": {
+    "baseline": "ASR_VAD_THRESHOLD=0.4, ASR_VAD_RECHECK_ENABLED=true, ASR_VAD_PERIODIC_GATE_ENABLED=false (current shipped default)",
+    "candidate_route_A": "ASR_VAD_THRESHOLD=0.1, ASR_VAD_PERIODIC_GATE_ENABLED=true, ASR_VAD_PERIODIC_RECHECK=true (min_voiced_fraction 0.15, energy_floor 5e-4, min_frames 20)",
+    "same_engine": "Both arms run the same LocalAsrEngine code path; only the VAD/gate settings differ. Same model.int8.onnx (SHA256 recorded)."
+  },
+  "data_requirements": {
+    "must_be_real_recordings": "Captured on the target robot microphone(s) in the deployment acoustic environment. Gain attenuation, synthetic reverb, and TTS are NOT acceptable substitutes for whisper/far-field.",
+    "conditions_required": [
+      "clean near-field speech",
+      "quiet speech (low vocal effort, not attenuated)",
+      "whisper",
+      "far-field (target speaking distance)",
+      "background human speech (other talkers / babble)",
+      "sustained machine noise (fan, motor, vacuum-like, HVAC)",
+      "digital silence / idle room tone"
+    ],
+    "references": "Human-verified transcripts. Model outputs, TTS sources, or model self-predictions must never be used as ground truth.",
+    "independence": "Split by speaker AND by recording session/meeting where possible; train/development/final-test must not overlap by audio or text hash. If speaker/meeting identity cannot be verified, state explicitly that independence is unproven and treat CIs as lower bounds on uncertainty.",
+    "sizes": "Pre-register target counts before recording; each speech condition should have enough utterances that the rare 'VAD-missed whole utterance' event is not carried by 1-2 samples (the 40-utterance batches were underpowered for this). Report achieved counts honestly."
+  },
+  "measurements_required": {
+    "speech": "Per-condition CER, empty-transcript counts, and utterance/recording-grouped paired bootstrap 95% CI (candidate minus baseline).",
+    "non_speech": "False-trigger counts SEPARATED into: real environmental noise, digital silence, background human speech, and any synthetic control — reported per category, not merged into one number.",
+    "per_recording": "Per-recording or per-group breakdown with appropriate uncertainty; do not aggregate away a single bad microphone/session.",
+    "efficiency_on_target_arm_device": "Model file size; steady-state process memory; cold-start time; per-utterance inference time; real-time factor (RTF); and added gate+recheck latency. All measured ON the named target device, not on the Apple Silicon dev machine.",
+    "device_naming": "State the exact Raspberry Pi model / SoC / RAM and OS; do not generalize across devices."
+  },
+  "acceptance_to_change_default": {
+    "rule": "Route A may be recommended as the new default ONLY if ALL of the following hold on the pre-registered real field test:",
+    "checks": [
+      "no_clean_regression: speech CER (clean) <= baseline, and no clean utterance accepted by baseline becomes empty",
+      "quiet_farfield_no_regression: on quiet, whisper, and far-field conditions, speech CER <= baseline AND no lost speech vs baseline",
+      "improvement_or_significance: overall speech CER relative reduction >= 5%, OR the quiet/whisper subset paired 95% CI upper bound < 0",
+      "no_new_false_triggers: false triggers on real environmental noise, silence, background human speech, and sustained machine noise do not exceed baseline in any category",
+      "efficiency: peak RTF < 0.15 and cold-start / memory / added latency within the named device budget (budget fixed before the run)",
+      "reproducibility: model + config + data version/hashes recorded; references are human transcripts"
+    ],
+    "decision": "If any check fails, keep the current default (0.4 + recheck) and record exactly which evidence is missing. Passing does not auto-apply; it only justifies a separate, explicit default-change change with its own review."
+  },
+  "invalid_as_evidence": [
+    "Gain-attenuated audio used to stand in for whisper or far-field (spectrum, reverb, and mic directivity differ).",
+    "Synthetic noise only, or ESC-50 controls reported as a real-world false-trigger rate.",
+    "Small samples (e.g. ~40 utterances) where the whole-utterance VAD-miss event is carried by 1-2 examples.",
+    "Model self-predictions or TTS as reference transcripts.",
+    "Apple Silicon timing/memory presented as Raspberry Pi numbers."
+  ],
+  "current_evidence_and_limits": {
+    "route_A_evidence_so_far": "On fresh held-out WenetSpeech meeting batches (gain-attenuation proxy), Route A improved CER at every condition and added no false positives on the tested controls; paired CI upper bound < 0 at x0.03/x0.01 but still touching 0 at clean/x0.1.",
+    "not_yet_validated": [
+      "real whisper, far-field, reverb, and target-microphone directivity",
+      "sustained machine noise and background human speech",
+      "Raspberry Pi / ARM resource and latency",
+      "meeting/speaker independence and pretraining overlap"
+    ],
+    "shipped_default_unchanged": "asr_vad_periodic_gate_enabled=false, asr_vad_periodic_recheck=false, ASR_VAD_THRESHOLD=0.4"
+  }
+}

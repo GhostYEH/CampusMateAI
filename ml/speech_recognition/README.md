@@ -342,3 +342,5 @@ backend/.venv/bin/python ml/speech_recognition/meeting_quiet_study.py --manifest
 backend/.venv/bin/python ml/speech_recognition/meeting_quiet_study.py --manifest ml/speech_recognition/data/meeting_vad_quiet_test/manifest.jsonl --engines baseline vad01_gate_recheck --noise-manifest ml/speech_recognition/data/esc50_vad_test/manifest.jsonl --exclude ml/speech_recognition/runs/quiet_dev.json --output ml/speech_recognition/runs/quiet_final.json
 backend/.venv/bin/python -m pytest ml/speech_recognition/tests -q
 ```
+
+**下一阶段（预注册，尚未采集任何现场数据）**：以路线 A 对照当前默认，在**真实机器人麦克风**与**指定 ARM 设备**上验证识别效果、误触发与资源消耗。所需条件、测量项、独立性要求、以及“满足哪些条件才可改默认”的判定，已预先冻结在 `vad_route_a_field_protocol.json`：真实录音（非衰减/TTS）、按说话人与录音来源划分、误触发按“真实噪声/静音/背景人声/持续机器噪声”分列、资源在指定设备上实测；任一检查不通过则保留当前默认并记录缺失证据。该文件是计划而非结果。
