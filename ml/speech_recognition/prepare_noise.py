@@ -10,6 +10,7 @@ import csv
 import hashlib
 import io
 import json
+import time
 import urllib.request
 from pathlib import Path
 
@@ -18,11 +19,23 @@ BASE = f"https://raw.githubusercontent.com/karolpiczak/ESC-50/{REVISION}"
 CATEGORIES = ("rain", "wind", "vacuum_cleaner", "washing_machine", "engine", "crackling_fire")
 
 
+def _fetch(url, limit):
+    """Download with a few retries; transient TLS EOFs are common on this host."""
+    last = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as response:
+                return response.read(limit)
+        except OSError as exc:  # includes URLError/SSL errors
+            last = exc
+            time.sleep(2 * (attempt + 1))
+    raise last
+
+
 def prepare(output, fold):
     if output.exists():
         raise ValueError("Output already exists; preserve prior data/provenance")
-    with urllib.request.urlopen(f"{BASE}/meta/esc50.csv", timeout=30) as response:
-        metadata = response.read(1024 * 1024)
+    metadata = _fetch(f"{BASE}/meta/esc50.csv", 1024 * 1024)
     rows = list(csv.DictReader(io.StringIO(metadata.decode("utf-8"))))
     selected, source_ids = [], set()
     for category in CATEGORIES:
@@ -39,8 +52,7 @@ def prepare(output, fold):
     records = []
     for row in selected:
         name = row["filename"]
-        with urllib.request.urlopen(f"{BASE}/audio/{name}", timeout=30) as response:
-            audio = response.read(2 * 1024 * 1024)
+        audio = _fetch(f"{BASE}/audio/{name}", 2 * 1024 * 1024)
         # PCM16 validation/resampling are performed by the existing runtime at evaluation.
         if audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
             raise ValueError("Downloaded noise is not a WAV recording")

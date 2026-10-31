@@ -1,0 +1,48 @@
+{
+  "protocol_version": 1,
+  "study": "meeting_vad_periodic_gate",
+  "frozen_at": "2026-10-31",
+  "purpose": "Decide whether a sensitive Silero threshold plus a periodic (voiced) confirmation gate can recover real meeting speech without adding non-speech false transcriptions, on real WenetSpeech TEST_MEETING speech with human references.",
+  "data": {
+    "source": "TwinkStart/WenetSpeech (HuggingFace mirror), split test_meeting, revision ec930f771e48837e9ec246b1e128a1662ab9ce87",
+    "license_caveat": "Upstream WenetSpeech and underlying audio rights; original audio may include material the publisher does not own. Not asserted as production-deployable data.",
+    "independence_caveat": "Exposed metadata encodes only a row index and speaker S00000; meeting/speaker disjointness and pretraining overlap CANNOT be established.",
+    "development_batches": [
+      {"name": "devA", "offset": 4000, "count": 40, "note": "previously viewed in meeting pilot; development/regression only"},
+      {"name": "devB", "offset": 7000, "count": 40, "note": "previously viewed in meeting pilot; development/regression only"}
+    ],
+    "final_test": {"name": "test", "offset": 5500, "count": 40, "note": "never viewed before freezing this file; audio/text fingerprints verified disjoint from devA, devB and both prior viewed batches"},
+    "viewed_ranges_excluded_from_final": [[4000, 4040], [7000, 7040]]
+  },
+  "noise_controls": {
+    "synthetic": "12 seeded white/pink noise probes plus digital silence (regression only)",
+    "real_dev": "ESC-50 fold 1 (prepare_noise), sources 17367/100210/137296/18527/21896/17150",
+    "real_test": "ESC-50 fold 2 (prepare_noise), sources 101676/102567/104952/106072/18766/106014; src_file disjoint from fold 1",
+    "license_caveat": "ESC-50 original audio is CC BY-NC 3.0; used only as local regression probes, not a real-world false-positive rate."
+  },
+  "baseline": "Application defaults: SenseVoice INT8 sherpa-onnx, Silero VAD threshold 0.4, recheck enabled, denoise off, num_threads 2, language zh, use_itn true.",
+  "candidates": {
+    "vad01_gate": "Silero threshold 0.1 + periodic gate (voiced_fraction >= 0.15)",
+    "vad02_gate": "Silero threshold 0.2 + periodic gate (voiced_fraction >= 0.15)"
+  },
+  "periodic_gate": {
+    "definition": "After Silero reports at least one speech segment at the candidate threshold, compute the fraction of energetic 25 ms frames (10 ms hop, RMS floor 5e-4) whose normalised autocorrelation peak over lags 40-228 (pitch 70-400 Hz) is >= 0.45. Reject if voiced_fraction < 0.15 or if fewer than 20 energetic frames. Accept = candidate has speech segments AND gate passes.",
+    "rationale": "On the viewed data the lower threshold only ever RECOVERS speech and never alters the acoustic hypothesis on utterances 0.4 already accepted; the sole regression is a stationary-wind false transcription. Stationary noise (wind, silence, broadband) is aperiodic, so voiced_fraction separates it from speech. The check is deterministic and runs only on already-detected segments.",
+    "measured_dev_separation": "Real speech voiced_fraction >= 0.26 (min over 77 dev utterances at threshold 0.1); wind 0.01-0.10; silence/broadband 0; only periodic machinery (vacuum/engine) exceeds 0.15 but did not hallucinate text and is therefore not the false-positive driver."
+  },
+  "frozen_selection_rule": "Choose ONE candidate before final inference using development only: (a) non-speech false positives (all controls) must not exceed baseline; (b) lower combined dev CER wins; (c) tie broken by lower peak RTF. No final-test prediction may influence this choice.",
+  "acceptance_gate_for_default_recommendation": {
+    "primary": "final-test speech CER relative reduction vs baseline >= 5%",
+    "significance": "utterance-grouped paired bootstrap 95% CI upper bound < 0",
+    "non_speech": "final-test non-speech false positives (synthetic + fold-2 real noise + silence) do not exceed baseline (baseline expected 0)",
+    "speech_recovery": "no speech utterance accepted by baseline becomes empty under the candidate",
+    "efficiency": "peak RTF < 0.15 and marginal gate cost acceptable",
+    "decision": "Only if ALL pass may the candidate be recommended as a new default; otherwise keep threshold 0.4 + recheck and state the missing evidence."
+  },
+  "explicitly_not_claimed": [
+    "This is NOT a Raspberry Pi measurement; all timings/memory are on an Apple Silicon development machine.",
+    "Meeting/speaker independence and pretraining overlap are unproven.",
+    "The six fold-1/fold-2 ESC-50 recordings are regression probes, not a real-world false-positive rate.",
+    "No retraining is performed; the trained output-head experiments remain unproven and are not used."
+  ]
+}

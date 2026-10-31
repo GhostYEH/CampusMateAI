@@ -134,6 +134,7 @@ from ..services.rag_service import RagService
 from ..services.retrieval_service import RetrievalService
 from ..services.task_breakdown_service import TaskBreakdownService
 from ..services.tts import MiMoTtsClient
+from ..services.asr import LocalAsrEngine
 from ..services.edu import (
     EduConnectorService,
     SchoolRegistry,
@@ -156,6 +157,8 @@ class ServiceContainer:
     model_shadow_runner: ModelShadowRunner
     model_assist_service: ModelAssistService
     tts: Optional[MiMoTtsClient]
+    # 本地(离线)语音识别;模型或依赖缺失时为 None,接口返回 503 而非启动失败
+    asr: Optional[LocalAsrEngine]
     # 多角色仓库
     user_repository: UserRepository
     refresh_token_repository: RefreshTokenRepository
@@ -318,6 +321,33 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             timeout=float(settings.mimo_tts_timeout_seconds),
         )
         if settings.mimo_tts_available
+        else None
+    )
+    # 本地 ASR 引擎：构造不加载模型（首次识别才在锁内懒加载，约 1.1s），
+    # 因此即使 sherpa-onnx 未安装也不影响启动；不可用时保持 None → 接口 503。
+    asr_engine = (
+        LocalAsrEngine(
+            model_path=settings.asr_model_file,
+            tokens_path=settings.asr_tokens_file,
+            num_threads=settings.asr_num_threads,
+            language=settings.asr_language,
+            use_itn=settings.asr_use_itn,
+            vad_model_path=settings.asr_vad_model_file,
+            vad_threshold=settings.asr_vad_threshold,
+            vad_recheck_enabled=settings.asr_vad_recheck_enabled,
+            vad_recheck_target_rms=settings.asr_vad_recheck_target_rms,
+            vad_recheck_max_gain=settings.asr_vad_recheck_max_gain,
+            vad_recheck_peak_limit=settings.asr_vad_recheck_peak_limit,
+            vad_periodic_gate_enabled=settings.asr_vad_periodic_gate_enabled,
+            vad_periodic_min_voiced_fraction=settings.asr_vad_periodic_min_voiced_fraction,
+            denoise_enabled=settings.asr_denoise_enabled,
+            denoise_model_path=settings.asr_denoise_model_file,
+            denoise_observation_weight=settings.asr_denoise_observation_weight,
+            min_rms=settings.asr_min_rms,
+            min_crest=settings.asr_min_crest,
+            min_dynamic_seconds=settings.asr_min_dynamic_seconds,
+        )
+        if settings.asr_available
         else None
     )
     notice = NoticeExtractionService(llm, settings)
@@ -582,6 +612,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         llm=llm,
         model_shadow_runner=model_shadow_runner,
         tts=tts,
+        asr=asr_engine,
         user_repository=user_repository,
         refresh_token_repository=RefreshTokenRepository(db),
         course_repository=course_repo,

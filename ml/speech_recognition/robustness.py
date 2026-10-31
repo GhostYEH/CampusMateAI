@@ -124,6 +124,8 @@ def engine_arguments(settings):
         vad_recheck_target_rms=settings.asr_vad_recheck_target_rms,
         vad_recheck_max_gain=settings.asr_vad_recheck_max_gain,
         vad_recheck_peak_limit=settings.asr_vad_recheck_peak_limit,
+        vad_periodic_gate_enabled=settings.asr_vad_periodic_gate_enabled,
+        vad_periodic_min_voiced_fraction=settings.asr_vad_periodic_min_voiced_fraction,
         denoise_enabled=settings.asr_denoise_enabled,
         denoise_model_path=settings.asr_denoise_model_file,
         denoise_observation_weight=settings.asr_denoise_observation_weight,

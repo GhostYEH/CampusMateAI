@@ -226,3 +226,63 @@ backend/.venv/bin/python ml/speech_recognition/meeting_pilot.py run --manifest m
 ```
 
 脚本验证两批文本/音频指纹和模型哈希，报告记录完整逐条结果、计分、时间及文件指纹；第一次探索记录的样本和噪声控制须与上表一致。实时率包含识别和门控，不含模型冷加载或机器人系统端到端延迟。数据、报告、`.venv` 和模型均不提交。
+
+## 第三轮：周期性（浊音）确认门，降低真实会议漏检且不加非语音误报（2026-10-31）
+
+第二轮暴露的问题：把 Silero 阈值从 0.4 降到 0.2 能找回被默认门漏掉的整句，但会在平稳风噪上新增一次「我。」误识别，且配对区间触及零。本轮先做**误差归因**，再据此设计一个可端侧部署的轻量门。
+
+**误差归因（已查看数据，仅作开发/回归）**：在 4000–4039 与 7000–7039 两批上，把 0.2 与默认 0.4 逐条对照，得到两个确定结论：
+1. **降阈值只“找回”、不改写**：凡是 0.4 已接受的语句，0.2 的识别结果与之**逐字相同**（共享句改变数 0）；0.2 的全部收益来自把默认门判空、而参考确实有字的整句重新识别出来。
+2. **唯一退化是平稳噪声误报**：0.2 唯一的坏例是 5 秒风噪被转成「我。」。真实语音的漏检是 **VAD 问题**，非语音误报也是 **VAD/门控问题**；声学模型本身的替换错误在两种阈值下完全相同。因此本轮的杠杆在门控，而不是重训声学模型（已有输出层训练在两轮独立样本上均未证明改善，本轮不采用）。
+
+据此设计 **周期性（浊音）确认门**：用较低阈值让 Silero 找出候选语音段，再检查这些检测段内是否存在足够比例的**浊音帧**（25 ms 帧、10 ms 跳、归一化自相关峰 ≥0.45 于 70–400 Hz 基频区间；占比 ≥0.15 且有能量帧 ≥20 才接受）。静音、风噪、宽带噪声是非周期的，真实语音是周期的。该判据确定性、只作用于已检测段、无新模型、无训练；与论文无关（未借用任何论文指标）。工程上它作为 `LocalAsrEngine` 的可配置分支实现（`asr_vad_periodic_gate_enabled`，**默认关闭**），实验直接实例化同一后端类，故报告数字即部署代码路径。
+
+**数据与协议**：仍用 WenetSpeech TEST_MEETING（固定修订），但重新划分：开发=已查看的 4000–4039 与 7000–7039（各 40 条）；**最终留出**=此前未查看的索引 5500–5539（40 条）与 1500–1599（100 条），按音频/文本哈希与开发及历史批次互斥。非语音控制：内置 12 条合成噪声+静音；开发用 ESC-50 fold 1（6 源），最终用 fold 2（6 源，与 fold 1 底层 `src_file` 不相交）。**无法证明会议/说话人独立**（`sid` 只编码行号、说话人恒为 `S00000`），也未证明预训练未见过；这些都是回归探针，不是真实误报率。协议在选择前冻结于 `vad_study_protocol.json`，选择记录于 `runs/vad_selection.json`（本地，不提交）。
+
+**开发结果（各 40 条，合并 1749 个参考字；控制 50 条）**：
+
+| 引擎 | 合并 CER | 非语音误报 | 平均 RTF |
+| --- | ---: | ---: | ---: |
+| 默认 0.4（基线） | 355/1749 = 20.30% | 0/50 | 0.020 |
+| 0.1（无门） | 170/1749 = 9.72% | 18/50 | 0.026 |
+| 0.2（无门） | 266/1749 = 15.21% | 2/50 | 0.022 |
+| **0.1 + 浊音门** | **187/1749 = 10.69%** | **0/50** | 0.028 |
+| 0.2 + 浊音门（次级对照） | 266/1749 = 15.21% | 0/50 | 0.025 |
+
+浊音门把无门 0.1 的 18 条非语音误报**全部**挡掉（含风噪与真空吸尘器等），同时几乎不损失语音找回（0.1 无门 9.72% → 带门 10.69%，差异来自被门挡掉的极短/极轻检测段）。开发上 0.1+门 CER 最低且 0 误报，故按冻结规则（先 0 误报、再最低 CER、再较低 RTF）**在跑最终测试前**选定 `vad01_gate`；`vad02_gate` 仅作预注册次级对照。开发数据上该候选对 0.4 已接受句**仍 0 改变、0 丢失**，只找回（A 6 条、B 2 条）。
+
+**最终留出（此前未查看）**：
+
+| 数据 | 基线 CER | 候选(0.1+门) CER | 空转写(基线→候选) | 非语音误报 | 配对 95% CI(百分点) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 5500–5539（40 条，1345 字） | 172/1345 = 12.79% | 145/1345 = 10.78% | 2→0 | 0/19 → 0/19 | `[-5.91, 0.00]` |
+| 1500–1599（100 条，3496 字） | 314/3496 = 8.98% | 225/3496 = 6.44% | 5→1 | 0/19 → 0/19 | `[-5.81, -0.34]` |
+
+两批均满足：总体 CER 相对下降 ≥5%（40 条 −15.7%、100 条 −28.3%）；**非语音误报不增加**（两批均 0/19，含 fold-2 六条新实录噪声）；**无语音被丢失**（0 条 0.4 已接受句变空），仅找回（40 条 2 句、100 条 4 句）；RTF 0.021→0.027 / 0.024→0.030，仍远低于 0.15。**显著性**：40 条批次配对区间上界为 0.00（触零，样本对“漏检句”过小、功效不足）；100 条确认批次配对区间上界 −0.34 个百分点，**<0，达到预注册显著性门槛**。
+
+**端侧资源（开发机实测，非树莓派）**：模型 `model.int8.onnx` 239,233,841 字节（≈228 MiB，SHA256 `c71f0ce0…2cd51`）。进程峰值 RSS 约 776–872 MiB（含 Python、onnxruntime 与四/两套引擎，非单引擎稳态；ARM 端需另测）；冷启动（构造+加载识别器）约 0.5–1.3 s；平均 RTF 约 0.021–0.030（含门控与识别，不含冷加载）；浊音门单条边际耗时约 5–7 ms。这些是 Apple Silicon 结果，**不能**作为树莓派速度/内存/功耗结论；ARM Linux CPU 需单独实测。
+
+**结论与风险**：
+- 建议：把「低阈值 + 浊音确认门」作为**目标机器人端侧的可选增强**记录并保留实现；由于缺乏目标设备麦克风/远场/背景人声证据，且全链路默认行为不应在未验证前改变，**实现默认关闭**，不直接改默认。若后续在树莓派真实麦克风上复现零误报且不退化，再评估设为默认。
+- 未验证风险：会议/说话人独立性无法证明；浊音门对**有周期性但非语音**的机器声（真空、引擎）不会拒绝——本轮这些并未造成误识别，但持续强周期噪声下仍可能误触发；背景人声、耳语、强混响、真实远场未覆盖；样本量仍偏小（对“漏检句”这一稀有事件尤甚）。
+- 与论文/其他模型：本轮不依赖论文结论；未替换模型，未采用输出层训练产物；公开榜单不能代替本机同数据对比。
+
+复现（后端环境需 `requests`/`soundfile`；数据、模型、报告、日志、`.venv` 均不提交）：
+
+```sh
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_dev  --offset 4000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_devB --offset 7000 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_test --offset 5500 --count 40
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py fetch --output ml/speech_recognition/data/meeting_vad_test2 --offset 1500 --count 100
+backend/.venv/bin/python ml/speech_recognition/prepare_noise.py --output ml/speech_recognition/data/esc50_vad_study --fold 1
+backend/.venv/bin/python ml/speech_recognition/prepare_noise.py --output ml/speech_recognition/data/esc50_vad_test --fold 2
+# 开发（先跑，冻结选择到 runs/vad_selection.json）
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py run --manifest ml/speech_recognition/data/meeting_vad_dev/manifest.jsonl  --engines baseline vad01 vad02 vad01_gate vad02_gate --noise-manifest ml/speech_recognition/data/esc50_vad_study/manifest.jsonl --noise-manifest ml/speech_recognition/data/esc50_head_mixed_test/manifest.jsonl --output ml/speech_recognition/runs/meeting_vad_devA_v2.json
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py run --manifest ml/speech_recognition/data/meeting_vad_devB/manifest.jsonl --engines baseline vad01 vad02 vad01_gate vad02_gate --noise-manifest ml/speech_recognition/data/esc50_vad_study/manifest.jsonl --noise-manifest ml/speech_recognition/data/esc50_head_mixed_test/manifest.jsonl --output ml/speech_recognition/runs/meeting_vad_devB_v2.json
+# 最终留出（选择冻结后）
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py run --manifest ml/speech_recognition/data/meeting_vad_test/manifest.jsonl  --engines baseline vad01_gate --noise-manifest ml/speech_recognition/data/esc50_vad_test/manifest.jsonl --exclude ml/speech_recognition/runs/meeting_vad_devA_v2.json --exclude ml/speech_recognition/runs/meeting_vad_devB_v2.json --output ml/speech_recognition/runs/meeting_vad_final_v2.json
+backend/.venv/bin/python ml/speech_recognition/meeting_vad_study.py run --manifest ml/speech_recognition/data/meeting_vad_test2/manifest.jsonl --engines baseline vad01_gate --noise-manifest ml/speech_recognition/data/esc50_vad_test/manifest.jsonl --exclude ml/speech_recognition/runs/meeting_vad_devA_v2.json --exclude ml/speech_recognition/runs/meeting_vad_devB_v2.json --exclude ml/speech_recognition/runs/meeting_vad_final_v2.json --output ml/speech_recognition/runs/meeting_vad_confirm100_v2.json
+backend/.venv/bin/python -m pytest ml/speech_recognition/tests -q
+```
+
+数据来源与许可同前（WenetSpeech 官方说明与原始素材权利、ESC-50 CC BY-NC 3.0）。上述数据、模型、报告和日志均留在被忽略目录，不提交。

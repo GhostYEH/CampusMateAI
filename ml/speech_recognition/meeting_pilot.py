@@ -33,9 +33,17 @@ def fetch(output: Path, offset: int, count: int):
         raise ValueError('output already exists; refusing to overwrite')
     if offset < 0 or not 1 <= count <= 100:
         raise ValueError('offset must be nonnegative and count between 1 and 100')
-    response = requests.get(API, params={'dataset': DATASET, 'config': 'default',
-                            'split': 'test_meeting', 'offset': offset, 'length': count}, timeout=30)
-    response.raise_for_status()
+    response = None
+    for attempt in range(4):
+        try:
+            response = requests.get(API, params={'dataset': DATASET, 'config': 'default',
+                                    'split': 'test_meeting', 'offset': offset, 'length': count}, timeout=30)
+            response.raise_for_status()
+            break
+        except requests.RequestException:
+            if attempt == 3:
+                raise
+            time.sleep(2 * (attempt + 1))
     rows = response.json()['rows']
     if len(rows) != count or [r['row_idx'] for r in rows] != list(range(offset, offset + count)):
         raise ValueError('unexpected dataset rows')

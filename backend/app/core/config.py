@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List, Literal
 from urllib.parse import urlparse
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 云元数据/保留主机名：任何环境都不允许作为浏览器公开 Origin
@@ -197,6 +197,64 @@ class Settings(BaseSettings):
     mimo_tts_timeout_seconds: int = 60
     mimo_tts_max_chars: int = 4000
     mimo_tts_sample_rate: int = 24000
+
+    # ===== 本地语音识别（SenseVoice / sherpa-onnx，纯本地推理） =====
+    # 模型与词表文件不随仓库分发，需用 backend/scripts/download_asr_model.py
+    # 下载到 backend/data/asr_models/（已被根 .gitignore 忽略）。
+    # 依赖或模型缺失时只关闭本能力：容器不构造引擎，/assistant/asr 返回 503，
+    # 后端启动与其他接口不受影响。
+    asr_enabled: bool = True
+    # 相对路径按 backend/ 根目录解析（同 knowledge_base_path）。
+    asr_model_path: str = (
+        "data/asr_models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/model.int8.onnx"
+    )
+    asr_tokens_path: str = (
+        "data/asr_models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tokens.txt"
+    )
+    # 模型推理线程数。取 CPU 核心数的一小部分，避免并发请求把整机打满。
+    asr_num_threads: int = 2
+    # SenseVoice 语言选项：zh/en/ja/ko/yue/auto，留空表示自动检测。
+    asr_language: str = "zh"
+    # 逆文本归一化：把"二零二六年"这类口语数字整理成可读形式。
+    asr_use_itn: bool = True
+    # 小型 Silero VAD；文件存在时启用，缺失/留空时回退到下方能量门控。
+    # VAD 只判断是否含语音，不截断原录音。用 download_asr_model.py --with-vad 获取。
+    asr_vad_model_path: str = "data/asr_models/silero_vad.onnx"
+    asr_vad_threshold: float = Field(default=0.4, gt=0, lt=1)
+    # 低幅度受限复检：首次 VAD 拒绝且输入低于目标 RMS 时，仅对用于分析的
+    # 增响副本按配置的 VAD 阈值再检测一次；识别仍使用完整原音，不裁剪、不改音量。
+    # 新独立验证集（24 条新原句/20 个新噪声源/3 个未用过实测 RIR，204 条变体）
+    # 已按预先冻结的协议通过全部门槛：总体 CER 12.97%→10.93%、1% 幅度
+    # CER 21.97%→9.75%、空转写 4→0、噪声非空输出 1→1、其余条件零退化，
+    # 总体分组 95% CI [-4.33, -0.41] 个百分点不触零。故默认开启；
+    # 说话人不相交无法证明，真实麦克风/远场仍待验证。
+    asr_vad_recheck_enabled: bool = True
+    asr_vad_recheck_target_rms: float = Field(default=0.005, gt=0, lt=1)
+    asr_vad_recheck_max_gain: float = Field(default=20.0, ge=1, allow_inf_nan=False)
+    asr_vad_recheck_peak_limit: float = Field(default=0.95, gt=0, lt=1)
+    # 周期性（浊音）确认门：Silero 报告检测到语音后，再检查检测段内是否存在足够
+    # 比例的浊音帧（归一化自相关峰 ≥ 0.45 于 70–400 Hz 基频区间）。静音、风噪和
+    # 宽带噪声为非周期，真实语音为周期。用于在较低阈值下恢复漏检语音而不新增
+    # 非语音误报。默认关闭以保持现有默认行为；开启时改用“检测段 + 浊音确认”的
+    # 单段路径，不再走低幅度复检。真实会议语料实验显示显著 CER 改善且零新增
+    # 非语音误报，但尚未在目标机器人麦克风/远场验证，故不设为默认。
+    asr_vad_periodic_gate_enabled: bool = False
+    asr_vad_periodic_min_voiced_fraction: float = Field(default=0.15, ge=0, le=1)
+    # 论文 Observation Adding：w*原音 + (1-w)*GTCRN增强音；默认关闭，需独立录音验证。
+    asr_denoise_enabled: bool = False
+    asr_denoise_model_path: str = "data/asr_models/gtcrn_simple.onnx"
+    asr_denoise_observation_weight: float = Field(default=0.5, ge=0, le=1)
+    # 单次请求允许的最长音频时长（秒）与上传体积上限（MB）。
+    asr_max_audio_seconds: int = 60
+    asr_max_upload_mb: int = 10
+    # 下列能量门控仅在可选 VAD 未安装/禁用时兼容使用。
+    # 整段 RMS 易被留白稀释，会漏掉小声；阈值并不是可靠的语音概率。
+    asr_min_rms: float = 0.008
+    # crest = 最大帧RMS / 整段RMS，只反映起伏；脉冲噪声也可能通过。
+    asr_min_crest: float = 1.5
+    # 短于该时长的音频跳过 crest 判据：实测幻听需 0.4 秒以上才出现，
+    # 而极短音频的 crest 统计意义不足，误杀真实短语音的代价更大。
+    asr_min_dynamic_seconds: float = 0.35
 
     # ===== UAPI 必应每日壁纸 =====
     # 仅后端读取；不要把 UAPI Key 下发到 Web/移动端。
@@ -425,6 +483,55 @@ class Settings(BaseSettings):
         if not p.is_absolute():
             p = Path(__file__).resolve().parents[2] / p
         return p
+
+    @property
+    def asr_model_file(self) -> Path:
+        """SenseVoice 模型文件路径(相对 backend/ 根目录解析)。"""
+        p = Path(self.asr_model_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def asr_tokens_file(self) -> Path:
+        """SenseVoice 词表文件路径(相对 backend/ 根目录解析)。"""
+        p = Path(self.asr_tokens_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def asr_vad_model_file(self) -> Path | None:
+        """可选 VAD 路径；空配置显式禁用，相对路径按 backend/ 解析。"""
+        if not self.asr_vad_model_path.strip():
+            return None
+        p = Path(self.asr_vad_model_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def asr_denoise_model_file(self) -> Path | None:
+        """可选 GTCRN 文件；存在本文件也不会自动启用增强。"""
+        if not self.asr_denoise_model_path.strip():
+            return None
+        p = Path(self.asr_denoise_model_path)
+        if not p.is_absolute():
+            p = Path(__file__).resolve().parents[2] / p
+        return p
+
+    @property
+    def asr_available(self) -> bool:
+        """本地 ASR 是否已启用且模型文件就位。
+
+        只检查文件存在性，不导入 sherpa_onnx：缺包由引擎在首次推理时抛出
+        可读异常，不能因为可选依赖影响进程启动或本属性的判定。
+        """
+        return (
+            self.asr_enabled
+            and self.asr_model_file.is_file()
+            and self.asr_tokens_file.is_file()
+        )
 
     @property
     def database_path(self) -> Path:
