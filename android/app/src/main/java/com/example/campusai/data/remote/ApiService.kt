@@ -243,6 +243,11 @@ data class UploadImageResponse(
     val filename: String = "",
     val size: Int = 0,
 )
+data class AsrResponse(
+    /** 识别文本；空字符串表示没听清（静音/噪声/纯标点），属正常成功响应。 */
+    val text: String = "",
+    @Json(name = "duration_seconds") val durationSeconds: Double = 0.0,
+)
 data class AcademicStatusDto(
     val status: String,
     val provider: String,
@@ -1091,6 +1096,11 @@ interface ApiService {
     @Multipart
     @POST("community/upload-image")
     suspend fun uploadCommunityImage(@Part image: MultipartBody.Part): Response<UploadImageResponse>
+
+    /** 本地 SenseVoice 语音识别：上传 16k/单声道/PCM16 WAV，返回文本（空串=没听清）。 */
+    @Multipart
+    @POST("assistant/asr")
+    suspend fun transcribeSpeech(@Part audio: MultipartBody.Part): Response<AsrResponse>
 
     @GET("academic/status")
     suspend fun academicStatus(): Response<AcademicStatusDto>

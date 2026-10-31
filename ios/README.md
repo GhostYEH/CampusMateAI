@@ -73,3 +73,8 @@ OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox'
 - 模型共建使用系统照片选择或相机拍摄单张图片，上传后可按编号删除自己的样本；multipart 契约已有自动化测试，照片选择、真实相机与上传流程仍需在目标设备验收。
 - 本地提醒按当前账号的完整待办/考试快照统一调度，遵守已完成状态、考试提醒开关及待办提前量；退出账号、切换服务或关闭提醒会清除旧通知。
 - 课堂播放依赖服务端返回的可信 Origin 与 `browser_embed_available`；不满足时不提供打开按钮。
+
+## 语音输入
+
+- cpm（Assistant）与共同课堂（LearningRoom）文字输入框均有麦克风按钮：录音（16k/单声道/PCM16 WAV，≤60s）经 `AssistantSpeech` 上传后端 `assistant/asr` 本地识别后回填。cpm 此前已接入；本轮为课堂输入框补上同一入口（复用 `AssistantSpeech`）。
+- 验证：全量 `swiftc -parse` 通过（50 个源文件 0 error）；CampusCore 库 `swift build` 通过。`swift test` 需完整 Xcode 的 Swift Testing 宏插件，本机仅 Command Line Tools，无法运行测试目标（非代码问题）。

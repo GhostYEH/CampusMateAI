@@ -2,6 +2,7 @@ package com.example.campusai.ui.screens.counselor
 
 import com.example.campusai.ui.components.GlassButton as Button
 import com.example.campusai.ui.components.GlassTextButton as TextButton
+import com.example.campusai.ui.components.SpeechInputButton
 
 import android.Manifest
 import android.app.ActivityManager
@@ -342,7 +343,7 @@ private fun CpmCounselorContent(
                 }
                 item("tail") { Spacer(Modifier.height(2.dp)) }
             }
-            CpmComposer(state.input, state.sending, onInputChange, onSend)
+            CpmComposer(state.input, state.sending, onInputChange, onSend, onSpeechText = onInputChange)
         }
     }
 }
@@ -749,11 +750,15 @@ private fun CpmStreamingCursor() {
 }
 
 @Composable
-private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit, onSpeechText: (String) -> Unit = onValueChange) {
+    var speechNotice by remember { mutableStateOf<String?>(null) }
     Column(
         Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        speechNotice?.let { notice ->
+            Text(notice, color = Muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp))
+        }
         Row(
             Modifier.fillMaxWidth().heightIn(min = CPM_COMPOSER_MIN_HEIGHT_DP.dp)
                 .shadow(12.dp, RoundedCornerShape(34.dp), ambientColor = Color(0x10415A9A), spotColor = Color(0x10415A9A))
@@ -781,6 +786,12 @@ private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String)
                         innerTextField()
                     }
                 },
+            )
+            SpeechInputButton(
+                onText = { text -> speechNotice = null; onSpeechText(text) },
+                onMessage = { message -> speechNotice = message },
+                enabled = !sending,
+                tint = CpmBlue,
             )
             FilledIconButton(
                 onClick = onSend, enabled = value.isNotBlank() && !sending, modifier = Modifier.size(44.dp), shape = CircleShape,

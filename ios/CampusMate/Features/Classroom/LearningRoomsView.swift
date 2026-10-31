@@ -236,6 +236,7 @@ struct LearningRoomView: View {
     let roomID: String
     @State private var model = LearningRoomModel()
     @State private var input = ""
+    @State private var speech = AssistantSpeech()
     @State private var inviting = false
     @State private var leaving = false
     @State private var working = false
@@ -429,34 +430,61 @@ struct LearningRoomView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField("和同学聊聊…", text: $input, axis: .vertical)
-                .lineLimit(1...5)
-                .campusFont(.body)
-                .foregroundStyle(Color(hex: 0x1B2730))
-                .tint(Color(hex: 0x285B4B))
-                .focused($inputFocused)
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD7DED5), lineWidth: 1))
-            Button {
-                Task {
-                    if await model.send(input, client: app.client, roomID: roomID) { input = "" }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("和同学聊聊…", text: $input, axis: .vertical)
+                    .lineLimit(1...5)
+                    .campusFont(.body)
+                    .foregroundStyle(Color(hex: 0x1B2730))
+                    .tint(Color(hex: 0x285B4B))
+                    .focused($inputFocused)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD7DED5), lineWidth: 1))
+                Button {
+                    if speech.isRecording {
+                        speech.finishRecording()
+                    } else {
+                        Task {
+                            await speech.record(client: app.client) { text in
+                                input += (input.isEmpty ? "" : "\n") + text
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle")
+                        .font(.system(size: 26))
+                        .foregroundStyle(Color(hex: speech.isRecording ? 0xC0392B : 0x285B4B))
                 }
-            } label: {
-                Text("发送").campusFont(.body).fontWeight(.bold).foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(minHeight: 40)
-                    .background(Color(hex: 0x285B4B), in: Capsule())
+                .disabled(model.isSending || speech.isWorking)
+                .opacity(model.isSending || speech.isWorking ? 0.4 : 1)
+                .accessibilityLabel(speech.isRecording ? "结束录音" : "语音输入")
+                Button {
+                    Task {
+                        if await model.send(input, client: app.client, roomID: roomID) { input = "" }
+                    }
+                } label: {
+                    Text("发送").campusFont(.body).fontWeight(.bold).foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .frame(minHeight: 40)
+                        .background(Color(hex: 0x285B4B), in: Capsule())
+                }
+                .disabled(!canSend)
+                .opacity(canSend ? 1 : 0.5)
             }
-            .disabled(!canSend)
-            .opacity(canSend ? 1 : 0.5)
+            if let message = speech.error {
+                Text(message)
+                    .campusFont(.micro)
+                    .foregroundStyle(Color(hex: 0xB03A2E))
+                    .padding(.horizontal, 12)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial)
         .environment(\.colorScheme, .light)
+        .onDisappear { speech.stop() }
     }
 
     private var canSend: Bool {
