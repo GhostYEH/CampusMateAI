@@ -1,5 +1,7 @@
 """Speech recognition response schemas."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -16,4 +18,13 @@ class AsrResponse(BaseModel):
     )
 
 
-__all__ = ["AsrResponse"]
+class AsrErrorResponse(BaseModel):
+    """ASR 失败时的统一错误信封，与全局异常处理保持一致。"""
+
+    code: str = Field(description="稳定错误码，例如 ASR_BUSY / ASR_AUDIO_INVALID")
+    message: str = Field(description="可直接展示的中文提示")
+    details: Any | None = Field(default=None, description="可选的结构化细节")
+    request_id: str | None = Field(default=None, description="请求追踪 ID")
+
+
+__all__ = ["AsrErrorResponse", "AsrResponse"]

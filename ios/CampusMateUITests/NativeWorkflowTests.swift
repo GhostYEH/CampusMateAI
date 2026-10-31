@@ -355,6 +355,7 @@ final class NativeWorkflowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[roomTitle].waitForExistence(timeout: 15))
         let chatInput = app.textFields["和同学聊聊…"]
         XCTAssertTrue(chatInput.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["room.mic"].exists, "共同课堂输入框应提供语音入口")
         chatInput.tap()
         chatInput.typeText("这是一条原生验证消息")
         app.buttons["发送"].tap()
@@ -539,7 +540,9 @@ final class NativeWorkflowTests: XCTestCase {
         back(app, expecting: app.buttons["打开CPM"])
         openFromHome(app, "打开CPM")
         let input = app.textFields["assistant.input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 5)); input.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["assistant.mic"].exists, "CPM 输入框应提供语音入口")
+        input.tap()
         XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5))
         // ASCII keeps this contrast/layout check independent of the simulator's active input method.
         let draft = "Review tomorrow"

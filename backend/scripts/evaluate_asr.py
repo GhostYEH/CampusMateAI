@@ -283,9 +283,21 @@ def main(argv: list[str] | None = None) -> int:
             min_dynamic_seconds=settings.asr_min_dynamic_seconds,
             vad_model_path=vad_model_path,
             vad_threshold=vad_threshold,
+            vad_recheck_enabled=settings.asr_vad_recheck_enabled,
+            vad_recheck_target_rms=settings.asr_vad_recheck_target_rms,
+            vad_recheck_max_gain=settings.asr_vad_recheck_max_gain,
+            vad_recheck_peak_limit=settings.asr_vad_recheck_peak_limit,
+            vad_periodic_gate_enabled=settings.asr_vad_periodic_gate_enabled,
+            vad_periodic_min_voiced_fraction=(
+                settings.asr_vad_periodic_min_voiced_fraction
+            ),
+            vad_periodic_recheck=settings.asr_vad_periodic_recheck,
+            vad_periodic_energy_floor=settings.asr_vad_periodic_energy_floor,
+            vad_periodic_min_frames=settings.asr_vad_periodic_min_frames,
             denoise_enabled=denoise_enabled,
             denoise_model_path=denoise_model_path,
             denoise_observation_weight=observation_weight,
+            max_audio_seconds=float(settings.asr_max_audio_seconds),
         )
         report = evaluate(entries, engine, max_seconds=settings.asr_max_audio_seconds)
         enhancement_active = denoise_enabled and observation_weight < 1
@@ -299,6 +311,18 @@ def main(argv: list[str] | None = None) -> int:
                 else "energy"
             ),
             "vad_threshold": vad_threshold,
+            "vad_recheck_enabled": settings.asr_vad_recheck_enabled,
+            "vad_recheck_target_rms": settings.asr_vad_recheck_target_rms,
+            "vad_recheck_max_gain": settings.asr_vad_recheck_max_gain,
+            "vad_recheck_peak_limit": settings.asr_vad_recheck_peak_limit,
+            "vad_periodic_gate_enabled": settings.asr_vad_periodic_gate_enabled,
+            "vad_periodic_min_voiced_fraction": (
+                settings.asr_vad_periodic_min_voiced_fraction
+            ),
+            "vad_periodic_recheck": settings.asr_vad_periodic_recheck,
+            "vad_periodic_energy_floor": settings.asr_vad_periodic_energy_floor,
+            "vad_periodic_min_frames": settings.asr_vad_periodic_min_frames,
+            "max_audio_seconds": settings.asr_max_audio_seconds,
             "min_rms": settings.asr_min_rms,
             "min_crest": settings.asr_min_crest,
             "min_dynamic_seconds": settings.asr_min_dynamic_seconds,

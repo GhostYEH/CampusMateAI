@@ -6,6 +6,7 @@ import io
 import math
 import struct
 import sys
+import threading
 import wave
 from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -24,7 +25,7 @@ from app.core.exceptions import register_exception_handlers
 from app.database.sqlite_db import Database
 from app.services import container as container_module
 from app.services.asr import AsrError, LocalAsrEngine, compute_rms
-from app.services.asr.sense_voice import _resample
+from app.services.asr.sense_voice import MAX_DECODED_SAMPLES, _resample
 from app.services.container import get_container
 
 
@@ -120,7 +121,12 @@ def asr_harness(tmp_path, monkeypatch):
 def _route_client(engine):
     container = SimpleNamespace(
         asr=engine,
-        settings=SimpleNamespace(asr_max_audio_seconds=60, asr_max_upload_mb=10),
+        asr_gate=threading.Semaphore(1),
+        settings=SimpleNamespace(
+            asr_max_audio_seconds=60,
+            asr_max_upload_mb=10,
+            asr_queue_timeout_seconds=1.0,
+        ),
     )
     app = FastAPI()
     register_exception_handlers(app)
@@ -155,10 +161,15 @@ def test_vad_allows_speech_below_old_volume_and_crest_thresholds(asr_harness):
 
 
 @pytest.mark.parametrize("duration", [0.064, 1.0])
-def test_explicit_vad_duration_reaches_native_detector_and_recheck(asr_harness, duration):
+def test_explicit_vad_duration_reaches_native_detector_and_recheck(
+    asr_harness, duration
+):
     engine = LocalAsrEngine(
-        "unused", "unused", vad_model_path=asr_harness.vad_model,
-        vad_min_speech_duration=duration, vad_recheck_enabled=True,
+        "unused",
+        "unused",
+        vad_model_path=asr_harness.vad_model,
+        vad_min_speech_duration=duration,
+        vad_recheck_enabled=True,
     )
     engine._ensure_vad()
     assert len(asr_harness.loaded.vad_configs) == 2
@@ -345,6 +356,21 @@ def test_excessive_wav_sample_rate_is_rejected_before_filtering(
     assert asr_harness.loaded.recognizer == 0
 
 
+def test_wav_with_huge_declared_frame_count_is_rejected_before_read(asr_harness):
+    data = bytearray(_wav_bytes([32] * 16))
+    struct.pack_into("<I", data, 40, (MAX_DECODED_SAMPLES + 1) * 2)
+    with _route_client(asr_harness.engine) as client:
+        response = client.post(
+            "/api/v1/assistant/asr",
+            files={"audio": ("oversized-frames.wav", bytes(data), "audio/wav")},
+        )
+    assert response.status_code == 413
+    assert response.json()["code"] == "ASR_AUDIO_TOO_LONG"
+    assert response.json()["message"] == "音频采样点数量超过上限"
+    assert asr_harness.loaded.vad == 0
+    assert asr_harness.loaded.recognizer == 0
+
+
 @pytest.mark.parametrize("removed_bytes", [1, 2])
 def test_truncated_pcm_payload_returns_422_before_inference(asr_harness, removed_bytes):
     wav = _wav_bytes([100, 200, -100, -200])
@@ -358,6 +384,26 @@ def test_truncated_pcm_payload_returns_422_before_inference(asr_harness, removed
     assert response.json()["message"] == "音频数据不完整"
     assert asr_harness.loaded.vad == 0
     assert asr_harness.loaded.recognizer == 0
+
+
+@pytest.mark.parametrize(
+    "samples, source_rate, expected_length",
+    [
+        ([], 48000, 0),
+        ([0.5], 48000, 1),
+        ([0.5, 0.5], 48000, 1),
+        ([0.5] * 480, 48000, 160),
+        ([0.5] * 800, 8000, 1600),
+    ],
+)
+def test_resampling_handles_empty_short_and_upsampled_inputs(
+    samples, source_rate, expected_length
+):
+    output = _resample(samples, source_rate, 16000)
+    assert len(output) == expected_length
+    if samples and expected_length:
+        assert compute_rms(output) == pytest.approx(0.5, abs=0.02)
+        assert max(abs(value) for value in output) <= 0.55
 
 
 @pytest.mark.parametrize(

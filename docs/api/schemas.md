@@ -1220,6 +1220,32 @@ Run 详情(§5.6)。
 | `submission_status` | string / null | 否 | — | 当前用户的提交状态 |
 | `attachments` | array<[AssignmentAttachmentOut](schemas.md#schema-assignmentattachmentout)> | 否 | — | — |
 
+<a id="schema-asrerrorresponse"></a>
+## AsrErrorResponse
+
+模型定义：[backend/app/schemas/asr.py](../../backend/app/schemas/asr.py)。
+
+本地语音识别的错误信封，与全局异常处理一致。业务错误不会暴露模型路径或堆栈。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `code` | string | 是 | — | 稳定错误码，例如 `ASR_BUSY` / `ASR_AUDIO_INVALID` |
+| `message` | string | 是 | — | 可直接展示的中文提示 |
+| `details` | 任意 JSON / null | 否 | — | 可选的结构化细节 |
+| `request_id` | string / null | 否 | — | 请求追踪 ID |
+
+<a id="schema-asrresponse"></a>
+## AsrResponse
+
+模型定义：[backend/app/schemas/asr.py](../../backend/app/schemas/asr.py)。
+
+本地语音识别结果。`text` 为空字符串表示"没听清"（静音、噪声或只剩标点），属于正常成功响应，客户端应提示用户重说而不是当错误处理。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `text` | string | 是 | — | 识别文本；空字符串表示没听清 |
+| `duration_seconds` | number | 是 | minimum=0.0 | 服务端实际送入识别的音频时长(秒) |
+
 <a id="schema-assistancemode"></a>
 ## AssistanceMode
 
@@ -1296,6 +1322,13 @@ Run 详情(§5.6)。
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `file` | string (binary) | 是 | format="binary" | — |
+
+<a id="schema-body_recognize_speech_api_v1_assistant_asr_post"></a>
+## Body_recognize_speech_api_v1_assistant_asr_post
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `audio` | string (binary) | 是 | format="binary" | WAV/PCM16LE/16kHz/单声道 音频 |
 
 <a id="schema-body_upload_attachment_api_v1_submissions__submission_id__attachments_post"></a>
 ## Body_upload_attachment_api_v1_submissions__submission_id__attachments_post

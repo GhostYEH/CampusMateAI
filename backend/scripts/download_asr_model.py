@@ -6,31 +6,33 @@
 
 用法（在任意目录执行，路径按脚本位置解析）::
 
-    # 用后端虚拟环境运行
+    # 用后端虚拟环境运行（Windows 将 python 换成 .venv\\Scripts\\python.exe）
     cd backend
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py
+    python scripts/download_asr_model.py
 
     # 只检查是否已就位，不下载
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --check
+    python scripts/download_asr_model.py --check
 
     # 同时下载/检查可选的 Silero VAD（放在声学模型目录的同一父目录）
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --with-vad
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --check --with-vad
+    python scripts/download_asr_model.py --with-vad
+    python scripts/download_asr_model.py --check --with-vad
 
     # 同时获取可选 GTCRN（仅下载；是否启用由后端配置决定）
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --with-vad --with-denoiser
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --check --with-vad --with-denoiser
+    python scripts/download_asr_model.py --with-vad --with-denoiser
+    python scripts/download_asr_model.py --check --with-vad --with-denoiser
 
     # 指定镜像站或目标目录（默认见下方常量）
-    .venv\\Scripts\\python.exe scripts/download_asr_model.py --base-url https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/
+    python scripts/download_asr_model.py --base-url https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/
 
 下载特性：
 
-* 已存在且大小正确的文件自动跳过，重复执行是安全的。
-* Silero VAD 和 GTCRN 还校验固定 SHA256，镜像地址必须提供相同模型。
-* 断点续传：中断后重新运行会从已下载字节处继续（服务端须支持 Range）。
+* 已存在且大小、SHA256 都正确的文件自动跳过，重复执行是安全的。
+* SenseVoice 主模型、词表、Silero VAD 和 GTCRN 都校验固定 SHA256；
+  镜像地址必须提供相同文件，避免同名不同版本的模型混入。
+* 断点续传：中断后重新运行会从已下载字节处继续（服务端须支持 Range），
+  并校验 Content-Range 起点与本地偏移一致。
 * 先写 ``.part`` 临时文件，校验通过后才改名，避免半个文件被当成完整模型。
-* 全程输出进度百分比，适合在慢速网络下观察。
+* 下载写入不会超过预期大小；全程输出进度百分比，适合慢速网络观察。
 
 模型说明：SenseVoice 支持中/英/日/韩/粤语，纯本地 CPU 推理，不联网、
 不产生调用费用。下载完成后即可使用 ``POST /api/v1/assistant/asr``；
@@ -54,10 +56,17 @@ DEFAULT_BASE_URL = (
     "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/"
 )
 MODEL_DIR_NAME = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
-# 文件名 → 预期字节数。大小用于判定"已下载完整"，None 表示不做大小校验。
-FILES: dict[str, int | None] = {
-    "model.int8.onnx": 239_233_841,
-    "tokens.txt": 315_894,
+# 文件名 → (预期字节数, SHA256)。主模型与词表的哈希按固定上游 release 文件
+# 逐字节计算；镜像站必须提供相同内容，不能只看大小。
+FILES: dict[str, tuple[int, str | None]] = {
+    "model.int8.onnx": (
+        239_233_841,
+        "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51",
+    ),
+    "tokens.txt": (
+        315_894,
+        "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc",
+    ),
 }
 VAD_FILENAME = "silero_vad.onnx"
 VAD_SIZE = 643_854
@@ -143,8 +152,19 @@ def _download(
         raise
 
     with response:
-        resumed = offset and response.status == 206
-        if offset and not resumed:
+        resumed = bool(offset and response.status == 206)
+        if resumed:
+            content_range = response.headers.get("Content-Range", "")
+            try:
+                range_start = int(content_range.split("bytes ", 1)[1].split("-", 1)[0])
+            except (IndexError, ValueError):
+                range_start = None
+            if range_start != offset:
+                raise RuntimeError(
+                    f"{dest.name} 续传位置不符：期望 {offset}，"
+                    f"服务端返回 {content_range!r}。请删除 {part.name} 后重试。"
+                )
+        elif offset:
             offset = 0  # 服务端不支持 Range，只能从头下
         total = expected
         if total is None:
@@ -159,6 +179,11 @@ def _download(
                 chunk = response.read(_CHUNK)
                 if not chunk:
                     break
+                if total is not None and downloaded + len(chunk) > total:
+                    raise RuntimeError(
+                        f"{dest.name} 返回数据超过预期大小 {total} 字节，"
+                        f"请删除 {part.name} 后重试。"
+                    )
                 output.write(chunk)
                 downloaded += len(chunk)
                 now = time.monotonic()
@@ -229,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
     base_url = args.base_url if args.base_url.endswith("/") else args.base_url + "/"
     target = _target_dir(args.output_dir)
     artifacts = [
-        (target / name, size, base_url + name, None) for name, size in FILES.items()
+        (target / name, size, base_url + name, sha256)
+        for name, (size, sha256) in FILES.items()
     ]
     if args.with_vad:
         artifacts.append(

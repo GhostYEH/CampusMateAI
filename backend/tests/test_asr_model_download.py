@@ -24,7 +24,9 @@ def block_network(monkeypatch):
 def assets(tmp_path, monkeypatch):
     target = tmp_path / "acoustic-model"
     target.mkdir()
-    monkeypatch.setattr(downloader, "FILES", {"model.int8.onnx": 5, "tokens.txt": 6})
+    monkeypatch.setattr(
+        downloader, "FILES", {"model.int8.onnx": (5, None), "tokens.txt": (6, None)}
+    )
     (target / "model.int8.onnx").write_bytes(b"model")
     (target / "tokens.txt").write_bytes(b"tokens")
     vad = b"verified-vad"
@@ -45,10 +47,12 @@ def denoiser_assets(assets, monkeypatch):
 
 
 class DownloadResponse(io.BytesIO):
-    def __init__(self, data: bytes, *, status: int = 200):
+    def __init__(self, data: bytes, *, status: int = 200, content_range: str = ""):
         super().__init__(data)
         self.status = status
         self.headers = {"Content-Length": str(len(data))}
+        if content_range:
+            self.headers["Content-Range"] = content_range
 
 
 def test_default_destination_resolves_from_script():
@@ -240,7 +244,11 @@ def test_vad_download_resumes_and_checks_complete_hash(assets, monkeypatch):
 
     def respond(request, timeout):
         assert request.get_header("Range") == "bytes=4-"
-        return DownloadResponse(vad[4:], status=206)
+        return DownloadResponse(
+            vad[4:],
+            status=206,
+            content_range=f"bytes 4-{len(vad) - 1}/{len(vad)}",
+        )
 
     monkeypatch.setattr(downloader.urllib.request, "urlopen", respond)
     downloader._download(
@@ -248,6 +256,40 @@ def test_vad_download_resumes_and_checks_complete_hash(assets, monkeypatch):
     )
     assert vad_path.read_bytes() == vad
     assert not part.exists()
+
+
+def test_download_rejects_response_longer_than_expected(assets, monkeypatch):
+    _, vad_path, vad = assets
+
+    def oversized(request, timeout):
+        return DownloadResponse(vad + b"extra")
+
+    monkeypatch.setattr(downloader.urllib.request, "urlopen", oversized)
+    with pytest.raises(RuntimeError, match="超过预期大小"):
+        downloader._download(
+            downloader.DEFAULT_VAD_URL, vad_path, len(vad), downloader.VAD_SHA256
+        )
+    assert not vad_path.exists()
+
+
+def test_download_rejects_mismatched_resume_offset(assets, monkeypatch):
+    _, vad_path, vad = assets
+    part = vad_path.with_suffix(".onnx.part")
+    part.write_bytes(vad[:4])
+
+    def wrong_range(request, timeout):
+        return DownloadResponse(
+            vad[4:],
+            status=206,
+            content_range=f"bytes 2-{len(vad) - 1}/{len(vad)}",
+        )
+
+    monkeypatch.setattr(downloader.urllib.request, "urlopen", wrong_range)
+    with pytest.raises(RuntimeError, match="续传位置不符"):
+        downloader._download(
+            downloader.DEFAULT_VAD_URL, vad_path, len(vad), downloader.VAD_SHA256
+        )
+    assert part.read_bytes() == vad[:4]
 
 
 @pytest.mark.parametrize(

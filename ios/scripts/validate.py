@@ -14,6 +14,7 @@ import urllib.request
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ui", action="store_true", help="also run native UI tests")
+    parser.add_argument("--build", action="store_true", help="also build the App target (requires full Xcode)")
     parser.add_argument("--device", help="installed simulator UDID (required for --ui)")
     parser.add_argument("--derived-data", type=Path, help="reuse an external Xcode build cache between devices")
     args = parser.parse_args()
@@ -64,6 +65,13 @@ def main():
             if not (scratch / "validation.sqlite").is_file():
                 raise RuntimeError("Expected disposable database does not exist; validation aborted")
             commands = [["swift", "test", "--package-path", str(repo / "ios/Packages/CampusCore"), "--scratch-path", str(scratch / "CoreBuild")]]
+            if args.build and not args.ui:
+                commands.append([
+                    "xcodebuild", "-project", str(repo / "ios/CampusMate.xcodeproj"), "-scheme", "CampusMate",
+                    "-configuration", "Debug", "-destination", "generic/platform=iOS Simulator",
+                    "-derivedDataPath", str(args.derived_data.absolute() if args.derived_data else scratch / "DerivedData"),
+                    "-parallel-testing-enabled", "NO", "build",
+                ])
             if args.ui:
                 commands.append([
                     "xcodebuild", "-project", str(repo / "ios/CampusMate.xcodeproj"), "-scheme", "CampusMate",

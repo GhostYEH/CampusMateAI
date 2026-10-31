@@ -46,7 +46,10 @@ final class PCMPlayer {
         }
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)), let channel = buffer.floatChannelData?[0] else { throw APIError(code: "AUDIO_BUFFER", message: "无法创建音频缓冲。") }
         buffer.frameLength = AVAudioFrameCount(samples.count)
-        samples.withUnsafeBufferPointer { channel.update(from: $0.baseAddress!, count: samples.count) }
+        samples.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            channel.update(from: base, count: samples.count)
+        }
         if !engine.isRunning { try engine.start() }
         if !player.isPlaying { player.play() }
         bufferedFrames += samples.count

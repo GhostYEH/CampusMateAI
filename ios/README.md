@@ -55,7 +55,7 @@ xcodebuild -project CampusMate.xcodeproj -scheme CampusMate -configuration Debug
   -derivedDataPath /tmp/campus-dd build
 ```
 
-`ios/scripts/validate.py` 会启动一个显式指定临时数据库的隔离后端，运行 CampusCore 测试；加 `--ui --device <UDID>` 会继续运行原生 UI 测试。脚本拒绝复用已占用 18927 端口的服务。模拟器构建使用 Xcode 默认签名，不要设置 `CODE_SIGNING_ALLOWED=NO`：禁用签名可能使模拟器应用缺少钥匙串访问所需的签名权限，导致登录和会话恢复测试失败。
+`ios/scripts/validate.py` 会启动一个显式指定临时数据库的隔离后端，运行 CampusCore 测试；加 `--build` 会继续构建 App target（需要完整 Xcode），加 `--ui --device <UDID>` 会继续运行原生 UI 测试。脚本拒绝复用已占用 18927 端口的服务。模拟器构建使用 Xcode 默认签名，不要设置 `CODE_SIGNING_ALLOWED=NO`：禁用签名可能使模拟器应用缺少钥匙串访问所需的签名权限，导致登录和会话恢复测试失败。
 
 在受限沙箱中（SwiftPM 无法应用 sandbox profile 时）需要额外传入：
 
@@ -76,5 +76,6 @@ OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox'
 
 ## 语音输入
 
-- cpm（Assistant）与共同课堂（LearningRoom）文字输入框均有麦克风按钮：录音（16k/单声道/PCM16 WAV，≤60s）经 `AssistantSpeech` 上传后端 `assistant/asr` 本地识别后回填。cpm 此前已接入；本轮为课堂输入框补上同一入口（复用 `AssistantSpeech`）。
-- 验证：全量 `swiftc -parse` 通过（50 个源文件 0 error）；CampusCore 库 `swift build` 通过。`swift test` 需完整 Xcode 的 Swift Testing 宏插件，本机仅 Command Line Tools，无法运行测试目标（非代码问题）。
+- cpm（Assistant）与共同课堂（LearningRoom）文字输入框共用 `SpeechInputButton`：录音（16k/单声道/PCM16 WAV，≤60s）经 `AssistantSpeech` 上传后端 `assistant/asr` 本地识别后回填。按钮统一 44pt 命中区域、VoiceOver 录音/识别状态，并在识别期间显示进度与停止入口。
+- 上传使用 120 秒独立超时；`ASRPolicy` 把 `ASR_BUSY`/`ASR_UNAVAILABLE` 映射为可重试提示，把体积/时长错误映射为分段输入提示。课堂发送在 `await` 前清空输入并仅在失败时恢复，避免吞掉并发回填的识别文本。
+- 验证：`CampusCore` 库 `swift build` 需重新执行；`ASRPolicyTests` 已加入测试目标。App target 与 UI 测试仍需要完整 Xcode，当前机器仅 Command Line Tools，`xcodebuild` 不可用；真机录音、权限拒绝、来电中断、切后台和 60 秒自动停止均未验收。

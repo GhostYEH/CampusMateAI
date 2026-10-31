@@ -15,18 +15,19 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
     @ObservationIgnored private var onText: ((String) -> Void)?
     @ObservationIgnored private var player: PCMPlayer?
     @ObservationIgnored private var request: Task<Void, Never>?
+    @ObservationIgnored private var finishWatchdog: Task<Void, Never>?
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var owner: UUID?
     @ObservationIgnored private var observer: NSObjectProtocol?
     @ObservationIgnored private var backgroundObserver: NSObjectProtocol?
 
     func record(client: APIClient, onText: @escaping (String) -> Void) async {
-        guard !isWorking, !isRecording else { return }
+        guard !isWorking, !isRecording else { error = "正在处理上一条语音，请稍候。"; return }
         stop(); error = nil
         let run = generation
         guard await AVAudioApplication.requestRecordPermission() else { error = "请在系统设置中允许麦克风后再使用语音输入。"; return }
         guard run == generation, !Task.isCancelled else { return }
-        guard UIApplication.shared.applicationState == .active else { return }
+        guard UIApplication.shared.applicationState == .active else { error = "请回到应用后再使用语音输入。"; return }
         do {
             try acquire(recording: true)
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
@@ -45,10 +46,26 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
             backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in self?.stop() }
             }
-        } catch { stop(); self.error = error.localizedDescription }
+        } catch { stop(); self.error = ASRPolicy.message(for: error) }
     }
 
-    func finishRecording() { guard isRecording else { return }; isRecording = false; recorder?.stop() }
+    func finishRecording() {
+        guard isRecording else { return }
+        isRecording = false
+        // 从 stop 到 delegate 回调之间仍处于"处理中"，避免再次点击把第一条录音静默丢弃。
+        isWorking = true
+        let run = generation
+        recorder?.stop()
+        // 少数异常情况下 AVAudioRecorder 可能不再回调 delegate；1 秒后兜底复位。
+        finishWatchdog?.cancel()
+        finishWatchdog = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard let self, !Task.isCancelled, self.generation == run,
+                  self.isWorking, self.recorder != nil else { return }
+            self.stop()
+            self.error = "录音没有完成，请重试。"
+        }
+    }
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         Task { @MainActor [weak self] in
             guard let self, self.recorder === recorder else { return }
@@ -57,20 +74,33 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
     }
     private func transcribe() {
         guard let url = recordingURL, let client else { return }
+        finishWatchdog?.cancel(); finishWatchdog = nil
         isRecording = false; isWorking = true; recorder = nil; releaseAudio()
         let run = generation
         request = Task { [weak self] in
             guard let self else { return }
             defer { try? FileManager.default.removeItem(at: url); if generation == run { isWorking = false; request = nil; recordingURL = nil } }
             do {
-                let data = try Data(contentsOf: url)
-                guard data.count <= 2_000_000 else { throw APIError(code: "AUDIO_SIZE", message: "录音超过一分钟，请分段输入。") }
-                let result = try await client.upload(path: "assistant/asr", fieldName: "audio", filename: "message.wav", mimeType: "audio/wav", data: data)
+                // 录音文件可能接近 2MB，避免在 MainActor 上同步读盘。
+                let data = try await Task.detached(priority: .userInitiated) {
+                    try Data(contentsOf: url)
+                }.value
+                guard data.count <= ASRPolicy.maxRecordingBytes else {
+                    throw APIError(code: "AUDIO_SIZE", message: "录音超过一分钟，请分段输入。")
+                }
+                let result = try await client.upload(
+                    path: "assistant/asr", fieldName: "audio", filename: "message.wav",
+                    mimeType: "audio/wav", data: data, timeout: ASRPolicy.uploadTimeout
+                )
                 guard generation == run, !Task.isCancelled else { return }
-                if let text = result["text"].string?.nonEmpty { onText?(text) }
-                else { error = "没听清，请再说一次。" }
+                if let text = result["text"].string?.nonEmpty {
+                    error = nil
+                    onText?(text)
+                } else {
+                    error = "没听清，请再说一次。"
+                }
             } catch is CancellationError { }
-            catch { if generation == run { self.error = error.localizedDescription } }
+            catch { if generation == run { self.error = ASRPolicy.message(for: error) } }
         }
     }
 
@@ -124,6 +154,7 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
     }
     func stop() {
         generation = UUID(); request?.cancel(); request = nil
+        finishWatchdog?.cancel(); finishWatchdog = nil
         recorder?.delegate = nil; recorder?.stop(); recorder = nil
         player?.stop(); player = nil; releaseAudio()
         if let recordingURL { try? FileManager.default.removeItem(at: recordingURL) }; recordingURL = nil

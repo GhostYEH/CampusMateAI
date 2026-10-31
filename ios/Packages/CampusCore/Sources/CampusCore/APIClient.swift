@@ -184,8 +184,8 @@ public actor APIClient {
     }
 
     public func requestData(_ method: HTTPMethod = .get, path: String, query: [String: String] = [:], data: Data? = nil,
-                            contentType: String? = nil, headers: [String: String] = [:]) async throws -> HTTPResponse {
-        try await send(method, path: path, query: query, data: data, authenticated: true, contentType: contentType, headers: headers)
+                            contentType: String? = nil, headers: [String: String] = [:], timeout: TimeInterval? = nil) async throws -> HTTPResponse {
+        try await send(method, path: path, query: query, data: data, authenticated: true, contentType: contentType, headers: headers, timeout: timeout)
     }
 
     public func events(_ method: HTTPMethod = .get, path: String, query: [String: String] = [:], body: JSONValue? = nil,
@@ -232,12 +232,13 @@ public actor APIClient {
         }
     }
 
-    public func upload(path: String, fieldName: String = "file", filename: String, mimeType: String, data: Data, headers: [String: String] = [:]) async throws -> JSONValue {
+    public func upload(path: String, fieldName: String = "file", filename: String, mimeType: String, data: Data,
+                       headers: [String: String] = [:], timeout: TimeInterval? = nil) async throws -> JSONValue {
         let boundary = "CampusMate-\(UUID().uuidString)"
         let cleanFilename = filename.replacingOccurrences(of: "\"", with: "_").replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
         var body = Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(cleanFilename)\"\r\nContent-Type: \(mimeType)\r\n\r\n".utf8)
         body.append(data); body.append(Data("\r\n--\(boundary)--\r\n".utf8))
-        let response = try await requestData(.post, path: path, data: body, contentType: "multipart/form-data; boundary=\(boundary)", headers: headers)
+        let response = try await requestData(.post, path: path, data: body, contentType: "multipart/form-data; boundary=\(boundary)", headers: headers, timeout: timeout)
         return try JSONValue(data: response.data)
     }
 
@@ -274,11 +275,12 @@ public actor APIClient {
     }
 
     private func send(_ method: HTTPMethod, path: String, query: [String: String], data: Data?, authenticated: Bool,
-                      contentType: String?, headers: [String: String]) async throws -> HTTPResponse {
+                      contentType: String?, headers: [String: String], timeout: TimeInterval? = nil) async throws -> HTTPResponse {
         let epoch = generation
         if authenticated && currentSession == nil { throw APIError(statusCode: 401, code: "UNAUTHORIZED", message: "请先登录。") }
         let token = authenticated ? currentSession?.tokens.accessToken : nil
         var request = try makeRequest(method, path: path, query: query, token: token, data: data, contentType: contentType, headers: headers)
+        if let timeout { request.timeoutInterval = timeout }
         var response = try await transport(request)
         try validate(epoch)
         if authenticated && authenticationFailed(response), let token {

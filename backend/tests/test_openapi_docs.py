@@ -44,6 +44,9 @@ def test_markdown_covers_all_http_operations_models_and_schema_links():
     assert headings == saved["components"]["schemas"].keys()
     anchors = set(re.findall(r'<a id="([^"]+)"', fields))
     for document in api_docs.glob("*.md"):
+        # macOS 在外接卷上会生成 ._ 元数据文件，不是接口文档。
+        if document.name.startswith("._"):
+            continue
         referenced = set(re.findall(r"\]\(schemas\.md#([^)]*)\)", document.read_text(encoding="utf-8")))
         assert referenced <= anchors, f"{document.name}: missing schema anchors: {referenced - anchors}"
 

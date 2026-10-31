@@ -4,6 +4,8 @@
 *.pyc
 *.swp
 .DS_Store
+# macOS 在外接卷/归档目录生成的 AppleDouble 元数据，不是源码
+._*
 Thumbs.db
 .atom/
 .build/
@@ -145,6 +147,8 @@ backend/data/*.db-shm
 backend/data/uploads/
 backend/data/discovery_batches/
 backend/data/magicclass_quiz_attempts/
+# 本地 ASR 模型、词表与评测录音/报告，可由 scripts/download_asr_model.py 重建
+backend/data/asr_models/
 
 # magic class 受管服务自有数据库(断言重放记录 / workspace / stage)
 magicclass-service/data/

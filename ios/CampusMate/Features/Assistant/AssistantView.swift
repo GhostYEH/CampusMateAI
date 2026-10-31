@@ -250,17 +250,14 @@ private struct AssistantConversationView: View {
                 .padding(.horizontal, 16).padding(.top, 6)
             }
             HStack(alignment: .bottom, spacing: 10) {
-                Button {
+                SpeechInputButton(
+                    speech: speech,
+                    identifier: "assistant.mic",
+                    enabled: !model.isSending && !speech.isPlaying
+                ) {
                     if speech.isRecording { speech.finishRecording() }
                     else { Task { await speech.record(client: app.client) { text in input += (input.isEmpty ? "" : "\n") + text } } }
-                } label: {
-                    Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic.circle")
-                        .font(.system(size: 27))
-                        .foregroundStyle(speech.isRecording ? Color(hex: 0xC25450) : Color(hex: 0x285B4B))
-                        .frame(width: 44, height: 44)
                 }
-                .disabled(model.isSending || speech.isWorking || speech.isPlaying)
-                .accessibilityLabel(speech.isRecording ? "结束录音" : "语音输入")
 
                 TextField(text: $input, axis: .vertical) {
                     Text("发消息…").foregroundStyle(Color(hex: 0x667784))

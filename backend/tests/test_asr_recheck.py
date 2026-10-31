@@ -109,7 +109,9 @@ def test_gain_targets_low_amplitude_without_attenuating_or_clipping():
     assert bounded_analysis_gain([0.0] * 100, target_rms=0.02) == ([0.0] * 100, 1.0)
 
 
-def test_recheck_uses_boosted_analysis_copy_but_recognizes_original(monkeypatch, assets):
+def test_recheck_uses_boosted_analysis_copy_but_recognizes_original(
+    monkeypatch, assets
+):
     first = FakeDetector(accept=False)
     second = FakeDetector(accept=True)
     created = install_fake_sherpa(monkeypatch, [first, second])
@@ -123,7 +125,9 @@ def test_recheck_uses_boosted_analysis_copy_but_recognizes_original(monkeypatch,
     captured = []
     engine._ensure_recognizer = lambda: SimpleNamespace(
         create_stream=lambda: SimpleNamespace(
-            accept_waveform=lambda rate, samples: captured.append((rate, list(samples))),
+            accept_waveform=lambda rate, samples: captured.append(
+                (rate, list(samples))
+            ),
             result=SimpleNamespace(text="识别成功。"),
         ),
         decode_stream=lambda stream: None,
@@ -181,9 +185,7 @@ def test_recheck_failure_is_reported_as_asr_error(monkeypatch, assets):
         def accept_waveform(self, samples):
             raise RuntimeError("native detail")
 
-    install_fake_sherpa(
-        monkeypatch, [FakeDetector(accept=False), Failing(accept=True)]
-    )
+    install_fake_sherpa(monkeypatch, [FakeDetector(accept=False), Failing(accept=True)])
     engine = LocalAsrEngine(
         assets["model.onnx"],
         assets["tokens.txt"],

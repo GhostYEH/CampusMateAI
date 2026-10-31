@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,7 +28,7 @@ from .core.rate_limit import RequestRateLimiter
 from .digital_human_static import DigitalHumanStaticFiles, resolve_digital_human_assets_dir
 from .api.routes.home_banners import banner_image_storage_dir
 from .api.routes.community import community_image_storage_dir
-from .services.container import build_container
+from .services.container import build_container, get_container
 from .services.demo_seeder import seed_demo_data
 from .services.chaoxing.daily_sync import ChaoxingDailySyncWorker
 
@@ -73,12 +74,74 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
                     )
 
 
+def _asr_error_response(
+    request: Request, *, status: int, code: str, message: str
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status,
+        content={
+            "code": code,
+            "message": message,
+            "details": None,
+            "request_id": getattr(request.state, "request_id", None),
+        },
+    )
+
+
+class AsrUploadSizeLimitMiddleware(BaseHTTPMiddleware):
+    """在 multipart 解析前拒绝声明体积超限的 ASR 上传。
+
+    Starlette 会先解析完整个 multipart 才进入路由，路由里的 read 上限只能
+    避免把数据再复制一份。这里依据 Content-Length 提前返回，避免超大请求
+    占用临时文件与解析时间；分块传输无法在解析前得知体积，直接要求客户端
+    声明长度，避免先落盘再拒绝。
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "POST" and request.url.path.endswith("/assistant/asr"):
+            # 优先使用 lifespan 中的容器；测试或未走 lifespan 时回退到全局容器。
+            container = getattr(request.app.state, "container", None) or get_container()
+            settings = container.settings
+            max_bytes = settings.asr_max_upload_mb * 1024 * 1024
+            # multipart 边界、字段头和结尾只占几百字节，留 4KiB 余量。
+            declared = request.headers.get("content-length")
+            if declared is None:
+                transfer = request.headers.get("transfer-encoding", "").lower()
+                if "chunked" in transfer:
+                    return _asr_error_response(
+                        request,
+                        status=411,
+                        code="ASR_LENGTH_REQUIRED",
+                        message="语音上传必须声明 Content-Length",
+                    )
+            else:
+                try:
+                    length = int(declared)
+                except ValueError:
+                    return _asr_error_response(
+                        request,
+                        status=411,
+                        code="ASR_LENGTH_REQUIRED",
+                        message="语音上传的 Content-Length 无效",
+                    )
+                if length > max_bytes + 4096:
+                    return _asr_error_response(
+                        request,
+                        status=413,
+                        code="ASR_AUDIO_TOO_LARGE",
+                        message=f"录音文件不能超过 {settings.asr_max_upload_mb} MB",
+                    )
+        return await call_next(request)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     configure_logging(settings)
     logger.info("启动 CampusMate AI 后端 v{}, env={}", settings.app_version, settings.app_env)
     container = build_container(settings)
+    # 供请求级中间件读取同一份配置，避免与 Depends 注入的容器漂移。
+    app.state.container = container
     chaoxing_daily_sync = ChaoxingDailySyncWorker(container)
     try:
         # 持久化队列由 Worker 接管；有效租约不抢占，过期租约交给 Handler recovery 决策。
@@ -152,6 +215,9 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
     app.state.request_rate_limiter = RequestRateLimiter()
+    # 先加内层 Size，再加 RequestId，最后加 CORS：CORS 必须包住异常响应，
+    # RequestId 则要在体积拒绝时仍注入 request_id。
+    app.add_middleware(AsrUploadSizeLimitMiddleware)
     app.add_middleware(RequestIdMiddleware)
 
     # CORS

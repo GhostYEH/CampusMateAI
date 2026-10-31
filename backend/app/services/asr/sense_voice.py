@@ -28,12 +28,20 @@ import threading
 import wave
 from array import array
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, List, Tuple
+
+try:
+    import numpy as np
+except ImportError:  # 可选 ASR 依赖缺失时不影响后端启动，请求阶段返回 503
+    np = None  # type: ignore[assignment]
 
 # SenseVoice 原生采样率；识别流可接受其他采样率并在原生代码中重采样。
 SENSE_VOICE_SAMPLE_RATE = 16000
 # WAV 头可声明任意 uint32 采样率；限制到常见高解析音频上限，约束滤波计算量。
 MAX_INPUT_SAMPLE_RATE = 192000
+# 解码后的 Python float 列表会放大内存；先按采样点数设硬上限，避免恶意头
+# 声称超长音频后在 readframes 阶段分配巨大缓冲（16k×60s 仅 96 万点）。
+MAX_DECODED_SAMPLES = 2_000_000
 
 # 只剩标点/空白时视为"没听清"。中文标点与常见英文标点都覆盖。
 _PUNCTUATION_ONLY = re.compile(
@@ -73,18 +81,21 @@ def decode_wav_pcm16_mono(
             width = reader.getsampwidth()
             sample_rate = reader.getframerate()
             frame_count = reader.getnframes()
+            # 先校验头部再读取 PCM，避免恶意头声明超大帧数时分配巨量内存。
+            if channels != 1:
+                raise AsrInvalidAudioError("音频必须是单声道")
+            if width != 2:
+                raise AsrInvalidAudioError("音频必须是 16 位 PCM(WAV PCM16LE)")
+            if sample_rate <= 0 or sample_rate > MAX_INPUT_SAMPLE_RATE:
+                raise AsrInvalidAudioError("音频采样率无效")
+            if frame_count > MAX_DECODED_SAMPLES:
+                raise AsrAudioTooLongError("音频采样点数量超过上限")
+            if max_seconds is not None and frame_count > sample_rate * max_seconds:
+                raise AsrAudioTooLongError(f"音频时长不能超过 {max_seconds:g} 秒")
             frames = reader.readframes(frame_count)
     except (wave.Error, EOFError) as exc:
         raise AsrInvalidAudioError("音频不是有效的 WAV 文件") from exc
 
-    if channels != 1:
-        raise AsrInvalidAudioError("音频必须是单声道")
-    if width != 2:
-        raise AsrInvalidAudioError("音频必须是 16 位 PCM(WAV PCM16LE)")
-    if sample_rate <= 0 or sample_rate > MAX_INPUT_SAMPLE_RATE:
-        raise AsrInvalidAudioError("音频采样率无效")
-    if max_seconds is not None and frame_count > sample_rate * max_seconds:
-        raise AsrAudioTooLongError(f"音频时长不能超过 {max_seconds:g} 秒")
     if len(frames) != frame_count * channels * width:
         raise AsrInvalidAudioError("音频数据不完整")
 
@@ -98,43 +109,35 @@ def decode_wav_pcm16_mono(
 
 
 def _resample(samples: List[float], source_rate: int, target_rate: int) -> List[float]:
-    """仅供 VAD 的窗化 sinc 重采样；识别流使用 sherpa 原生重采样。
+    """仅供 VAD/增强的降采样；识别流使用 sherpa 原生重采样。
 
-    缓存有理采样率的滤波相位，避免逐采样点计算三角函数。低通截止频率
-    低于两种采样率的 Nyquist 频率；端点延拓保留直流分量。
+    纯 Python 逐点卷积在 192kHz 输入下会把单次请求拖到数十秒，因此降采样
+    先做 Kaiser 窗低通（抑制目标 Nyquist 以上的混叠），再用 NumPy 线性插值
+    取目标采样点。端点按边缘值延拓，结果仍为 float 列表以兼容 sherpa 接口。
     """
     if source_rate == target_rate or not samples:
         return samples
-    target_length = max(1, int(round(len(samples) * target_rate / source_rate)))
-    cutoff = 0.99 * min(1.0, target_rate / source_rate)
-    radius = math.ceil(6 / cutoff)
-    phases: dict[int, list[tuple[int, float]]] = {}
-    last = len(samples) - 1
-    resampled: List[float] = []
-    for index in range(target_length):
-        left, phase = divmod(index * source_rate, target_rate)
-        if phase not in phases:
-            weights = []
-            fraction = phase / target_rate
-            for offset in range(-radius, radius + 1):
-                distance = offset - fraction
-                if abs(distance) > radius:
-                    continue
-                angle = math.pi * cutoff * distance
-                sinc = math.sin(angle) / angle if angle else 1.0
-                weight = (
-                    cutoff * sinc * (0.5 + 0.5 * math.cos(math.pi * distance / radius))
-                )
-                weights.append((offset, weight))
-            total = sum(weight for _, weight in weights)
-            phases[phase] = [(offset, weight / total) for offset, weight in weights]
-        resampled.append(
-            sum(
-                samples[min(last, max(0, left + offset))] * weight
-                for offset, weight in phases[phase]
-            )
-        )
-    return resampled
+    if np is None:
+        raise AsrUnavailableError("本地语音识别依赖未安装")
+    audio = np.asarray(samples, dtype=np.float64)
+    if source_rate > target_rate:
+        # 截止频率取目标 Nyquist 的 90%，留出过渡带；Kaiser(8) 提供足够阻带衰减。
+        cutoff = 0.45 * target_rate / source_rate  # cycles/sample
+        half = max(8, int(math.ceil(4.0 / cutoff)))
+        offsets = np.arange(-half, half + 1, dtype=np.float64)
+        kernel = 2.0 * cutoff * np.sinc(2.0 * cutoff * offsets)
+        kernel *= np.kaiser(offsets.size, 8.0)
+        kernel /= kernel.sum()
+        # 边缘复制延拓，避免常数信号在首尾被零填充拉低（VAD 会误判轻声起音）。
+        padded = np.pad(audio, (half, half), mode="edge")
+        audio = np.convolve(padded, kernel, mode="valid")
+    target_length = max(1, int(round(audio.size * target_rate / source_rate)))
+    if target_length == 1:
+        return [float(audio[0])]
+    positions = np.arange(target_length, dtype=np.float64) * (source_rate / target_rate)
+    positions = np.minimum(positions, audio.size - 1)
+    resampled = np.interp(positions, np.arange(audio.size, dtype=np.float64), audio)
+    return [float(value) for value in resampled]
 
 
 def compute_rms(samples: List[float]) -> float:
@@ -147,7 +150,7 @@ def compute_rms(samples: List[float]) -> float:
     return math.sqrt(total / len(samples))
 
 
-def contains_speech(detector, samples: List[float], sample_rate: int) -> bool:
+def contains_speech(detector: Any, samples: List[float], sample_rate: int) -> bool:
     """一次完整的整段语音检测；调用方负责串行化与锁。
 
     Silero 的输入窗口固定为 16kHz 512 点。这里按窗口补零、flush 未闭合的
@@ -191,7 +194,9 @@ def bounded_analysis_gain(
             peak = magnitude
     if total <= 0.0 or peak <= 0.0:
         return samples, 1.0
-    gain = min(max_gain, target_rms / math.sqrt(total / len(samples)), peak_limit / peak)
+    gain = min(
+        max_gain, target_rms / math.sqrt(total / len(samples)), peak_limit / peak
+    )
     if gain <= 1.0:
         return samples, 1.0
     return [value * gain for value in samples], gain
@@ -289,7 +294,9 @@ def is_meaningful_text(text: str) -> bool:
     return not _PUNCTUATION_ONLY.match(value)
 
 
-def collect_speech_spans(detector, samples: List[float], sample_rate: int):
+def collect_speech_spans(
+    detector: Any, samples: List[float], sample_rate: int
+) -> List[Tuple[int, int]]:
     """消费整段音频并返回全部 Silero 语音段 (start, stop)（16kHz 采样点）。
 
     与 `contains_speech` 不同，这里保留每个检测段的位置，供周期性确认使用。
@@ -319,7 +326,7 @@ def collect_speech_spans(detector, samples: List[float], sample_rate: int):
 def voiced_fraction(
     samples: List[float],
     sample_rate: int,
-    spans,
+    spans: List[Tuple[int, int]],
     *,
     window: int = 400,
     hop: int = 160,
@@ -334,11 +341,9 @@ def voiced_fraction(
     ≥ `peak_threshold`。真实语音的浊音帧占比高；静音、风噪和宽带噪声接近 0。
     返回 (占比, 有能量帧数)。帧数不足时占比记为 0。
 
-    NumPy 仅在启用周期性门时才按需导入（sherpa-onnx 环境已依赖它），不改变
-    未启用该门时本模块的轻量导入特性。
+    NumPy 是可选 ASR 依赖：模块导入失败时 `ensure_available` 会在请求阶段
+    返回 503，不阻止后端启动。
     """
-    import numpy as np
-
     audio = (
         samples
         if sample_rate == SENSE_VOICE_SAMPLE_RATE
@@ -394,6 +399,7 @@ class LocalAsrEngine:
         denoise_enabled: bool = False,
         denoise_model_path: str | Path | None = None,
         denoise_observation_weight: float = 0.5,
+        max_audio_seconds: float = 60.0,
     ) -> None:
         self._model_path = Path(model_path)
         self._tokens_path = Path(tokens_path)
@@ -407,8 +413,13 @@ class LocalAsrEngine:
         if not 0 < vad_threshold < 1:
             raise ValueError("VAD threshold must be between 0 and 1")
         self._vad_threshold = vad_threshold
-        if not math.isfinite(vad_min_speech_duration) or not 0 < vad_min_speech_duration <= 1:
-            raise ValueError("VAD minimum speech duration must be finite and within (0, 1]")
+        if (
+            not math.isfinite(vad_min_speech_duration)
+            or not 0 < vad_min_speech_duration <= 1
+        ):
+            raise ValueError(
+                "VAD minimum speech duration must be finite and within (0, 1]"
+            )
         self._vad_min_speech_duration = vad_min_speech_duration
         self._vad_recheck_enabled = bool(vad_recheck_enabled)
         if not 0 < vad_recheck_target_rms < 1:
@@ -422,7 +433,9 @@ class LocalAsrEngine:
         self._vad_recheck_peak_limit = vad_recheck_peak_limit
         self._vad_periodic_gate_enabled = bool(vad_periodic_gate_enabled)
         if not 0 <= vad_periodic_min_voiced_fraction <= 1:
-            raise ValueError("VAD periodic minimum voiced fraction must be within [0, 1]")
+            raise ValueError(
+                "VAD periodic minimum voiced fraction must be within [0, 1]"
+            )
         self._vad_periodic_min_voiced_fraction = vad_periodic_min_voiced_fraction
         self._vad_periodic_recheck = bool(vad_periodic_recheck)
         if not 0 < vad_periodic_energy_floor < 1:
@@ -438,6 +451,9 @@ class LocalAsrEngine:
         if not 0 <= denoise_observation_weight <= 1:
             raise ValueError("Observation weight must be between 0 and 1")
         self._observation_weight = denoise_observation_weight
+        if not math.isfinite(max_audio_seconds) or max_audio_seconds <= 0:
+            raise ValueError("Maximum audio seconds must be finite and positive")
+        self._max_audio_seconds = max_audio_seconds
         # 模型加载与推理都串行化：sherpa-onnx 的 OfflineRecognizer 实例
         # 在多线程并发 decode 时并不保证安全，单锁既保证正确性也限制 CPU 占用。
         self._lock = threading.Lock()
@@ -486,6 +502,8 @@ class LocalAsrEngine:
             found = False
         if not found:
             raise AsrUnavailableError("本地语音识别依赖未安装")
+        if np is None:
+            raise AsrUnavailableError("本地语音识别依赖未安装")
 
     def _ensure_recognizer(self):
         if self._recognizer is not None:
@@ -518,7 +536,11 @@ class LocalAsrEngine:
         config.silero_vad.min_silence_duration = 0.5
         config.sample_rate = SENSE_VOICE_SAMPLE_RATE
         config.num_threads = 1
-        return sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=65)
+        # 缓冲必须覆盖允许的最长音频，不能写死 65 秒；多留 5 秒给检测器收尾。
+        buffer_seconds = max(1, int(math.ceil(self._max_audio_seconds + 5)))
+        return sherpa_onnx.VoiceActivityDetector(
+            config, buffer_size_in_seconds=buffer_seconds
+        )
 
     def _ensure_vad(self) -> None:
         """首次门控时同时建好复检检测器，避免运行中段出现冷启动尖峰。"""
@@ -556,7 +578,9 @@ class LocalAsrEngine:
                         max_gain=self._vad_recheck_max_gain,
                         peak_limit=self._vad_recheck_peak_limit,
                     )
-                    if gain > 1.0 and self._periodic_accepts(boosted, sample_rate, self._recheck_vad):
+                    if gain > 1.0 and self._periodic_accepts(
+                        boosted, sample_rate, self._recheck_vad
+                    ):
                         return True
                 return False
             if contains_speech(self._vad, samples, sample_rate):
@@ -570,7 +594,9 @@ class LocalAsrEngine:
                 peak_limit=self._vad_recheck_peak_limit,
             )
             # 增益为 1 表示输入并不低，第二次分析不会提供额外信息。
-            return gain > 1.0 and contains_speech(self._recheck_vad, boosted, sample_rate)
+            return gain > 1.0 and contains_speech(
+                self._recheck_vad, boosted, sample_rate
+            )
         except Exception as exc:
             # 不复用状态未知的检测器，也不把原生异常细节返回客户端。
             self._vad = None
@@ -583,7 +609,9 @@ class LocalAsrEngine:
         if not spans:
             return False
         fraction, frames = voiced_fraction(
-            samples, sample_rate, spans,
+            samples,
+            sample_rate,
+            spans,
             energy_floor=self._vad_periodic_energy_floor,
         )
         if frames < self._vad_periodic_min_frames:
@@ -618,17 +646,22 @@ class LocalAsrEngine:
             enhanced = result.samples
             if result.sample_rate != SENSE_VOICE_SAMPLE_RATE or not enhanced:
                 raise ValueError("invalid enhancement output")
-            if len(enhanced) > len(observed) or not all(
-                math.isfinite(v) for v in enhanced
+            enhanced_audio = np.asarray(enhanced, dtype=np.float64)
+            if enhanced_audio.size > len(observed) or not np.all(
+                np.isfinite(enhanced_audio)
             ):
                 raise ValueError("invalid enhancement samples")
             w = self._observation_weight
-            mixed = [
-                max(-1.0, min(1.0, (1 - w) * clean + w * raw))
-                for raw, clean in zip(observed, enhanced)
-            ]
-            # 原生 GTCRN 可能少一个帧尾；保留原始尾音，不让增强器改变录音时长。
-            mixed.extend(observed[len(mixed) :])
+            observed_audio = np.asarray(observed, dtype=np.float64)
+            # 增强器可能少一个帧尾；只混合共同长度，尾音原样保留。
+            overlap = min(observed_audio.size, enhanced_audio.size)
+            mixed_audio = np.clip(
+                (1 - w) * enhanced_audio[:overlap] + w * observed_audio[:overlap],
+                -1.0,
+                1.0,
+            )
+            mixed = [float(value) for value in mixed_audio]
+            mixed.extend(observed[overlap:])
             return mixed, SENSE_VOICE_SAMPLE_RATE
         except Exception as exc:
             raise AsrError("本地语音增强失败") from exc

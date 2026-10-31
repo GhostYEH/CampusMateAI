@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import threading
 import wave
 from pathlib import Path
 from typing import List
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.core.config import Settings
 from app.main import create_app
@@ -33,14 +35,21 @@ from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 
 
-def _wav_bytes(samples: List[int], *, sample_rate: int = 16000, channels: int = 1, width: int = 2) -> bytes:
+def _wav_bytes(
+    samples: List[int], *, sample_rate: int = 16000, channels: int = 1, width: int = 2
+) -> bytes:
     """构造 WAV 字节：默认 16kHz / 单声道 / 16 位 PCM。"""
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as writer:
         writer.setnchannels(channels)
         writer.setsampwidth(width)
         writer.setframerate(sample_rate)
-        writer.writeframes(b"".join(int(value).to_bytes(width, "little", signed=width == 2) for value in samples))
+        writer.writeframes(
+            b"".join(
+                int(value).to_bytes(width, "little", signed=width == 2)
+                for value in samples
+            )
+        )
     return buffer.getvalue()
 
 
@@ -48,7 +57,9 @@ def _silence(*, seconds: float = 1.0, sample_rate: int = 16000) -> List[int]:
     return [0] * int(seconds * sample_rate)
 
 
-def _speech_like(*, seconds: float = 1.0, sample_rate: int = 16000, amplitude: int = 4000) -> List[int]:
+def _speech_like(
+    *, seconds: float = 1.0, sample_rate: int = 16000, amplitude: int = 4000
+) -> List[int]:
     """近似语音能量的方波；只用于验证能量门控是否放行，不参与真实识别。"""
     half_period = max(1, sample_rate // 200)
     return [
@@ -57,33 +68,41 @@ def _speech_like(*, seconds: float = 1.0, sample_rate: int = 16000, amplitude: i
     ]
 
 
-def _speechlike_envelope(*, seconds: float = 1.0, sample_rate: int = 16000) -> List[float]:
+def _speechlike_envelope(
+    *, seconds: float = 1.0, sample_rate: int = 16000
+) -> List[float]:
     """带音节起伏的合成"语音"：短促音节 + 明显静音间隙，crest 明显 > 1.5。
 
     占空比在这里是关键：若音节几乎铺满整段，帧能量近似恒定，crest 会掉到
     1.3 以下，反而更像平稳噪声。真实语音说一句话时约有 3~6 成时间是间隙。
     """
     samples: List[float] = []
-    period = int(0.25 * sample_rate)      # 250ms 一个"音节+间隙"周期
-    voiced = int(0.08 * sample_rate)      # 其中 80ms 有声
+    period = int(0.25 * sample_rate)  # 250ms 一个"音节+间隙"周期
+    voiced = int(0.08 * sample_rate)  # 其中 80ms 有声
     for index in range(int(seconds * sample_rate)):
         if (index % period) < voiced:
             samples.append(0.25 if (index // 8) % 2 == 0 else -0.25)
         else:
-            samples.append(0.0)           # 间隙真静音
+            samples.append(0.0)  # 间隙真静音
     return samples
 
 
-def _steady_noise(*, seconds: float = 1.0, sample_rate: int = 16000, amplitude: float = 0.02) -> List[float]:
+def _steady_noise(
+    *, seconds: float = 1.0, sample_rate: int = 16000, amplitude: float = 0.02
+) -> List[float]:
     """平稳噪声：能量恒定无起伏，crest ≈ 1.0，是幻听的主要来源。"""
-    return [amplitude if index % 2 else -amplitude for index in range(int(seconds * sample_rate))]
-
+    return [
+        amplitude if index % 2 else -amplitude
+        for index in range(int(seconds * sample_rate))
+    ]
 
 
 class FakeAsrEngine:
     """记录调用参数的假引擎，返回值可控。"""
 
-    def __init__(self, text: str = "今天有什么课？", error: Exception | None = None) -> None:
+    def __init__(
+        self, text: str = "今天有什么课？", error: Exception | None = None
+    ) -> None:
         self.text = text
         self.error = error
         self.calls: list[tuple[int, int]] = []
@@ -95,7 +114,12 @@ class FakeAsrEngine:
         return self.text
 
 
-def _make_client(*, max_upload_mb: int = 10, max_audio_seconds: int = 60) -> tuple[TestClient, object]:
+def _make_client(
+    *,
+    max_upload_mb: int = 10,
+    max_audio_seconds: int = 60,
+    queue_timeout_seconds: float = 1.0,
+) -> tuple[TestClient, object]:
     settings = Settings(
         _env_file=None,
         app_env="test",
@@ -108,6 +132,7 @@ def _make_client(*, max_upload_mb: int = 10, max_audio_seconds: int = 60) -> tup
         asr_enabled=True,
         asr_max_upload_mb=max_upload_mb,
         asr_max_audio_seconds=max_audio_seconds,
+        asr_queue_timeout_seconds=queue_timeout_seconds,
     )
     container = reset_container_for_tests(settings)
     seed_demo_data(container, force=True)
@@ -123,7 +148,13 @@ def _login(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
-def _upload(client: TestClient, headers: dict[str, str], payload: bytes, *, filename: str = "speech.wav"):
+def _upload(
+    client: TestClient,
+    headers: dict[str, str],
+    payload: bytes,
+    *,
+    filename: str = "speech.wav",
+):
     return client.post(
         "/api/v1/assistant/asr",
         headers=headers,
@@ -188,7 +219,9 @@ def test_asr_rejects_stereo_and_non_pcm16_audio() -> None:
     eight_bit = _upload(client, headers, _wav_bytes([0, 64, 128, 200], width=1))
 
     assert stereo.status_code == 422 and stereo.json()["code"] == "ASR_AUDIO_INVALID"
-    assert eight_bit.status_code == 422 and eight_bit.json()["code"] == "ASR_AUDIO_INVALID"
+    assert (
+        eight_bit.status_code == 422 and eight_bit.json()["code"] == "ASR_AUDIO_INVALID"
+    )
     assert container.asr.calls == []
 
 
@@ -217,7 +250,9 @@ def test_asr_maps_engine_unavailable_to_503() -> None:
 
 def test_asr_does_not_leak_internal_errors() -> None:
     client, container = _make_client()
-    container.asr = FakeAsrEngine(error=AsrError("模型内部路径 C:\\secret\\model.onnx 崩溃"))
+    container.asr = FakeAsrEngine(
+        error=AsrError("模型内部路径 C:\\secret\\model.onnx 崩溃")
+    )
 
     response = _upload(client, _login(client), _wav_bytes(_speech_like()))
 
@@ -237,8 +272,103 @@ def test_asr_rejects_empty_and_oversized_upload() -> None:
     oversized = _upload(client, headers, b"\x00" * (1024 * 1024 + 1))
 
     assert empty.status_code == 422 and empty.json()["code"] == "ASR_AUDIO_INVALID"
-    assert oversized.status_code == 413 and oversized.json()["code"] == "ASR_AUDIO_TOO_LARGE"
+    assert (
+        oversized.status_code == 413
+        and oversized.json()["code"] == "ASR_AUDIO_TOO_LARGE"
+    )
+
+
+def test_oversized_content_length_is_rejected_before_multipart_parse() -> None:
+    client, container = _make_client(max_upload_mb=1)
+    container.asr = FakeAsrEngine()
+
+    response = client.post(
+        "/api/v1/assistant/asr",
+        content=b"x" * (1024 * 1024 + 5000),
+        headers={"content-type": "multipart/form-data; boundary=invalid"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "ASR_AUDIO_TOO_LARGE"
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+def test_chunked_upload_without_content_length_is_rejected() -> None:
+    client, container = _make_client()
+    container.asr = FakeAsrEngine()
+
+    # httpx 对迭代器请求体使用 chunked，中间件无法在解析前得知体积。
+    response = client.post(
+        "/api/v1/assistant/asr",
+        content=iter([b"x"]),
+        headers={"content-type": "multipart/form-data; boundary=invalid"},
+    )
+
+    assert response.status_code == 411
+    assert response.json()["code"] == "ASR_LENGTH_REQUIRED"
+
+
+def test_asr_returns_busy_when_concurrency_gate_is_exhausted() -> None:
+    client, container = _make_client(queue_timeout_seconds=0.01)
+    container.asr = FakeAsrEngine()
+    container.asr_gate = threading.Semaphore(0)
+
+    response = _upload(client, _login(client), _wav_bytes(_speech_like()))
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "ASR_BUSY"
     assert container.asr.calls == []
+
+
+def test_gate_is_released_after_success_and_failure() -> None:
+    client, container = _make_client()
+    headers = _login(client)
+
+    container.asr = FakeAsrEngine()
+    first = _upload(client, headers, _wav_bytes(_speech_like()))
+    second = _upload(client, headers, _wav_bytes(_speech_like()))
+    assert first.status_code == 200 and second.status_code == 200
+
+    container.asr = FakeAsrEngine(error=AsrError("引擎失败"))
+    failed = _upload(client, headers, _wav_bytes(_speech_like()))
+    assert failed.status_code == 500
+
+    container.asr = FakeAsrEngine()
+    recovered = _upload(client, headers, _wav_bytes(_speech_like()))
+    assert recovered.status_code == 200
+
+
+def test_zero_frame_wav_is_treated_as_no_speech() -> None:
+    client, container = _make_client()
+    container.asr = FakeAsrEngine("")
+
+    response = _upload(client, _login(client), _wav_bytes([]))
+
+    assert response.status_code == 200
+    assert response.json()["text"] == ""
+    assert response.json()["duration_seconds"] == 0.0
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("asr_max_upload_mb", 0),
+        ("asr_max_upload_mb", -1),
+        ("asr_max_audio_seconds", 0),
+        ("asr_max_concurrency", 0),
+        ("asr_language", "unsupported"),
+        ("asr_num_threads", 0),
+        ("asr_min_rms", 0),
+    ],
+)
+def test_invalid_asr_settings_are_rejected_at_startup(field, value) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            app_env="test",
+            database_url="sqlite:///:memory:",
+            **{field: value},
+        )
 
 
 def test_asr_rejects_audio_longer_than_limit() -> None:
@@ -296,15 +426,13 @@ def test_engine_rejects_missing_model_with_readable_error() -> None:
         engine.transcribe([0.5] * 16000, 16000)
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("sherpa_onnx") is not None,
-    reason="仅在未安装 sherpa-onnx 的环境验证缺包分支",
-)
-def test_engine_reports_missing_dependency(tmp_path) -> None:
+def test_engine_reports_missing_dependency(tmp_path, monkeypatch) -> None:
     model = tmp_path / "model.onnx"
     tokens = tmp_path / "tokens.txt"
     model.write_bytes(b"stub")
     tokens.write_text("stub", encoding="utf-8")
+    # 不依赖真实环境是否安装 sherpa-onnx，保证缺包分支在 CI 也被执行。
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
 
     with pytest.raises(AsrUnavailableError, match="依赖未安装"):
         LocalAsrEngine(model, tokens).transcribe([0.5] * 16000, 16000)
@@ -312,7 +440,9 @@ def test_engine_reports_missing_dependency(tmp_path) -> None:
 
 def _real_model_paths() -> tuple[str, str]:
     """仓库内已就位的 SenseVoice 模型路径（不下载、不入库）。"""
-    settings = Settings(_env_file=None, app_env="test", database_url="sqlite:///:memory:")
+    settings = Settings(
+        _env_file=None, app_env="test", database_url="sqlite:///:memory:"
+    )
     return str(settings.asr_model_file), str(settings.asr_tokens_file)
 
 
@@ -437,4 +567,3 @@ def test_energy_gate_and_text_filter_helpers() -> None:
     # 「没。」「我。」这类幻听文本含实词，标点过滤拦不住，
     # 因此能量/峰值因子门控才是它们的第一道防线。
     assert is_meaningful_text("没。") is True
-

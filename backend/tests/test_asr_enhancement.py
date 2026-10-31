@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import math
 import sys
+import threading
 import wave
 from importlib.machinery import ModuleSpec
 from pathlib import Path
@@ -107,7 +108,12 @@ def _wav_bytes(samples, sample_rate=16000):
 def _request(engine, samples, sample_rate=16000):
     container = SimpleNamespace(
         asr=engine,
-        settings=SimpleNamespace(asr_max_audio_seconds=60, asr_max_upload_mb=10),
+        asr_gate=threading.Semaphore(1),
+        settings=SimpleNamespace(
+            asr_max_audio_seconds=60,
+            asr_max_upload_mb=10,
+            asr_queue_timeout_seconds=1.0,
+        ),
     )
     app = FastAPI()
     register_exception_handlers(app)

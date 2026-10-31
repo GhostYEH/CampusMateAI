@@ -201,8 +201,8 @@ class Settings(BaseSettings):
     # ===== 本地语音识别（SenseVoice / sherpa-onnx，纯本地推理） =====
     # 模型与词表文件不随仓库分发，需用 backend/scripts/download_asr_model.py
     # 下载到 backend/data/asr_models/（已被根 .gitignore 忽略）。
-    # 依赖或模型缺失时只关闭本能力：容器不构造引擎，/assistant/asr 返回 503，
-    # 后端启动与其他接口不受影响。
+    # 模型文件缺失时容器不构造引擎；依赖缺失仍会构造，首次请求返回 503。
+    # 两种情况都不影响后端启动与其他接口。
     asr_enabled: bool = True
     # 相对路径按 backend/ 根目录解析（同 knowledge_base_path）。
     asr_model_path: str = (
@@ -212,9 +212,9 @@ class Settings(BaseSettings):
         "data/asr_models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/tokens.txt"
     )
     # 模型推理线程数。取 CPU 核心数的一小部分，避免并发请求把整机打满。
-    asr_num_threads: int = 2
+    asr_num_threads: int = Field(default=2, ge=1, le=16)
     # SenseVoice 语言选项：zh/en/ja/ko/yue/auto，留空表示自动检测。
-    asr_language: str = "zh"
+    asr_language: Literal["zh", "en", "ja", "ko", "yue", "auto", ""] = "zh"
     # 逆文本归一化：把"二零二六年"这类口语数字整理成可读形式。
     asr_use_itn: bool = True
     # 小型 Silero VAD；文件存在时启用，缺失/留空时回退到下方能量门控。
@@ -253,16 +253,20 @@ class Settings(BaseSettings):
     asr_denoise_model_path: str = "data/asr_models/gtcrn_simple.onnx"
     asr_denoise_observation_weight: float = Field(default=0.5, ge=0, le=1)
     # 单次请求允许的最长音频时长（秒）与上传体积上限（MB）。
-    asr_max_audio_seconds: int = 60
-    asr_max_upload_mb: int = 10
+    asr_max_audio_seconds: int = Field(default=60, ge=1, le=300)
+    asr_max_upload_mb: int = Field(default=10, ge=1, le=100)
+    # 同时执行的解码/推理上限。超过上限的请求短暂排队后返回 503 ASR_BUSY，
+    # 避免多个 10MB 请求同时把浮点采样点放大到内存峰值。
+    asr_max_concurrency: int = Field(default=2, ge=1, le=16)
+    asr_queue_timeout_seconds: float = Field(default=1.0, ge=0, le=30)
     # 下列能量门控仅在可选 VAD 未安装/禁用时兼容使用。
     # 整段 RMS 易被留白稀释，会漏掉小声；阈值并不是可靠的语音概率。
-    asr_min_rms: float = 0.008
+    asr_min_rms: float = Field(default=0.008, gt=0, lt=1)
     # crest = 最大帧RMS / 整段RMS，只反映起伏；脉冲噪声也可能通过。
-    asr_min_crest: float = 1.5
+    asr_min_crest: float = Field(default=1.5, ge=1, le=100)
     # 短于该时长的音频跳过 crest 判据：实测幻听需 0.4 秒以上才出现，
     # 而极短音频的 crest 统计意义不足，误杀真实短语音的代价更大。
-    asr_min_dynamic_seconds: float = 0.35
+    asr_min_dynamic_seconds: float = Field(default=0.35, ge=0, le=10)
 
     # ===== UAPI 必应每日壁纸 =====
     # 仅后端读取；不要把 UAPI Key 下发到 Web/移动端。

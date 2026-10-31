@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from ..core.logging import logger
-from threading import RLock
+from threading import BoundedSemaphore, RLock
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -157,8 +157,10 @@ class ServiceContainer:
     model_shadow_runner: ModelShadowRunner
     model_assist_service: ModelAssistService
     tts: Optional[MiMoTtsClient]
-    # 本地(离线)语音识别;模型或依赖缺失时为 None,接口返回 503 而非启动失败
+    # 本地(离线)语音识别;模型文件缺失时为 None,依赖缺失时首次请求返回 503
     asr: Optional[LocalAsrEngine]
+    # 限制同时解码/推理的请求数,避免多个大音频同时放大浮点样本
+    asr_gate: BoundedSemaphore
     # 多角色仓库
     user_repository: UserRepository
     refresh_token_repository: RefreshTokenRepository
@@ -349,10 +351,12 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
             min_rms=settings.asr_min_rms,
             min_crest=settings.asr_min_crest,
             min_dynamic_seconds=settings.asr_min_dynamic_seconds,
+            max_audio_seconds=float(settings.asr_max_audio_seconds),
         )
         if settings.asr_available
         else None
     )
+    asr_gate = BoundedSemaphore(settings.asr_max_concurrency)
     notice = NoticeExtractionService(llm, settings)
     rag = RagService(retrieval, llm, settings, repo)
     assignment_repo = AssignmentRepository(db)
@@ -616,6 +620,7 @@ def _build_container_inner(settings: Settings, db: Database) -> ServiceContainer
         model_shadow_runner=model_shadow_runner,
         tts=tts,
         asr=asr_engine,
+        asr_gate=asr_gate,
         user_repository=user_repository,
         refresh_token_repository=RefreshTokenRepository(db),
         course_repository=course_repo,

@@ -63,7 +63,9 @@ class _Detector:
 
 
 def _engine(**kwargs):
-    return LocalAsrEngine("unused-model", "unused-tokens", vad_model_path="unused-vad", **kwargs)
+    return LocalAsrEngine(
+        "unused-model", "unused-tokens", vad_model_path="unused-vad", **kwargs
+    )
 
 
 def test_voiced_fraction_high_for_harmonic_speech():
@@ -109,7 +111,7 @@ def test_gate_rejects_when_no_segments_detected():
     assert engine._contains_speech([0.1] * 16000, 16000) is False
 
 
-def test_gate_accepts_speech_with_few_energetic_frames():
+def test_gate_rejects_speech_with_few_energetic_frames():
     # Short but clearly voiced clip: below the 20-frame floor must be rejected
     # (guards against a single noise impulse masquerading as speech).
     speech = _harmonic(seconds=0.12)
@@ -137,7 +139,9 @@ def test_invalid_min_voiced_fraction_rejected(value):
 
 def _quiet_harmonic(seconds=1.0, f0=200.0, rate=16000, rms=1e-4):
     t = np.arange(int(seconds * rate)) / rate
-    signal = (0.5 * np.sin(2 * math.pi * f0 * t) + 0.25 * np.sin(2 * math.pi * 2 * f0 * t))
+    signal = 0.5 * np.sin(2 * math.pi * f0 * t) + 0.25 * np.sin(
+        2 * math.pi * 2 * f0 * t
+    )
     signal = signal / np.sqrt(np.mean(signal * signal)) * rms
     return signal.astype(np.float64)
 
@@ -164,8 +168,11 @@ def test_gate_recheck_recovers_quiet_speech():
 def test_gate_low_energy_floor_recovers_quiet_speech():
     # Route B: lowering the energy floor lets quiet frames count without recheck.
     quiet = _quiet_harmonic()
-    engine = _engine(vad_periodic_gate_enabled=True, vad_periodic_energy_floor=1e-5,
-                     vad_periodic_min_frames=8)
+    engine = _engine(
+        vad_periodic_gate_enabled=True,
+        vad_periodic_energy_floor=1e-5,
+        vad_periodic_min_frames=8,
+    )
     engine._ensure_vad = lambda: None
     engine._vad = _Detector(spans=[_Segment(0, list(quiet))])
     assert engine._contains_speech(quiet.tolist(), 16000) is True
