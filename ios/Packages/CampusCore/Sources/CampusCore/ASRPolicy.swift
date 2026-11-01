@@ -22,7 +22,9 @@ public enum ASRPolicy {
             return "语音识别暂不可用，请稍后重试。"
         case "ASR_AUDIO_TOO_LARGE", "ASR_AUDIO_TOO_LONG", "AUDIO_SIZE":
             return "录音过长，请分段输入。"
-        case "ASR_AUDIO_INVALID", "ASR_LENGTH_REQUIRED":
+        case "ASR_AUDIO_INVALID":
+            return "录音格式无法识别，请重新录制。"
+        case "ASR_LENGTH_REQUIRED":
             return "录音上传不完整，请重新录制。"
         case "ASR_FAILED":
             return "语音识别失败，请重试。"

@@ -85,6 +85,7 @@ final class AssistantSpeech: NSObject, AVAudioRecorderDelegate {
                 let data = try await Task.detached(priority: .userInitiated) {
                     try Data(contentsOf: url)
                 }.value
+                guard generation == run, !Task.isCancelled else { return }
                 guard data.count <= ASRPolicy.maxRecordingBytes else {
                     throw APIError(code: "AUDIO_SIZE", message: "录音超过一分钟，请分段输入。")
                 }

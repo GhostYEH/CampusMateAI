@@ -195,6 +195,7 @@ fun CounselorScreen(
         classroomProposal = state.classroomProposal,
         classroomJob = state.classroomJob,
         onInputChange = viewModel::updateInput,
+        onSpeechText = viewModel::appendSpeechInput,
         onSend = viewModel::send,
         onAsk = viewModel::send,
         onShuffle = viewModel::shuffleRecommendations,
@@ -238,6 +239,7 @@ private fun CpmCounselorContent(
     classroomProposal: com.example.campusai.data.remote.agent.InteractiveClassroomProposalDto?,
     classroomJob: com.example.campusai.data.classroom.ClassroomJobState,
     onInputChange: (String) -> Unit,
+    onSpeechText: (String) -> Unit,
     onSend: () -> Unit,
     onAsk: (String) -> Unit,
     onShuffle: () -> Unit,
@@ -343,7 +345,7 @@ private fun CpmCounselorContent(
                 }
                 item("tail") { Spacer(Modifier.height(2.dp)) }
             }
-            CpmComposer(state.input, state.sending, onInputChange, onSend, onSpeechText = onInputChange)
+            CpmComposer(state.input, state.sending, onInputChange, onSend, onSpeechText = onSpeechText)
         }
     }
 }
@@ -750,7 +752,7 @@ private fun CpmStreamingCursor() {
 }
 
 @Composable
-private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit, onSpeechText: (String) -> Unit = onValueChange) {
+private fun CpmComposer(value: String, sending: Boolean, onValueChange: (String) -> Unit, onSend: () -> Unit, onSpeechText: (String) -> Unit) {
     var speechNotice by remember { mutableStateOf<String?>(null) }
     Column(
         Modifier.fillMaxWidth().imePadding().padding(horizontal = 18.dp, vertical = 10.dp),

@@ -21,7 +21,9 @@ struct SpeechInputButton: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
-        .disabled(!enabled || speech.isWorking)
+        // Sending a message can disable starting another recording, but the user
+        // must still be able to stop one that is already in progress.
+        .disabled(!speech.isRecording && (!enabled || speech.isWorking))
         .accessibilityIdentifier(identifier)
         .accessibilityLabel(speech.isRecording ? "结束录音" : "语音输入")
         .accessibilityValue(speech.isWorking ? "正在识别" : speech.isRecording ? "正在录音" : "空闲")

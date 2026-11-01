@@ -24,6 +24,34 @@ class CounselorViewModelTest {
     @After fun tearDown() = Dispatchers.resetMain()
 
     @Test
+    fun `speech appends to the latest edited draft without replacing it`() = runTest(dispatcher) {
+        val viewModel = CounselorViewModel(streamer = CpmChatStreamer { _, _, _, _ -> })
+        viewModel.updateInput("先写的草稿")
+        // The user continues editing while the upload is in flight.
+        viewModel.updateInput("先写的草稿，补充内容")
+        viewModel.appendSpeechInput("  语音结果  ")
+        assertEquals("先写的草稿，补充内容\n语音结果", viewModel.uiState.value.input)
+        viewModel.appendSpeechInput("   ")
+        assertEquals("先写的草稿，补充内容\n语音结果", viewModel.uiState.value.input)
+    }
+
+    @Test
+    fun `speech arriving during a reply remains as the next message draft`() = runTest(dispatcher) {
+        val finish = CompletableDeferred<Unit>()
+        val viewModel = CounselorViewModel(streamer = CpmChatStreamer { _, _, _, emit ->
+            finish.await()
+            emit("回答")
+        })
+        viewModel.updateInput("已经发送的问题")
+        viewModel.send()
+        runCurrent()
+        viewModel.appendSpeechInput("下一条语音问题")
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("下一条语音问题", viewModel.uiState.value.input)
+    }
+
+    @Test
     fun `send publishes every chunk before completion and queues final speech`() = runTest(dispatcher) {
         val finish = CompletableDeferred<Unit>()
         val viewModel = CounselorViewModel(

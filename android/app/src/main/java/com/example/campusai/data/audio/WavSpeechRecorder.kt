@@ -5,134 +5,153 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+/** A small capture boundary so framing and shutdown can be tested without a microphone. */
+internal interface SpeechAudioCapture {
+    val bufferSize: Int
+    fun start()
+    fun read(buffer: ByteArray, count: Int): Int
+    fun stop()
+    fun release()
+}
 
 /**
- * Records mono 16 kHz PCM16 speech to a WAV file suitable for the backend
- * `/assistant/asr` endpoint (WAV / PCM16LE / 16000 Hz / mono).
- *
- * The recorder captures on a background thread because `AudioRecord.read` blocks.
- * A hard cap ([maxSeconds], default 60s) keeps the upload within the backend limit
- * and avoids runaway memory/disk use. This class does not request permissions; the
- * caller must hold RECORD_AUDIO before calling [start].
+ * Records mono 16 kHz PCM16 speech for `/assistant/asr`, bounded to [maxSeconds].
+ * Call start/stop/cancel off the UI thread: device startup/shutdown and WAV writing
+ * may block. Permissions belong to the caller. A returned file belongs to the caller.
  */
-class WavSpeechRecorder(
-    context: Context,
-    private val sampleRate: Int = 16000,
-    private val maxSeconds: Int = 60,
+class WavSpeechRecorder internal constructor(
+    private val cacheDirectory: File,
+    private val sampleRate: Int,
+    private val maxSeconds: Int,
+    private val createCapture: (Int) -> SpeechAudioCapture?,
 ) {
-    private val appContext = context.applicationContext
-    private val outputFile = File(appContext.cacheDir, "asr_${System.currentTimeMillis()}.wav")
+    constructor(context: Context, sampleRate: Int = 16000, maxSeconds: Int = 60) : this(
+        context.applicationContext.cacheDir, sampleRate, maxSeconds, ::createAndroidSpeechCapture,
+    )
 
-    @Volatile private var recording = false
-    @Volatile private var cancelled = false
-    private var thread: Thread? = null
-    private var audioRecord: AudioRecord? = null
-    private val pcm = java.io.ByteArrayOutputStream()
+    init {
+        require(sampleRate > 0 && maxSeconds > 0)
+        require(sampleRate.toLong() * maxSeconds * 2 <= Int.MAX_VALUE)
+    }
 
-    val isRecording: Boolean get() = recording
+    private class CaptureSession(val capture: SpeechAudioCapture, val outputFile: File) {
+        val pcm = ByteArrayOutputStream()
+        val finished = CountDownLatch(1)
+        val deviceLock = Any()
+        var deviceStopped = false
+        @Volatile var recording = true
+        @Volatile var cancelled = false
+        @Volatile var manuallyStopped = false
+    }
 
-    /** Starts capture. Returns false if the microphone could not be initialised. */
-    @SuppressLint("MissingPermission")
-    fun start(): Boolean {
-        if (recording) return true
-        val minBuffer = try {
-            AudioRecord.getMinBufferSize(
-                sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-            )
-        } catch (_: Exception) {
-            return false
-        }
-        if (minBuffer <= 0) return false
-        val bufferSize = maxOf(minBuffer, sampleRate / 5 * 2) // ~200 ms of frames
-        val record = try {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                sampleRate,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferSize,
-            )
-        } catch (_: Exception) {
-            return false
-        }
-        if (record.state != AudioRecord.STATE_INITIALIZED) {
-            record.release()
-            return false
-        }
-        audioRecord = record
-        pcm.reset()
-        cancelled = false
-        recording = true
+    private val lock = Any()
+    private var session: CaptureSession? = null
+
+    val isRecording: Boolean get() = synchronized(lock) { session?.recording == true }
+
+    /**
+     * Returns false if the microphone cannot start. [onFinished] runs on the capture
+     * thread after the limit/read failure has stopped and released the device.
+     * Manual stop/cancel do not need this callback; the caller already owns completion.
+     */
+    fun start(onFinished: () -> Unit = {}): Boolean = synchronized(lock) {
+        if (session != null) return@synchronized session?.recording == true
+        val capture = try { createCapture(sampleRate) } catch (_: Exception) { null }
+            ?: return@synchronized false
         try {
-            record.startRecording()
+            capture.start()
         } catch (_: Exception) {
-            recording = false
-            try { record.release() } catch (_: Exception) { }
-            audioRecord = null
-            return false
+            try { capture.release() } catch (_: Exception) { }
+            return@synchronized false
         }
-        thread = Thread {
-            val buffer = ByteArray(bufferSize)
-            val maxBytes = maxSeconds * sampleRate * 2
+        val current = CaptureSession(capture, File(cacheDirectory, "asr_${UUID.randomUUID()}.wav"))
+        session = current
+        Thread {
             try {
-                while (recording && pcm.size() < maxBytes) {
-                    val read = record.read(buffer, 0, buffer.size)
-                    if (read > 0) pcm.write(buffer, 0, read) else if (read < 0) break
+                val buffer = ByteArray(maxOf(2, capture.bufferSize))
+                val maxBytes = maxSeconds * sampleRate * 2
+                while (current.recording && current.pcm.size() < maxBytes) {
+                    // AudioRecord byte reads must contain complete PCM16 frames.
+                    val remaining = minOf(buffer.size, maxBytes - current.pcm.size())
+                    val count = remaining - remaining % 2
+                    val read = capture.read(buffer, count)
+                    if (read <= 0 || read > count || read % 2 != 0) break
+                    current.pcm.write(buffer, 0, read)
                 }
             } catch (_: Exception) {
-                // Ignore read errors; stop() will finalise whatever was captured.
+                // Preserve complete frames captured before an interrupted/failed read.
+            } finally {
+                current.recording = false
+                stopDevice(current)
+                synchronized(current.deviceLock) {
+                    try { capture.release() } catch (_: Exception) { }
+                }
+                current.finished.countDown()
+                if (!current.cancelled && !current.manuallyStopped) onFinished()
             }
         }.also { it.isDaemon = true; it.start() }
-        return true
+        true
+    }
+
+    /** Stops capture and returns the completed WAV, including after automatic completion. */
+    fun stop(): File? {
+        val current = synchronized(lock) {
+            session?.takeUnless { it.manuallyStopped }?.also {
+                it.manuallyStopped = true
+                it.recording = false
+            }
+        } ?: return null
+        try {
+            stopDevice(current)
+            val finished = try {
+                current.finished.await(1500, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+            // Never read/reset a buffer that may still be owned by the capture thread.
+            if (!finished || current.cancelled) return null
+            val data = current.pcm.toByteArray()
+            if (data.size < sampleRate / 10 * 2) return null
+            return try {
+                FileOutputStream(current.outputFile).use { out ->
+                    out.write(wavHeader(data.size, sampleRate))
+                    out.write(data)
+                }
+                if (current.cancelled) { current.outputFile.delete(); null } else current.outputFile
+            } catch (_: Exception) {
+                current.outputFile.delete()
+                null
+            }
+        } finally {
+            synchronized(lock) { if (session === current) session = null }
+        }
     }
 
     /**
-     * Stops capture and writes a PCM16 WAV file. Returns the file, or null if the
-     * recording was cancelled or too short to be useful (< 0.1s).
+     * Discards active capture/finalization without waiting for its worker or touching
+     * its PCM buffer. Once stop() has returned a file, its cleanup belongs to the caller.
      */
-    fun stop(): File? {
-        if (!recording) return null
-        recording = false
-        // Stop the recorder first so a blocked AudioRecord.read returns immediately;
-        // only then join the capture thread to avoid racing on `pcm`.
-        try { audioRecord?.stop() } catch (_: Exception) { }
-        try { thread?.join(1500) } catch (_: InterruptedException) { }
-        thread = null
-        try { audioRecord?.release() } catch (_: Exception) { }
-        audioRecord = null
-        if (cancelled) { outputFile.delete(); return null }
-        val data = pcm.toByteArray()
-        pcm.reset()
-        if (data.size < sampleRate / 10 * 2) { // < 0.1s of audio
-            outputFile.delete()
-            return null
-        }
-        return try {
-            FileOutputStream(outputFile).use { out ->
-                out.write(wavHeader(data.size, sampleRate))
-                out.write(data)
-            }
-            outputFile
-        } catch (_: Exception) {
-            outputFile.delete()
-            null
-        }
+    fun cancel() {
+        val current = synchronized(lock) {
+            session?.also { session = null; it.cancelled = true; it.recording = false }
+        } ?: return
+        stopDevice(current)
+        current.outputFile.delete()
     }
 
-    /** Stops capture and deletes the partial file. */
-    fun cancel() {
-        cancelled = true
-        recording = false
-        // See stop(): unblock the read before joining the capture thread.
-        try { audioRecord?.stop() } catch (_: Exception) { }
-        try { thread?.join(1500) } catch (_: InterruptedException) { }
-        thread = null
-        try { audioRecord?.release() } catch (_: Exception) { }
-        audioRecord = null
-        pcm.reset()
-        outputFile.delete()
+    private fun stopDevice(current: CaptureSession) = synchronized(current.deviceLock) {
+        if (!current.deviceStopped) {
+            current.deviceStopped = true
+            try { current.capture.stop() } catch (_: Exception) { }
+        }
     }
 
     private fun wavHeader(pcmBytes: Int, rate: Int): ByteArray {
@@ -157,5 +176,30 @@ class WavSpeechRecorder(
         putIntLE(24, rate); putIntLE(28, byteRate); putShortLE(32, blockAlign); putShortLE(34, bitsPerSample)
         putString(36, "data"); putIntLE(40, pcmBytes)
         return header
+    }
+}
+
+@SuppressLint("MissingPermission")
+private fun createAndroidSpeechCapture(sampleRate: Int): SpeechAudioCapture? {
+    val minBuffer = AudioRecord.getMinBufferSize(
+        sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+    )
+    if (minBuffer <= 0) return null
+    val requestedSize = maxOf(minBuffer, sampleRate / 5 * 2)
+    val captureBufferSize = requestedSize + requestedSize % 2
+    val record = AudioRecord(
+        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, captureBufferSize,
+    )
+    if (record.state != AudioRecord.STATE_INITIALIZED) {
+        record.release()
+        return null
+    }
+    return object : SpeechAudioCapture {
+        override val bufferSize = captureBufferSize
+        override fun start() = record.startRecording()
+        override fun read(buffer: ByteArray, count: Int): Int = record.read(buffer, 0, count)
+        override fun stop() = record.stop()
+        override fun release() = record.release()
     }
 }

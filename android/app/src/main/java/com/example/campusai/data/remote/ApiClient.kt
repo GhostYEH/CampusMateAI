@@ -134,6 +134,15 @@ object ApiClient {
     val api: ApiService = retrofit.create(ApiService::class.java)
     val learningRooms: LearningRoomApi = retrofit.create(LearningRoomApi::class.java)
 
+    // Model loading and serial ASR inference can outlast the regular API's 8s timeout.
+    val speechApi: ApiService = retrofit.newBuilder()
+        .client(okHttpClient.newBuilder()
+            .readTimeout(60, TimeUnit.SECONDS)
+            .callTimeout(75, TimeUnit.SECONDS)
+            .build())
+        .build()
+        .create(ApiService::class.java)
+
     /** Same authenticated backend, but converted to WebSocket only inside the voice transport. */
     fun websocketUrl(path: String): String {
         val root = BASE_URL.removeSuffix("/")
