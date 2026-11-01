@@ -5,6 +5,7 @@ import json
 import asyncio
 import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
@@ -190,6 +191,60 @@ def test_messages_are_isolated_ordered_and_idempotent(setup):
     assert client.post(url, headers=g, json={**body, "content": "a" * 2001}).status_code == 422
     another = create(client, h)
     assert client.get(f"{BASE}/rooms/{another}/messages", headers=h).json()["items"] == []
+
+
+def test_message_catchup_across_multiple_pages_and_retry(setup):
+    container, client, room, (host, h), (guest, g), (_, o) = joined(setup)
+    repo = container.learning_room_repository
+    other_room = create(client, h)
+    for index in range(205):
+        repo.send(room, host if index % 2 == 0 else guest, f"消息 {index}", f"attempt-{index}")
+        if index == 99:
+            repo.send(other_room, host, "另一个课堂", "other")
+
+    url = f"{BASE}/rooms/{room}/messages"
+    received = []
+    after = 0
+    page_sizes = []
+    while True:
+        response = client.get(url, headers=g, params={"after": after})
+        assert response.status_code == 200
+        page = response.json()["items"]
+        page_sizes.append(len(page))
+        received.extend(page)
+        if len(page) < 100:
+            break
+        after = page[-1]["id"]
+
+    assert page_sizes == [100, 100, 5]
+    assert [message["content"] for message in received] == [f"消息 {i}" for i in range(205)]
+    assert len({message["id"] for message in received}) == 205
+    retry = client.post(url, headers=h, json={"content": "消息 0", "client_id": "attempt-0"})
+    assert retry.status_code == 201 and retry.json()["id"] == received[0]["id"]
+    assert client.get(url, headers=o).status_code == 404
+    assert client.post(f"{BASE}/rooms/{room}/leave", headers=g).status_code == 204
+    assert client.get(url, headers=g).status_code == 404
+    assert client.post(f"{BASE}/rooms/{room}/leave", headers=h).status_code == 204
+    assert client.get(url, headers=h).status_code in (404, 410)
+
+
+def test_concurrent_message_retry_is_idempotent_across_connections(setup):
+    container, client, room, (host, h), _, _ = joined(setup)
+    repositories = [
+        LearningRoomRepository(Database(container.settings.database_path))
+        for _ in range(2)
+    ]
+    barrier = threading.Barrier(2)
+
+    def send(repo):
+        barrier.wait(timeout=5)
+        return repo.send(room, host, "不确定是否送达", "concurrent-attempt")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(send, repositories))
+    assert results[0]["id"] == results[1]["id"]
+    messages = client.get(f"{BASE}/rooms/{room}/messages", headers=h).json()["items"]
+    assert [message["id"] for message in messages] == [results[0]["id"]]
 
 
 def test_host_cursor_and_leave_revoke_access(setup):
