@@ -53,6 +53,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private var cursor = 0L
     private var tokenDeadlineMs = 0L
     private val messageOutbox = MessageOutbox()
+    private var sessionToken = ApiClient.currentAccessToken()
 
     init {
         viewModelScope.launch {
@@ -80,6 +81,10 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         foreground = true
         pollJob = viewModelScope.launch {
             while (true) {
+                if (!checkSession()) {
+                    delay(3_000)
+                    continue
+                }
                 val selected = mutableState.value.room?.id
                 val requestEpoch = epoch
                 try {
@@ -142,7 +147,23 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         mutableState.update { it.copy(room = room, messages = emptyList(), pendingMessage = room?.id?.let(messageOutbox::get)) }
     }
 
+    private fun checkSession(): Boolean {
+        val current = ApiClient.currentAccessToken()
+        if (current != sessionToken) {
+            sessionToken = current
+            select(null)
+            messageOutbox.clear()
+            mutableState.update {
+                it.copy(identity = null, rooms = emptyList(), invitations = emptyList(), pendingMessage = null,
+                    notice = "登录状态已变更，请重新进入课堂并检查未确认的消息")
+            }
+            return false
+        }
+        return !current.isNullOrBlank()
+    }
+
     private fun action(block: suspend () -> Unit) {
+        if (!checkSession()) return
         if (mutableState.value.busy) return
         viewModelScope.launch {
             mutableState.update { it.copy(busy = true, notice = null) }
@@ -205,6 +226,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private suspend fun deliver(attempt: PendingRoomMessage) {
+        if (!checkSession()) return
         api.send(attempt.roomId, LearningMessageRequest(attempt.draft.trim(), attempt.clientId))
         messageOutbox.remove(attempt)
         mutableState.update {
@@ -219,6 +241,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     }
 
     fun connect() {
+        if (!checkSession()) return
         if (!uiVisible) return
         if (tokenJob?.isActive == true && call.state.value.phase != ClassroomCallPhase.ERROR) return
         tokenJob?.cancel()
