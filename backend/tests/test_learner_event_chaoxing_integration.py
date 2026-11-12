@@ -473,8 +473,12 @@ async def test_formal_batch_sync_route_uses_bulk_client_methods_and_keeps_respon
 
     client.get_all_assignments = get_all_assignments
     client.get_all_notices = get_all_notices
-    with patch("app.api.routes.chaoxing.ChaoxingClient", return_value=client):
+    with patch("app.api.routes.chaoxing.ChaoxingClient", return_value=client), \
+            patch("app.main.ChaoxingDailySyncWorker.start", new=AsyncMock(return_value=None)):
         with TestClient(create_app()) as http:
+            # 本用例校验的是显式 /chaoxing/sync 路由。后台 ChaoxingDailySyncWorker 在应用
+            # 启动时会立即 tick，可能抢先对同一用户自动同步并占住共享同步锁，使被测路由
+            # 偶发 409（并发同步是产品预期行为）。禁用后台 worker 以隔离被测边界。
             login = http.post(
                 "/api/v1/auth/login",
                 json={"username": "student_demo", "password": "Demo123456"},

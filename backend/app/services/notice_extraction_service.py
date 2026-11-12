@@ -291,6 +291,11 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
     相对时间(本周五/下周一/第X周)统一标记 year_missing=True 以触发人工确认。
     """
     now = now_override or datetime.now(timezone.utc).astimezone()
+    # 年份推断以「发布时间」为基准：已提供 published_at 时用它判断是否跨年，
+    # 避免用真实运行时钟（wall clock）导致同一历史通知在不同日期得出不同年份。
+    _rollover_ref = published_at if published_at is not None else now
+    if _rollover_ref.tzinfo is None:
+        _rollover_ref = _rollover_ref.replace(tzinfo=timezone.utc)
 
     def _has_non_deadline_context(match_start: int) -> bool:
         """检查匹配位置前 12 字符是否出现"开始时间"/"公示日"等非截止上下文。"""
@@ -325,7 +330,7 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                 h, mi = _extract_time(m, 3, 4)
                 ref_year = (published_at.year if published_at else now.year)
                 candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
-                if candidate < now - _timedelta(days=2):
+                if candidate < _rollover_ref - _timedelta(days=2):
                     candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
                 return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
             if kind in ("deadline_dot", "deadline_dot_date"):
@@ -338,7 +343,7 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                     h, mi = None, None
                 ref_year = published_at.year if published_at else now.year
                 candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
-                if candidate < now - _timedelta(days=2):
+                if candidate < _rollover_ref - _timedelta(days=2):
                     candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
                 return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
             if kind == "week_n":
@@ -429,7 +434,7 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                     h, mi = _extract_time(m, 3, 4)
                     ref_year = (published_at.year if published_at else now.year)
                     candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
-                    if candidate < now - _timedelta(days=2):
+                    if candidate < _rollover_ref - _timedelta(days=2):
                         candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
                     return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
                 if kind in ("md_dot", "md_dot_date"):
@@ -442,7 +447,7 @@ def _rule_parse_deadline(text: str, published_at: Optional[datetime], *, now_ove
                         h, mi = None, None
                     ref_year = published_at.year if published_at else now.year
                     candidate = _to_dt(ref_year, mo, d, hour=h, minute=mi)
-                    if candidate < now - _timedelta(days=2):
+                    if candidate < _rollover_ref - _timedelta(days=2):
                         candidate = _to_dt(ref_year + 1, mo, d, hour=h, minute=mi)
                     return candidate, True, "通知文本未标注年份，已根据上下文推断，请确认"
                 if kind == "iso_date":
