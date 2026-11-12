@@ -30,7 +30,7 @@ cryptography==42.0.8
 # 缺少本依赖或模型时后端仍可正常启动，仅 /api/v1/assistant/asr 返回 503。
 sherpa-onnx==1.13.8
 # ASR 的 VAD 降采样与浊音分析直接使用 NumPy；不要把可用性依赖传递依赖。
-numpy==2.5.4
+numpy==2.4.6
 
 # ===== 文档解析(可选,按需启用) =====
 # 仅支持 Markdown/TXT 时可注释掉下面两行
