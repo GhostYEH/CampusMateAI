@@ -64,6 +64,7 @@ from .routes import (
     magicclass_course_context,
     magicclass_learning_space,
     learning_rooms,
+    study_rooms,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -161,5 +162,6 @@ api_router.include_router(magicclass_course_context.router)
 # 导航栏「学习空间」的服务可见性与可信公开 Origin(不绑定课程)
 api_router.include_router(magicclass_learning_space.router)
 api_router.include_router(learning_rooms.router)
+api_router.include_router(study_rooms.router)
 
 __all__ = ["api_router"]

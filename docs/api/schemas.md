@@ -7655,3 +7655,64 @@ RTC 配置状态，不代表云服务和设备网络已验收。
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
 | `file` | string (binary) | 是 | — | 最大 2 MiB；文件格式和提取规则见课堂模块 |
+
+<a id="schema-studyroomcreatein"></a>
+## StudyRoomCreateIn
+
+模型定义：[backend/app/api/routes/study_rooms.py](../../backend/app/api/routes/study_rooms.py)。
+
+创建多人在线自习室的请求体。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `title` | string | 是 | minLength=1; maxLength=200 | — |
+| `focus_minutes` | integer | 否 | default=25; minimum=1; maximum=180 | — |
+| `break_minutes` | integer | 否 | default=5; minimum=1; maximum=60 | — |
+
+<a id="schema-studyroominvitationin"></a>
+## StudyRoomInvitationIn
+
+模型定义：[backend/app/api/routes/study_rooms.py](../../backend/app/api/routes/study_rooms.py)。
+
+按 UID 邀请同学加入自习室。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `uid` | string | 是 | minLength=1; maxLength=128 | — |
+
+<a id="schema-studyroommessagein"></a>
+## StudyRoomMessageIn
+
+模型定义：[backend/app/api/routes/study_rooms.py](../../backend/app/api/routes/study_rooms.py)。
+
+自习室房内文字消息（client_id 幂等去重）。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `content` | string | 是 | minLength=1; maxLength=2000 | — |
+| `client_id` | string | 是 | minLength=1; maxLength=128 | — |
+
+<a id="schema-studyroomstatein"></a>
+## StudyRoomStateIn
+
+模型定义：[backend/app/api/routes/study_rooms.py](../../backend/app/api/routes/study_rooms.py)。
+
+上报本人自习状态。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `study_state` | string | 是 | minLength=1; maxLength=16 | — |
+| `status_message` | string / null | 否 | string约束: maxLength=140 | — |
+
+<a id="schema-studyroomtimerin"></a>
+## StudyRoomTimerIn
+
+模型定义：[backend/app/api/routes/study_rooms.py](../../backend/app/api/routes/study_rooms.py)。
+
+发起人操作共享番茄钟。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `action` | string | 是 | minLength=1; maxLength=16 | — |
+| `focus_minutes` | integer / null | 否 | integer约束: minimum=1; maximum=180 | — |
+| `break_minutes` | integer / null | 否 | integer约束: minimum=1; maximum=60 | — |

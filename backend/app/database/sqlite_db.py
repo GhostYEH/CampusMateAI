@@ -56,6 +56,48 @@ CREATE TABLE IF NOT EXISTS learning_room_messages (
 CREATE INDEX IF NOT EXISTS idx_learning_room_messages_room ON learning_room_messages(room_id, id);
 """
 
+# 多人自习室（互相监督）：成员在席状态 + 同步番茄钟 + 房内文字鼓励。
+# 与上面的「共同课堂(learning_rooms)」是两套独立概念：这里没有课件/音视频，
+# 只维护成员在线状态、一个由发起人控制的共享计时器和轻量鼓励消息。
+STUDY_ROOM_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS study_rooms (
+    id TEXT PRIMARY KEY,
+    host_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    phase TEXT NOT NULL DEFAULT 'idle' CHECK(phase IN ('idle', 'focus', 'break')),
+    phase_started_at TEXT,
+    focus_minutes INTEGER NOT NULL DEFAULT 25,
+    break_minutes INTEGER NOT NULL DEFAULT 5,
+    pause_started_at TEXT,
+    paused_seconds INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_study_rooms_host ON study_rooms(host_id, active);
+CREATE TABLE IF NOT EXISTS study_room_members (
+    room_id TEXT NOT NULL REFERENCES study_rooms(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'declined', 'left')),
+    study_state TEXT NOT NULL DEFAULT 'idle'
+        CHECK(study_state IN ('focus', 'break', 'away', 'idle')),
+    last_seen_at TEXT,
+    status_message TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_study_room_members_user ON study_room_members(user_id, status);
+CREATE TABLE IF NOT EXISTS study_room_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id TEXT NOT NULL REFERENCES study_rooms(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    client_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(room_id, user_id, client_id)
+);
+CREATE INDEX IF NOT EXISTS idx_study_room_messages_room ON study_room_messages(room_id, id);
+"""
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS documents (
     document_id TEXT PRIMARY KEY,
@@ -2287,6 +2329,7 @@ class Database:
             _SchemaStep("core", SCHEMA_SQL),
             _SchemaStep("multi_role", MULTI_ROLE_SCHEMA_SQL),
             _SchemaStep("learning_room", LEARNING_ROOM_SCHEMA_SQL),
+            _SchemaStep("study_room", STUDY_ROOM_SCHEMA_SQL),
             _SchemaStep("university", UNIVERSITY_SCHEMA_SQL),
             _SchemaStep("community", COMMUNITY_SCHEMA_SQL),
             _SchemaStep("academic", ACADEMIC_SCHEMA_SQL),

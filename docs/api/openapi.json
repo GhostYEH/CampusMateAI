@@ -24907,6 +24907,732 @@
           }
         ]
       }
+    },
+    "/api/v1/study/rooms/identity": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "读取自习室身份",
+        "description": "读取本人 UID 与显示名，供邀请同学时核对。仅要求登录。",
+        "operationId": "identity_api_v1_study_rooms_identity_get",
+        "responses": {
+          "200": {
+            "description": "当前账号的 UID 与显示名",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "examples": {
+                  "成功": {
+                    "value": {
+                      "uid": "usr_host_example",
+                      "name": "同学甲"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/study/rooms/students/{uid}": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "校验邀请对象",
+        "description": "按 UID 校验邀请对象存在且启用；不能邀请自己(422)。",
+        "operationId": "student_api_v1_study_rooms_students__uid__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Uid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "STUDY_ROOM_ERROR：未找到该 UID 对应的同学"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "列出我的自习室",
+        "description": "列出本人已加入且活动的自习室，按创建时间降序。",
+        "operationId": "rooms_api_v1_study_rooms__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "创建自习室",
+        "description": "创建自习室；标题 1–200，focus 1–180 分钟，break 1–60 分钟。",
+        "operationId": "create_api_v1_study_rooms__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRoomCreateIn"
+              },
+              "examples": {
+                "成功": {
+                  "value": {
+                    "title": "期末冲刺自习室",
+                    "focus_minutes": 25,
+                    "break_minutes": 5
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "创建成功，发起人自动成为已加入成员",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "examples": {
+                  "成功": {
+                    "value": {
+                      "id": "examroom_example",
+                      "title": "期末冲刺自习室",
+                      "host_uid": "usr_host_example",
+                      "active": 1,
+                      "focus_minutes": 25,
+                      "break_minutes": 5,
+                      "timer": {
+                        "phase": "idle",
+                        "running": false,
+                        "paused": false,
+                        "remaining_seconds": 1500,
+                        "server_time": "2026-10-05T00:00:00+00:00"
+                      },
+                      "members": [
+                        {
+                          "uid": "usr_host_example",
+                          "name": "同学甲",
+                          "status": "accepted",
+                          "study_state": "idle",
+                          "online": true,
+                          "status_message": ""
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "STUDY_ROOM_ERROR：活动自习室达 20 个上限"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/study/rooms/invitations": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "列出待接受的自习室邀请",
+        "description": "列出本人待接受的自习室邀请，仅含活动自习室。",
+        "operationId": "invitations_api_v1_study_rooms_invitations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/study/rooms/{room_id}": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "读取自习室详情",
+        "description": "accepted 成员读取课堂成员、在线状态与同步计时器。",
+        "operationId": "room_api_v1_study_rooms__room_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/invitations": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "邀请同学加入自习室",
+        "description": "仅发起人可邀请；重复邀请 pending/accepted 成员返回原状态。",
+        "operationId": "invite_api_v1_study_rooms__room_id__invitations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRoomInvitationIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/invitations/{room_id}/accept": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "接受自习室邀请",
+        "description": "本人接受邀请，返回自习室详情；重复接受返回同一自习室。",
+        "operationId": "accept_api_v1_study_rooms_invitations__room_id__accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/invitations/{room_id}/decline": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "拒绝自习室邀请",
+        "description": "本人拒绝待接受邀请；成功 204。已加入时返回 409，须改用 leave。",
+        "operationId": "decline_api_v1_study_rooms_invitations__room_id__decline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/state": {
+      "patch": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "更新本人学习状态",
+        "description": "accepted 成员上报本人学习状态 focus/break/away/idle 与可选状态语(≤140)。",
+        "operationId": "set_state_api_v1_study_rooms__room_id__state_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRoomStateIn"
+              },
+              "examples": {
+                "成功": {
+                  "value": {
+                    "study_state": "focus",
+                    "status_message": "冲刺数学"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/heartbeat": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "上报在线心跳",
+        "description": "accepted 成员上报在线心跳；超过 45 秒无心跳将被其他成员显示为离开。",
+        "operationId": "heartbeat_api_v1_study_rooms__room_id__heartbeat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/timer": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "操作共享计时器（仅发起人）",
+        "description": "发起人操作共享番茄钟：start_focus/start_break/pause/resume/reset。\n\n普通成员操作返回 403；返回更新后的自习室详情（含最新 timer）。",
+        "operationId": "timer_api_v1_study_rooms__room_id__timer_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRoomTimerIn"
+              },
+              "examples": {
+                "开始专注": {
+                  "value": {
+                    "action": "start_focus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/messages": {
+      "get": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "读取房内交流记录",
+        "description": "accepted 成员增量读取房内消息，仅返回 id > after，按 id 升序，每次 ≤100。",
+        "operationId": "messages_api_v1_study_rooms__room_id__messages_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "default": 0,
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "发送房内消息",
+        "description": "accepted 成员发送文字鼓励；content 1–2000，client_id 用于幂等去重。",
+        "operationId": "send_api_v1_study_rooms__room_id__messages_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StudyRoomMessageIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/study/rooms/{room_id}/leave": {
+      "post": {
+        "tags": [
+          "自习室"
+        ],
+        "summary": "离开自习室",
+        "description": "accepted 成员离开；发起人离开会结束整个自习室。成功 204。",
+        "operationId": "leave_api_v1_study_rooms__room_id__leave_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -47511,6 +48237,140 @@
         ],
         "title": "AsrErrorResponse",
         "description": "ASR 失败时的统一错误信封，与全局异常处理保持一致。"
+      },
+      "StudyRoomCreateIn": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "focus_minutes": {
+            "type": "integer",
+            "maximum": 180.0,
+            "minimum": 1.0,
+            "title": "Focus Minutes",
+            "default": 25
+          },
+          "break_minutes": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Break Minutes",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "StudyRoomCreateIn"
+      },
+      "StudyRoomInvitationIn": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Uid"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid"
+        ],
+        "title": "StudyRoomInvitationIn"
+      },
+      "StudyRoomMessageIn": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content"
+          },
+          "client_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Client Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "client_id"
+        ],
+        "title": "StudyRoomMessageIn"
+      },
+      "StudyRoomStateIn": {
+        "properties": {
+          "study_state": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Study State"
+          },
+          "status_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 140
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "study_state"
+        ],
+        "title": "StudyRoomStateIn"
+      },
+      "StudyRoomTimerIn": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Action"
+          },
+          "focus_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 180.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Minutes"
+          },
+          "break_minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 60.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Break Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "StudyRoomTimerIn"
       }
     },
     "securitySchemes": {
