@@ -69,8 +69,15 @@ def make_room(client, headers, title="晚自习", focus=25, brk=5):
 def joined(setup):
     container, client, ((host, h), (guest, g), (outsider, o)) = setup
     room = make_room(client, h).json()["id"]
-    assert client.post(f"{BASE}/{room}/invitations", headers=h, json={"uid": guest}).status_code == 200
-    assert client.post(f"{BASE}/invitations/{room}/accept", headers=g).status_code == 200
+    assert (
+        client.post(
+            f"{BASE}/{room}/invitations", headers=h, json={"uid": guest}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(f"{BASE}/invitations/{room}/accept", headers=g).status_code == 200
+    )
     return container, client, room, (host, h), (guest, g), (outsider, o)
 
 
@@ -99,7 +106,9 @@ def test_create_list_invite_accept_flow(setup):
     assert listed[0]["member_count"] == 1
 
     rid = room["id"]
-    assert client.post(f"{BASE}/{rid}/invitations", headers=h, json={"uid": guest}).json() == {
+    assert client.post(
+        f"{BASE}/{rid}/invitations", headers=h, json={"uid": guest}
+    ).json() == {
         "uid": guest,
         "status": "pending",
     }
@@ -113,18 +122,35 @@ def test_create_list_invite_accept_flow(setup):
     detail = client.get(f"{BASE}/{rid}", headers=g).json()
     assert {m["uid"] for m in detail["members"]} == {host, guest}
     # 已加入的普通成员不是发起人，不能邀请其他人
-    assert client.post(f"{BASE}/{rid}/invitations", headers=g, json={"uid": outsider}).status_code == 403
+    assert (
+        client.post(
+            f"{BASE}/{rid}/invitations", headers=g, json={"uid": outsider}
+        ).status_code
+        == 403
+    )
 
 
 def test_member_isolation_and_decline(setup):
     container, client, room, (host, h), (guest, g), (outsider, o) = joined(setup)
     for headers in ({}, o):
         assert client.get(f"{BASE}/{room}", headers=headers).status_code in (401, 404)
-        assert client.get(f"{BASE}/{room}/messages", headers=headers).status_code in (401, 404)
+        assert client.get(f"{BASE}/{room}/messages", headers=headers).status_code in (
+            401,
+            404,
+        )
     # 另一个被邀请者拒绝
-    assert client.post(f"{BASE}/{room}/invitations", headers=h, json={"uid": outsider}).status_code == 200
-    assert client.post(f"{BASE}/invitations/{room}/decline", headers=o).status_code == 204
-    assert client.post(f"{BASE}/invitations/{room}/accept", headers=o).status_code == 404
+    assert (
+        client.post(
+            f"{BASE}/{room}/invitations", headers=h, json={"uid": outsider}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(f"{BASE}/invitations/{room}/decline", headers=o).status_code == 204
+    )
+    assert (
+        client.post(f"{BASE}/invitations/{room}/accept", headers=o).status_code == 404
+    )
 
 
 def test_member_and_room_caps(setup):
@@ -134,15 +160,40 @@ def test_member_and_room_caps(setup):
     for i in range(7):
         name = f"study_extra_{i}"
         _clear_rate_limit(client)
-        client.post("/api/v1/auth/register", json={"username": name, "password": "TestStudy123", "role": "student"})
-        data = client.post("/api/v1/auth/login", json={"username": name, "password": "TestStudy123"}).json()
+        client.post(
+            "/api/v1/auth/register",
+            json={"username": name, "password": "TestStudy123", "role": "student"},
+        )
+        data = client.post(
+            "/api/v1/auth/login", json={"username": name, "password": "TestStudy123"}
+        ).json()
         uid = data["user"]["uid"]
-        assert client.post(f"{BASE}/{room}/invitations", headers=h, json={"uid": uid}).status_code == 200
+        assert (
+            client.post(
+                f"{BASE}/{room}/invitations", headers=h, json={"uid": uid}
+            ).status_code
+            == 200
+        )
     # 第 8 位之外再邀请应 409
     _clear_rate_limit(client)
-    client.post("/api/v1/auth/register", json={"username": "study_overflow", "password": "TestStudy123", "role": "student"})
-    over = client.post("/api/v1/auth/login", json={"username": "study_overflow", "password": "TestStudy123"}).json()["user"]["uid"]
-    assert client.post(f"{BASE}/{room}/invitations", headers=h, json={"uid": over}).status_code == 409
+    client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "study_overflow",
+            "password": "TestStudy123",
+            "role": "student",
+        },
+    )
+    over = client.post(
+        "/api/v1/auth/login",
+        json={"username": "study_overflow", "password": "TestStudy123"},
+    ).json()["user"]["uid"]
+    assert (
+        client.post(
+            f"{BASE}/{room}/invitations", headers=h, json={"uid": over}
+        ).status_code
+        == 409
+    )
     # 活动房间上限 20
     for i in range(19):
         assert make_room(client, h, title=f"r{i}").status_code == 201
@@ -152,39 +203,79 @@ def test_member_and_room_caps(setup):
 def test_timer_control_is_host_only_and_stateful(setup):
     container, client, room, (host, h), (guest, g), _ = joined(setup)
     # 普通成员不能操作计时器
-    assert client.post(f"{BASE}/{room}/timer", headers=g, json={"action": "start_focus"}).status_code == 403
-    started = client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "start_focus"})
+    assert (
+        client.post(
+            f"{BASE}/{room}/timer", headers=g, json={"action": "start_focus"}
+        ).status_code
+        == 403
+    )
+    started = client.post(
+        f"{BASE}/{room}/timer", headers=h, json={"action": "start_focus"}
+    )
     assert started.status_code == 200
     timer = started.json()["timer"]
     assert timer["phase"] == "focus" and timer["running"] is True
     assert 0 < timer["remaining_seconds"] <= 25 * 60
-    paused = client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "pause"}).json()["timer"]
+    paused = client.post(
+        f"{BASE}/{room}/timer", headers=h, json={"action": "pause"}
+    ).json()["timer"]
     assert paused["paused"] is True and paused["running"] is False
     remaining_at_pause = paused["remaining_seconds"]
     still = client.get(f"{BASE}/{room}", headers=g).json()["timer"]
     assert still["paused"] is True
     assert abs(still["remaining_seconds"] - remaining_at_pause) <= 2
-    resumed = client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "resume"}).json()["timer"]
+    resumed = client.post(
+        f"{BASE}/{room}/timer", headers=h, json={"action": "resume"}
+    ).json()["timer"]
     assert resumed["running"] is True and resumed["paused"] is False
-    reset = client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "reset"}).json()["timer"]
+    reset = client.post(
+        f"{BASE}/{room}/timer", headers=h, json={"action": "reset"}
+    ).json()["timer"]
     assert reset["phase"] == "idle"
-    assert client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "bogus"}).status_code == 422
-    assert client.post(f"{BASE}/{room}/timer", headers=h, json={"action": "start_focus", "focus_minutes": 999}).status_code == 422
+    assert (
+        client.post(
+            f"{BASE}/{room}/timer", headers=h, json={"action": "bogus"}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            f"{BASE}/{room}/timer",
+            headers=h,
+            json={"action": "start_focus", "focus_minutes": 999},
+        ).status_code
+        == 422
+    )
 
 
 def test_presence_heartbeat_state_and_away(setup):
     container, client, room, (host, h), (guest, g), _ = joined(setup)
     assert client.post(f"{BASE}/{room}/heartbeat", headers=g).status_code == 200
-    assert client.patch(f"{BASE}/{room}/state", headers=g, json={"study_state": "focus", "status_message": "刷题"}).status_code == 204
+    assert (
+        client.patch(
+            f"{BASE}/{room}/state",
+            headers=g,
+            json={"study_state": "focus", "status_message": "刷题"},
+        ).status_code
+        == 204
+    )
     detail = client.get(f"{BASE}/{room}", headers=h).json()
     guest_view = next(m for m in detail["members"] if m["uid"] == guest)
     assert guest_view["online"] is True
     assert guest_view["study_state"] == "focus"
     assert guest_view["status_message"] == "刷题"
-    assert client.patch(f"{BASE}/{room}/state", headers=g, json={"study_state": "sleeping"}).status_code == 422
+    assert (
+        client.patch(
+            f"{BASE}/{room}/state", headers=g, json={"study_state": "sleeping"}
+        ).status_code
+        == 422
+    )
     old = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
     with container.db.transaction(immediate=True) as conn:
-        conn.execute("UPDATE study_room_members SET last_seen_at=? WHERE room_id=? AND user_id=?", (old, room, guest))
+        conn.execute(
+            "UPDATE study_room_members SET last_seen_at=? WHERE room_id=? AND user_id=?",
+            (old, room, guest),
+        )
     detail = client.get(f"{BASE}/{room}", headers=h).json()
     guest_view = next(m for m in detail["members"] if m["uid"] == guest)
     assert guest_view["online"] is False and guest_view["study_state"] == "away"
@@ -200,11 +291,23 @@ def test_messages_are_scoped_ordered_and_idempotent(setup):
     assert first.json()["id"] == repeat.json()["id"]
     client.post(url, headers=h, json={"content": "开始专注", "client_id": "m2"})
     msgs = client.get(url, headers=h).json()["items"]
-    assert len(msgs) == 2 and msgs[0]["uid"] == guest and msgs[0]["content"] == "一起加油"
-    assert len(client.get(url, headers=g, params={"after": msgs[0]["id"]}).json()["items"]) == 1
+    assert (
+        len(msgs) == 2 and msgs[0]["uid"] == guest and msgs[0]["content"] == "一起加油"
+    )
+    assert (
+        len(client.get(url, headers=g, params={"after": msgs[0]["id"]}).json()["items"])
+        == 1
+    )
     assert client.get(url, headers=o).status_code == 404
-    assert client.post(url, headers=g, json={**body, "content": "   "}).status_code == 422
-    assert client.post(url, headers=g, json={"content": "x", "client_id": "m1"}).status_code == 409
+    assert (
+        client.post(url, headers=g, json={**body, "content": "   "}).status_code == 422
+    )
+    assert (
+        client.post(
+            url, headers=g, json={"content": "x", "client_id": "m1"}
+        ).status_code
+        == 409
+    )
 
 
 def test_message_pagination(setup):
@@ -214,7 +317,9 @@ def test_message_pagination(setup):
         repo.send(room, host if i % 2 == 0 else guest, f"消息{i}", f"c{i}")
     received, after, pages = [], 0, []
     while True:
-        page = client.get(f"{BASE}/{room}/messages", headers=h, params={"after": after}).json()["items"]
+        page = client.get(
+            f"{BASE}/{room}/messages", headers=h, params={"after": after}
+        ).json()["items"]
         pages.append(len(page))
         received.extend(page)
         if len(page) < 100:
@@ -236,7 +341,10 @@ def test_leave_and_host_end(setup):
 def test_concurrent_accept_cap_is_atomic(setup):
     container, client, ((host, h), *rest) = setup
     room = make_room(client, h).json()["id"]
-    repos = [StudyRoomRepository(Database(container.settings.database_path)) for _ in range(2)]
+    repos = [
+        StudyRoomRepository(Database(container.settings.database_path))
+        for _ in range(2)
+    ]
     barrier = threading.Barrier(2)
 
     def send(repo):

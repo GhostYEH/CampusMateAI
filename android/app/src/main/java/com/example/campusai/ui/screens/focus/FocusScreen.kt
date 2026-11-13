@@ -141,6 +141,7 @@ fun FocusScreen(
     onOpenAssistant: (durationSeconds: Int, taskName: String, sessionMode: FocusSessionMode, relatedTaskId: String?) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenLearningRooms: () -> Unit,
+    onOpenStudyRooms: () -> Unit,
     planRepository: FocusPlanRepository,
 ) {
     val stats by repository.stats.collectAsStateWithLifecycle()
@@ -318,9 +319,12 @@ fun FocusScreen(
                     border = BorderStroke(1.dp, Color(0xFFBD9B72)),
                 ) {
                     Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("和同学交流", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold)
-                        Text("进入共同课堂邀请同学，使用文字或音视频交流；目前不支持多人同步计时。", color = FocusStudyPalette.Muted)
-                        OutlinedButton(onClick = onOpenLearningRooms) { Text("进入共同课堂") }
+                        Text("和同学一起学", color = FocusStudyPalette.Ink, fontWeight = FontWeight.Bold)
+                        Text("· 多人自习室：互相看见谁在专注、共用番茄钟、发鼓励（不含音视频）。\n· 共同课堂：邀请同学共享课件，用文字或音视频讨论。", color = FocusStudyPalette.Muted)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = onOpenStudyRooms) { Text("多人自习室") }
+                            OutlinedButton(onClick = onOpenLearningRooms) { Text("共同课堂") }
+                        }
                     }
                 }
             }

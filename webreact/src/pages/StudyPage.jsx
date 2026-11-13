@@ -9,6 +9,7 @@ import { advancePomodoro, createPomodoroState, isPomodoroState, pausePomodoro, r
 import { useAmbientSound } from "../features/study/ambientSound.js";
 import { readStudyScene, saveStudyScene } from "../features/study/scenes.js";
 import SummerFocusRoom from "../components/study/SummerFocusRoom.jsx";
+import StudyRoomPanel from "../components/study/StudyRoomPanel.jsx";
 import SummerNavDock from "../components/study/SummerNavDock.jsx";
 import { useApp } from "../app/AppContext.jsx";
 import { selectAgendaForSidebar } from "../data/agendaModel.js";
@@ -52,6 +53,7 @@ export default function StudyPage() {
   const [review, setReview] = useState(null);
   const [selfReport, setSelfReport] = useState("");
   const [blockNotifications, setBlockNotifications] = useState(true);
+  const [roomOpen, setRoomOpen] = useState(false);
   const [pomodoro, setPomodoro] = useState(readPomodoroState);
   const pomodoroRef = useRef(pomodoro); pomodoroRef.current = pomodoro;
   const activeRef = useRef(active); activeRef.current = active;
@@ -439,6 +441,7 @@ export default function StudyPage() {
   }
   return <><PageFrame className="study-page" showHeading={false}>
     {notice && <div className="page-notice notice-info" role="status">{notice}</div>}{error && <div className="page-notice notice-error" role="alert">{error}<Button variant="quiet" onClick={load}>重试</Button></div>}
+    <div className="study-room-entry-bar"><Button icon="PhUsersThree" onClick={() => setRoomOpen(true)}>和同学一起自习</Button><span className="study-room-entry-hint">多人自习室：互相看见谁在专注、共用番茄钟、发鼓励（不含音视频）</span></div>
     {loading ? <div className="state-card loading-state" aria-busy="true"><span className="loading-orb" /><p>正在加载内容…</p></div> : <SummerFocusRoom
       active={active}
       pomodoro={pomodoro}
@@ -495,5 +498,6 @@ export default function StudyPage() {
         <textarea id="study-self-report" name="self_report" rows="3" autoFocus data-autofocus value={selfReport} onChange={(event) => setSelfReport(event.target.value)} placeholder="例如：完成了阅读，后半段注意力有些分散…" />
       </div>
     </Modal>}
+    <StudyRoomPanel open={roomOpen} onClose={() => setRoomOpen(false)} />
   </PageFrame><SummerNavDock sceneAudio={ambient} /></>;
 }

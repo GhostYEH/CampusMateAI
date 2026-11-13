@@ -413,6 +413,11 @@ fun AppNavHost(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable("study_rooms") {
+            com.example.campusai.ui.screens.classroom.StudyRoomScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable("profile") {
             ProfileScreen(repository) { route -> go(route) }
         }
@@ -685,6 +690,7 @@ fun AppNavHost(
                 },
                 onOpenHistory = { go("focus_history") },
                 onOpenLearningRooms = { go("learning_rooms") },
+                onOpenStudyRooms = { go("study_rooms") },
                 planRepository = modules.focusPlans,
             )
         }

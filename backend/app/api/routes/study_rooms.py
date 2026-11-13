@@ -171,7 +171,11 @@ def create(
         Body(
             openapi_examples={
                 "成功": {
-                    "value": {"title": "期末冲刺自习室", "focus_minutes": 25, "break_minutes": 5}
+                    "value": {
+                        "title": "期末冲刺自习室",
+                        "focus_minutes": 25,
+                        "break_minutes": 5,
+                    }
                 }
             }
         ),
@@ -184,7 +188,9 @@ def create(
 
 
 @router.get("/{room_id}", summary="读取自习室详情")
-def room(room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)):
+def room(
+    room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
     """accepted 成员读取课堂成员、在线状态与同步计时器。"""
     return repo.get(room_id, user.id)
 
@@ -201,14 +207,20 @@ def invite(
 
 
 @router.post("/invitations/{room_id}/accept", summary="接受自习室邀请")
-def accept(room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)):
+def accept(
+    room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
     """本人接受邀请，返回自习室详情；重复接受返回同一自习室。"""
     repo.respond(room_id, user.id, True)
     return repo.get(room_id, user.id)
 
 
-@router.post("/invitations/{room_id}/decline", status_code=204, summary="拒绝自习室邀请")
-def decline(room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)):
+@router.post(
+    "/invitations/{room_id}/decline", status_code=204, summary="拒绝自习室邀请"
+)
+def decline(
+    room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
     """本人拒绝待接受邀请；成功 204。已加入时返回 409，须改用 leave。"""
     repo.respond(room_id, user.id, False)
     return Response(status_code=204)
@@ -219,7 +231,13 @@ def set_state(
     room_id: str,
     body: Annotated[
         StudyRoomStateIn,
-        Body(openapi_examples={"成功": {"value": {"study_state": "focus", "status_message": "冲刺数学"}}}),
+        Body(
+            openapi_examples={
+                "成功": {
+                    "value": {"study_state": "focus", "status_message": "冲刺数学"}
+                }
+            }
+        ),
     ],
     user: UserRow = Depends(current_user),
     repo=Depends(_repository),
@@ -230,7 +248,9 @@ def set_state(
 
 
 @router.post("/{room_id}/heartbeat", summary="上报在线心跳")
-def heartbeat(room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)):
+def heartbeat(
+    room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
     """accepted 成员上报在线心跳；超过 45 秒无心跳将被其他成员显示为离开。"""
     return repo.heartbeat(room_id, user.id)
 
@@ -277,7 +297,9 @@ def send(
 
 
 @router.post("/{room_id}/leave", status_code=204, summary="离开自习室")
-def leave(room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)):
+def leave(
+    room_id: str, user: UserRow = Depends(current_user), repo=Depends(_repository)
+):
     """accepted 成员离开；发起人离开会结束整个自习室。成功 204。"""
     repo.leave(room_id, user.id)
     return Response(status_code=204)

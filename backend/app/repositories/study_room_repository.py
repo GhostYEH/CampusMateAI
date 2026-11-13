@@ -338,7 +338,14 @@ class StudyRoomRepository:
                 conn.execute(
                     "UPDATE study_room_members SET study_state=?, status_message=?, "
                     "last_seen_at=?, updated_at=? WHERE room_id=? AND user_id=?",
-                    (study_state, status_message[:STATUS_MESSAGE_MAX], now, now, room_id, user_id),
+                    (
+                        study_state,
+                        status_message[:STATUS_MESSAGE_MAX],
+                        now,
+                        now,
+                        room_id,
+                        user_id,
+                    ),
                 )
         return {"uid": user_id, "study_state": study_state}
 
@@ -354,7 +361,9 @@ class StudyRoomRepository:
         now = now_dt.isoformat()
         with self.db.transaction(immediate=True) as conn:
             room = self._member(conn, room_id, user_id, host_only=True)
-            focus = focus_minutes if focus_minutes is not None else room["focus_minutes"]
+            focus = (
+                focus_minutes if focus_minutes is not None else room["focus_minutes"]
+            )
             brk = break_minutes if break_minutes is not None else room["break_minutes"]
             if not (1 <= focus <= 180) or not (1 <= brk <= 60):
                 raise _error("计时时长超出范围", 422)

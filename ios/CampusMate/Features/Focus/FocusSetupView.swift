@@ -60,6 +60,7 @@ struct FocusSetupView: View {
                     if let session = activeSession { recoveryCard(session) }
                     studyCard
                     statsStrip
+                    studyRoomLink
                     historyLink
                 }
                 .padding(.horizontal, 16)
@@ -312,6 +313,24 @@ struct FocusSetupView: View {
             Text(label).campusFont(.micro).fontWeight(.regular).foregroundStyle(Color(hex: 0x5D7066))
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var studyRoomLink: some View {
+        NavigationLink { StudyRoomView() } label: {
+            HStack {
+                Image(systemName: "person.3").font(.system(size: 15))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("多人自习室").campusFont(.body).fontWeight(.semibold)
+                    Text("和同学一起自习：互相看见谁在专注、共用番茄钟、发鼓励").campusFont(.caption).foregroundStyle(.white.opacity(0.75))
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(14)
+            .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     private var historyLink: some View {
