@@ -103,6 +103,14 @@ class CounselorViewModel(
 
     fun updateInput(value: String) = _uiState.update { it.copy(input = value) }
 
+    fun appendSpeechInput(text: String) {
+        val recognized = text.trim()
+        if (recognized.isEmpty()) return
+        _uiState.update { state ->
+            state.copy(input = state.input + (if (state.input.isBlank()) "" else "\n") + recognized)
+        }
+    }
+
     fun updateExpression(value: ExpressionResult?) {
         expression = value
     }

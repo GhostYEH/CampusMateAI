@@ -285,6 +285,8 @@ StreamingResponse(container.tts.stream_pcm(text, (req.style or '').strip()), med
 
 客户端接入：Android（`SpeechInputButton` / `ApiService.transcribeSpeech`）与 iOS（`AssistantSpeech`）已调用本接口；Web、HarmonyOS、微信小程序尚未接入。移动端均未完成真机验收。
 
+Android 的 CPM 与共同课堂将识别结果追加到当前草稿；达到 60 秒自动结束并上传，应用进入后台或离开录音组件时取消录音及识别、删除临时文件。识别请求使用独立的 60 秒读取和 75 秒总超时。iOS 共用语音按钮与 `AssistantSpeech`，课堂发送不会清除等待期间新增的草稿，上传使用 120 秒独立超时。两端正在录音时均保留手动结束入口，发送状态只限制开始新录音。这些客户端行为不改变请求、响应或后端限制。
+
 AI 助手对话页"按住说话"的语音输入：客户端录音后转成约定格式上传，服务端用**本地 SenseVoice 模型离线转写**，回填聊天输入框。推理不联网、不调用第三方、不产生费用。服务端不把音频持久化到业务存储；超过 Starlette 内存阈值的上传可能短暂写入系统临时文件，请求结束即删除。
 
 音频格式约定：**WAV / PCM16LE / 16000Hz / 单声道**，由客户端录制后就地转换。非单声道、非 16 位 PCM、非 WAV 内容返回 422；时长或体积超限返回 413。

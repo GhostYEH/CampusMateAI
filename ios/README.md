@@ -78,4 +78,5 @@ OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox'
 
 - cpm（Assistant）与共同课堂（LearningRoom）文字输入框共用 `SpeechInputButton`：录音（16k/单声道/PCM16 WAV，≤60s）经 `AssistantSpeech` 上传后端 `assistant/asr` 本地识别后回填。按钮统一 44pt 命中区域、VoiceOver 录音/识别状态，并在识别期间显示进度与停止入口。
 - 上传使用 120 秒独立超时；`ASRPolicy` 把 `ASR_BUSY`/`ASR_UNAVAILABLE` 映射为可重试提示，把体积/时长错误映射为分段输入提示。课堂发送在 `await` 前清空输入并仅在失败时恢复，避免吞掉并发回填的识别文本。
-- 验证：`CampusCore` 库 `swift build` 需重新执行；`ASRPolicyTests` 已加入测试目标。App target 与 UI 测试仍需要完整 Xcode，当前机器仅 Command Line Tools，`xcodebuild` 不可用；真机录音、权限拒绝、来电中断、切后台和 60 秒自动停止均未验收。
+- 麦克风按钮在已有录音时始终允许结束录音，消息发送状态只限制新录音；避免 CPM 录音后发送已有文字时无法手动停止。
+- 验证：`swift test --filter ASRPolicyTests` 已通过 3 项测试（包含 CampusCore 与测试目标编译），相关 App 源文件的 `swiftc -parse` 通过；语法检查不代表 App 构建通过。App target 与 UI 测试仍需要完整 Xcode，当前机器仅 Command Line Tools；真机录音、权限拒绝、来电中断、切后台和 60 秒自动停止均未验收。
