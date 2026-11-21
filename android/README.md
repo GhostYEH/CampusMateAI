@@ -59,7 +59,9 @@ app/src/main/java/com/example/campusai/
 
 Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选择自定义主题、上传个人资料并生成课堂。课程接口保留状态、计划、生成、进度、历史、重试和内容组成。自主选题的资料、生成、进度和历史使用 [`/self-classroom` 接口](../docs/api/14-magicclass.md#self-classroom)。课程已提取的个人上传资料可用于生成上下文，自定义资料按当前学生隔离，不混用其他课程资料。
 
-课程经典、自主选题和受管工作台已接入原生播放入口，设备验证见[原生课堂审计](../docs/android-native-classroom-audit.md)。调试可使用[脱敏课堂联调服务器](../docs/api/integration.md#脱敏联调服务器真实上游不可用时)验证媒体和作答。
+课程经典、自主选题和受管工作台共用原生课堂舞台。新课和课堂大厅最近学习优先打开原生播放器，投影幕、老师讲解与翻页动效适用于所有原生课件。可以旋转手机切换横竖屏。
+
+适合立体观察的新实验通过[结构化三维模型](../docs/api/response-contracts.md#三维实验配置)接入原生旋转、缩放和对象动画。已有 ε–δ 实验保留二维曲线与三维时间轨迹。需要网页专用控件的实验根据播放计划切换运行时。
 
 仍需网页的课堂操作可从应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) 打开。地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验。正式构建要求公开 HTTPS 与可信 Origin 精确匹配，调试例外限代码规定的本地课堂入口。经典播放使用 `session_id` 与 `classroom_id`，受管工作台通过 `workspace_id`、`stage_id` 和 `scene_id` 读取场景。编辑在有权限的工作台完成，独立课堂应用使用自身的认证。共同课堂的课件共享与通话能力另见下文。
 

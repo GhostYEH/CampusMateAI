@@ -2,6 +2,8 @@ package com.example.campusai.ui.screens.courses.nativeplayer
 
 import android.app.Application
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +54,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +85,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSourceFactory
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeCanvasElement
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomCache
@@ -90,12 +95,13 @@ import com.example.campusai.data.classroom.nativeplayer.NativePlaybackPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
 import com.example.campusai.data.remote.ApiClient
 import com.example.campusai.data.repository.AppRepository
-import com.example.campusai.ui.screens.courses.ClassroomStageBackdrop
 import com.example.campusai.ui.screens.courses.ClassroomWood
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
+import com.example.campusai.ui.theme.CampusMotion
 import com.example.campusai.ui.theme.DangerText
 import com.example.campusai.ui.theme.Line
+import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.Surface
@@ -174,6 +180,7 @@ fun NativeClassroomPlayer(
     val slide = state.currentSlide
     val slidePage = state.disposition.mode == NativeSceneMode.NATIVE &&
         state.currentScenePlan?.type == "slide" && slide != null
+    val experimentPage = state.hasNativeExperiment
     val sceneTitle = state.currentScene?.title ?: state.currentScenePlan?.title.orEmpty()
     val lessonText = remember(slide, sceneTitle) {
         slide?.elements?.filterIsInstance<NativeCanvasElement.Text>()?.filter { element ->
@@ -213,11 +220,27 @@ fun NativeClassroomPlayer(
         if (state.sequence.active) readNotes = false
     }
 
+    val reduceMotion = LocalReduceMotion.current
+    val pageTurn = remember(vm) { Animatable(0f) }
+    val page = state.index.takeIf { state.currentSceneId != null }
+    var previousPage by remember(vm) { mutableStateOf(page) }
+    LaunchedEffect(page, reduceMotion) {
+        val previous = previousPage
+        previousPage = page
+        if (reduceMotion || previous == null || page == null || page == previous) {
+            pageTurn.snapTo(0f)
+        } else {
+            pageTurn.snapTo(if (page > previous) 1f else -1f)
+            pageTurn.animateTo(0f, tween(350, easing = CampusMotion.settleEasing))
+        }
+    }
+    val speaking = !state.sequence.paused && (state.narration.speaking || state.narration.playing ||
+        (state.sequence.active && !state.sequence.preparing && state.activeAction?.type == "speech"))
     NativeClassroomTheme {
         BoxWithConstraints(modifier.fillMaxSize().background(Background)) {
-            ClassroomStageBackdrop(Modifier.matchParentSize())
             val landscape = maxWidth > maxHeight
             val splitLecture = landscape && maxWidth >= 580.dp
+            NativeClassroomStage(pageTurn.asState(), speaking, landscape, Modifier.matchParentSize())
             val controlsInHeader = slidePage && splitLecture && maxWidth >= 720.dp
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                 NativeTopBar(
@@ -280,7 +303,9 @@ fun NativeClassroomPlayer(
                                 onOpenFallback = onOpenFallback,
                                 fitSlide = fitSlide,
                                 controlsInHeader = controlsInHeader,
-                                modifier = contentModifier,
+                                modifier = if (!reduceMotion && (slidePage || experimentPage)) {
+                                    contentModifier.classroomPageTurn(pageTurn.asState())
+                                } else contentModifier,
                             )
                         }
                         val renderActions: @Composable (Boolean) -> Unit = { sidePanel ->
@@ -291,6 +316,7 @@ fun NativeClassroomPlayer(
                                 actions = state.currentScene?.actions.orEmpty(),
                                 active = state.activeAction,
                                 speech = state.speech,
+                                speaking = speaking,
                                 lectureScript = lectureScript,
                                 onStart = if (slidePage) vm::startLecture else vm::startSequence,
                                 onPause = vm::pauseSequence,
@@ -302,23 +328,33 @@ fun NativeClassroomPlayer(
                             )
                         }
                         val sceneScroll = key(landscape) { rememberScrollState() }
-                        if (slidePage && splitLecture) {
+                        if ((slidePage || experimentPage) && splitLecture) {
                             val gap = 12.dp
                             val availableWidth = maxWidth - 24.dp - gap
-                            val toolbarHeight = if (controlsInHeader) 0.dp else 52.dp
-                            val fittedWidth = (maxHeight - 30.dp - toolbarHeight)
-                                .coerceAtLeast(0.dp) * slide.aspectRatio + 14.dp
-                            val sideWidth = (availableWidth - fittedWidth)
-                                .coerceIn(228.dp, (availableWidth * .46f).coerceIn(228.dp, 400.dp))
-                            Row(
+                            val sideWidth = if (slidePage) {
+                                val toolbarHeight = if (controlsInHeader) 0.dp else 52.dp
+                                val fittedWidth = (maxHeight - 30.dp - toolbarHeight)
+                                    .coerceAtLeast(0.dp) * slide.aspectRatio + 14.dp
+                                (availableWidth - fittedWidth)
+                                    .coerceIn(228.dp, (availableWidth * .46f).coerceIn(228.dp, 400.dp))
+                            } else {
+                                (availableWidth * .29f).coerceIn(200.dp, 300.dp)
+                            }
+                            Column(
                                 Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(gap),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Box(Modifier.weight(1f).fillMaxHeight()) {
-                                    renderScene(Modifier.fillMaxSize(), true)
-                                }
-                                Box(Modifier.width(sideWidth).fillMaxHeight()) {
-                                    renderActions(true)
+                                if (experimentPage) NativeSceneHeading(sceneTitle, "interactive", compact = true)
+                                Row(
+                                    Modifier.weight(1f).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(gap),
+                                ) {
+                                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                                        renderScene(Modifier.fillMaxSize(), true)
+                                    }
+                                    Box(Modifier.width(sideWidth).fillMaxHeight()) {
+                                        renderActions(true)
+                                    }
                                 }
                             }
                         } else {
@@ -573,7 +609,8 @@ private fun NativeSceneContent(
                 val frame = RoundedCornerShape(15.dp)
                 BoxWithConstraints(
                     modifier.fillMaxWidth()
-                        .background(Surface, frame)
+                        .shadow(10.dp, frame, clip = false)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF3B3E3D), Surface, Color(0xFF292827))), frame)
                         .border(1.dp, ClassroomWood.copy(alpha = .82f), frame)
                         .padding(7.dp),
                 ) {
@@ -656,6 +693,31 @@ private fun NativeSceneContent(
                     NativePblPanel(
                         project = pbl,
                         hasFallback = false,
+                        onOpenFallback = {},
+                        modifier = modifier,
+                    )
+                }
+            }
+        }
+        "interactive" -> {
+            val sceneId = state.currentSceneId ?: return
+            val revision = state.revision
+            val limit = state.currentLimitExperiment
+            val spatial = state.currentSpatialExperiment
+            key(revision) {
+                when {
+                    limit != null -> NativeLimitExperimentPanel(
+                        experiment = limit,
+                        initial = vm.savedExperimentControls(sceneId, revision) ?: limit.initialControls(),
+                        highlighted = ClassroomLimitExperiment.Highlight.fromSelector(state.spotlightElementId),
+                        onControlsChanged = { vm.saveExperimentControls(sceneId, revision, it) },
+                        modifier = modifier,
+                    )
+                    spatial != null -> NativeSpatialExperimentPanel(spatial, state.spotlightElementId, modifier)
+                    else -> NativeUnavailablePanel(
+                        reason = NativePlaybackPolicy.reasonText("interactive_native_renderer_missing"),
+                        hasFallback = false,
+                        onRetry = vm::retry,
                         onOpenFallback = {},
                         modifier = modifier,
                     )

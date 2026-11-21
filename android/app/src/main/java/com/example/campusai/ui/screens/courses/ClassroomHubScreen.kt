@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -49,6 +51,17 @@ private data class RecentClassroom(
     val lastEnteredAt: String?,
     val totalSeconds: Long,
 )
+
+private fun classicRef(sessionId: String, title: String, safeUrl: String?, courseId: String? = null) =
+    NativeClassroomRef(
+        courseId = courseId.orEmpty(),
+        workspaceId = "",
+        stageId = sessionId,
+        title = title,
+        webFallbackUrl = safeUrl,
+        sessionId = sessionId,
+        source = if (courseId == null) NativeClassroomSource.SELF_CLASSIC else NativeClassroomSource.COURSE_CLASSIC,
+    )
 
 @Composable
 fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
@@ -221,24 +234,18 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     Text(if (job.terminal) job.message ?: job.status else "正在生成 · ${job.progress}% · ${job.message.orEmpty()}",
                         color = ClassroomChalk, fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
-                    trusted(job.url)?.let { safe ->
-                        Text("打开已生成的课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { viewerUrl = safe }.padding(horizontal = 8.dp, vertical = 8.dp))
-                    }
                     val sessionId = job.sessionId
+                    val safe = trusted(job.url)
                     if (!sessionId.isNullOrBlank() && job.status.equals("succeeded", ignoreCase = true)) {
-                        Text("进入原生课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable {
-                                nativeRef = NativeClassroomRef(
-                                    courseId = "",
-                                    workspaceId = "",
-                                    stageId = sessionId,
-                                    title = "自主选题课堂",
-                                    webFallbackUrl = trusted(job.url),
-                                    sessionId = sessionId,
-                                    source = NativeClassroomSource.SELF_CLASSIC,
-                                )
-                            }.padding(horizontal = 8.dp, vertical = 8.dp))
+                        Button(
+                            onClick = { nativeRef = classicRef(sessionId, "自主选题课堂", safe) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = ClassroomAmber, contentColor = ClassroomNight),
+                        ) { Text("进入原生课堂", fontWeight = FontWeight.Bold) }
+                    }
+                    if (safe != null) {
+                        Text("网页兼容  →", color = ClassroomAmber,
+                            modifier = Modifier.clickable { viewerUrl = safe }.padding(horizontal = 8.dp, vertical = 8.dp))
                     }
                 }
                 error?.let { Text(it, color = Color(0xFFFFBBA1), fontSize = 12.sp,
@@ -267,27 +274,20 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 } else {
                     history.take(4).forEach { recent ->
                         val safe = trusted(recent.entry.classroom.url)
-                        Column(Modifier.fillMaxWidth().clickable(enabled = safe != null) { viewerUrl = safe }
-                            .padding(vertical = 12.dp)) {
-                            Text("${recent.entry.courseName} · ${if (safe == null) "暂不可打开" else "继续上课  →"}",
+                        val native = recent.entry.classroom.sessionId?.takeIf { it.isNotBlank() }?.let {
+                            classicRef(it, recent.entry.courseName, safe, recent.entry.courseId)
+                        }
+                        Column(Modifier.fillMaxWidth().clickable(enabled = native != null || safe != null) {
+                            if (native != null) nativeRef = native else viewerUrl = safe
+                        }.padding(vertical = 12.dp)) {
+                            Text("${recent.entry.courseName} · ${if (native != null || safe != null) "继续上课  →" else "暂不可打开"}",
                                 color = ClassroomChalk, fontWeight = FontWeight.Bold)
                             Text("${if (recent.lastEnteredAt != null) "上次进入" else "创建于"} ${(recent.lastEnteredAt ?: recent.entry.classroom.createdAt).orEmpty().replace('T', ' ').take(16)}" +
                                 if (recent.totalSeconds > 0) " · 已学 ${formatClassroomStudyDuration(recent.totalSeconds)}" else "",
                                 color = Color(0xFFB9C7D0), fontSize = 12.sp)
-                            val nativeHistoryId = recent.entry.classroom.sessionId.orEmpty()
-                            if (recent.entry.courseName == "自主学习" && nativeHistoryId.isNotBlank()) {
-                                Text("进入原生课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                                    modifier = Modifier.clickable {
-                                        nativeRef = NativeClassroomRef(
-                                            courseId = "",
-                                            workspaceId = "",
-                                            stageId = nativeHistoryId,
-                                            title = "自主学习课堂",
-                                            webFallbackUrl = safe,
-                                            sessionId = nativeHistoryId,
-                                            source = NativeClassroomSource.SELF_CLASSIC,
-                                        )
-                                    }.padding(top = 6.dp, bottom = 2.dp))
+                            if (native != null && safe != null) {
+                                Text("网页兼容  →", color = ClassroomAmber, fontSize = 12.sp,
+                                    modifier = Modifier.clickable { viewerUrl = safe }.padding(vertical = 6.dp))
                             }
                         }
                         Spacer(Modifier.fillMaxWidth().height(1.dp).background(Color(0x335B7C8C)))

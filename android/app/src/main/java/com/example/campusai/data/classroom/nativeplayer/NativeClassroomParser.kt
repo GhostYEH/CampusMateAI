@@ -654,6 +654,12 @@ object NativeClassroomParser {
         widgetType = content["widgetType"].asText().ifBlank { content["widget"].asText() }.ifBlank { null },
         title = content["title"].asText().ifBlank { null },
         description = content["description"].asText().ifBlank { null },
+        limitExperiment = if (content["widgetType"] == "simulation") {
+            ClassroomLimitExperiment.fromWidgetConfig(content["widgetConfig"])
+        } else null,
+        spatialExperiment = if (content["widgetType"] == "visualization3d") {
+            ClassroomSpatialExperiment.fromWidgetConfig(content["widgetConfig"])
+        } else null,
     )
 
     private fun parseWhiteboard(raw: Any?, scenes: List<NativeScene>): NativeSlide? {
@@ -693,6 +699,7 @@ object NativeClassroomParser {
                 .ifBlank { content["audioUrl"].asText() }.ifBlank { null },
             supported = map["supported"].asBoolean() ?: true,
             reason = map["reason"].asText().ifBlank { null },
+            widgetTarget = if (type == "widget_highlight") map["target"].asText().ifBlank { null } else null,
         )
     }
 

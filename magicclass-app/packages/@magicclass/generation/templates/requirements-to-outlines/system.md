@@ -164,6 +164,8 @@ When generating an interactive scene, you MUST select the appropriate widget typ
 | Practice activities, gamified assessment | `game` | `gameType`, `challenge` |
 | Biological/geometric structures, 3D models | `visualization3d` | `visualizationType`, `objects` |
 
+Choose `visualization3d` when observing a model from several angles or seeing motion in space helps explain a real learning objective. When the geometry fits basic solids, describe the objects, their spatial relationships and the motion to be explored so the same scene can be rendered on an Android device. Keep ordinary lectures, exercises and other experimental forms appropriate to the subject.
+
 **widgetOutline Format by Type:**
 
 ```json

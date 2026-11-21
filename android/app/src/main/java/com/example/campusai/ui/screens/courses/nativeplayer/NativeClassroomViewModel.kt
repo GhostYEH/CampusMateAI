@@ -24,6 +24,7 @@ import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStep
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStepResult
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
 import com.example.campusai.data.classroom.nativeplayer.runClassroomSequence
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaSession
 import com.example.campusai.data.classroom.nativeplayer.ClassroomRewardResult
@@ -187,6 +188,12 @@ data class NativeClassroomUiState(
     val currentSlide: NativeSlide? get() = currentSceneId?.let { document?.slideByScene?.get(it) }
     val currentQuiz: NativeQuiz? get() = currentSceneId?.let { document?.quizByScene?.get(it) }
     val currentPbl: NativePblProject? get() = currentSceneId?.let { document?.pblByScene?.get(it) }
+    private val currentInteractive
+        get() = document?.interactiveByScene?.get(currentSceneId)
+            ?.takeIf { disposition.mode == NativeSceneMode.NATIVE && currentScenePlan?.type == "interactive" }
+    val currentLimitExperiment get() = currentInteractive?.limitExperiment
+    internal val currentSpatialExperiment get() = currentInteractive?.spatialExperiment
+    internal val hasNativeExperiment get() = currentLimitExperiment != null || currentSpatialExperiment != null
     val canTeachSlide: Boolean
         get() = currentSlide?.let { slide ->
             sequence.total > 0 || narration.audioFile != null ||
@@ -216,6 +223,13 @@ class NativeClassroomViewModel(
 
     private val _uiState = MutableStateFlow(NativeClassroomUiState())
     val uiState: StateFlow<NativeClassroomUiState> = _uiState.asStateFlow()
+    private val labControls = mutableMapOf<Pair<String, Int>, ClassroomLimitExperiment.Controls>()
+
+    internal fun savedExperimentControls(sceneId: String, revision: Int) = labControls[sceneId to revision]
+
+    internal fun saveExperimentControls(sceneId: String, revision: Int, controls: ClassroomLimitExperiment.Controls) {
+        labControls[sceneId to revision] = controls
+    }
 
     private val context = application.applicationContext
     private val tts = AndroidTextToSpeechSynthesizer(context)
@@ -713,6 +727,14 @@ class NativeClassroomViewModel(
         val quiz = _uiState.value.document?.quizByScene?.get(sceneId)
         val pbl = _uiState.value.document?.pblByScene?.get(sceneId)
         val interactive = _uiState.value.document?.interactiveByScene?.get(sceneId)
+        val actions = documentScene?.actions.orEmpty()
+        val nativeLimit = interactive?.limitExperiment != null && (planScene.widgetType == null || planScene.widgetType == "simulation") &&
+            actions.none {
+                it.supported && it.type.startsWith("widget_") &&
+                    (it.type != "widget_highlight" || ClassroomLimitExperiment.Highlight.fromSelector(it.widgetTarget) == null)
+            }
+        val nativeSpatial = (planScene.widgetType == null || planScene.widgetType == "visualization3d") &&
+            interactive?.spatialExperiment?.supportsActions(actions) == true
         val hasContent = when (planScene.type) {
             "slide" -> slide != null && slide.elements.isNotEmpty()
             "quiz" -> quiz != null && quiz.questions.isNotEmpty()
@@ -729,6 +751,8 @@ class NativeClassroomViewModel(
             hasRenderableContent = hasContent,
             fallbackAvailable = !ref.webFallbackUrl.isNullOrBlank(),
             renderReason = planScene.renderReason,
+            hasNativeExperiment = nativeLimit,
+            hasNativeSpatialScene = nativeSpatial,
         )
         _uiState.update { it.copy(disposition = disposition) }
     }
@@ -841,7 +865,9 @@ class NativeClassroomViewModel(
                 _uiState.update {
                     it.copy(
                         activeAction = action,
-                        spotlightElementId = action.elementId,
+                        spotlightElementId = if (action.type == "widget_highlight" && it.hasNativeExperiment) {
+                            action.widgetTarget
+                        } else action.elementId,
                         laserElementId = null,
                         notice = null,
                     )
@@ -1102,7 +1128,8 @@ class NativeClassroomViewModel(
         val text = action.speech ?: action.description
         if (audioUrl == null && cachedSpeech == null) {
             triggerActionInternal(action)
-            if (_uiState.value.currentSlide != null && text.isNotBlank()) {
+            val state = _uiState.value
+            if ((state.currentSlide != null || state.hasNativeExperiment) && text.isNotBlank()) {
                 return speakSequenceText(text, token, sceneId, awaitPause)
             }
             awaitSequenceDelay(speechHoldMs(action), token, sceneId, awaitPause)

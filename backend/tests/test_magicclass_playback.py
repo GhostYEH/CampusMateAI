@@ -39,6 +39,7 @@ from app.services.container import reset_container_for_tests
 from app.services.demo_seeder import seed_demo_data
 from app.services.magicclass.classroom_service import MagicClassClassroomService
 from app.services.magicclass.client import MagicClassClient
+from app.services.magicclass.playback import build_classroom_playback
 from app.services.magicclass.quiz_attempt_store import QuizAttemptStore
 from app.services.magicclass.result_store import MagicClassResultStore, MagicClassSession
 
@@ -413,6 +414,43 @@ def _self_media_url(session_id: str, relpath: str) -> str:
 
 
 # ===== 播放契约 =====
+
+
+def test_generated_geometry_is_preserved_alongside_web_compatibility():
+    widget = {
+        "type": "visualization3d",
+        "nativeRenderer": "classroom-spatial/1",
+        "description": "观察旋转中的长方体。",
+        "objects": [
+            {
+                "id": "solid",
+                "name": "长方体",
+                "type": "box",
+                "material": {"color": "#DAB27A"},
+                "animation": {"type": "rotate", "axis": "y", "speed": 0.6},
+            }
+        ],
+        "interactions": [{"type": kind, "target": "camera"} for kind in ("orbit", "zoom")],
+    }
+    html = "<main><p>观察长方体的侧面</p></main>"
+    classroom = {
+        "id": "geometry",
+        "stage": {"name": "空间几何"},
+        "scenes": [{"id": "new_scene", "type": "interactive", "content": {
+            "type": "interactive", "widgetType": "visualization3d", "widgetConfig": widget, "html": html,
+        }}],
+    }
+    session = SimpleNamespace(classroom_id="geometry", session_id="session", course_id=SELF_COURSE_ID)
+    playback = build_classroom_playback(
+        document={"classroom": classroom},
+        session=session,
+        media_base="/api/v1/self-classroom/session/media",
+        external_3d_available=False,
+    )
+    scene = playback.scenes[0]
+    assert scene.content["widgetConfig"] == widget
+    assert scene.content["html"] == html
+    assert scene.render.kind == "sandbox-html"
 
 
 def test_course_playback_contract_assembles_native_scenes_and_media(tmp_path):

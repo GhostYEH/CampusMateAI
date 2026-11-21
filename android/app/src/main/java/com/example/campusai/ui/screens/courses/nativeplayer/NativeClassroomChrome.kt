@@ -1,5 +1,8 @@
 package com.example.campusai.ui.screens.courses.nativeplayer
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -82,10 +85,12 @@ import com.example.campusai.ui.screens.courses.ClassroomChalk
 import com.example.campusai.ui.screens.courses.ClassroomNight
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
+import com.example.campusai.ui.theme.CampusMotion
 import com.example.campusai.ui.theme.DarkCampusColors
 import com.example.campusai.ui.theme.LightCampusColors
 import com.example.campusai.ui.theme.Line
 import com.example.campusai.ui.theme.LocalCampusColors
+import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.PrimarySoft
@@ -364,6 +369,7 @@ internal fun NativeClassroomActions(
     actions: List<NativeAction>,
     active: NativeAction?,
     speech: String?,
+    speaking: Boolean,
     lectureScript: String?,
     onStart: () -> Unit,
     onPause: () -> Unit,
@@ -418,11 +424,15 @@ internal fun NativeClassroomActions(
                         Modifier.size(40.dp).background(PrimarySoft, RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = Primary, modifier = Modifier.size(22.dp))
+                        if (speaking) ClassroomTeacherSignal(Modifier.size(22.dp))
+                        else Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = Primary, modifier = Modifier.size(22.dp))
                     }
                 }
                 Column(Modifier.weight(1f)) {
-                    Text(if (teachingSlide) "AI 老师" else "本页动作", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (speaking && (sidePanel || !teachingSlide)) ClassroomTeacherSignal(Modifier.size(14.dp))
+                        Text(if (teachingSlide) "AI 老师" else "本页动作", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
                     Text(
                         when {
                             finished -> if (teachingSlide) "本页讲完" else "已完成"
@@ -445,11 +455,14 @@ internal fun NativeClassroomActions(
                 }
             }
             if (sequence.total > 1) {
+                val finished = if (sequence.active) sequence.current - 1 else sequence.current
+                val progress = animateFloatAsState(
+                    (finished.toFloat() / sequence.total).coerceIn(0f, 1f),
+                    animationSpec = if (LocalReduceMotion.current) snap() else tween(240, easing = CampusMotion.settleEasing),
+                    label = "classroom steps",
+                )
                 LinearProgressIndicator(
-                    progress = {
-                        val finishedSteps = if (sequence.active) sequence.current - 1 else sequence.current
-                        (finishedSteps.toFloat() / sequence.total).coerceIn(0f, 1f)
-                    },
+                    progress = { progress.value },
                     modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(3.dp)),
                     color = Primary,
                     trackColor = Line,
@@ -479,7 +492,11 @@ internal fun NativeClassroomActions(
                     Text(
                         text = transcript, color = TextPrimary, fontSize = 14.sp, lineHeight = 21.sp,
                         modifier = Modifier.fillMaxWidth()
-                            .then(if (sidePanel) Modifier.weight(1f).verticalScroll(captionScroll) else Modifier)
+                            .then(when {
+                                sidePanel -> Modifier.weight(1f).verticalScroll(captionScroll)
+                                !teachingSlide -> Modifier.heightIn(max = 122.dp).verticalScroll(captionScroll)
+                                else -> Modifier
+                            })
                             .padding(bottom = 10.dp),
                     )
                 }

@@ -55,6 +55,8 @@ import type {
 } from './pipeline-types.js';
 import { noopGenerationLogger, type GenerationLogger } from './logger.js';
 import { isAbortError } from './generation-retry.js';
+import { materializeSpatialWidget, spatialObjectIds } from './spatial-widget.js';
+import { spatialWidgetHtml } from './spatial-widget-html.js';
 import { generatePBLV2ProjectSingleCall } from './pbl/planner-single-call.js';
 import { PlannerV2Error } from './pbl/planner-core.js';
 import type { PBLPlannerV2Input } from './pbl/types.js';
@@ -1223,7 +1225,33 @@ export async function generateWidgetContent(
       };
       break;
 
-    case 'visualization3d':
+    case 'visualization3d': {
+      const profilePrompt = [
+        "Generate ONE compact JSON object for a classroom 3D observation using supplied facts and units. It will be used directly by both a mobile and a browser renderer. Return only JSON, no HTML or code fences.",
+        "Shape: {\"description\":string,\"objects\":[{\"id\":\"first_solid\",\"name\":string,\"type\":\"box\"|\"sphere\"|\"cylinder\"|\"cone\"|\"torus\"|\"plane\",\"material\":{\"color\":\"#RRGGBB\"}}]}. description tells students what to compare or observe, in the lesson language.",
+        "Use 1 to 16 solids total, at most three levels of children, and unique IDs with only letters, digits, _, or - starting with a letter or underscore. Each object needs a short learner-facing name and a solid color.",
+        "Optional position and rotation are {x,y,z} numeric vectors (position -40 to 40 and Euler XYZ radians for rotation). scale is 0.03–12, either a number or {x,y,z}. The box and plane have unit sides, the sphere radius is 0.5, the cone and cylinder have radius 0.5 and height 1 along Y, the torus lies in the XY plane with major radius 0.36 and tube radius 0.12.",
+        "An animated object may declare {\"animation\":{\"type\":\"rotate\"|\"orbit\"|\"bounce\"|\"pulse\",\"axis\":\"x\"|\"y\"|\"z\",\"speed\":0.05-6}} with speed in radians per second. The player provides orbit, zoom, view reset, and pause automatically. Rotate about the solid center and orbit about the parent origin.",
+        "If the actual teaching objective depends on a custom interaction, special texture, or imported model, return {\"requiresWebRuntime\":true}. For basic geometry and motion, return the objects and description only. Represent the requested motion and include only geometry relevant to the lesson.",
+      ].join('\n');
+      const profileInput = [
+        outline.title,
+        outline.description,
+        ...(outline.keyPoints ?? []),
+        'Objects: ' + JSON.stringify(widgetOutline.objects ?? []),
+        'Interactions: ' + JSON.stringify(widgetOutline.interactions ?? []),
+        languageDirective || '',
+        '请将上述实验直接写成 JSON 数据。输出遵守以下约定：',
+        profilePrompt,
+        'Example format only: {"description":"Observe the solid","objects":[{"id":"model_a","name":"Solid","type":"box","material":{"color":"#DAB27A"}}]}',
+      ].join('\n');
+      const raw = await aiCall(profilePrompt, profileInput);
+      const spatial = materializeSpatialWidget(
+        parseJsonResponse<unknown>(raw),
+        widgetOutline.visualizationType,
+      );
+      if (spatial) return { html: spatialWidgetHtml(spatial), widgetType, widgetConfig: spatial };
+      log.info('Generating browser-specific visualization for ' + outline.title);
       promptId = PROMPT_IDS.VISUALIZATION3D_CONTENT;
       variables = {
         title: outline.title,
@@ -1235,6 +1263,7 @@ export async function generateWidgetContent(
         languageDirective: languageDirective || '',
       };
       break;
+    }
 
     case 'procedural-skill':
       if (!options.allowProceduralSkill) {
@@ -1280,6 +1309,7 @@ export async function generateWidgetContent(
 
   // Extract widget config from HTML if present
   const widgetConfig = extractWidgetConfig(html, widgetType);
+  if (widgetType === 'visualization3d' && widgetConfig) delete widgetConfig.nativeRenderer;
 
   return {
     html: postProcessInteractiveHtml(html),
@@ -1718,6 +1748,7 @@ export async function generateSceneActions(
   if (outline.type === 'interactive' && 'html' in content) {
     const config = outline.interactiveConfig;
     const agentsText = formatAgentsForPrompt(agents);
+    const spatialIds = spatialObjectIds(content.widgetConfig);
     // Always recompute the inventory from the current html so it matches what
     // the tool actually reads — persisting the field would go stale relative
     // to `postProcessInteractiveHtml` output and to any in-turn html edits.
@@ -1743,12 +1774,24 @@ export async function generateSceneActions(
     }
 
     const response = await aiCall(prompts.system, prompts.user);
-    const actions = parseActionsFromStructuredOutput(
+    let actions = parseActionsFromStructuredOutput(
       response,
       outline.type,
       INTERACTIVE_WIDGET_ACTIONS,
       log,
     );
+    if (spatialIds) {
+      actions = actions.flatMap((action): Action[] => {
+        if (action.type === 'speech') return [action];
+        if (!('target' in action) || typeof action.target !== 'string') return [];
+        const id = action.target.replace(/^#/, '');
+        if (!spatialIds.has(id) || action.type !== 'widget_highlight') return [];
+        return [{ ...action, target: '#' + id }];
+      });
+      if (!actions.some((action) => action.type === 'speech')) {
+        actions.unshift(...generateDefaultInteractiveActions(outline));
+      }
+    }
 
     if (actions.length > 0) {
       return processActions(actions, [], agents, log);

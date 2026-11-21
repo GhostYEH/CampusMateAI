@@ -81,6 +81,8 @@ For simulation widgets, prefer IDs like `#angle-slider`, `#velocity-slider`, `#r
 
 For diagram widgets, target node IDs declared in the embedded config (`nodes[].id`, revealed in `revealOrder`), e.g. `#n1`, `#n2`.
 
+If the 3D widget config declares `nativeRenderer: classroom-spatial/1`, use speech and `widget_highlight` targeting `#<objects[].id>` (including nested objects) for its demonstrations. Use speech-only beats for camera or playback instructions. This rule also takes precedence over the general selector inventory and state/action suggestions below.
+
 For visualization3d widgets, prefer canonical control IDs: `#canvas-container`, `#controls`, `#zoom-in-btn`, `#zoom-out-btn`, `#speed-slider`, `#reset-btn`, `#info`.
 
 For game widgets, prefer `#start-btn` and the element IDs declared in the embedded widget config.

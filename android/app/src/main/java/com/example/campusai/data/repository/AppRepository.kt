@@ -88,6 +88,7 @@ data class ClassroomStudyVisit(
 data class ClassroomHistoryEntry(
     val courseName: String,
     val classroom: InteractiveClassroomItemDto,
+    val courseId: String? = null,
 )
 
 class AppRepository(
@@ -1987,7 +1988,7 @@ class AppRepository(
         val self = async { selfClassroomHistory().map { ClassroomHistoryEntry("自主学习", it) } }
         val courseEntries = _courses.value.chunked(8).flatMap { group ->
             group.map { course -> async {
-                interactiveClassroomHistory(course.id).map { ClassroomHistoryEntry(course.name, it) }
+                interactiveClassroomHistory(course.id).map { ClassroomHistoryEntry(course.name, it, course.id) }
             } }.awaitAll().flatten()
         }
         (self.await() + courseEntries).distinctBy {

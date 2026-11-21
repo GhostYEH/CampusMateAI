@@ -272,7 +272,7 @@ multiAgent 为 `{enabled:boolean,agentIds:string[],directorPrompt?:string}`。Ac
 
 同时发送 If-Match 当前 revision 和 Idempotency-Key；一次命令整体成功才替换文档。当前 DSL 限制：文档 2MiB、场景 200、每场景动作 200、白板 100、智能体 24、嵌套深度 24、单个清洗字符串 8192、inline HTML 512KiB、每场景题目 100、每题选项 26、每次命令 50。个别命令字段上限不代表最终文档能绕过 DSL 校验；最终以 [limits.ts](../../magicclass-service/src/dsl/limits.ts) 为准。
 
-playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html / sandbox-url 时 sandbox 当前为 allow-scripts，不添加 allow-same-origin。steps 为 `{action_id,type,mode:"sync"|"fire_and_forget"}[]`；dropped_actions 为 `{action_id,type,reason}[]`；degraded 为 `{scene_id,reason}[]`。先读取 scene 正文，再按服务端播放计划决定本地渲染、沙箱及动作次序，不凭 html 字段自行判断可播放。
+playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html / sandbox-url 时 sandbox 当前为 allow-scripts，不添加 allow-same-origin。steps 为 `{action_id,type,mode:"sync"|"fire_and_forget"}[]`；dropped_actions 为 `{action_id,type,reason}[]`；degraded 为 `{scene_id,reason}[]`。先读取 scene 正文，再按服务端播放计划决定本地渲染、沙箱及动作次序。Android 对符合[三维实验配置](#三维实验配置)的场景优先使用本地数据。
 
 ## 经典课堂原生播放与媒体
 
@@ -281,7 +281,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - `content_version` 是上游课堂 JSON 正文的稳定哈希。正文变化时可据此刷新本地课件。该值的覆盖范围是 JSON，媒体缓存可使用媒体响应中提供的 `ETag` 或 `Last-Modified` 重新验证。
 - `document_updated_at` 来自上游 `stage.updatedAt` 或 `stage.createdAt`，可能为 `null`；`generated_at` 是本会话创建时间。
 - `scenes[]` 按 `order`（缺失时按源数组顺序）排序；`id` 是上游原场景 ID，缺 ID 的旧课件使用 `sc_<type>_<source_index+1>` 稳定回退 ID，`source_index` 是原数组下标。
-- `render.kind=native` 只表示服务端判断该场景可原生渲染（当前为 slide/quiz）；`sandbox-html`/`sandbox-url` 由客户端在受限 WebView 中运行；`unsupported` 必须按 `reason` 降级，不能猜测。
+- `render.kind=native` 表示服务端判断该场景适用原生播放（经典课的 slide/quiz）。`sandbox-html`/`sandbox-url` 对应受限 WebView。Android 可按[三维实验配置](#三维实验配置)将已校验的三维数据用于原生实验。其他 `unsupported` 场景按 `reason` 降级。
 - `actions[].mode=sync` 的动作按顺序进入 `steps`；`spotlight`/`laser` 为 `fire_and_forget`，不进入 `steps`。不支持的动作为 `supported=false` 并带 `reason`，同时进入 `dropped_actions`。
 - `type=speech` 的动作有可读取的成品音频时，`payload.audioUrl` 为本站相对媒体路径。用同场景中 `kind=audio`、`role=narration` 和相同 `url` 的条目核对 `available`。`media[].element_id` 可辅助关联动作，旧动作缺 ID 或多个动作共用媒体时按 URL 匹配。读取媒体需带 Bearer token。
 - `media[]` 的 `url` 是本站相对地址；`available=false` 时 `reason` 说明外部资源不代理、属于其他课堂、引用无法解析或源缺失，客户端不得自行拼接上游地址。
@@ -361,6 +361,35 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - 上游 `404/410` → `MEDIA_NOT_FOUND`；上游 `5xx/401/403` → `MEDIA_UPSTREAM_ERROR`；上游不可达 → `MAGICCLASS_UNAVAILABLE`。媒体 URL 失效时重新请求播放接口，不要缓存旧的上游内部地址。
 
 <a id="learning-rooms"></a>
+
+### 三维实验配置
+
+经典课堂和受管工作台的生成器可在 `type=interactive`、`content.widgetType=visualization3d` 的场景交付 `content.widgetConfig`。`nativeRenderer=classroom-spatial/1` 表示场景几何、相机操作与对象动画均能由客户端按数据重建。经典课堂从 `playback.scenes[].content` 读取。受管工作台从 stage document 读取，再用对应 scene 的播放计划和动作验证准入。经典课堂生成器先校验模型返回的几何数据，再用同一份数据生成 `content.html` 的兼容播放版本。几何不适用通用相机和对象动画时，生成器按原流程交付浏览器场景。
+
+```json
+{
+  "type": "visualization3d",
+  "nativeRenderer": "classroom-spatial/1",
+  "visualizationType": "geometry",
+  "description": "转动长方体，比较不同角度可见的面。",
+  "objects": [{
+    "id": "solid_a",
+    "name": "长方体",
+    "type": "box",
+    "scale": {"x": 1.8, "y": 1, "z": 1},
+    "material": {"color": "#DAB27A"},
+    "animation": {"type": "rotate", "axis": "y", "speed": 0.6}
+  }],
+  "interactions": [{"type": "orbit", "target": "camera"}, {"type": "zoom", "target": "camera"}]
+}
+```
+
+- `type`、`nativeRenderer`、`description`、`objects`、`interactions` 必填。`visualizationType` 可选，用于描述学科场景。`description` 为 1–1500 字符。`interactions` 固定为相机的 `orbit` 与 `zoom`，客户端提供重置视角，场景有动画时提供播放与暂停。
+- `objects` 及其 `children` 共 1–16 个对象，最多三层。`id` 匹配 `[A-Za-z_][A-Za-z0-9_-]{0,63}` 且全场唯一。`name` 为 1–80 字符。`type` 支持 `box`、`sphere`、`cylinder`、`cone`、`torus` 和 `plane`。基准边长为 1，球半径为 0.5，圆柱和圆锥半径为 0.5、高为 1、沿 Y 轴。平面和圆环在 XY 平面，圆环主半径为 0.36、管半径为 0.12。
+- `position` 和 `rotation` 可选，缺省为零向量。`position` 的各分量为 −40 至 40。`rotation` 为 Euler XYZ 弧度，各分量为 −360 至 360。`scale` 可用标量或 `{x,y,z}`，各分量为 0.03 至 12，缺省为 1。子物体的变换相对于父物体。
+- `material.color` 为 `#RRGGBB`。可选字段 `type` 支持 `standard`（默认）、`lambert`、`phong`、`basic`、`emissive`，普通材质受灯光影响，`basic` 和 `emissive` 使用不受灯光影响的颜色。`wireframe` 与 `transparent` 为布尔值。`opacity` 为 0.15–1，低于 1 时要求 `transparent=true`。
+- `animation` 可选。`type` 支持 `rotate`、`orbit`、`bounce`、`pulse`。`axis` 为 `x`、`y`、`z`，默认为 `y`。`speed` 为每秒 0.05–6 弧度，默认为 1。旋转使用对象中心，公转使用父空间原点。弹跳沿轴移动 `0.25 * abs(sin(phase))`，脉动按 `1 + 0.12 * sin(phase)` 缩放。
+- `widget_highlight` 的 `target` 为 `#` 加上述对象 ID。Android 对完整验证通过的几何及动作本地渲染，可处理 `native`、`sandbox-html` 和仅因 `widget_requires_external_cdn` 降级的计划。未知版本、对象、控件或动作回到对应的兼容路径。Web 与 iOS 沿用已有的兼容内容，HarmonyOS 和小程序的三维原生渲染尚未接入。
 
 ## 共同课堂的动态响应
 

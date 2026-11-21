@@ -25,7 +25,16 @@ object NativePlaybackPolicy {
         hasRenderableContent: Boolean,
         fallbackAvailable: Boolean,
         renderReason: String? = null,
+        hasNativeExperiment: Boolean = false,
+        hasNativeSpatialScene: Boolean = false,
     ): NativeSceneDisposition {
+        if (sceneType == "interactive" && hasDocument) {
+            val localAllowed = renderKind == NativeRenderKind.NATIVE || renderKind == NativeRenderKind.SANDBOX_HTML
+            val externalCdnMissing = renderKind == NativeRenderKind.UNSUPPORTED && renderReason == "widget_requires_external_cdn"
+            if ((localAllowed && (hasNativeExperiment || hasNativeSpatialScene)) || (hasNativeSpatialScene && externalCdnMissing)) {
+                return NativeSceneDisposition(NativeSceneMode.NATIVE)
+            }
+        }
         return when (renderKind) {
             NativeRenderKind.NATIVE -> when {
                 !hasDocument -> NativeSceneDisposition(NativeSceneMode.UNAVAILABLE, "missing_scene_content")

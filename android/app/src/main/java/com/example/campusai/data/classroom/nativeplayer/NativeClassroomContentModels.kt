@@ -39,6 +39,8 @@ data class NativeInteractive(
     val widgetType: String? = null,
     val title: String? = null,
     val description: String? = null,
+    val limitExperiment: ClassroomLimitExperiment? = null,
+    val spatialExperiment: ClassroomSpatialExperiment? = null,
 )
 
 // 测验
@@ -124,6 +126,7 @@ data class NativeAction(
     val audioUrl: String? = null,
     val supported: Boolean = true,
     val reason: String? = null,
+    val widgetTarget: String? = null,
 )
 
 data class NativeClassmate(
