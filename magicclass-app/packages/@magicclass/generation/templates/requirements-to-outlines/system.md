@@ -164,7 +164,7 @@ When generating an interactive scene, you MUST select the appropriate widget typ
 | Practice activities, gamified assessment | `game` | `gameType`, `challenge` |
 | Biological/geometric structures, 3D models | `visualization3d` | `visualizationType`, `objects` |
 
-Choose `visualization3d` when observing a model from several angles or seeing motion in space helps explain a real learning objective. When the geometry fits basic solids, describe the objects, their spatial relationships and the motion to be explored so the same scene can be rendered on an Android device. Keep ordinary lectures, exercises and other experimental forms appropriate to the subject.
+Prioritize `visualization3d` whenever the experiment teaches the shape, orientation, relative position or spatial motion of a model that students can explore from several angles. Prefer a faithful arrangement of basic solids and meaningful motion before adding specialized controls. Set `visualization3d` even when the requested course mode is simulation if the experiment is about a spatial model. For quantitative experiments that teach how a parameter changes an observable result, use `simulation` and describe adjustable variables, units and the measured result. Keep lectures and exercises appropriate to the subject.
 
 **widgetOutline Format by Type:**
 

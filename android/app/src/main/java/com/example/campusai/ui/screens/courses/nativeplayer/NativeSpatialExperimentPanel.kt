@@ -30,7 +30,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -59,7 +58,6 @@ import com.example.campusai.data.classroom.nativeplayer.SpatialVector
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.Line
-import com.example.campusai.ui.theme.LocalReduceMotion
 import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.Surface
@@ -70,43 +68,51 @@ import kotlin.math.abs
 private const val DefaultYaw = 35f
 private const val DefaultPitch = 19f
 
-@Composable
-internal fun NativeSpatialExperimentPanel(
-    experiment: ClassroomSpatialExperiment,
-    highlighted: String?,
-    modifier: Modifier = Modifier,
-) {
-    val reduceMotion = LocalReduceMotion.current
-    var yaw by rememberSaveable { mutableFloatStateOf(DefaultYaw) }
-    var pitch by rememberSaveable { mutableFloatStateOf(DefaultPitch) }
-    var zoom by rememberSaveable { mutableFloatStateOf(1f) }
-    var playing by rememberSaveable { mutableStateOf(experiment.animated && !reduceMotion) }
-    var elapsed by rememberSaveable { mutableFloatStateOf(0f) }
-    val bounds = remember(experiment) { ClassroomSpatialGeometry.bounds(experiment) }
-    val highlightId = experiment.objectId(highlighted)
-    LaunchedEffect(playing) {
-        if (!playing) return@LaunchedEffect
-        var previous = withFrameNanos { it }
-        while (isActive) {
-            val frame = withFrameNanos { it }
-            if (frame - previous >= 30_000_000L) {
-                elapsed += ((frame - previous) / 1_000_000_000f).coerceIn(0f, .10f)
-                previous = frame
-            }
-        }
-    }
+internal class NativeSpatialControls(playAnimation: Boolean) {
+    var yaw by mutableFloatStateOf(DefaultYaw)
+        private set
+    var pitch by mutableFloatStateOf(DefaultPitch)
+        private set
+    var zoom by mutableFloatStateOf(1f)
+        private set
+    var playing by mutableStateOf(playAnimation)
+    var elapsed by mutableFloatStateOf(0f)
 
     fun orbit(dx: Float, dy: Float) {
         yaw = (yaw + dx) % 360f
         pitch = (pitch + dy).coerceIn(-80f, 80f)
     }
+
     fun magnify(factor: Float) {
         zoom = (zoom * factor).coerceIn(.6f, 3f)
     }
+
     fun reset() {
         yaw = DefaultYaw
         pitch = DefaultPitch
         zoom = 1f
+    }
+}
+
+@Composable
+internal fun NativeSpatialExperimentPanel(
+    experiment: ClassroomSpatialExperiment,
+    spatialControls: NativeSpatialControls,
+    highlighted: String?,
+    modifier: Modifier = Modifier,
+) {
+    val bounds = remember(experiment) { ClassroomSpatialGeometry.bounds(experiment) }
+    val highlightId = experiment.objectId(highlighted)
+    LaunchedEffect(spatialControls, spatialControls.playing) {
+        if (!spatialControls.playing) return@LaunchedEffect
+        var previous = withFrameNanos { it }
+        while (isActive) {
+            val frame = withFrameNanos { it }
+            if (frame - previous >= 30_000_000L) {
+                spatialControls.elapsed += ((frame - previous) / 1_000_000_000f).coerceIn(0f, .10f)
+                previous = frame
+            }
+        }
     }
 
     val frame = RoundedCornerShape(14.dp)
@@ -120,32 +126,34 @@ internal fun NativeSpatialExperimentPanel(
             Canvas(drawingModifier.clip(plot)
                 .background(Brush.verticalGradient(listOf(Background, Color(0xFF18323C))))
                 .border(1.dp, grid, plot)
-                .pointerInput(experiment) {
+                .pointerInput(experiment, spatialControls) {
                     detectTransformGestures { _, pan, scale, _ ->
-                        orbit(pan.x / density * .44f, -pan.y / density * .44f)
-                        magnify(scale)
+                        spatialControls.orbit(pan.x / density * .44f, -pan.y / density * .44f)
+                        spatialControls.magnify(scale)
                     }
                 }
                 .semantics {
                     contentDescription = "原生三维模型"
                     customActions = listOf(
                         CustomAccessibilityAction("水平旋转") {
-                            orbit(25f, 0f)
+                            spatialControls.orbit(25f, 0f)
                             true
                         },
                         CustomAccessibilityAction("垂直旋转") {
-                            orbit(0f, 18f)
+                            spatialControls.orbit(0f, 18f)
                             true
                         },
                     )
                 },
             ) {
                 val radians = (Math.PI / 180).toFloat()
-                val view = SpatialRotation(SpatialVector(pitch * radians, yaw * radians, 0f))
+                val view = SpatialRotation(
+                    SpatialVector(spatialControls.pitch * radians, spatialControls.yaw * radians, 0f),
+                )
                 val light = SpatialVector(-.32f, .56f, .76f)
-                val scale = size.minDimension * .43f * zoom
+                val scale = size.minDimension * .43f * spatialControls.zoom
                 val (worldOrigin, radius) = bounds
-                val time = elapsed
+                val time = spatialControls.elapsed
                 fun screen(point: SpatialVector): Offset {
                     val perspective = 3.6f / (3.6f - point.z)
                     return center + Offset(point.x * scale * perspective, -point.y * scale * perspective)
@@ -212,15 +220,15 @@ internal fun NativeSpatialExperimentPanel(
         val controls: @Composable (Modifier) -> Unit = { controlModifier ->
             Column(controlModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { magnify(1f / 1.2f) }) { Icon(Icons.Default.Remove, "缩小模型", tint = Accent) }
-                    IconButton(onClick = { magnify(1.2f) }) { Icon(Icons.Default.Add, "放大模型", tint = Accent) }
-                    IconButton(onClick = ::reset) { Icon(Icons.Default.Refresh, "重置视角", tint = Accent) }
+                    IconButton(onClick = { spatialControls.magnify(1f / 1.2f) }) { Icon(Icons.Default.Remove, "缩小模型", tint = Accent) }
+                    IconButton(onClick = { spatialControls.magnify(1.2f) }) { Icon(Icons.Default.Add, "放大模型", tint = Accent) }
+                    IconButton(onClick = spatialControls::reset) { Icon(Icons.Default.Refresh, "重置视角", tint = Accent) }
                     if (!wide && experiment.animated) {
-                        Button(onClick = { playing = !playing }) { Text(if (playing) "暂停动画" else "播放动画") }
+                        SpatialAnimationButton(spatialControls)
                     }
                 }
                 if (wide && experiment.animated) {
-                    Button(onClick = { playing = !playing }) { Text(if (playing) "暂停动画" else "播放动画") }
+                    SpatialAnimationButton(spatialControls)
                 }
                 Text("拖动旋转，双指缩放", color = Muted, fontSize = 12.sp)
                 experiment.objects.labelFor(highlightId)?.let { label ->
@@ -240,6 +248,13 @@ internal fun NativeSpatialExperimentPanel(
                 controls(Modifier.fillMaxWidth())
             }
         }
+    }
+}
+
+@Composable
+private fun SpatialAnimationButton(controls: NativeSpatialControls) {
+    Button(onClick = { controls.playing = !controls.playing }) {
+        Text(if (controls.playing) "暂停动画" else "播放动画")
     }
 }
 

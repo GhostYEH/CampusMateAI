@@ -84,6 +84,12 @@ export function evaluateQuiz(questions, answers = {}, { studentLed = false } = {
   };
 }
 
+export function hasParameterExperimentHtml(content) {
+  return content?.type === "interactive" && content.widgetType === "simulation"
+    && content.widgetConfig?.nativeRenderer === "classroom-parameter-experiment/1"
+    && typeof content.html === "string" && content.html.trim().length > 0;
+}
+
 function parametersOf(content) {
   const parameters = content?.widgetConfig?.parameters;
   return Array.isArray(parameters) ? parameters.filter((parameter) => parameter && parameter.id) : [];

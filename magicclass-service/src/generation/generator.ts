@@ -4,6 +4,11 @@ import type { Scene, SceneType, StageAggregate, WidgetType } from '../dsl/contra
 import { DSL_VERSION } from '../dsl/version.ts';
 import { composeSlideCanvas, readSlideOutline } from '../dsl/slide-canvas.ts';
 import { reviewAssignmentPractice, type AssignmentReviewSpec } from './assignment-review.ts';
+import {
+  materializeParameterExperiment,
+  parameterExperimentHtml,
+  PARAMETER_EXPERIMENT_PROFILE,
+} from './parameter-experiment.ts';
 import { composePblProject } from '../dsl/pbl-project.ts';
 
 export const GENERATION_MODES = [
@@ -52,6 +57,13 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
   const scenes = isObject(raw) && Array.isArray(raw.scenes) ? raw.scenes : [];
   const issues: string[] = [];
   if (assignmentReview) issues.push(...reviewAssignmentPractice(scenes, assignmentReview));
+  for (const [index, scene] of scenes.entries()) {
+    if (!isObject(scene) || scene.type !== 'interactive' || !isObject(scene.content) || scene.content.widgetType !== 'simulation') continue;
+    const config = scene.content.widgetConfig;
+    if (isObject(config) && config.nativeRenderer === PARAMETER_EXPERIMENT_PROFILE && !materializeParameterExperiment(config)) {
+      issues.push('第 ' + (index + 1) + ' 页的参数实验配置无效，请修正参数范围、默认值和计算式');
+    }
+  }
   if (mode === 'slide' && !assignmentReview) {
     for (const [index, purpose] of ['概念', '推导或例子'].entries()) {
       const scene = scenes[index];
@@ -109,6 +121,15 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
 function widgetContent(mode: GenerationMode, title: string): { type: 'interactive'; html: string; widgetType?: WidgetType; widgetConfig?: Record<string, unknown> } {
   const widgetType = mode === 'interactive' ? undefined : mode as WidgetType;
   if (mode === 'simulation') {
+    const parameters = [
+      { id: 'force', label: '力', min: 0, max: 100, step: 1, value: 20, unit: 'N' },
+      { id: 'mass', label: '质量', min: 1, max: 20, step: 1, value: 5, unit: 'kg' },
+    ];
+    const description = '调整力和质量，观察加速度的变化。';
+    const experiment = materializeParameterExperiment({
+      description, controls: parameters, resultLabel: '加速度', resultUnit: 'm/s²',
+      expression: ['force', 'mass', '/'], chartParameter: 'force',
+    });
     return {
       type: 'interactive',
       widgetType,
@@ -117,12 +138,11 @@ function widgetContent(mode: GenerationMode, title: string): { type: 'interactiv
         title,
         resultLabel: '加速度',
         formula: 'force / mass',
-        parameters: [
-          { id: 'force', label: '力', min: 0, max: 100, step: 1, value: 20, unit: 'N' },
-          { id: 'mass', label: '质量', min: 1, max: 20, step: 1, value: 5, unit: 'kg' },
-        ],
+        parameters,
+        ...experiment,
       },
-      html: `<main><h1>${escapeHtml(title)}</h1><p>调整力和质量，观察加速度的变化。</p></main>`,
+      html: experiment ? parameterExperimentHtml(experiment) :
+        `<main><h1>${escapeHtml(title)}</h1><p>${description}</p></main>`,
     };
   }
   return {
@@ -287,6 +307,14 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
       content: scene.content.type === 'quiz' ? { ...scene.content, learningProfile: 'assignment_review' } : scene.content,
     } as Scene));
   }
+  scenes = scenes.map((scene) => {
+    if (scene.type !== 'interactive' || scene.content?.type !== 'interactive' || scene.content.widgetType !== 'simulation') return scene;
+    const config = scene.content.widgetConfig;
+    if (config?.nativeRenderer !== PARAMETER_EXPERIMENT_PROFILE) return scene;
+    const experiment = materializeParameterExperiment(config);
+    if (!experiment) return scene;
+    return { ...scene, content: { ...scene.content, html: parameterExperimentHtml(experiment), widgetConfig: experiment } };
+  });
   if (options.mode === 'simulation') {
     // Providers often return a rich interactive explanation with the correct
     // widget type but omit the parameter schema. Keep that explanation and
@@ -294,9 +322,11 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
     scenes = scenes.map((scene) => {
       if (scene.type !== 'interactive' || !isObject(scene.content) || scene.content.widgetType !== 'simulation') return scene;
       const title = scene.title || options.prompt?.trim() || '交互式模拟实验';
-      const defaults = widgetContent('simulation', title).widgetConfig;
       const current = isObject(scene.content.widgetConfig) ? scene.content.widgetConfig : {};
-      const parameters = Array.isArray(current.parameters) && current.parameters.length ? current.parameters : defaults?.parameters;
+      if (current.nativeRenderer === PARAMETER_EXPERIMENT_PROFILE) return scene;
+      const template = widgetContent('simulation', title).widgetConfig;
+      const defaults = { type: 'simulation', title, resultLabel: template?.resultLabel, formula: template?.formula };
+      const parameters = Array.isArray(current.parameters) && current.parameters.length ? current.parameters : template?.parameters;
       return { ...scene, content: { ...scene.content, widgetConfig: { ...defaults, ...current, ...(parameters ? { parameters } : {}) } } } as Scene;
     });
   }
@@ -304,7 +334,8 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
   // requested runtime is simulation. Preserve those useful explanations and
   // append a real parameterized simulation instead of silently degrading to
   // a read-only lesson.
-  if (options.mode === 'simulation' && !scenes.some((scene) => scene.type === 'interactive' && scene.content.widgetType === 'simulation')) {
+  if (options.mode === 'simulation' && !scenes.some((scene) => scene.type === 'interactive' &&
+      (scene.content?.widgetType === 'simulation' || scene.content?.widgetType === 'visualization3d'))) {
     const title = typeof stageInput.name === 'string' && stageInput.name.trim() ? stageInput.name.trim() : (options.prompt?.trim() || '交互式模拟实验');
     const content = widgetContent('simulation', title);
     scenes.push(authoredScene(stageId, scenes.length, `${title}：交互仿真`, content, now));

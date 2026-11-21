@@ -660,6 +660,9 @@ object NativeClassroomParser {
         spatialExperiment = if (content["widgetType"] == "visualization3d") {
             ClassroomSpatialExperiment.fromWidgetConfig(content["widgetConfig"])
         } else null,
+        parameterExperiment = if (content["widgetType"] == "simulation") {
+            ClassroomParameterExperiment.fromWidgetConfig(content["widgetConfig"])
+        } else null,
     )
 
     private fun parseWhiteboard(raw: Any?, scenes: List<NativeScene>): NativeSlide? {
@@ -700,6 +703,7 @@ object NativeClassroomParser {
             supported = map["supported"].asBoolean() ?: true,
             reason = map["reason"].asText().ifBlank { null },
             widgetTarget = if (type == "widget_highlight") map["target"].asText().ifBlank { null } else null,
+            widgetState = if (type == "widget_setState" || type == "widget_set_state") map["state"].asMap() else null,
         )
     }
 
@@ -720,7 +724,7 @@ object NativeClassroomParser {
         "wb_close" -> "收起白板"
         "discussion" -> "课堂讨论"
         "widget_highlight" -> "高亮互动"
-        "widget_set_state" -> "互动切换"
+        "widget_setState", "widget_set_state" -> "调整参数"
         "widget_annotation" -> "互动批注"
         "widget_reveal" -> "揭示答案"
         else -> type

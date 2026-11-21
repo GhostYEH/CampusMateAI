@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildGeneratedStage } from "../src/generation/generator.ts";
+import { readFile } from "node:fs/promises";
+import { Script } from "node:vm";
+import { buildGeneratedStage, materializeGeneratedStage, reviewGeneratedStage } from "../src/generation/generator.ts";
+import { PARAMETER_EXPERIMENT_PROFILE } from "../src/generation/parameter-experiment.ts";
 
 test("simulation generation contains bounded experiment controls and formula", () => {
   const document = buildGeneratedStage("simulation", "牛顿第二定律");
@@ -9,8 +12,57 @@ test("simulation generation contains bounded experiment controls and formula", (
   assert.equal(content.type, "interactive");
   assert.equal(content.widgetType, "simulation");
   assert.equal(content.widgetConfig.formula, "force / mass");
+  assert.equal(content.widgetConfig.nativeRenderer, PARAMETER_EXPERIMENT_PROFILE);
+  assert.match(content.html, /id="widget-config"/);
   assert.ok(content.widgetConfig.parameters.some((parameter) => parameter.id === "force"));
   assert.ok(content.widgetConfig.parameters.some((parameter) => parameter.id === "mass"));
+});
+
+test("adopts generated arithmetic data and supplies sandbox controls in the managed classroom", () => {
+  const lab = {
+    type: "simulation",
+    nativeRenderer: PARAMETER_EXPERIMENT_PROFILE,
+    description: "观察电压的影响",
+    controls: [{ id: "voltage", label: "电压", unit: "V", min: 0, max: 12, step: 1, value: 6 }],
+    resultLabel: "电流",
+    resultUnit: "A",
+    expression: ["voltage", 3, "/"],
+    chartParameter: "voltage",
+  };
+  const make = (widgetConfig) => ({
+    stage: { name: "数值实验" },
+    scenes: [{ title: "用电实验", type: "interactive", content: {
+      type: "interactive", widgetType: "simulation", widgetConfig, html: "<p>观察电流</p>",
+    } }],
+  });
+  assert.deepEqual(reviewGeneratedStage(make(lab), "simulation", "观察电流"), []);
+  assert.match(reviewGeneratedStage(make({ ...lab, expression: ["voltage", "/"] }), "simulation", "观察电流")[0], /参数实验配置无效/);
+  const document = materializeGeneratedStage(make(lab), { mode: "simulation" });
+  const content = document.scenes[0].content;
+  assert.equal(content.widgetConfig.nativeRenderer, PARAMETER_EXPERIMENT_PROFILE);
+  assert.deepEqual(content.widgetConfig.expression, lab.expression);
+  assert.equal(content.widgetConfig.formula, undefined);
+  assert.match(content.html, /<input|createElement\(['"]input['"]\)/);
+  const script = content.html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  assert.doesNotThrow(() => new Script(script));
+});
+
+test("a spatial experiment satisfies a simulation request without adding an unrelated force template", () => {
+  const document = materializeGeneratedStage({
+    stage: { name: "观察空间形状" },
+    scenes: [{ title: "几何模型", type: "interactive", content: {
+      type: "interactive", widgetType: "visualization3d", html: "<p>模型</p>",
+    } }],
+  }, { mode: "simulation" });
+  assert.deepEqual(document.scenes.map((scene) => scene.content.widgetType), ["visualization3d"]);
+});
+
+test("the two classroom generators ship the same parameter contract and browser runtime", async () => {
+  const managed = new URL("../src/generation/parameter-experiment.ts", import.meta.url);
+  const classic = new URL("../../magicclass-app/packages/@magicclass/generation/src/parameter-experiment.ts", import.meta.url);
+  const source = await readFile(managed, "utf8");
+  assert.equal(source.replace(/\r\n/g, "\n"), (await readFile(classic, "utf8")).replace(/\r\n/g, "\n"));
 });
 
 test("PBL generation produces a runnable project, not an unreadable phase list", () => {

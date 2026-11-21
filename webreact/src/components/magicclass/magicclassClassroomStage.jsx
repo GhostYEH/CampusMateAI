@@ -10,6 +10,7 @@ import { MagicClassSceneRenderer } from "../../magicclass/scene/index.js";
 import { MagicClassSlideSurface } from "../../magicclass/slide/index.js";
 import { MagicClassRoundtable } from "../../magicclass/roundtable/index.jsx";
 import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
+import { hasParameterExperimentHtml } from "../../features/magicclass/sceneRuntimeModel.js";
 import QuizRuntimePanel from "./QuizRuntimePanel.jsx";
 import { cn } from "../../magicclass/utils/cn.js";
 import {
@@ -602,7 +603,7 @@ function SceneStage({
   const sandboxHtml = typeof scene?.content?.html === "string" ? scene.content.html : "";
   const sandboxUrl = typeof scene?.content?.url === "string" ? scene.content.url : "";
   const isNativeSimulation = scene?.content?.type === "interactive"
-    && scene.content.widgetType === "simulation";
+    && scene.content.widgetType === "simulation" && !hasParameterExperimentHtml(scene.content);
 
   let body;
   if (loading) {

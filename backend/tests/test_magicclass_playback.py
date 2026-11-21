@@ -453,6 +453,41 @@ def test_generated_geometry_is_preserved_alongside_web_compatibility():
     assert scene.render.kind == "sandbox-html"
 
 
+def test_parameter_experiment_data_and_teacher_state_survive_the_playback_projection():
+    widget = {
+        "type": "simulation",
+        "nativeRenderer": "classroom-parameter-experiment/1",
+        "description": "观察滑块与结果。",
+        "controls": [{"id": "voltage", "label": "电压", "unit": "V", "min": 0, "max": 12, "step": 1, "value": 6}],
+        "resultLabel": "电流",
+        "resultUnit": "A",
+        "expression": ["voltage", 3, "/"],
+    }
+    classroom = {
+        "id": "numeric_lab",
+        "stage": {"name": "欧姆定律"},
+        "scenes": [{
+            "id": "parameter_lab",
+            "type": "interactive",
+            "content": {
+                "type": "interactive", "widgetType": "simulation", "widgetConfig": widget, "html": "<main>观察电流</main>",
+            },
+            "actions": [{"id": "teacher_demo", "type": "widget_setState", "state": {"voltage": 9}}],
+        }],
+    }
+    session = SimpleNamespace(classroom_id="numeric_lab", session_id="session", course_id=SELF_COURSE_ID)
+    playback = build_classroom_playback(
+        document={"classroom": classroom},
+        session=session,
+        media_base="/api/v1/self-classroom/session/media",
+    )
+    scene = playback.scenes[0]
+    assert scene.content["widgetConfig"] == widget
+    assert scene.render.kind == "sandbox-html"
+    assert scene.actions[0].supported is True
+    assert scene.actions[0].payload["state"] == {"voltage": 9}
+
+
 def test_course_playback_contract_assembles_native_scenes_and_media(tmp_path):
     requests: list = []
     ctx = _setup_routes(tmp_path, _default_handler(requests))

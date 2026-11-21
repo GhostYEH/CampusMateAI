@@ -181,6 +181,7 @@ data class NativeClassroomUiState(
     val firstPaintMs: Long? = null,
     val peakMemoryBytes: Long = 0,
     val showMetrics: Boolean = false,
+    val experimentValues: Map<String, Double> = emptyMap(),
 ) {
     val currentScenePlan: NativeScenePlan? get() = plan?.scenes?.getOrNull(index)
     val currentSceneId: String? get() = currentScenePlan?.id
@@ -193,7 +194,9 @@ data class NativeClassroomUiState(
             ?.takeIf { disposition.mode == NativeSceneMode.NATIVE && currentScenePlan?.type == "interactive" }
     val currentLimitExperiment get() = currentInteractive?.limitExperiment
     internal val currentSpatialExperiment get() = currentInteractive?.spatialExperiment
-    internal val hasNativeExperiment get() = currentLimitExperiment != null || currentSpatialExperiment != null
+    internal val currentParameterExperiment get() = currentInteractive?.parameterExperiment
+    internal val hasNativeExperiment
+        get() = currentLimitExperiment != null || currentSpatialExperiment != null || currentParameterExperiment != null
     val canTeachSlide: Boolean
         get() = currentSlide?.let { slide ->
             sequence.total > 0 || narration.audioFile != null ||
@@ -224,6 +227,33 @@ class NativeClassroomViewModel(
     private val _uiState = MutableStateFlow(NativeClassroomUiState())
     val uiState: StateFlow<NativeClassroomUiState> = _uiState.asStateFlow()
     private val labControls = mutableMapOf<Pair<String, Int>, ClassroomLimitExperiment.Controls>()
+    private val parameterValues = mutableMapOf<Pair<String, Int>, Map<String, Double>>()
+    private val spatialControlsByScene = mutableMapOf<Pair<String, Int>, NativeSpatialControls>()
+
+    internal fun spatialControls(sceneId: String, revision: Int, playAnimation: Boolean): NativeSpatialControls =
+        spatialControlsByScene.getOrPut(sceneId to revision) { NativeSpatialControls(playAnimation) }
+
+    internal fun updateExperimentValues(
+        sceneId: String,
+        revision: Int,
+        changes: Map<String, Any?>?,
+        action: NativeAction? = null,
+    ): Boolean {
+        val state = _uiState.value
+        if (state.currentSceneId != sceneId || state.revision != revision) return false
+        val experiment = state.currentParameterExperiment ?: return false
+        val validated = experiment.validatedChanges(changes) ?: return false
+        val values = state.experimentValues + validated
+        parameterValues[sceneId to revision] = values
+        _uiState.update {
+            it.copy(
+                experimentValues = values,
+                activeAction = action ?: it.activeAction,
+                notice = if (action == null) it.notice else null,
+            )
+        }
+        return true
+    }
 
     internal fun savedExperimentControls(sceneId: String, revision: Int) = labControls[sceneId to revision]
 
@@ -733,6 +763,9 @@ class NativeClassroomViewModel(
                 it.supported && it.type.startsWith("widget_") &&
                     (it.type != "widget_highlight" || ClassroomLimitExperiment.Highlight.fromSelector(it.widgetTarget) == null)
             }
+        val parameterExperiment = interactive?.parameterExperiment
+        val nativeParameter = (planScene.widgetType == null || planScene.widgetType == "simulation") &&
+            parameterExperiment?.supportsActions(actions) == true
         val nativeSpatial = (planScene.widgetType == null || planScene.widgetType == "visualization3d") &&
             interactive?.spatialExperiment?.supportsActions(actions) == true
         val hasContent = when (planScene.type) {
@@ -751,10 +784,15 @@ class NativeClassroomViewModel(
             hasRenderableContent = hasContent,
             fallbackAvailable = !ref.webFallbackUrl.isNullOrBlank(),
             renderReason = planScene.renderReason,
-            hasNativeExperiment = nativeLimit,
+            hasNativeExperiment = nativeLimit || nativeParameter,
             hasNativeSpatialScene = nativeSpatial,
         )
-        _uiState.update { it.copy(disposition = disposition) }
+        _uiState.update { state ->
+            val values = if (disposition.mode == NativeSceneMode.NATIVE && nativeParameter) {
+                parameterValues[planScene.id to state.revision] ?: parameterExperiment.initialValues
+            } else emptyMap()
+            state.copy(disposition = disposition, experimentValues = values)
+        }
     }
 
     private fun onSceneChanged(sceneId: String) {
@@ -910,6 +948,13 @@ class NativeClassroomViewModel(
                 }
             }
             "wb_open" -> openWhiteboard()
+            "widget_setState", "widget_set_state" -> {
+                val state = _uiState.value
+                val updated = state.currentSceneId?.let { sceneId ->
+                    updateExperimentValues(sceneId, state.revision, action.widgetState, action)
+                } == true
+                if (!updated) _uiState.update { it.copy(notice = "这个课堂动作需要在兼容课堂中完成。") }
+            }
             "discussion" -> _uiState.update {
                 it.copy(activeAction = action, classmates = it.classmates.copy(error = null), notice = null)
             }

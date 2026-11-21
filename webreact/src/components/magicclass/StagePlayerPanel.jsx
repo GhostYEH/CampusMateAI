@@ -3,6 +3,7 @@ import { Button, Panel, SectionHeading } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import QuizRuntimePanel from "./QuizRuntimePanel.jsx";
 import SimulationRuntimePanel from "./SimulationRuntimePanel.jsx";
+import { hasParameterExperimentHtml } from "../../features/magicclass/sceneRuntimeModel.js";
 import PblRuntimePanel from "./PblRuntimePanel.jsx";
 import * as api from "../../data/api.js";
 import {
@@ -89,6 +90,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
 
   const timeline = actionTimeline(currentScene);
   const sandboxHtml = typeof scene?.content?.html === "string" ? scene.content.html : "";
+  const legacySimulation = currentScene?.render.widget_type === "simulation" && !hasParameterExperimentHtml(scene?.content);
   const sandboxUrl = typeof scene?.content?.url === "string" ? scene.content.url : "";
 
   return <Panel className="magicclass-player">
@@ -116,7 +118,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
           {currentScene.whiteboards ? <small>{currentScene.whiteboards} 块白板</small> : null}
         </header>
 
-        {policy.allowIframe && currentScene.render.widget_type !== "simulation" ? <iframe
+        {policy.allowIframe && !legacySimulation ? <iframe
           className="magicclass-player__frame"
           title={currentScene.title}
           sandbox={policy.sandbox}
@@ -126,7 +128,7 @@ export default function StagePlayerPanel({ courseId, workspaceId, stageId, start
             : { src: sandboxUrl })}
         /> : null}
 
-        {(currentScene.render.kind === "native" || currentScene.render.widget_type === "simulation") ? <NativeScene scene={scene} fallbackTitle={currentScene.title} courseId={courseId} workspaceId={workspaceId} stageId={stageId} /> : null}
+        {(currentScene.render.kind === "native" || legacySimulation) ? <NativeScene scene={scene} fallbackTitle={currentScene.title} courseId={courseId} workspaceId={workspaceId} stageId={stageId} /> : null}
 
         {currentScene.render.kind === "unsupported" ? <div className="magicclass-player__degraded" role="status">
           <Icon name="PhWarningCircle" size={22} />

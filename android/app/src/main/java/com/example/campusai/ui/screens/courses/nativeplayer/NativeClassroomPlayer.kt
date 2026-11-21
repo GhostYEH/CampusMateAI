@@ -704,6 +704,7 @@ private fun NativeSceneContent(
             val revision = state.revision
             val limit = state.currentLimitExperiment
             val spatial = state.currentSpatialExperiment
+            val parameter = state.currentParameterExperiment
             key(revision) {
                 when {
                     limit != null -> NativeLimitExperimentPanel(
@@ -713,7 +714,21 @@ private fun NativeSceneContent(
                         onControlsChanged = { vm.saveExperimentControls(sceneId, revision, it) },
                         modifier = modifier,
                     )
-                    spatial != null -> NativeSpatialExperimentPanel(spatial, state.spotlightElementId, modifier)
+                    spatial != null -> NativeSpatialExperimentPanel(
+                        experiment = spatial,
+                        spatialControls = vm.spatialControls(
+                            sceneId, revision, spatial.animated && !LocalReduceMotion.current,
+                        ),
+                        highlighted = state.spotlightElementId,
+                        modifier = modifier,
+                    )
+                    parameter != null -> NativeParameterExperimentPanel(
+                        experiment = parameter,
+                        values = state.experimentValues,
+                        highlighted = state.spotlightElementId,
+                        onValuesChanged = { vm.updateExperimentValues(sceneId, revision, it) },
+                        modifier = modifier,
+                    )
                     else -> NativeUnavailablePanel(
                         reason = NativePlaybackPolicy.reasonText("interactive_native_renderer_missing"),
                         hasFallback = false,

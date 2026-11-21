@@ -391,6 +391,33 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - `animation` 可选。`type` 支持 `rotate`、`orbit`、`bounce`、`pulse`。`axis` 为 `x`、`y`、`z`，默认为 `y`。`speed` 为每秒 0.05–6 弧度，默认为 1。旋转使用对象中心，公转使用父空间原点。弹跳沿轴移动 `0.25 * abs(sin(phase))`，脉动按 `1 + 0.12 * sin(phase)` 缩放。
 - `widget_highlight` 的 `target` 为 `#` 加上述对象 ID。Android 对完整验证通过的几何及动作本地渲染，可处理 `native`、`sandbox-html` 和仅因 `widget_requires_external_cdn` 降级的计划。未知版本、对象、控件或动作回到对应的兼容路径。Web 与 iOS 沿用已有的兼容内容，HarmonyOS 和小程序的三维原生渲染尚未接入。
 
+### 普通参数实验配置
+
+经典课堂和受管工作台可在互动场景的 `content.widgetConfig` 交付普通实验。`type=simulation`、`nativeRenderer=classroom-parameter-experiment/1` 标识完整的数据驱动实验。生成器验证结构和默认计算后，按同一数据生成 `content.html` 中可操作的兼容页面。Android 使用现有课堂舞台内的原生控件，显示实时结果并在横屏切分为参数区和观察区。
+
+```json
+{
+  "type": "simulation",
+  "nativeRenderer": "classroom-parameter-experiment/1",
+  "description": "调整电压与电阻，观察电流怎样变化。",
+  "controls": [
+    {"id": "voltage", "label": "电压", "unit": "V", "min": 0, "max": 12, "step": 1, "value": 6},
+    {"id": "resistance", "label": "电阻", "unit": "Ω", "min": 1, "max": 10, "step": 1, "value": 3}
+  ],
+  "resultLabel": "电流",
+  "resultUnit": "A",
+  "expression": ["voltage", "resistance", "/"],
+  "chartParameter": "voltage",
+  "presets": [{"label": "升高电压", "values": {"voltage": 9}}]
+}
+```
+
+- `description` 为 1–960 字符。`controls` 必填，含 1 至 6 个滑块。参数 `id` 匹配 `[A-Za-z][A-Za-z0-9_-]{0,31}`，不能重复或使用保留运算符和 `constructor`。`label` 为 1–64 字符，`unit` 为 0–24 字符。`min`、`max`、`step`、`value` 是有限 JSON 数值，绝对值不大于 10⁸。下限小于上限，步长为正，并将范围分为 1–2000 个整数步。初值在范围内并吸附到最近步。
+- `resultLabel` 为 1–64 字符，`resultUnit` 为 0–24 字符。`expression` 为 1–32 项逆波兰表达式，包含已声明参数、绝对值不大于 10⁸ 的有限数和运算符 `+ - * / ^ sqrt abs sin cos`。二元运算先压入左值、再压入右值，三角函数使用弧度。表达式需要使用至少一个参数，得出一个有限默认结果。拖动到无定义的组合时显示原因，曲线断开对应采样点。
+- `chartParameter` 可选，值为已声明参数的 `id`。曲线固定其他滑块的值，沿该参数范围采样。`presets` 可选，默认空数组，最多 6 组，每组的 `label` 为 1–38 字符，`values` 为非空的参数 ID 到范围内数值的映射。预设在默认值基础上覆盖指定参数。
+- `widget_highlight.payload.target` 支持 `#parameter-<id>`、`#experiment-result`，声明曲线时还支持 `#experiment-curve`。`widget_setState.payload.state` 用参数 ID 到范围内数值的平面映射覆盖当前值。常规讲解、白板和翻页沿用播放计划。Android 对已验证的参数与动作使用原生交互。需要专用控件的场景走播放计划中的兼容运行时。
+- 经典课堂通过原有播放接口的场景正文读取。受管课从 stage document 读取。Web 在同一沙箱中播放兼容页面，iOS 可以继续消费下发的 HTML，iOS、HarmonyOS 与微信小程序原生参数实验在本轮未验证。
+
 ## 共同课堂的动态响应
 
 以下类型名用于说明实际返回对象，来自 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，不是额外的 OpenAPI 模型。接口与完整流程见[共同课堂契约](14-magicclass.md#learning-rooms)。

@@ -3350,7 +3350,7 @@ Android 已有自主选题、上传和 WebView 调用源码；Web、HarmonyOS、
 
 `speech` 动作的 `payload.audioUrl` 指向同场景的鉴权讲解音频。用相同 URL 在 `role=narration` 的媒体条目里核对可用状态，`media[].element_id` 可辅助关联动作。`content_version` 用于判断课堂 JSON 是否变更。音频关联示例与媒体缓存规则见[实际响应契约](response-contracts.md#经典课堂原生播放与媒体)。
 
-适合立体观察的生成实验可随 `content.widgetConfig` 交付[结构化三维模型](response-contracts.md#三维实验配置)。Android 通过同一播放接口读取并自动选用原生渲染，网页运行时读取原有 HTML。
+适合立体观察的实验交付[结构化三维模型](response-contracts.md#三维实验配置)，适合调节数值的实验交付[普通参数实验配置](response-contracts.md#普通参数实验配置)，均在 `content.widgetConfig` 中。Android 按同一播放接口自动选择原生控件，兼容运行时读取下发的 HTML。
 
 ### `GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/media/{media_path}`
 

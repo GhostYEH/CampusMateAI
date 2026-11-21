@@ -3,6 +3,7 @@ import { GENERATION_MODES, reviewGeneratedStage } from '../generation/generator.
 import type { GenerationMode } from '../generation/generator.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 import { assignmentReviewGuide, type AssignmentReviewSpec } from '../generation/assignment-review.ts';
+import { PARAMETER_EXPERIMENT_EXAMPLE, PARAMETER_EXPERIMENT_GUIDE, PARAMETER_EXPERIMENT_PROFILE } from '../generation/parameter-experiment.ts';
 
 /**
  * Redacted failure codes a job can end with. Messages never carry the API
@@ -93,11 +94,14 @@ const MODE_SCENE_GUIDE = [
   `Set "dslVersion" to exactly "${DSL_VERSION}". Do not invent scene or stage ids; the server assigns them.`,
   `Available generation modes: ${GENERATION_MODES.join(', ')}.`,
   'Scene objects: {"title": string, "order": number, "type": "slide"|"quiz"|"interactive"|"pbl", "content": ...}.',
-  'Mode mapping: slide→at least two teaching slides; quiz→quiz; pbl→pbl; every other mode→"interactive" with "widgetType" set to the mode name. If the user asks for 选择题/练习/测验/答题, include a real quiz scene after the teaching slides regardless of mode.',
+  'Mode mapping: slide→at least two teaching slides; quiz→quiz; pbl→pbl; other modes→"interactive" with a matching "widgetType". In simulation mode, choose visualization3d when the lesson centers on a spatial model and simulation for numeric experiments. If the user asks for 选择题/练习/测验/答题, include a real quiz scene after the teaching slides regardless of mode.',
   'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "sections": [{"heading": string, "bullets": [string]}]}} — 排版由服务端生成，不给坐标。第 1 页用“概念解释”小节以完整句说明定义、适用条件及意义；第 2 页用“推导步骤”或“具体例子”小节展开至少一个可核对的步骤或实例。不要只有关键词/提纲；正文会直接作为课堂讲解稿。每条小节正文应具体、有信息量，避免空泛教学指令。',
   'quiz content: {"type": "quiz", "questions": [{"type": "single"|"multiple"|"short_answer", "question": string, "options": [{"label": string, "value": string}], "answer": [string], "analysis": string, "points": number}]} — 选择题每题 3–6 个不同选项，answer 必须是正确选项的 value（single 恰好一个，multiple 至少两个）；简答题无选项，用 analysis 给参考答案。每题题干明确、analysis 非空、points > 0；quiz 场景真正让学生作答，不能把题目写成 slide。',
   'pbl content: {"type": "pbl", "project": {"title": string, "description": string, "milestones": [{"title": string, "description": string, "tasks": [{"title": string, "description": string}]}]}} — 项目结构与阶段状态由服务端生成，你只给内容，绝不要给 id、状态或角色。2 到 5 个阶段，每阶段 1 到 5 个任务；描述都用一句话讲清"这一步要产出什么"。',
   'interactive content: {"type": "interactive", "html": string, "widgetType": string} — html is a self-contained inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',
+  `数值实验用 widgetType="simulation"，widgetConfig 的 type="simulation"、nativeRenderer="${PARAMETER_EXPERIMENT_PROFILE}"。服务端从参数数据生成可操作的兼容页面，模型只写 JSON 与简短的 HTML 说明。`,
+  PARAMETER_EXPERIMENT_GUIDE,
+  '参数实验 widgetConfig 字段示例，按课程内容更换：' + PARAMETER_EXPERIMENT_EXAMPLE,
   '当三维关系或运动有助于理解且可用基本几何体表达时，使用 widgetType="visualization3d"。保留 html 中有意义的实验简介与观察要点，并在 widgetConfig 中给出同一实验的原生数据：{"type":"visualization3d","nativeRenderer":"classroom-spatial/1","description":string,"objects":[object,...],"interactions":[{"type":"orbit","target":"camera"},{"type":"zoom","target":"camera"}]}。',
   '原生对象用 {"id":string,"name":string,"type":"box"|"sphere"|"cylinder"|"cone"|"torus"|"plane","material":{"color":"#RRGGBB"}}，id 以字母或下划线开头、只含字母数字下划线连字符且各不相同，全部 1–16 个对象，最多 3 层 children。可选 position:{x,y,z}（-40..40）、rotation:{x,y,z}（Euler XYZ 弧度）、scale（0.03..12 的数或向量）、animation:{type:"rotate"|"orbit"|"bounce"|"pulse",axis:"x"|"y"|"z",speed:0.05..6}。立方体边长 1，球半径 0.5，圆柱和圆锥半径 0.5、高 1、沿 Y 轴，环形和平面在 XY 平面。用真实课程数据安排形状与运动。复杂纹理或专有控件交给兼容场景。',
   'Produce 2 to 8 scenes for slide mode (plus a quiz when practice is requested); quiz/pbl may have 1 to 3 scenes. All text in Chinese, academically accurate for university students.',

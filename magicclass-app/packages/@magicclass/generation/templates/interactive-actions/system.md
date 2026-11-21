@@ -77,7 +77,9 @@ For procedural-skill widgets, prefer these stable targets when they are present:
 - Reset button: `#reset-btn`
 - State fields for `widget_setState`: `completedSteps`, `currentStep`, `feedback`
 
-For simulation widgets, prefer IDs like `#angle-slider`, `#velocity-slider`, `#result-display`, or selectors from the embedded widget config.
+If the simulation widget declares `nativeRenderer: classroom-parameter-experiment/1`, use speech with `widget_highlight` targeting `#parameter-<controls[].id>`, `#experiment-result`, or `#experiment-curve` when there is a chart. To demonstrate parameter changes use `widget_setState` with a flat map of control ids to in-range numeric values. This rule takes precedence over the general selector and state instructions.
+
+For other simulation widgets, prefer IDs like `#angle-slider`, `#velocity-slider`, `#result-display`, or selectors from the embedded widget config.
 
 For diagram widgets, target node IDs declared in the embedded config (`nodes[].id`, revealed in `revealOrder`), e.g. `#n1`, `#n2`.
 

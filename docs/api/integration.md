@@ -329,7 +329,7 @@ Token 有效期 120 秒，60 秒后通过同一 rtc-token 接口续期并调用 
 5. `media[].available=true` 时用 API Base 拼接 `media[].url` 并按需请求，带 Authorization；URL 中的 `/media/media/...`、`/media/audio/...` 是“路由前缀 + 相对路径”，原样拼接。音视频拖动用单段 `Range`。`available=false` 不猜地址，按 `reason` 显示降级。
 6. `native.available` 只表示至少存在一个可原生播放计划（slide/quiz，或受限 sandbox 页面），不代表老师问答、PBL、白板写入、讨论全部原生可用；逐场景按 `render.kind` / `actions[].supported` 判断。只有 `native.available=false` 或场景全部 `unsupported` 时，才按 `compat.recommended` 选择旧网页入口；`compat.browser_embed_available=false` 时不得强行 iframe。
 
-Android 新课与大厅最近学习默认进入原生播放器。课件中的 [三维实验配置](response-contracts.md#三维实验配置) 通过现有接口读取，验证通过后自动进入本地三维组件。
+Android 新课与大厅最近学习默认进入原生播放器。[三维实验配置](response-contracts.md#三维实验配置)与[普通参数实验配置](response-contracts.md#普通参数实验配置)通过现有接口读取。验证后由 App 直接渲染，现有 HTML 用于其他客户端的兼容播放。
 
 ### 脱敏联调服务器（真实上游不可用时）
 

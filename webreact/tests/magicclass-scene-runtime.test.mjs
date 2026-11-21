@@ -7,6 +7,7 @@ import {
   normalizeQuizQuestions,
   pblProgress,
   stepSimulation,
+  hasParameterExperimentHtml,
 } from "../src/features/magicclass/sceneRuntimeModel.js";
 
 test("normalizes quiz questions and grades a single choice with analysis", () => {
@@ -68,6 +69,16 @@ test("runs a bounded simulation and resets to its declared defaults", () => {
   const ran = stepSimulation(content, changed, { type: "run" });
   assert.equal(ran.result.value, 6);
   assert.equal(stepSimulation(content, ran, { type: "reset" }).values.force, 20);
+  assert.equal(hasParameterExperimentHtml(content), false);
+});
+
+test("selects the generated sandbox document for a versioned parameter experiment", () => {
+  const content = {
+    type: "interactive", widgetType: "simulation", html: "<main>参数实验</main>",
+    widgetConfig: { type: "simulation", nativeRenderer: "classroom-parameter-experiment/1" },
+  };
+  assert.equal(hasParameterExperimentHtml(content), true);
+  assert.equal(hasParameterExperimentHtml({ ...content, html: "" }), false);
 });
 
 test("reports PBL task progress without inventing missing tasks", () => {

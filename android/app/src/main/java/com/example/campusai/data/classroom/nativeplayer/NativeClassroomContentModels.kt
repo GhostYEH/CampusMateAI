@@ -41,6 +41,7 @@ data class NativeInteractive(
     val description: String? = null,
     val limitExperiment: ClassroomLimitExperiment? = null,
     val spatialExperiment: ClassroomSpatialExperiment? = null,
+    val parameterExperiment: ClassroomParameterExperiment? = null,
 )
 
 // 测验
@@ -127,6 +128,7 @@ data class NativeAction(
     val supported: Boolean = true,
     val reason: String? = null,
     val widgetTarget: String? = null,
+    val widgetState: Map<String, Any?>? = null,
 )
 
 data class NativeClassmate(

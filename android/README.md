@@ -61,7 +61,7 @@ Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选
 
 课程经典、自主选题和受管工作台共用原生课堂舞台。新课和课堂大厅最近学习优先打开原生播放器，投影幕、老师讲解与翻页动效适用于所有原生课件。可以旋转手机切换横竖屏。
 
-适合立体观察的新实验通过[结构化三维模型](../docs/api/response-contracts.md#三维实验配置)接入原生旋转、缩放和对象动画。已有 ε–δ 实验保留二维曲线与三维时间轨迹。需要网页专用控件的实验根据播放计划切换运行时。
+适合立体观察的新实验通过[结构化三维模型](../docs/api/response-contracts.md#三维实验配置)接入原生旋转、缩放和对象动画。普通数值实验通过[参数实验配置](../docs/api/response-contracts.md#普通参数实验配置)使用原生滑块、实时结果、预设、曲线和老师的参数演示。已有 ε–δ 实验保留二维曲线与三维时间轨迹。需要网页专用控件的实验根据播放计划切换运行时。
 
 仍需网页的课堂操作可从应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) 打开。地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验。正式构建要求公开 HTTPS 与可信 Origin 精确匹配，调试例外限代码规定的本地课堂入口。经典播放使用 `session_id` 与 `classroom_id`，受管工作台通过 `workspace_id`、`stage_id` 和 `scene_id` 读取场景。编辑在有权限的工作台完成，独立课堂应用使用自身的认证。共同课堂的课件共享与通话能力另见下文。
 

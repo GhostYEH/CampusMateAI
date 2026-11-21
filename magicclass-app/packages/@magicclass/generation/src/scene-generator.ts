@@ -57,6 +57,15 @@ import { noopGenerationLogger, type GenerationLogger } from './logger.js';
 import { isAbortError } from './generation-retry.js';
 import { materializeSpatialWidget, spatialObjectIds } from './spatial-widget.js';
 import { spatialWidgetHtml } from './spatial-widget-html.js';
+import {
+  materializeParameterExperiment,
+  parameterExperimentChanges,
+  parameterExperimentHtml,
+  parameterExperimentTargets,
+  PARAMETER_EXPERIMENT_EXAMPLE,
+  PARAMETER_EXPERIMENT_GUIDE,
+  PARAMETER_EXPERIMENT_PROFILE,
+} from './parameter-experiment.js';
 import { generatePBLV2ProjectSingleCall } from './pbl/planner-single-call.js';
 import { PlannerV2Error } from './pbl/planner-core.js';
 import type { PBLPlannerV2Input } from './pbl/types.js';
@@ -1170,7 +1179,25 @@ export async function generateWidgetContent(
   let variables: Record<string, unknown>;
 
   switch (widgetType) {
-    case 'simulation':
+    case 'simulation': {
+      const guide = PARAMETER_EXPERIMENT_GUIDE +
+        '\n只返回与本实验一致的 JSON 对象。必须用专用互动组件时返回 {"requiresWebRuntime":true}。';
+      const request = [
+        outline.title,
+        outline.description,
+        ...(outline.keyPoints ?? []),
+        'Variables: ' + (widgetOutline.keyVariables ?? []).join(', '),
+        languageDirective || '',
+        guide,
+        '格式示例，请按课程内容更换：' + PARAMETER_EXPERIMENT_EXAMPLE,
+      ].join('\n');
+      const raw = await aiCall(guide, request);
+      const experiment = materializeParameterExperiment(parseJsonResponse<unknown>(raw));
+      if (experiment) {
+        return { html: parameterExperimentHtml(experiment), widgetType, widgetConfig: experiment };
+      }
+      const existingHtml = extractHtml(raw, noopGenerationLogger);
+      if (existingHtml) return browserWidgetContent(existingHtml, widgetType);
       promptId = PROMPT_IDS.SIMULATION_CONTENT;
       variables = {
         conceptName: widgetOutline.concept || outline.title,
@@ -1181,6 +1208,7 @@ export async function generateWidgetContent(
         languageDirective: languageDirective || '',
       };
       break;
+    }
 
     case 'diagram': {
       const prescribedNodes = widgetOutline.nodes ?? [];
@@ -1307,9 +1335,12 @@ export async function generateWidgetContent(
     return null;
   }
 
-  // Extract widget config from HTML if present
+  return browserWidgetContent(html, widgetType);
+}
+
+function browserWidgetContent(html: string, widgetType: WidgetType): GeneratedInteractiveContent {
   const widgetConfig = extractWidgetConfig(html, widgetType);
-  if (widgetType === 'visualization3d' && widgetConfig) delete widgetConfig.nativeRenderer;
+  if (widgetConfig) delete widgetConfig.nativeRenderer;
 
   return {
     html: postProcessInteractiveHtml(html),
@@ -1748,7 +1779,10 @@ export async function generateSceneActions(
   if (outline.type === 'interactive' && 'html' in content) {
     const config = outline.interactiveConfig;
     const agentsText = formatAgentsForPrompt(agents);
-    const spatialIds = spatialObjectIds(content.widgetConfig);
+    const experiment = content.widgetConfig?.nativeRenderer === PARAMETER_EXPERIMENT_PROFILE
+      ? materializeParameterExperiment(content.widgetConfig)
+      : null;
+    const localTargets = experiment ? parameterExperimentTargets(experiment) : spatialObjectIds(content.widgetConfig);
     // Always recompute the inventory from the current html so it matches what
     // the tool actually reads — persisting the field would go stale relative
     // to `postProcessInteractiveHtml` output and to any in-turn html edits.
@@ -1780,13 +1814,16 @@ export async function generateSceneActions(
       INTERACTIVE_WIDGET_ACTIONS,
       log,
     );
-    if (spatialIds) {
+    if (localTargets) {
       actions = actions.flatMap((action): Action[] => {
         if (action.type === 'speech') return [action];
-        if (!('target' in action) || typeof action.target !== 'string') return [];
+        if (experiment && action.type === 'widget_setState') {
+          const state = parameterExperimentChanges(experiment, action.state);
+          return state ? [{ ...action, state }] : [];
+        }
+        if (action.type !== 'widget_highlight' || typeof action.target !== 'string') return [];
         const id = action.target.replace(/^#/, '');
-        if (!spatialIds.has(id) || action.type !== 'widget_highlight') return [];
-        return [{ ...action, target: '#' + id }];
+        return localTargets.has(id) ? [{ ...action, target: '#' + id }] : [];
       });
       if (!actions.some((action) => action.type === 'speech')) {
         actions.unshift(...generateDefaultInteractiveActions(outline));
