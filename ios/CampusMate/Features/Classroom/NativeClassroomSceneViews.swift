@@ -234,6 +234,7 @@ struct ClassroomCanvasMediaView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var media = ClassroomCanvasMediaPlayer()
     @State private var showVideo = false
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -257,9 +258,16 @@ struct ClassroomCanvasMediaView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { media.pause() }
+            if phase != .active {
+                loadTask?.cancel()
+                media.pause()
+            }
         }
-        .onDisappear { media.shutdown() }
+        .onDisappear {
+            loadTask?.cancel()
+            loadTask = nil
+            media.shutdown()
+        }
         .accessibilityLabel("\(title)，\(status)")
     }
 
@@ -281,7 +289,8 @@ struct ClassroomCanvasMediaView: View {
 
     private func play() {
         guard let source, let sessionID, let scope, let client else { return }
-        Task {
+        loadTask?.cancel()
+        loadTask = Task {
             await media.toggle(kind: kind, elementID: elementID, source: source,
                                version: mediaVersion, sessionID: sessionID, scope: scope,
                                client: client, accountKey: accountKey) {

@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "scenes": 6,
+  "events": [
+    { "type": "visit", "scene": "s1", "expect": { "awardedXp": 12, "xp": 12, "combo": 0, "unlocked": ["first_scene"] } },
+    { "type": "visit", "scene": "s1", "expect": { "awardedXp": 0, "xp": 12, "combo": 0, "unlocked": [] } },
+    { "type": "visit", "scene": "s2", "expect": { "awardedXp": 12, "xp": 24, "combo": 0, "unlocked": [] } },
+    { "type": "visit", "scene": "s3", "expect": { "awardedXp": 12, "xp": 36, "combo": 0, "unlocked": ["half_route"] } },
+    { "type": "quiz", "scene": "q1", "correct": 2, "total": 2, "expect": { "awardedXp": 32, "xp": 68, "combo": 1, "unlocked": ["perfect_quiz"] } },
+    { "type": "quiz", "scene": "q1", "correct": 2, "total": 2, "expect": { "awardedXp": 0, "xp": 68, "combo": 1, "unlocked": [] } },
+    { "type": "quiz", "scene": "q2", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 112, "combo": 2, "unlocked": [] } },
+    { "type": "quiz", "scene": "q3", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 156, "combo": 3, "unlocked": ["combo_3"] } },
+    { "type": "quiz", "scene": "q4", "correct": 0, "total": 2, "expect": { "awardedXp": 0, "xp": 156, "combo": 0, "unlocked": [] } },
+    { "type": "quiz", "scene": "q5", "correct": 2, "total": 2, "expect": { "awardedXp": 32, "xp": 188, "combo": 1, "unlocked": [] } },
+    { "type": "quiz", "scene": "q6", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 232, "combo": 2, "unlocked": [] } },
+    { "type": "quiz", "scene": "q7", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 276, "combo": 3, "unlocked": [] } },
+    { "type": "quiz", "scene": "q8", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 320, "combo": 4, "unlocked": [] } },
+    { "type": "quiz", "scene": "q9", "correct": 2, "total": 2, "expect": { "awardedXp": 44, "xp": 364, "combo": 5, "unlocked": ["combo_5"] } },
+    { "type": "visit", "scene": "s4", "expect": { "awardedXp": 12, "xp": 376, "combo": 5, "unlocked": [] } },
+    { "type": "visit", "scene": "s5", "expect": { "awardedXp": 12, "xp": 388, "combo": 5, "unlocked": [] } },
+    { "type": "visit", "scene": "s6", "expect": { "awardedXp": 12, "xp": 400, "combo": 5, "unlocked": ["finish_route"] } }
+  ],
+  "final": {
+    "xp": 400,
+    "level": 5,
+    "inLevel": 0,
+    "visited": 6,
+    "quizCount": 9,
+    "combo": 5,
+    "bestCombo": 5,
+    "achievements": ["first_scene", "half_route", "perfect_quiz", "combo_3", "combo_5", "finish_route"]
+  }
+}

@@ -416,31 +416,28 @@ def _self_media_url(session_id: str, relpath: str) -> str:
 # ===== 播放契约 =====
 
 
-def test_generated_geometry_is_preserved_alongside_web_compatibility():
-    widget = {
+def test_generated_spatial_config_reaches_the_client_with_its_web_fallback():
+    config = {
         "type": "visualization3d",
         "nativeRenderer": "classroom-spatial/1",
-        "description": "观察旋转中的长方体。",
+        "description": "旋转观察三维形状",
         "objects": [
-            {
-                "id": "solid",
-                "name": "长方体",
-                "type": "box",
-                "material": {"color": "#DAB27A"},
-                "animation": {"type": "rotate", "axis": "y", "speed": 0.6},
-            }
+            {"id": "solid", "name": "圆柱", "type": "cylinder", "material": {"color": "#DAB27A"}}
         ],
         "interactions": [{"type": kind, "target": "camera"} for kind in ("orbit", "zoom")],
     }
-    html = "<main><p>观察长方体的侧面</p></main>"
-    classroom = {
-        "id": "geometry",
-        "stage": {"name": "空间几何"},
-        "scenes": [{"id": "new_scene", "type": "interactive", "content": {
-            "type": "interactive", "widgetType": "visualization3d", "widgetConfig": widget, "html": html,
-        }}],
+    content = {
+        "type": "interactive",
+        "widgetType": "visualization3d",
+        "widgetConfig": config,
+        "html": "<main><p>观察圆柱的侧面</p></main>",
     }
-    session = SimpleNamespace(classroom_id="geometry", session_id="session", course_id=SELF_COURSE_ID)
+    classroom = {
+        "id": "visual_classroom",
+        "stage": {"name": "空间几何"},
+        "scenes": [{"id": "different_scene_id", "type": "interactive", "content": content}],
+    }
+    session = SimpleNamespace(classroom_id="visual_classroom", session_id="session", course_id=SELF_COURSE_ID)
     playback = build_classroom_playback(
         document={"classroom": classroom},
         session=session,
@@ -448,8 +445,8 @@ def test_generated_geometry_is_preserved_alongside_web_compatibility():
         external_3d_available=False,
     )
     scene = playback.scenes[0]
-    assert scene.content["widgetConfig"] == widget
-    assert scene.content["html"] == html
+    assert scene.content["widgetConfig"] == config
+    assert scene.content["html"] == content["html"]
     assert scene.render.kind == "sandbox-html"
 
 
@@ -486,7 +483,6 @@ def test_parameter_experiment_data_and_teacher_state_survive_the_playback_projec
     assert scene.render.kind == "sandbox-html"
     assert scene.actions[0].supported is True
     assert scene.actions[0].payload["state"] == {"voltage": 9}
-
 
 def test_course_playback_contract_assembles_native_scenes_and_media(tmp_path):
     requests: list = []

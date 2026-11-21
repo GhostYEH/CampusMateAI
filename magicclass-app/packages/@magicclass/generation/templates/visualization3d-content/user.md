@@ -41,10 +41,9 @@ Generate a complete, interactive 3D visualization using Three.js with these MAND
 4. Store objects in an `objects` dictionary for widget actions
 
 ### Interactions
-1. **Sliders** for controlling parameters (speed, scale, etc.)
-2. **Buttons** for presets and reset
-3. **Info panel** showing current state
-4. **Touch-friendly** controls (44px minimum)
+1. For the portable profile provide orbit, zoom, reset and the shared animation toggle when animated.
+2. For web-specific exercises provide the sliders and presets needed by the learning objective.
+3. Use a readable info panel and touch-friendly controls (44px minimum).
 
 ### Animation
 1. Use `requestAnimationFrame` for smooth animations
@@ -58,17 +57,7 @@ Generate a complete, interactive 3D visualization using Three.js with these MAND
 4. Support ANNOTATE_ELEMENT for 3D objects
 
 ### Widget Config
-Embed a complete widget configuration in the HTML:
-```json
-{
-  "type": "visualization3d",
-  "visualizationType": "{{visualizationType}}",
-  "description": "...",
-  "objects": [...],
-  "interactions": [...],
-  "presets": [...]
-}
-```
+Embed complete JSON in `<script type="application/json" id="widget-config">`. Use the `classroom-spatial/1` profile from the system instructions when the actual experiment fits it. Include the objects, transforms, materials and motion actually shown in the lesson. Use the browser profile when a web-specific feature is essential.
 
 ### Mobile Considerations
 1. Touch-enabled OrbitControls

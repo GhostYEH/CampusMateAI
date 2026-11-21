@@ -60,6 +60,41 @@ class ClassroomLimitExperimentTest {
         assertNull(ClassroomLimitExperiment.fromWidgetConfig(config + ("initial" to mapOf("presetId" to "quadratic"))))
     }
 
+    @Test
+    fun everyApproachKeepsItsDomainAndConvergesToItsLimit() {
+        val experiment = requireNotNull(ClassroomLimitExperiment.fromWidgetConfig(config))
+        for (preset in experiment.presets) {
+            val first = preset.approachX(0f)
+            assertEquals(preset.center + ClassroomLimitExperiment.approachAmplitude, first, 1e-9)
+            val last = preset.approachX(ClassroomLimitExperiment.durationSeconds)
+            assertTrue(abs(last - preset.center) < 0.005)
+            assertTrue(abs(preset.function.evaluate(last) - preset.limit) < 0.015)
+        }
+        val nearRootBoundary = experiment.presets.last().copy(center = 0.1)
+        assertEquals(0.0, nearRootBoundary.approachX(.75f), 1e-9)
+    }
+
+    @Test
+    fun orbitKeepsTheCameraAboveThePlotAndProjectsTimeInDepth() {
+        val start = ClassroomLimitExperiment.ViewAngle()
+        assertEquals(346f, start.orbit(-50f, -100f).yaw, 0f)
+        assertEquals(8f, start.orbit(0f, -100f).pitch, 0f)
+        assertEquals(70f, start.orbit(0f, 100f).pitch, 0f)
+        val projection = LimitTrajectoryProjection(start)
+        val near = LimitTrajectoryPoint(.5f, .5f, 0f)
+        val far = near.copy(time = 1f)
+        assertTrue(abs(projection.project(near).x - projection.project(far).x) > .5f)
+        val opposite = LimitTrajectoryProjection(start.orbit(180f, 0f))
+        assertTrue(opposite.project(near).x < opposite.project(far).x)
+        for (yaw in 0..360 step 30) for (pitch in listOf(8f, 24f, 70f)) {
+            val rotated = LimitTrajectoryProjection(ClassroomLimitExperiment.ViewAngle(yaw.toFloat(), pitch))
+            for (x in listOf(0f, 1f)) for (y in listOf(0f, 1f)) for (time in listOf(0f, 1f)) {
+                val corner = rotated.project(LimitTrajectoryPoint(x, y, time))
+                assertTrue(corner.x.isFinite() && corner.y.isFinite())
+            }
+        }
+    }
+
     private fun render(kind: NativeRenderKind, hasExperiment: Boolean) = NativePlaybackPolicy.decide(
         renderKind = kind,
         sceneType = "interactive",

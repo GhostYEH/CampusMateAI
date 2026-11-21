@@ -866,7 +866,7 @@ struct NativeClassroomView: View {
     private func compatibilityView(_ classroom: NativeClassroomWebFallback) -> some View {
         NavigationStack {
             TrustedWebView(url: classroom.url, origins: [classroom.origin],
-                           injectedScript: ClassroomRewards.script + "\n" + ClassroomMobileLayout.script + "\n" + ClassroomSlideTheme.script,
+                           injectedScript: ClassroomRewards.script(accountKey: model.accountKey, classroom: model.stageID) + "\n" + ClassroomMobileLayout.script + "\n" + ClassroomSlideTheme.script,
                            persistentStorage: true, onError: { webError = $0 })
                 .navigationTitle("互动课堂")
                 .navigationBarTitleDisplayMode(.inline)

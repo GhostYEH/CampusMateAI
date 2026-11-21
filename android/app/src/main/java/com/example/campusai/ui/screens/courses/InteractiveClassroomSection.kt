@@ -584,7 +584,7 @@ fun InteractiveClassroomSection(
             )
         }
     }
-    viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null }, repository) }
+    viewerUrl?.let { ClassroomViewer(it, listOf(state.status?.embedOrigin), { viewerUrl = null }, repository) }
 }
 
 @Composable

@@ -20,9 +20,15 @@ data class ClassroomLimitExperiment(
         val speed: Float,
         val time: Float = 0f,
         val showTrajectory: Boolean = false,
-        val yaw: Float = 36f,
-        val pitch: Float = 24f,
+        val viewAngle: ViewAngle = ViewAngle(),
     )
+
+    data class ViewAngle(val yaw: Float = 36f, val pitch: Float = 24f) {
+        internal fun orbit(yawChange: Float, pitchChange: Float): ViewAngle {
+            val wrappedYaw = ((yaw + yawChange) % 360f + 360f) % 360f
+            return ViewAngle(wrappedYaw, (pitch + pitchChange).coerceIn(8f, 70f))
+        }
+    }
 
     fun initialControls() = Controls(initialPresetId, initialEpsilon, initialSpeed)
 
@@ -38,16 +44,16 @@ data class ClassroomLimitExperiment(
     ) {
         val id get() = function.id
 
-        internal fun approachX(time: Float): Double {
-            val x = center + approachAmplitude * exp(-0.4 * time) * cos(4.0 * time)
-            return if (function == Function.SQUARE_ROOT) max(0.0, x) else x
-        }
-
         fun delta(epsilon: Double): Double = min(3.0, when (function) {
             Function.LINEAR -> epsilon / 2.0
             Function.QUADRATIC -> 2.0 * epsilon / (abs(center) + sqrt(center * center + 2.0 * epsilon))
             Function.SQUARE_ROOT -> if (epsilon < limit) epsilon * (2.0 * limit - epsilon) else center
         })
+
+        internal fun approachX(time: Float): Double {
+            val x = center + approachAmplitude * exp(-0.4 * time) * cos(4.0 * time)
+            return if (function == Function.SQUARE_ROOT) max(0.0, x) else x
+        }
     }
 
     enum class Function(val id: String, val labelSuffix: String) {
@@ -72,6 +78,7 @@ data class ClassroomLimitExperiment(
     }
 
     companion object {
+        internal const val durationSeconds = 15f
         internal const val approachAmplitude = 1.8
         val epsilonRange = 0.1f..3.0f
         val speedRange = 0.2f..3.0f

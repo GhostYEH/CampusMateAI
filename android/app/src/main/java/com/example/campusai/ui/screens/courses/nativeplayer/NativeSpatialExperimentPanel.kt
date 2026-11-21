@@ -102,7 +102,7 @@ internal fun NativeSpatialExperimentPanel(
     modifier: Modifier = Modifier,
 ) {
     val bounds = remember(experiment) { ClassroomSpatialGeometry.bounds(experiment) }
-    val highlightId = experiment.objectId(highlighted)
+    val highlightId = experiment.highlightedObject(highlighted)
     LaunchedEffect(spatialControls, spatialControls.playing) {
         if (!spatialControls.playing) return@LaunchedEffect
         var previous = withFrameNanos { it }
@@ -116,35 +116,37 @@ internal fun NativeSpatialExperimentPanel(
     }
 
     val frame = RoundedCornerShape(14.dp)
-    val plot = RoundedCornerShape(10.dp)
+    val viewport = RoundedCornerShape(10.dp)
     val grid = Line
-    val accent = Primary
+    val highlightColor = Primary
     BoxWithConstraints(modifier.clip(frame).background(Surface).border(1.dp, grid, frame).padding(12.dp)) {
         val wide = maxWidth >= 440.dp && maxHeight < 340.dp
-        val canvasHeight = (maxHeight - 132.dp).coerceIn(136.dp, 330.dp)
-        val model: @Composable (Modifier) -> Unit = { drawingModifier ->
-            Canvas(drawingModifier.clip(plot)
-                .background(Brush.verticalGradient(listOf(Background, Color(0xFF18323C))))
-                .border(1.dp, grid, plot)
-                .pointerInput(experiment, spatialControls) {
-                    detectTransformGestures { _, pan, scale, _ ->
-                        spatialControls.orbit(pan.x / density * .44f, -pan.y / density * .44f)
-                        spatialControls.magnify(scale)
+        val sceneHeight = (maxHeight - 132.dp).coerceIn(136.dp, 330.dp)
+        val model: @Composable (Modifier) -> Unit = { canvasModifier ->
+            Canvas(
+                canvasModifier.clip(viewport)
+                    .background(Brush.verticalGradient(listOf(Background, Color(0xFF18323C))))
+                    .border(1.dp, grid, viewport)
+                    .pointerInput(experiment, spatialControls) {
+                        detectTransformGestures { _, pan, scale, _ ->
+                            // The pan component of the touch gesture turns the camera around the model.
+                            spatialControls.orbit(pan.x / density * .44f, -pan.y / density * .44f)
+                            spatialControls.magnify(scale)
+                        }
                     }
-                }
-                .semantics {
-                    contentDescription = "原生三维模型"
-                    customActions = listOf(
-                        CustomAccessibilityAction("水平旋转") {
-                            spatialControls.orbit(25f, 0f)
-                            true
-                        },
-                        CustomAccessibilityAction("垂直旋转") {
-                            spatialControls.orbit(0f, 18f)
-                            true
-                        },
-                    )
-                },
+                    .semantics {
+                        contentDescription = "原生三维模型"
+                        customActions = listOf(
+                            CustomAccessibilityAction("水平旋转") {
+                                spatialControls.orbit(25f, 0f)
+                                true
+                            },
+                            CustomAccessibilityAction("垂直旋转") {
+                                spatialControls.orbit(0f, 18f)
+                                true
+                            },
+                        )
+                    },
             ) {
                 val radians = (Math.PI / 180).toFloat()
                 val view = SpatialRotation(
@@ -152,57 +154,58 @@ internal fun NativeSpatialExperimentPanel(
                 )
                 val light = SpatialVector(-.32f, .56f, .76f)
                 val scale = size.minDimension * .43f * spatialControls.zoom
-                val (worldOrigin, radius) = bounds
-                val time = spatialControls.elapsed
-                fun screen(point: SpatialVector): Offset {
+                val worldOrigin = bounds.first
+                val worldScale = 1f / bounds.second
+                fun project(point: SpatialVector): Offset {
                     val perspective = 3.6f / (3.6f - point.z)
                     return center + Offset(point.x * scale * perspective, -point.y * scale * perspective)
                 }
-                fun viewPoint(point: SpatialVector) = view.apply((point - worldOrigin) * (1f / radius))
-                fun gridPoint(x: Float, z: Float) = screen(view.apply(SpatialVector(x, -.65f, z)))
+                fun viewportPoint(point: SpatialVector) = view.apply((point - worldOrigin) * worldScale)
+                val guideColor = grid.copy(alpha = .52f)
+                fun gridPoint(x: Float, z: Float) = project(view.apply(SpatialVector(x, -.65f, z)))
                 for (step in -4..4) {
                     val axis = step * .20f
-                    drawLine(grid.copy(alpha = .52f), gridPoint(-.8f, axis), gridPoint(.8f, axis), .65.dp.toPx())
-                    drawLine(grid.copy(alpha = .52f), gridPoint(axis, -.8f), gridPoint(axis, .8f), .65.dp.toPx())
+                    drawLine(guideColor, gridPoint(-.80f, axis), gridPoint(.80f, axis), .65.dp.toPx())
+                    drawLine(guideColor, gridPoint(axis, -.80f), gridPoint(axis, .80f), .65.dp.toPx())
                 }
 
-                val faces = mutableListOf<SpatialFace>()
-                var selectedPoint: Offset? = null
-                fun collect(obj: SpatialObject, parent: (SpatialVector) -> SpatialVector) {
-                    val transform = ClassroomSpatialGeometry.worldTransform(obj, time)
-                    fun world(point: SpatialVector) = parent(transform(point))
+                val time = spatialControls.elapsed
+                val faces = mutableListOf<ProjectedSpatialFace>()
+                var selectedAt: Offset? = null
+                fun collectFaces(obj: SpatialObject, toWorld: (SpatialVector) -> SpatialVector) {
+                    val localPose = ClassroomSpatialGeometry.worldTransform(obj, time)
+                    fun world(point: SpatialVector) = toWorld(localPose(point))
                     val mesh = ClassroomSpatialGeometry.meshes.getValue(obj.shape)
-                    val vertices = mesh.vertices.map { viewPoint(world(it)) }
-                    val projected = vertices.map(::screen)
+                    val vertices = mesh.vertices.map { viewportPoint(world(it)) }
+                    val projected = vertices.map(::project)
                     val selected = obj.id == highlightId
-                    if (selected) selectedPoint = screen(viewPoint(world(SpatialVector.Zero)))
-                    val tint = Color(0xFF000000.toInt() or obj.material.rgb)
-                    for (indices in mesh.faces) {
-                        val a = vertices[indices[0]]
-                        val b = vertices[indices[1]]
-                        val c = vertices[indices[2]]
-                        var normal = (b - a).cross(c - a)
-                        if (normal.length() < 1e-7f && indices.size == 4) {
-                            normal = (c - a).cross(vertices[indices[3]] - a)
-                        }
-                        val length = normal.length()
-                        if (length < 1e-7f) continue
-                        val material = obj.material
-                        if (normal.z < 0f && !material.wireframe && material.opacity == 1f && obj.shape != SpatialShape.PLANE) continue
-                        val shade = .44f + .56f * abs(normal.dot(light) / length).coerceAtMost(1f)
-                        val color = (if (material.unlit || material.wireframe) tint else lerp(Color.Black, tint, shade))
-                            .copy(alpha = material.opacity)
-                        val depth = indices.sumOf { vertices[it].z.toDouble() }.toFloat() / indices.size
-                        faces.add(SpatialFace(indices, projected, depth, color, material.wireframe, selected))
+                    if (selected) {
+                        selectedAt = project(viewportPoint(world(SpatialVector.Zero)))
                     }
-                    obj.children.forEach { collect(it, ::world) }
+                    val tint = Color(0xFF000000.toInt() or obj.material.rgb)
+                    for (face in mesh.faces) {
+                        val first = vertices[face[0]]
+                        val second = vertices[face[1]]
+                        val third = vertices[face[2]]
+                        var normal = (second - first).cross(third - first)
+                        if (normal.length() < 1e-7f && face.size == 4) {
+                            normal = (third - first).cross(vertices[face[3]] - first)
+                        }
+                        if (normal.length() < 1e-7f) continue
+                        if (normal.z < 0f && !obj.material.wireframe && obj.material.opacity == 1f && obj.shape != SpatialShape.PLANE) continue
+                        val lit = .47f + .53f * abs(normal.dot(light) / normal.length()).coerceAtMost(1f)
+                        val color = if (obj.material.unlit || obj.material.wireframe) tint else lerp(Color.Black, tint, lit)
+                        val depth = face.sumOf { vertices[it].z.toDouble() }.toFloat() / face.size
+                        faces.add(ProjectedSpatialFace(face, projected, depth, color.copy(alpha = obj.material.opacity), obj.material.wireframe, selected))
+                    }
+                    obj.children.forEach { collectFaces(it, ::world) }
                 }
-                experiment.objects.forEach { collect(it) { point -> point } }
+                experiment.objects.forEach { collectFaces(it) { point -> point } }
                 faces.sortBy { it.depth }
                 val path = Path()
                 for (face in faces) {
-                    path.reset()
                     val first = face.points[face.indices[0]]
+                    path.reset()
                     path.moveTo(first.x, first.y)
                     for (index in 1 until face.indices.size) {
                         val vertex = face.points[face.indices[index]]
@@ -210,11 +213,13 @@ internal fun NativeSpatialExperimentPanel(
                     }
                     path.close()
                     if (!face.wireframe) drawPath(path, face.color)
-                    if (face.highlighted || face.wireframe) {
-                        drawPath(path, if (face.highlighted) accent else face.color, style = Stroke(1.dp.toPx()))
+                    if (face.wireframe || face.highlighted) {
+                        drawPath(path, if (face.highlighted) highlightColor else face.color, style = Stroke(1.dp.toPx()))
                     }
                 }
-                selectedPoint?.let { drawCircle(accent, 8.dp.toPx(), it, style = Stroke(1.dp.toPx())) }
+                selectedAt?.let { point ->
+                    drawCircle(highlightColor.copy(alpha = .65f), 9.dp.toPx(), point, style = Stroke(1.1.dp.toPx()))
+                }
             }
         }
         val controls: @Composable (Modifier) -> Unit = { controlModifier ->
@@ -223,28 +228,24 @@ internal fun NativeSpatialExperimentPanel(
                     IconButton(onClick = { spatialControls.magnify(1f / 1.2f) }) { Icon(Icons.Default.Remove, "缩小模型", tint = Accent) }
                     IconButton(onClick = { spatialControls.magnify(1.2f) }) { Icon(Icons.Default.Add, "放大模型", tint = Accent) }
                     IconButton(onClick = spatialControls::reset) { Icon(Icons.Default.Refresh, "重置视角", tint = Accent) }
-                    if (!wide && experiment.animated) {
-                        SpatialAnimationButton(spatialControls)
-                    }
+                    if (!wide && experiment.animated) SpatialAnimationButton(spatialControls)
                 }
-                if (wide && experiment.animated) {
-                    SpatialAnimationButton(spatialControls)
-                }
+                if (wide && experiment.animated) SpatialAnimationButton(spatialControls)
                 Text("拖动旋转，双指缩放", color = Muted, fontSize = 12.sp)
                 experiment.objects.labelFor(highlightId)?.let { label ->
-                    Text("老师正在指示 " + label, color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("老师正在指示 $label", color = Primary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 Text(experiment.description, color = TextPrimary, fontSize = 13.sp, lineHeight = 19.sp)
             }
         }
         if (wide) {
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                model(Modifier.weight(1.6f).fillMaxHeight())
+                model(Modifier.weight(1.5f).fillMaxHeight())
                 controls(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()))
             }
         } else {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                model(Modifier.fillMaxWidth().height(canvasHeight))
+                model(Modifier.fillMaxWidth().height(sceneHeight))
                 controls(Modifier.fillMaxWidth())
             }
         }
@@ -258,7 +259,7 @@ private fun SpatialAnimationButton(controls: NativeSpatialControls) {
     }
 }
 
-private data class SpatialFace(
+private data class ProjectedSpatialFace(
     val indices: IntArray,
     val points: List<Offset>,
     val depth: Float,
@@ -270,7 +271,7 @@ private data class SpatialFace(
 private fun List<SpatialObject>.labelFor(target: String?): String? {
     if (target == null) return null
     for (obj in this) {
-        if (obj.id == target) return obj.label
+        if (obj.id == target) return obj.name
         obj.children.labelFor(target)?.let { return it }
     }
     return null

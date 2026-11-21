@@ -50,7 +50,9 @@ import androidx.compose.ui.unit.sp
 import com.example.campusai.data.classroom.nativeplayer.NativeAnswer
 import com.example.campusai.data.classroom.nativeplayer.NativeQuestion
 import com.example.campusai.data.classroom.nativeplayer.NativeQuiz
+import com.example.campusai.data.classroom.nativeplayer.NativeQuizOption
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizResult
+import com.example.campusai.data.classroom.nativeplayer.NativeQuizUiState
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.DangerText
@@ -327,7 +329,7 @@ private fun QuestionCard(
         } else {
             question.options.forEach { option ->
                 val selected = answer.selected.contains(option.value) || answer.selected.contains(option.label)
-                val answerText = if (option.label == option.value) option.value else "${option.label}. ${option.value}"
+                val answerText = quizOptionText(option)
                 val correctOption = report && option.value in question.answerKey
                 val highlighted = selected || correctOption
                 val optionShape = RoundedCornerShape(9.dp)
@@ -407,6 +409,17 @@ private fun ResultBadge(label: String, value: String, color: Color) {
 
 private fun formatScore(value: Double): String {
     return if (value % 1.0 == 0.0) value.toInt().toString() else String.format("%.1f", value)
+}
+
+/** 对象选项是 value=字母/label=文本，字符串选项相反，统一按「字母. 文本」展示。 */
+private fun quizOptionText(option: NativeQuizOption): String {
+    if (option.label == option.value) return option.value
+    val marker = Regex("^[A-Za-z甲乙丙丁戊己庚辛壬癸]{1,2}$")
+    return when {
+        marker.matches(option.value) && !marker.matches(option.label) -> "${option.value}. ${option.label}"
+        marker.matches(option.label) && !marker.matches(option.value) -> "${option.label}. ${option.value}"
+        else -> option.value
+    }
 }
 
 private fun Boolean?.orFalse(): Boolean = this == true

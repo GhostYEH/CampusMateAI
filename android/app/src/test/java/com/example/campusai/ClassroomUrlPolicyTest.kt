@@ -246,4 +246,35 @@ class ClassroomUrlPolicyTest {
         )
         assertTrue(reason.contains("尚未配置"))
     }
+
+    // ===== 私网判定只对真正的 IPv4 字面量生效 =====
+
+    @Test
+    fun `domains starting with private ipv4 prefixes are not mistaken for private hosts`() {
+        val domains = listOf(
+            "https://10.classroom.example.edu",
+            "https://127.classroom.example.edu",
+            "https://192.168.classroom.example.edu",
+            "https://169.254.classroom.example.edu",
+            "https://172.16.classroom.example.edu",
+        )
+        domains.forEach { origin ->
+            val url = "$origin/classroom/r1"
+            assertTrue("合法域名不应被私网前缀误拦: $origin", ClassroomUrlPolicy.isTrusted(url, listOf(origin)))
+            assertEquals(url, ClassroomUrlPolicy.sanitize(url, listOf(origin)))
+        }
+    }
+
+    @Test
+    fun `private ipv4 literals are still rejected`() {
+        listOf(
+            "https://10.1.2.3/classroom/r1",
+            "https://127.0.0.1/classroom/r1",
+            "https://192.168.1.9/classroom/r1",
+            "https://169.254.10.10/classroom/r1",
+            "https://172.20.0.1/classroom/r1",
+        ).forEach { url ->
+            assertFalse("私网 IPv4 必须拒绝: $url", ClassroomUrlPolicy.isTrusted(url, listOf(url.substringBefore("/classroom"))))
+        }
+    }
 }

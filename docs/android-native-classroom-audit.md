@@ -160,3 +160,63 @@
 4. 需要补设备端账号切换和退后台的音频停止采样；代码链路已有，但本轮未取得可重复结果。
 5. 真实课程通过前，不切换默认播放器，不把“样例通过”写成“真实课堂通过”。
 6. 游戏化美术和内容样式仍放在功能验收之后，本轮未改视觉皮肤。
+
+## 10. 2026-11-21 会话、答题、鉴权与奖励整改
+
+> 本轮按原审查报告 1–12 与 P3 复核当前工作区，只记录实际完成的修改和验证；未执行项单列在 10.6。
+
+### 10.1 播放会话生命周期（报告 1）
+
+- `NativeClassroomViewModel` 增加显式 `startSession()` / `endSession()`：ExoPlayer、TTS、图片缓存、媒体代次与视频数据源移入会话级的 `PlaybackSession`。关闭弹窗、离开页面、换号或 ViewModel 清理时，先在独立 IO 作用域按**原账号**写入学习位置与奖励，再提交待保存草稿，最后取消全部任务并释放播放器、TTS、图片加载器与媒体监听。
+- `NativeClassroomPlayer` 用 `Activity.isChangingConfigurations` 区分旋转与真正退出：旋转保留当前会话（页、缩放、讲义/PPT 选择和草稿都在 ViewModel 中），其余路径结束会话；关闭后重开同一课堂会创建新的播放器与缓存。
+- `finish()` 不再把释放留给 `onCleared()`；经典、自主选题、受管课堂和作业复习四个入口都通过同一播放器 `onDispose` 收口。
+- 讲解与视频 ExoPlayer 设置音频焦点（`USAGE_MEDIA` + `AUDIO_CONTENT_TYPE_SPEECH`）与 becoming-noisy；系统 TTS 改用媒体流，便于系统统一打断。
+- 回归：`ClassroomQuizCoordinatorTest` 覆盖会话结束前的草稿落盘；播放器生命周期需设备验证（见 10.6）。
+
+### 10.2 测验写入（报告 2）
+
+- 新增 `ClassroomQuizCoordinator`：同一会话共享一把写锁，草稿、提交、复核和重做按发送顺序到达服务端；每次本地作答递增编辑代次，响应回来只有「账号 + 场景 + 轮次 + 编辑代次」都对上才允许回显答案。
+- 提交会排在在途草稿之后；提交失败会保留报告并补一份草稿，退出时不丢最新答案；409 `QUIZ_ATTEMPT_CONFLICT` 统一回读服务端当前作答，不当作成功。
+- 重做立即申请新根 attempt；请求返回前用轮次隔离，旧轮次的迟到响应不能改写新一轮。
+- 回归：`ClassroomQuizCoordinatorTest` 7 项（A 编辑→翻 B→回 A 再编辑、提交前草稿、响应丢失、409 回读、重做、换号、旧回显）。
+
+### 10.3 令牌与信任链（报告 4）
+
+- 新增 `AuthTokenRefreshCoordinator`：同一登录会话并发续签只发一次请求，等待者复用新 token；退出/换号后旧续签结果丢弃；`ApiClient` 的 token 与刷新回调改为 `@Volatile`，媒体客户端共享 Dispatcher/连接池并按课堂 LRU 复用。
+- `ClassroomUrlPolicy` 只对合法 IPv4 字面量判私网，修复 `10.classroom.example.edu` 这类域名的误拦；正式 HTTPS 与调试本地入口规则不变。
+- `ClassroomViewer` 在组件边界重新校验调用方提供的可信 Origin，加载、同源导航和麦克风授权都基于该 origin；历史、自习继续、经典、自主选题入口均传入后端 `embed_origin`。
+- 回归：`AuthTokenRefreshCoordinatorTest` 5 项、`ClassroomUrlPolicyTest` 新增 2 项。
+
+### 10.4 网页奖励（报告 5）
+
+- 网页 HUD 提取为 `assets/classroom-rewards.js`（iOS `Resources/classroom-rewards.js` 同文件）；规则对齐原生：访问 +12、答对 ×6、满分 +20、连击从第二份起 +12、重做按场景去重、成就 ID 一致。
+- 账本 key 由「服务 + 账号 + 课堂地址」派生；只有稳定 `data-scene-id` 才记账，匹配不到时显示“未计入进度”；旧 `v1` 账本不迁移、不删除，只在面板注明归属。
+- 回归：`scripts/tests/classroom-rewards.test.mjs` 5 项、`ClassroomRewardsContractTest` 3 项（同一事件样例驱动 Kotlin 与 JS，并校验 iOS 副本逐字一致）。
+
+### 10.5 取消句柄
+
+- Android 邻页图片预取保存 Coil `Disposable` 并在翻页/退出时释放；iOS 画布媒体下载、图片预取保存任务句柄，退后台/退出时取消并丢弃迟到结果。
+
+### 10.6 执行结果与未完成项
+
+**执行结果（2026-11-21，Windows，JDK 21.0.11，Gradle 8.13 / AGP 8.13.0，SDK android-35）**
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| 奖励脚本一致性 | `node --test scripts/tests/classroom-rewards.test.mjs` | 5 passed |
+| 定向 JVM 测试 | `:app:testDebugUnitTest --tests ClassroomQuizCoordinatorTest --tests ClassroomRewardsContractTest --tests ClassroomUrlPolicyTest --tests AuthTokenRefreshCoordinatorTest` | 33 passed / 0 failed（18 URL 策略、7 测验协调、5 续签、3 奖励契约） |
+| Debug 构建 | `:app:assembleDebug` | BUILD SUCCESSFUL |
+| Lint | `:app:lintDebug` | 5 errors / 137 warnings / 6 hints（教室文件 0 error；剩余均为既有且与课堂无关，见下） |
+| 设备 | `adb install` + App 启动 | APK 安装成功；App 启动到首页并进入「互动课堂」入口，无 crash；真实课堂数据未验证 |
+
+说明：仓库路径含中文时 Gradle 测试 worker 的 Java `@argfile` 解码会丢类路径；本轮用仅含 ASCII 的临时驱动器映射运行测试，不改仓库结构。Kotlin 编译在该环境中改用 in-process 策略，避免 Kotlin daemon 卡死。
+
+Lint 剩余 5 个 error 均为既有问题且不在课堂文件内：`SeeduplexRealtimeVoiceSession` 缺少录音权限检查、`local.properties` 的 Windows 路径未转义（本机生成文件）、`QrScannerScreen` 的 CameraX opt-in、`AppNavHost` 两处组合期导航访问。本轮为课堂 Media3 使用补充了 AndroidX `@OptIn(UnstableApi::class)`，课堂相关 opt-in error 从 38 个降为 0；全仓 lint 门禁仍为红，规则迁移/基线属于独立事项。
+
+**未完成/环境限制**
+
+- 真机或模拟器的完整课堂流程（真实账号、真实课件、竖横屏、语音、目录、翻页、草稿、提交、退出再进、换号、重复开不同课堂后的资源释放）未完成；本轮没有安装脱敏 fixture 服务依赖，模拟器虽在线但无法进入真实课堂数据。
+- iOS 无 Xcode/Swift toolchain：`swift test`、App 构建、模拟器和真机均未执行；iOS 改动只有静态复查，不能表述为编译或设备通过。
+- 全仓 lint 规则迁移、正式包名/签名切换仍作为独立事项；本轮只运行现有 lint。
+- 网页奖励与原生账本仍各自独立；本轮只保证规则一致和网页账本按服务/账号/课堂隔离，不做跨账本迁移。
+- 经典讲解合成、白板编辑、AI 同学对话等既有缺口未在本轮扩展。

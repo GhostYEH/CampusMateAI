@@ -10,13 +10,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ClassroomSpatialExperimentTest {
-    private fun solid(id: String, type: String) = mapOf(
+    private fun figure(id: String, type: String) = mapOf(
         "id" to id, "name" to id, "type" to type, "material" to mapOf("color" to "#DAB27A"),
     )
 
-    private fun config(objects: List<Map<String, Any?>> = listOf(solid("cuboid", "box"))) = mapOf(
-        "type" to "visualization3d", "nativeRenderer" to "classroom-spatial/1",
-        "description" to "拖动观察空间关系", "objects" to objects,
+    private fun config(objects: List<Map<String, Any?>> = listOf(figure("cuboid", "box"))) = mapOf(
+        "type" to "visualization3d", "nativeRenderer" to "classroom-spatial/1", "description" to "拖动观察空间关系",
+        "objects" to objects,
         "interactions" to listOf(mapOf("type" to "orbit", "target" to "camera"), mapOf("type" to "zoom", "target" to "camera")),
     )
 
@@ -25,41 +25,45 @@ class ClassroomSpatialExperimentTest {
     )
 
     @Test
-    fun independentGeneratedModelsAreReadFromClassicAndManagedDocuments() {
+    fun readsIndependentGeneratedModelsFromClassicAndManagedDocuments() {
+        val solid = content(config(listOf(figure("pyramid_section", "cone"))))
         val classic = NativeClassroomParser.parsePlayback(ClassroomPlaybackDto(scenes = listOf(
-            ClassroomPlaybackSceneDto(
-                id = "surface", type = "interactive", title = "圆锥的侧面",
-                content = content(config(listOf(solid("cone_a", "cone")))),
-            ),
+            ClassroomPlaybackSceneDto(id = "surface", type = "interactive", title = "圆锥截面", content = solid),
         )))
+        val astronomy = content(config(listOf(figure("satellite", "sphere"))))
         val managed = NativeClassroomParser.parseStage(MagicClassWorkspaceStageDto(
             id = "new-stage",
-            document = mapOf("scenes" to listOf(mapOf(
-                "id" to "planet", "type" to "interactive", "content" to content(config(listOf(solid("satellite", "sphere")))),
-            ))),
+            document = mapOf("scenes" to listOf(mapOf("id" to "planet", "type" to "interactive", "content" to astronomy))),
         ))
         assertEquals(SpatialShape.CONE, classic.interactiveByScene["surface"]?.spatialExperiment?.objects?.single()?.shape)
         assertEquals(SpatialShape.SPHERE, managed.interactiveByScene["planet"]?.spatialExperiment?.objects?.single()?.shape)
     }
 
     @Test
-    fun geometryAndActionValidationKeepIncompatibleScenesInTheirWebRuntime() {
+    fun onlyAdmitsSupportedAndVersionedGeometry() {
         fun read(widget: Map<String, Any?>) = ClassroomSpatialExperiment.fromWidgetConfig(widget)
         assertNull(read(config() - "nativeRenderer"))
         assertNull(read(config() + ("nativeRenderer" to "classroom-spatial/2")))
-        assertNull(read(config(listOf(solid("asset", "custom")))))
-        assertNull(read(config(listOf(solid("same", "sphere"), solid("same", "box")))))
-        assertNull(read(config(List(17) { solid("obj_$it", "plane") })))
+        assertNull(read(config(listOf(figure("custom_asset", "custom")))))
+        assertNull(read(config(listOf(figure("same", "sphere"), figure("same", "box")))))
+        assertNull(read(config(List(17) { figure("object_$it", "plane") })))
         assertNull(read(config() + ("interactions" to listOf(mapOf("type" to "slider", "target" to "camera")))))
-        assertNull(read(config(listOf(solid("broken", "plane") + ("scale" to Double.NaN)))))
-        val scene = requireNotNull(read(config()))
+        assertNull(read(config(listOf(figure("broken", "plane") + ("scale" to Double.NaN)))))
+        assertNull(read(config(listOf(figure("texture", "sphere") + ("material" to mapOf("color" to "#445566", "textureType" to "earth"))))))
+    }
+
+    @Test
+    fun highlightsOnlyRealObjectsAndKeepsScenesWithOtherWidgetActionsInWebRuntime() {
+        val scene = requireNotNull(ClassroomSpatialExperiment.fromWidgetConfig(config()))
+        assertEquals("cuboid", scene.highlightedObject("#cuboid"))
+        assertNull(scene.highlightedObject("cuboid"))
         assertTrue(scene.supportsActions(listOf(NativeAction("1", "widget_highlight", widgetTarget = "#cuboid"))))
         assertFalse(scene.supportsActions(listOf(NativeAction("1", "widget_highlight", widgetTarget = "#unknown"))))
         assertFalse(scene.supportsActions(listOf(NativeAction("2", "widget_setState", supported = false))))
     }
 
     @Test
-    fun validLocalDataDoesNotRequireAnExternal3dCdn() {
+    fun rendersVerifiedGeometryWhenExternalCdnIsMissingButKeepsOtherPlaybackRules() {
         fun mode(kind: NativeRenderKind, reason: String? = null, ready: Boolean = true) = NativePlaybackPolicy.decide(
             renderKind = kind, sceneType = "interactive", hasDocument = true, hasRenderableContent = true,
             fallbackAvailable = true, renderReason = reason, hasNativeSpatialScene = ready,
@@ -72,12 +76,12 @@ class ClassroomSpatialExperimentTest {
     }
 
     @Test
-    fun eachSupportedSolidHasFacesAndDeclaredOrbitsMoveInDepth() {
+    fun showsShapeMeshesAndMovesObjectsInTheirDeclaredOrbit() {
         assertEquals(SpatialShape.entries.toSet(), ClassroomSpatialGeometry.meshes.keys)
         assertTrue(ClassroomSpatialGeometry.meshes.values.all { mesh ->
             mesh.faces.isNotEmpty() && mesh.faces.all { face -> face.all { it in mesh.vertices.indices } }
         })
-        val body = solid("orb", "sphere") + mapOf(
+        val body = figure("orb", "sphere") + mapOf(
             "position" to mapOf("x" to 2, "y" to 0, "z" to 0),
             "animation" to mapOf("type" to "orbit", "axis" to "y", "speed" to 1),
         )

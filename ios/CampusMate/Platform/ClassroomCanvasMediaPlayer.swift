@@ -84,6 +84,7 @@ final class ClassroomCanvasMediaPlayer {
         isPlaying = false
         phase = .idle
         CampusAudioSession.shared.release(owner: owner)
+        ClassroomVideoCache.shared.clearPlaying()
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
@@ -127,9 +128,11 @@ final class ClassroomCanvasMediaPlayer {
                            accountKey: String) async throws -> URL {
         let cacheID = "canvas_\(ClassroomContentRevision.token("\(accountKey)|\(version)|\(sessionID)|\(elementID)|\(source)"))"
         if kind == "audio", let cached = ClassroomAudioCache.shared.url(accountKey: accountKey, resourceID: cacheID) {
+            ClassroomAudioCache.shared.markPlaying(accountKey: accountKey, resourceID: cacheID)
             return cached
         }
-        if kind == "video", let cached = try videoCacheURL(cacheID: cacheID) {
+        if kind == "video", let cached = ClassroomVideoCache.shared.url(cacheID: cacheID) {
+            ClassroomVideoCache.shared.markPlaying(cached)
             return cached
         }
         let resource = try await ClassroomService(client: client, scope: scope)
@@ -145,42 +148,17 @@ final class ClassroomCanvasMediaPlayer {
         }
         if kind == "audio" {
             let ext = ClassroomMediaReference.audioExtension(path: source, contentType: resource.mimeType) ?? "mp3"
-            let stored = try ClassroomAudioCache.shared.store(resource.url, accountKey: accountKey,
-                                                            resourceID: cacheID, fileExtension: ext)
+            let stored = try await ClassroomAudioCache.shared.store(
+                resource.url, accountKey: accountKey, resourceID: cacheID, fileExtension: ext)
+            ClassroomAudioCache.shared.markPlaying(accountKey: accountKey, resourceID: cacheID)
             deliveredURL = stored
             return stored
         }
         let ext = ClassroomMediaReference.videoExtension(path: source, contentType: resource.mimeType) ?? "mp4"
-        let copied = try copyVideoToCache(resource.url, cacheID: cacheID, fileExtension: ext)
+        let copied = try await ClassroomVideoCache.shared.store(
+            resource.url, cacheID: cacheID, fileExtension: ext)
+        ClassroomVideoCache.shared.markPlaying(copied)
         deliveredURL = copied
         return copied
-    }
-
-    private func videoCacheDirectory() throws -> URL {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("CampusMate", isDirectory: true)
-            .appendingPathComponent("ClassroomVideo", isDirectory: true)
-        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base
-    }
-
-    private func videoCacheURL(cacheID: String) throws -> URL? {
-        let directory = try videoCacheDirectory()
-        for ext in ClassroomMediaReference.videoExtensions {
-            let file = directory.appendingPathComponent("\(cacheID).\(ext)")
-            if let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size > 0 {
-                return file
-            }
-        }
-        return nil
-    }
-
-    private func copyVideoToCache(_ source: URL, cacheID: String, fileExtension: String) throws -> URL {
-        let directory = try videoCacheDirectory()
-        let destination = directory.appendingPathComponent("\(cacheID).\(fileExtension)")
-        if FileManager.default.fileExists(atPath: destination.path) { return destination }
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.copyItem(at: source, to: destination)
-        return destination
     }
 }

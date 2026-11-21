@@ -13,6 +13,9 @@ import com.example.campusai.data.expression.MockExpressionRecognitionService
 import com.example.campusai.data.expression.RealExpressionRecognitionService
 import com.example.campusai.data.model.*
 import com.example.campusai.data.remote.ApiClient
+import com.example.campusai.data.remote.AuthTokenPair
+import com.example.campusai.data.remote.AuthTokenRefreshCoordinator
+import com.example.campusai.data.remote.ClassroomApiException
 import com.example.campusai.data.remote.InteractiveClassroomStatusDto
 import com.example.campusai.data.remote.InteractiveClassroomSessionDto
 import com.example.campusai.data.remote.InteractiveClassroomPlanDto
@@ -160,6 +163,33 @@ class AppRepository(
 
 
     private val taskMutex = Mutex()
+
+    /**
+     * 登录会话代次。登录/退出时递增；在途续签只有代次未变才允许写回 token，
+     * 避免退出后旧结果把已退出的会话重新激活，或把旧 token 写进新账号。
+     */
+    @Volatile
+    private var authSessionEpoch = 0
+
+    private val tokenRefresher = AuthTokenRefreshCoordinator(
+        tokenProvider = { ApiClient.currentAccessToken() },
+        refreshTokenProvider = { dataStore.readRefreshToken() },
+        refreshRequest = { refreshToken ->
+            val resp = ApiClient.authApi.refresh(RefreshRequest(refreshToken))
+            val body = resp.body()
+            if (resp.isSuccessful && body != null) {
+                AuthTokenPair(body.access_token, body.refresh_token)
+            } else {
+                null
+            }
+        },
+        onToken = { pair ->
+            ApiClient.setToken(pair.accessToken)
+            dataStore.saveTokens(pair.accessToken, pair.refreshToken)
+        },
+        sessionEpoch = { authSessionEpoch },
+        isExpired = ::isTokenExpired,
+    )
     private val classroomVisitMutex = Mutex()
     @Volatile private var pendingClassroomVisitWrite: Job? = null
     private var taskJob: Job? = null
@@ -322,6 +352,7 @@ class AppRepository(
             val loginResp = ApiClient.api.login(LoginRequest(username, password))
             if (!loginResp.isSuccessful) throw Exception("账号或密码不正确")
             val body = loginResp.body()!!
+            authSessionEpoch++
             ApiClient.setToken(body.access_token)
             dataStore.saveTokens(body.access_token, body.refresh_token)
             val meResp = ApiClient.api.me()
@@ -583,7 +614,7 @@ class AppRepository(
                 )
             }
             resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
-                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验读取失败")))
+                ?: Result.failure(resp.classroomApiFailure("测验读取失败"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -608,7 +639,7 @@ class AppRepository(
                 )
             }
             resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
-                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验保存失败")))
+                ?: Result.failure(resp.classroomApiFailure("测验保存失败"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -723,26 +754,28 @@ class AppRepository(
         return "svc_${service}_$account"
     }
 
-    fun classroomLocalKey(ref: NativeClassroomRef): String {
+    fun classroomLocalKey(ref: NativeClassroomRef, accountScope: String = classroomAccountScope()): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(ref.stableKey.toByteArray())
             .take(12)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        return "native_classroom_${classroomAccountScope()}_$digest"
+        return "native_classroom_${accountScope}_$digest"
     }
 
     suspend fun classroomPosition(ref: NativeClassroomRef): String? =
         dataStore.readRaw("${classroomLocalKey(ref)}_position")
 
-    suspend fun saveClassroomPosition(ref: NativeClassroomRef, sceneId: String) {
-        dataStore.saveRaw("${classroomLocalKey(ref)}_position", sceneId)
+    /** 会话结束时按捕获的原账号落盘，账号已切换也不会写进新账号。 */
+    suspend fun saveClassroomPosition(ref: NativeClassroomRef, sceneId: String, accountScope: String = classroomAccountScope()) {
+        dataStore.saveRaw("${classroomLocalKey(ref, accountScope)}_position", sceneId)
     }
 
     suspend fun classroomRewardsRaw(ref: NativeClassroomRef): String? =
         dataStore.readRaw("${classroomLocalKey(ref)}_rewards")
 
-    suspend fun saveClassroomRewardsRaw(ref: NativeClassroomRef, raw: String) {
-        dataStore.saveRaw("${classroomLocalKey(ref)}_rewards", raw)
+    /** 会话结束时按捕获的原账号落盘，账号已切换也不会写进新账号。 */
+    suspend fun saveClassroomRewardsRaw(ref: NativeClassroomRef, raw: String, accountScope: String = classroomAccountScope()) {
+        dataStore.saveRaw("${classroomLocalKey(ref, accountScope)}_rewards", raw)
     }
 
     private fun Response<*>.reviewErrorMessage(fallback: String): String {
@@ -769,6 +802,21 @@ class AppRepository(
         }
     }
 
+    /** 保留 HTTP 状态码与错误码，供测验 409 冲突回读等分支判定。 */
+    private fun Response<*>.classroomApiFailure(fallback: String): ClassroomApiException {
+        val envelope = runCatching { JSONObject(errorBody()?.string().orEmpty()) }.getOrNull()
+        val errorCode = envelope?.optString("code")?.takeIf { it.isNotBlank() }
+        val message = envelope?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: when (code()) {
+                401, 403 -> "登录状态已失效，请重新登录"
+                404 -> "这项课堂或场景不存在"
+                409 -> "答题记录已变化，请重新读取后再试"
+                422 -> "请求内容不合法"
+                else -> fallback
+            }
+        return ClassroomApiException(code(), errorCode, message)
+    }
+
     suspend fun disconnectChaoxing(): Boolean {
         return try {
             val resp = ApiClient.api.disconnectChaoxing()
@@ -779,6 +827,7 @@ class AppRepository(
     }
 
     suspend fun logout() {
+        authSessionEpoch++
         _session.value = null
         ApiClient.setToken(null)
         dataStore.clearSession()
@@ -790,21 +839,11 @@ class AppRepository(
     /**
      * 用 refresh_token 换取新的 access_token。成功返回新 access_token 并更新内存与持久化，
      * 失败返回 null（由调用方决定是否退回自动登录或登出）。
+     *
+     * 同一时刻只允许一个续签请求；等待锁的调用若发现 token 已被其他请求刷新，直接复用。
+     * 网络返回后再校验登录会话代次，退出/换号后的旧结果直接丢弃。
      */
-    suspend fun refreshAccessToken(): String? {
-        val refreshToken = dataStore.readRefreshToken()
-        if (refreshToken.isNullOrBlank()) return null
-        return try {
-            val resp = ApiClient.authApi.refresh(RefreshRequest(refreshToken))
-            if (!resp.isSuccessful) return null
-            val body = resp.body() ?: return null
-            ApiClient.setToken(body.access_token)
-            dataStore.saveTokens(body.access_token, body.refresh_token)
-            body.access_token
-        } catch (_: Exception) {
-            null
-        }
-    }
+    suspend fun refreshAccessToken(): String? = tokenRefresher.refresh()
 
     /** 解析 JWT 的 exp 判断是否已过期（提前 30 秒判定，避免边界 401）。无法解析时不判定过期。 */
     private fun isTokenExpired(token: String?): Boolean {

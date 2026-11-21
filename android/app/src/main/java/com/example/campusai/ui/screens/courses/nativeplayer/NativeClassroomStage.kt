@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -32,40 +33,62 @@ import kotlin.math.sin
 @Composable
 internal fun NativeClassroomStage(
     pageTurn: State<Float>,
-    speaking: Boolean,
+    teacherSpeaking: Boolean,
     landscape: Boolean,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     val reduceMotion = LocalReduceMotion.current
-    val lampPower = animateFloatAsState(
-        targetValue = if (speaking) 1f else 0f,
+    val light = animateFloatAsState(
+        if (teacherSpeaking) 1f else 0f,
         animationSpec = if (reduceMotion) snap() else tween(420, easing = CampusMotion.settleEasing),
-        label = "classroom lamp",
+        label = "classroom light",
     )
     Box(modifier.clipToBounds()) {
         ClassroomStageBackdrop(Modifier.matchParentSize().graphicsLayer {
             val turn = if (reduceMotion) 0f else pageTurn.value
-            val scale = 1f + abs(turn) * .027f
+            val scale = 1f + abs(turn) * .025f
             scaleX = scale
             scaleY = scale
-            translationX = -size.width * .012f * turn
+            translationX = -size.width * .011f * turn
         })
         Spacer(Modifier.matchParentSize().drawWithCache {
-            val lamp = Offset(size.width * (if (landscape) .57f else .67f), size.height * .12f)
-            val radius = (size.minDimension * .7f).coerceAtLeast(1f)
+            val lamp = Offset(size.width * if (landscape) .38f else .66f, size.height * .11f)
+            val stageCenter = Offset(size.width * if (landscape) .36f else .50f, size.height * .72f)
+            val beams = List(8) { layer ->
+                val spread = .5f + layer * .07f
+                val crown = size.minDimension * .07f * spread
+                val base = size.width * .4f * spread
+                Path().apply {
+                    moveTo(lamp.x - crown, lamp.y)
+                    lineTo(lamp.x + crown, lamp.y)
+                    lineTo(stageCenter.x + base, stageCenter.y)
+                    lineTo(stageCenter.x - base, stageCenter.y)
+                    close()
+                }
+            }
+            val beamLight = Brush.verticalGradient(
+                0f to Color.Transparent,
+                .16f to ClassroomAmber.copy(alpha = .32f),
+                .55f to ClassroomAmber.copy(alpha = .10f),
+                1f to Color.Transparent,
+                startY = lamp.y,
+                endY = stageCenter.y,
+            )
+            val glowRadius = (size.minDimension * .64f).coerceAtLeast(1f)
             val lampGlow = Brush.radialGradient(
-                colors = listOf(ClassroomAmber.copy(alpha = .56f), ClassroomAmber.copy(alpha = .12f), Color.Transparent),
+                colors = listOf(ClassroomAmber.copy(alpha = .38f), Color.Transparent),
                 center = lamp,
-                radius = radius,
+                radius = glowRadius,
             )
             val floorShade = Brush.verticalGradient(
-                colors = listOf(Color.Transparent, Color(0x85101B27)),
-                startY = size.height * .68f,
+                colors = listOf(Color.Transparent, Color(0x96101B27)),
+                startY = stageCenter.y,
                 endY = size.height,
             )
             onDrawBehind {
                 drawRect(floorShade)
-                drawCircle(lampGlow, radius, lamp, alpha = .35f + lampPower.value * .47f)
+                for (beam in beams) drawPath(beam, brush = beamLight, alpha = .073f + light.value * .047f)
+                drawCircle(lampGlow, radius = glowRadius, center = lamp, alpha = .30f + light.value * .30f)
             }
         })
     }
@@ -84,8 +107,9 @@ internal fun Modifier.classroomPageTurn(progress: State<Float>): Modifier = grap
 }
 
 @Composable
-internal fun ClassroomTeacherSignal(modifier: Modifier) {
-    val pulse = if (LocalReduceMotion.current) null else rememberInfiniteTransition(label = "classroom speech").animateFloat(
+internal fun ClassroomTeacherSignal(modifier: Modifier = Modifier) {
+    val reduceMotion = LocalReduceMotion.current
+    val pulse = if (reduceMotion) null else rememberInfiniteTransition(label = "classroom speech").animateFloat(
         initialValue = 0f,
         targetValue = 2f * Math.PI.toFloat(),
         animationSpec = infiniteRepeatable(tween(920, easing = LinearEasing)),
@@ -96,7 +120,7 @@ internal fun ClassroomTeacherSignal(modifier: Modifier) {
         val phase = pulse?.value ?: 0f
         for (bar in 0..2) {
             val x = size.width * (.22f + .28f * bar)
-            val height = size.height * (.27f + .22f * (1f + sin(phase + bar * 1.45f)))
+            val height = size.height * (.25f + .22f * (1f + sin(phase + bar * 1.45f)))
             drawLine(
                 color, Offset(x, center.y - height / 2f), Offset(x, center.y + height / 2f),
                 strokeWidth = size.minDimension * .10f, cap = StrokeCap.Round,

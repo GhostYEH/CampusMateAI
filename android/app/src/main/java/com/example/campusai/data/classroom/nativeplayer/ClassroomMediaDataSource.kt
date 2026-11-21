@@ -7,6 +7,7 @@ import androidx.media3.datasource.BaseDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
+import androidx.media3.common.util.UnstableApi
 import java.io.IOException
 import java.io.InputStream
 import kotlin.math.min
@@ -19,6 +20,7 @@ import okhttp3.Request
  * 用共享的课堂媒体 OkHttp 客户端发请求：可信本站媒体自动带 Bearer，401 走同一套刷新；
  * 手动处理重定向，跨服务域的 Location 直接失败，绝不把 Authorization 带到外域。
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 class ClassroomMediaDataSourceFactory(
     private val client: OkHttpClient,
     private val ref: NativeClassroomRef,
@@ -28,6 +30,7 @@ class ClassroomMediaDataSourceFactory(
         ClassroomMediaDataSource(client, ref, apiBaseUrl)
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 private class ClassroomMediaDataSource(
     private val client: OkHttpClient,
     private val ref: NativeClassroomRef,

@@ -73,7 +73,7 @@ OTHER_SWIFT_FLAGS='$(inherited) -disable-sandbox'
 - 模型共建使用系统照片选择或相机拍摄单张图片，上传后可按编号删除自己的样本；multipart 契约已有自动化测试，照片选择、真实相机与上传流程仍需在目标设备验收。
 - 本地提醒按当前账号的完整待办/考试快照统一调度，遵守已完成状态、考试提醒开关及待办提前量；退出账号、切换服务或关闭提醒会清除旧通知。
 - 课堂播放依赖服务端返回的可信 Origin 与 `browser_embed_available`；不满足时不提供打开按钮。
-- 课堂 AI 同学沿用上游课堂的 `ClassmatePanes`（换页发言、沉默、点名与预算）；`TrustedWebView` 通过 `injectedScript` 注入 `ClassroomRewards.script`、`ClassroomMobileLayout.script` 和 `ClassroomSlideTheme.script`：前者显示与 Web/Android 同一套 XP、等级、连击和成就，中者与 Android `classroomMobileFix` 使用同一份窄屏布局契约（对话区拖拽手柄、课件双指缩放、教师气泡收起），后者统一课堂配色与中文字体。已在本机 Xcode 27.1 的 `CampusMate SE Audit` 模拟器验证构建和 7 项原生 UI 测试；测试前重置模拟器，避免上一次运行残留的横屏/返回态造成假失败。真机仍未验收。
+- 课堂 AI 同学沿用上游课堂的 `ClassmatePanes`（换页发言、沉默、点名与预算）；`TrustedWebView` 通过 `injectedScript` 注入 `ClassroomRewards.script(accountKey:classroom:)`、`ClassroomMobileLayout.script` 和 `ClassroomSlideTheme.script`：奖励脚本与 Android `assets/classroom-rewards.js` 共用同一份文件（`scripts/tests/classroom-rewards.test.mjs` 校验逐字一致），规则对齐原生 `ClassroomRewardsEngine`（访问 +12、答对 ×6、满分 +20、连击从第二份起 +12、重做按场景去重），账本按服务 + 账号 + 课堂隔离；只有稳定 `data-scene-id` 才记账，旧 v1 账本不迁移也不删除。中者与 Android `classroomMobileFix` 使用同一份窄屏布局契约（对话区拖拽手柄、课件双指缩放、教师气泡收起），后者统一课堂配色与中文字体。已在本机 Xcode 27.1 的 `CampusMate SE Audit` 模拟器验证构建和 7 项原生 UI 测试；测试前重置模拟器，避免上一次运行残留的横屏/返回态造成假失败。真机仍未验收。
 
 ## 原生互动课堂
 

@@ -167,10 +167,14 @@ final class ClassroomPerformanceProbe {
     private func persist() {
         loadIfNeeded()
         guard let fileURL else { return }
-        let values = store.count > 200 ? store.reduce(into: [String: ClassroomPerformanceSnapshot]()) { result, entry in
-            if result.count < 200 { result[entry.key] = entry.value }
-        } : store
-        guard let data = try? JSONEncoder().encode(values) else { return }
+        if store.count > 200 {
+            // 保留最近打开的 200 节课堂，而不是任意截断字典。
+            let retained = store.sorted { lhs, rhs in
+                (lhs.value.lastOpenAt ?? .distantPast) > (rhs.value.lastOpenAt ?? .distantPast)
+            }.prefix(200)
+            store = Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })
+        }
+        guard let data = try? JSONEncoder().encode(store) else { return }
         try? data.write(to: fileURL, options: [.atomic])
     }
 }

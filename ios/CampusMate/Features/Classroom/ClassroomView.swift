@@ -219,19 +219,24 @@ struct ClassicClassroomView: View {
         }
         .task { await load() }
         .refreshable { await load() }
-        .task(id: model.sessionID) {
+        .task(id: "\(model.sessionID)#\(model.pollEpoch)") {
             let started = Date()
             while !Task.isCancelled, !model.sessionID.isEmpty, !model.isTerminal, !model.pollingStopped {
-                try? await Task.sleep(for: .seconds(model.interval))
-                guard !Task.isCancelled else { return }
-                if Date().timeIntervalSince(started) > model.maxPollSeconds { model.pollingStopped = true; return }
-                if scenePhase == .active { await model.refresh() }
+                if Date().timeIntervalSince(started) > model.maxPollSeconds {
+                    model.pollingStopped = true
+                    return
+                }
+                if scenePhase == .active {
+                    await model.refresh()
+                }
+                guard !Task.isCancelled, !model.isTerminal, !model.pollingStopped else { return }
+                try? await Task.sleep(for: .seconds(model.pollDelay))
             }
         }
         .fullScreenCover(isPresented: $playing) {
             NavigationStack {
                 if let url = ClassroomPlayback.validURL(session: model.session, status: model.status, allowLocalDebug: AppModel.allowsHTTP) {
-                    TrustedWebView(url: url, origins: [model.status["embed_origin"].text], injectedScript: ClassroomRewards.script + "\n" + ClassroomMobileLayout.script + "\n" + ClassroomSlideTheme.script, persistentStorage: true, onError: { model.error = $0 })
+                    TrustedWebView(url: url, origins: [model.status["embed_origin"].text], injectedScript: ClassroomRewards.script(accountKey: accountKey, classroom: model.sessionID) + "\n" + ClassroomMobileLayout.script + "\n" + ClassroomSlideTheme.script, persistentStorage: true, onError: { model.error = $0 })
                         .navigationTitle("互动课堂").navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { playing = false } } }
                 }
@@ -305,7 +310,7 @@ struct ClassicClassroomView: View {
                         .campusFont(.caption).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 10) {
-                    Button("刷新进度") { Task { model.pollingStopped = false; await model.refresh() } }
+                    Button("刷新进度") { model.resumePolling() }
                         .campusFont(.caption).foregroundStyle(palette.primary)
                     if case .course = scope, model.session["retryable"].bool == true {
                         Button("重新生成") { confirmRetry = true }

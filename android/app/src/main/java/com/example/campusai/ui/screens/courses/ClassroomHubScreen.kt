@@ -52,7 +52,7 @@ private data class RecentClassroom(
     val totalSeconds: Long,
 )
 
-private fun classicRef(sessionId: String, title: String, safeUrl: String?, courseId: String? = null) =
+private fun nativeClassroomRef(sessionId: String, title: String, safeUrl: String?, courseId: String? = null) =
     NativeClassroomRef(
         courseId = courseId.orEmpty(),
         workspaceId = "",
@@ -231,14 +231,18 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
                 }
                 progress?.let { job ->
-                    Text(if (job.terminal) job.message ?: job.status else "正在生成 · ${job.progress}% · ${job.message.orEmpty()}",
+                    Text(when {
+                        !job.terminal -> "正在生成 · ${job.progress}% · ${job.message.orEmpty()}"
+                        job.status.equals("succeeded", ignoreCase = true) -> "课堂已经准备好"
+                        else -> job.message ?: job.status
+                    },
                         color = ClassroomChalk, fontSize = 13.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
                     val sessionId = job.sessionId
                     val safe = trusted(job.url)
                     if (!sessionId.isNullOrBlank() && job.status.equals("succeeded", ignoreCase = true)) {
                         Button(
-                            onClick = { nativeRef = classicRef(sessionId, "自主选题课堂", safe) },
+                            onClick = { nativeRef = nativeClassroomRef(sessionId, "自主选题课堂", safe) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = ClassroomAmber, contentColor = ClassroomNight),
                         ) { Text("进入原生课堂", fontWeight = FontWeight.Bold) }
@@ -274,18 +278,19 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 } else {
                     history.take(4).forEach { recent ->
                         val safe = trusted(recent.entry.classroom.url)
-                        val native = recent.entry.classroom.sessionId?.takeIf { it.isNotBlank() }?.let {
-                            classicRef(it, recent.entry.courseName, safe, recent.entry.courseId)
+                        val ref = recent.entry.classroom.sessionId?.takeIf { it.isNotBlank() }?.let { session ->
+                            nativeClassroomRef(session, recent.entry.courseName, safe, recent.entry.courseId)
                         }
-                        Column(Modifier.fillMaxWidth().clickable(enabled = native != null || safe != null) {
-                            if (native != null) nativeRef = native else viewerUrl = safe
-                        }.padding(vertical = 12.dp)) {
-                            Text("${recent.entry.courseName} · ${if (native != null || safe != null) "继续上课  →" else "暂不可打开"}",
+                        Column(Modifier.fillMaxWidth().clickable(enabled = ref != null || safe != null) {
+                            if (ref != null) nativeRef = ref else viewerUrl = safe
+                        }
+                            .padding(vertical = 12.dp)) {
+                            Text("${recent.entry.courseName} · ${if (ref != null || safe != null) "继续上课  →" else "暂不可打开"}",
                                 color = ClassroomChalk, fontWeight = FontWeight.Bold)
                             Text("${if (recent.lastEnteredAt != null) "上次进入" else "创建于"} ${(recent.lastEnteredAt ?: recent.entry.classroom.createdAt).orEmpty().replace('T', ' ').take(16)}" +
                                 if (recent.totalSeconds > 0) " · 已学 ${formatClassroomStudyDuration(recent.totalSeconds)}" else "",
                                 color = Color(0xFFB9C7D0), fontSize = 12.sp)
-                            if (native != null && safe != null) {
+                            if (ref != null && safe != null) {
                                 Text("网页兼容  →", color = ClassroomAmber, fontSize = 12.sp,
                                     modifier = Modifier.clickable { viewerUrl = safe }.padding(vertical = 6.dp))
                             }
@@ -318,5 +323,5 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
             )
         }
     }
-    viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null; historyRefresh++ }, repository) }
+    viewerUrl?.let { ClassroomViewer(it, listOf(status?.embedOrigin), { viewerUrl = null; historyRefresh++ }, repository) }
 }

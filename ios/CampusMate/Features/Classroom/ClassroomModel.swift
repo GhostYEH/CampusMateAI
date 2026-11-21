@@ -14,12 +14,16 @@ final class ClassroomModel {
     var isWorking = false
     var error: String?
     var pollingStopped = false
+    var pollEpoch = 0
+    private(set) var consecutivePollFailures = 0
     var selectedMaterials: Set<String> = []
     var sessionID: String { session["session_id"].text }
     var isTerminal: Bool { session["terminal"].bool == true || ["succeeded", "failed", "cancelled"].contains(session["status"].text) }
     var canGenerate: Bool { status["enabled"].bool == true && status["available"].bool == true && !isWorking && (sessionID.isEmpty || isTerminal) }
     var interval: Double { min(30, max(1, Double(status["poll_interval_ms"].int ?? 5000) / 1000)) }
     var maxPollSeconds: Double { min(3600, max(30, Double(status["poll_max_seconds"].int ?? 1800))) }
+    /// 临时网络错误按上限退避，最多连续 5 次后暂停自动刷新。
+    var pollDelay: Double { min(30, interval * pow(2, Double(min(consecutivePollFailures, 3)))) }
     @ObservationIgnored private var service: ClassroomService?
     @ObservationIgnored private var cacheScope = ""
     private struct Snapshot: Codable, Sendable { let session: JSONValue; let materials: [JSONValue] }
@@ -44,9 +48,41 @@ final class ClassroomModel {
     }
     func refresh() async {
         guard let service, !sessionID.isEmpty else { return }
-        do { session = try await service.progress(sessionID: sessionID); await save() }
-        catch is CancellationError { }
-        catch { self.error = error.localizedDescription; pollingStopped = true }
+        let target = sessionID
+        do {
+            let latest = try await service.progress(sessionID: target)
+            // 历史切换后，旧会话的迟到进度不能覆盖当前会话。
+            guard sessionID == target else { return }
+            session = latest
+            consecutivePollFailures = 0
+            await save()
+        } catch is CancellationError {
+        } catch {
+            guard sessionID == target else { return }
+            if isTerminalPollingError(error) {
+                consecutivePollFailures = 0
+                pollingStopped = true
+                self.error = error.localizedDescription
+            } else {
+                consecutivePollFailures += 1
+                if consecutivePollFailures >= 5 {
+                    pollingStopped = true
+                    self.error = "自动刷新已暂停：\(error.localizedDescription)。可点“刷新进度”恢复。"
+                }
+            }
+        }
+    }
+
+    /// 手动恢复：重置退避并只保留一个轮询任务（由 pollEpoch 触发 .task 重启）。
+    func resumePolling() {
+        consecutivePollFailures = 0
+        pollingStopped = false
+        pollEpoch &+= 1
+    }
+
+    private func isTerminalPollingError(_ error: Error) -> Bool {
+        guard let api = error as? APIError else { return false }
+        return [401, 403, 404, 410].contains(api.statusCode)
     }
     func selectHistory(_ item: JSONValue) async { session = item; pollingStopped = false; await refresh() }
     func generate(goal: String, difficulty: String, minutes: Int, mode: String, practice: Bool, retry: Bool = false) async {

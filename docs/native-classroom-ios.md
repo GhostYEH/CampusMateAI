@@ -27,7 +27,7 @@
 | 动作顺序（`steps`） | Web 按 teacher script 播放 | `scenes[].steps[]` + `scenes[].actions[]` | `ClassroomActionSequencePlanner` 严格按 `steps` 顺序、用 `action_id` 找 `actions`；`speech` 等实际播放结束后推进，`play_video` 由视频结束或用户关闭视为完成，`spotlight`/`laser` fire-and-forget；`supported=false`、动作缺失、类型不一致或媒体失败给出实际原因并停止，不无限等待 | 新增 `classicSequenceFollows...` / `classicSequenceBlocks...` 单测；样例设备验收需 Xcode | 已实现；静态语法通过，未编译/未真机 |
 | 白板 | 网页查看/编辑/导出/共享 | `stage.whiteboard` / playback `whiteboards` | 从底栏打开白板，有画布正文时提供只读预览，受信网页入口覆盖其余操作 | 手动 | 待 Xcode 验证 |
 | 教师/学生 AI 对话、换页发言、沉默、点名、预算 | 上游 `ClassmatePanes` 在网页运行 | `multi_agent` / `steps` | 非 speech/video 的 `steps` 仍由网页课堂执行；原生只显示「含 AI 同学对话」标签，不伪造气泡或点名 | 手动 | 未覆盖（网页兜底） |
-| XP/等级/连击/成就 | `ClassroomRewards.script` 写 localStorage | 网页 localStorage | 原生不复刻；旧网页路径保留 | 手动 | 不迁移（归属不可确认） |
+| XP/等级/连击/成就 | `ClassroomRewards.script` 写 localStorage | `Resources/classroom-rewards.js` + 网页 localStorage | 原生播放器仍不复刻奖励；网页 HUD 与 Android 共用同一份脚本，规则对齐原生（访问 +12、答对 ×6、满分 +20、连击从第二份起 +12、重做按场景去重），key 按服务 + 账号 + 课堂隔离；只有稳定 `data-scene-id` 才记账 | `scripts/tests/classroom-rewards.test.mjs` 5 项 + Android `ClassroomRewardsContractTest` | 脚本一致性已自动验证；真机未验收 |
 | 学习通题目复习/错题讲解 | `ChaoxingAssignmentReview` + `ChaoxingLessonReader` | lesson 文档 + quiz-attempt | 原路径不动 | `ChaoxingAssignmentTests` | 保留 |
 | 同学一起学 | 邀请、加入、消息、共享页码、成员权限 | Learning Rooms 端点 | 原路径不动；不共享原生播放页 | 现有 UI 流程 | 保留（无播放共享） |
 
@@ -48,7 +48,7 @@
 
 ## 4. 旧状态与账号隔离
 
-- `ClassroomRewards.script` 的 localStorage 只有单一 key、按页面标题记账，payload 不含账号身份。无法确认某条 XP/成就属于哪个账号，**不做迁移**；旧网页课堂仍可读取它自己的状态。
+- `ClassroomRewards.script(accountKey:classroom:)` 注入的账本 key 由服务、账号和课堂派生；旧版单一 key `campusmate:classroom-rewards:v1` 不带账号身份，**不迁移、不删除**，只在 HUD 面板注明“旧版网页奖励未绑定账号，未并入本课堂”。页面没有稳定 `data-scene-id` 时不按标题猜身份，只显示未计入进度。原生播放器仍不读取或合并这份网页账本，避免在无法确认属主时凭空迁移。
 - 原生进度是新数据：受管课堂 `AccountCache` scope = `serverURL|userID|classroom|courseID|workspaceID|stageID`；经典课堂把 `workspaceID` 固定为 `classic`、`stageID` 为 session id，每课堂一个 `progress.json`；已访问页按 scene id 去重，最多保留 500 个。切换账号不会读到其他账号的进度。
 - 本地舞台快照（`stage.json`）同样按账号+舞台分目录；切账号、换课件 revision 后旧快照不会顶替新计划。经典快照保存 `content_version` 派生的 revision；正文更新时刷新当前场景并重新解析讲解音频，旧版本缓存键不复用。
 - 经典课堂的 session、历史记录和网页进度保持原路径，不因原生入口出现而被删除或改写；原生进度是另一份新数据，不与 WKWebView localStorage 混用。
@@ -76,6 +76,26 @@
 6. 性能样本 JSON 落在 `Application Support/CampusMate/ClassroomPerformance.json`，玩家内「更多 → 查看性能样本」可读。
 
 `ClassroomPerformanceProbe` 的「首屏可读」由可见内容首次 `onAppear` 触发，不在状态赋值时提前记账；「翻页」从 `go(to:)` 到新页 `onAppear` 计时。
+
+### 6.3 2026-11-21 会话、答题与缓存整改
+
+| 问题 | 本轮处理 | 验证 |
+| --- | --- | --- |
+| 同步/提交期间翻页会把旧 quiz 写回新场景 | `loadQuiz`/`saveDraft`/`submitQuiz`/`syncQuizIfNeeded` 统一捕获场景、场景代次、轮次；成功和失败分支都复核，旧响应只丢弃不写回 | 静态复查；`NativeClassroomTests` 既有纯模型用例不受影响 |
+| 连续点击提交、同步重入 | 模型层 `submittingQuiz` / `syncingQuiz` 门闩；写操作经 `ClassroomQuizWriteGate` 串行到达服务端 | 静态复查 |
+| 重做尚未取得新 attemptID | `retryQuiz` 增加轮次并立即申请新根 attempt；写锁内读取最新 attempt/`start_new` 标记，旧轮次响应不能改写新一轮 | 静态复查 |
+| 浮层测试期间切页/换号 | `sceneDidChange`/`shutdown` 取消 quiz 读取、提交、同步与草稿任务；响应写回前复核场景与轮次 | 静态复查 |
+| 音频缓存主线程 I/O、非原子复制 | `ClassroomAudioCache` 改为后台串行队列；同目录临时文件 + 原子替换；初始化不再同步扫描 | 静态复查 |
+| 视频缓存无上限/无过期 | 新增 `ClassroomVideoCache`：256 MB 总量、7 天过期、播放中保护、临时文件原子发布 | 静态复查 |
+| 缓存路径强制解包 | 移除视频缓存目录的 `first!`；目录不可用时返回可读错误 | 静态复查 |
+| 邻页图片预取不可取消 | `ClassroomImageCache` 保存预取任务句柄，翻页/退出 `cancelPreloads()`；下载文件读取前先查大小并清理临时文件 | 静态复查 |
+| 画布媒体下载不可取消 | 视图保存 `loadTask`，退后台/消失时取消；播放器 `shutdown` 清理播放保护 | 静态复查 |
+| 生成成功后复用旧幂等键 | 成功后轮换；服务端明确失败（4xx 或已知生成错误码）轮换；取消/5xx/网络中断等未确认结果保留原键 | 静态复查 |
+| 轮询一次网络错误即永久停止 | 临时错误有上限退避（最多 5 次，间隔上限 30s）；401/403/404/410 与终态停止；手动恢复重置退避并只保留一个 `.task` | 静态复查 |
+| 迟到进度覆盖当前会话 | `refresh()` 捕获目标 sessionID，写回前复核；`resumePolling()` 通过 `pollEpoch` 重启轮询 | 静态复查 |
+| 网页奖励未按账号隔离、规则漂移 | 与 Android 共用 `classroom-rewards.js`；key 按服务 + 账号 + 课堂；稳定 `data-scene-id` 才记账；旧 v1 不迁移不删除 | `scripts/tests/classroom-rewards.test.mjs` 5 项通过（Windows Node 24） |
+
+**未验证**：以上 iOS 改动均未在完整 Xcode 环境编译；`ClassroomQuizWriteGate`、缓存 actor/队列与 `pollEpoch` 的并发行为需在 Mac 上运行 `swift test` 与模拟器/真机验收。Windows 没有 Swift toolchain，不得把静态复查表述为构建或真机通过。
 
 ## 6. 验证状态
 

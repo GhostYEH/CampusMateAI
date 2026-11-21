@@ -113,8 +113,18 @@ final class NativeClassroomModel {
     private var localState = ClassroomLocalState()
     @ObservationIgnored private var narrationTask: Task<Void, Never>?
     @ObservationIgnored private var draftTask: Task<Void, Never>?
+    @ObservationIgnored private var quizLoadTask: Task<Void, Never>?
+    @ObservationIgnored private var quizSubmitTask: Task<Void, Never>?
+    @ObservationIgnored private var quizSyncTask: Task<Void, Never>?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var stateTask: Task<Void, Never>?
+    /// 本地作答代次与轮次：同步/提交/重做期间翻页、换号或改答案后，迟到响应不能写回。
+    @ObservationIgnored private var quizSceneGeneration = 0
+    @ObservationIgnored private var quizAnswerVersion = 0
+    @ObservationIgnored private var quizRound = 0
+    @ObservationIgnored private var submittingQuiz = false
+    @ObservationIgnored private var syncingQuiz = false
+    @ObservationIgnored private let quizWriteGate = ClassroomQuizWriteGate()
     @ObservationIgnored private var started = false
     @ObservationIgnored private var revisionToken = UUID()
     @ObservationIgnored private var pageTurnStartedAt: Date?
@@ -412,7 +422,17 @@ final class NativeClassroomModel {
         narrationTask = nil
         draftTask?.cancel()
         draftTask = nil
+        quizLoadTask?.cancel()
+        quizLoadTask = nil
+        quizSubmitTask?.cancel()
+        quizSubmitTask = nil
+        quizSyncTask?.cancel()
+        quizSyncTask = nil
+        quizSceneGeneration &+= 1
+        quizAnswerVersion = 0
+        quizRound = 0
         player.stop()
+        audioCache.clearPlaying()
         narrationIsPaused = false
         currentAudioResourceID = nil
         classicAudio = nil
@@ -430,7 +450,10 @@ final class NativeClassroomModel {
             return
         }
         if case .quiz = scene.content {
-            Task { await loadQuiz(sceneID: scene.id) }
+            quizLoadTask?.cancel()
+            quizLoadTask = Task { [weak self] in
+                await self?.loadQuiz(sceneID: scene.id)
+            }
         }
         prefetchNeighbours()
         if classic == nil {
@@ -442,6 +465,7 @@ final class NativeClassroomModel {
 
     private func prefetchNeighbours() {
         guard let plan, let document else { return }
+        images.cancelPreloads()
         for offset in [index, index + 1, index + 2, index - 1] where plan.scenes.indices.contains(offset) {
             let scene = plan.scenes[offset]
             guard let content = document.scenesByID[scene.id] else { continue }
@@ -511,37 +535,68 @@ final class NativeClassroomModel {
             startNewAttempt: startNewAttempt)
     }
 
+    /// 只在当前场景、代次和轮次都未变化时允许写入。
+    private struct QuizWriteIdentity {
+        let sceneID: String
+        let sceneGeneration: Int
+        let round: Int
+    }
+
+    private func quizWriteIdentity(requireAnswering: Bool = false) -> QuizWriteIdentity? {
+        guard let session = quiz, !currentSceneID.isEmpty else { return nil }
+        if requireAnswering, session.phase != .answering { return nil }
+        return QuizWriteIdentity(
+            sceneID: currentSceneID,
+            sceneGeneration: quizSceneGeneration,
+            round: quizRound
+        )
+    }
+
+    private func isQuizContextCurrent(_ identity: QuizWriteIdentity) -> Bool {
+        currentSceneID == identity.sceneID &&
+            quizSceneGeneration == identity.sceneGeneration &&
+            quizRound == identity.round
+    }
+
     private func loadQuiz(sceneID: String) async {
-        guard currentSceneID == sceneID, let set = currentQuizSet else { return }
+        let generation = quizSceneGeneration
+        guard currentSceneID == sceneID, generation == quizSceneGeneration, let set = currentQuizSet else { return }
+        let version = quizAnswerVersion
         do {
             let attempt = try await fetchQuizAttempt(sceneID: sceneID)
-            guard currentSceneID == sceneID else { return }
+            guard currentSceneID == sceneID, generation == quizSceneGeneration else { return }
             var answers: [String: ClassroomQuizAnswer] = [:]
             for question in set.questions {
                 if let answer = attempt.answer(for: question) { answers[question.id] = answer }
             }
-            var session = QuizSession(attemptID: attempt.attemptID,
-                                      phase: attempt.isReviewed || attempt.isSubmitted ? .reviewed : .answering,
-                                      answers: answers, evaluation: nil,
-                                      hintsShown: [:], message: nil,
-                                      needsSync: attempt.isSubmitted,
-                                      startNewOnNextSave: false)
+            var session = QuizSession(
+                attemptID: attempt.attemptID,
+                phase: attempt.isReviewed || attempt.isSubmitted ? .reviewed : .answering,
+                answers: version == quizAnswerVersion ? answers : (quiz?.answers ?? answers),
+                evaluation: nil,
+                hintsShown: [:],
+                message: nil,
+                needsSync: attempt.isSubmitted,
+                startNewOnNextSave: false
+            )
             if attempt.isReviewed || attempt.isSubmitted {
                 session.evaluation = ClassroomQuizEvaluation.evaluate(
-                    questions: set.questions, answers: answers, studentLed: set.studentLed)
+                    questions: set.questions, answers: session.answers, studentLed: set.studentLed)
                 if attempt.isSubmitted {
                     session.message = "上一次提交的结果还在同步，先显示本地判分。"
                 }
             }
             quiz = session
+        } catch is CancellationError {
+            return
         } catch {
-            guard currentSceneID == sceneID else { return }
+            guard currentSceneID == sceneID, generation == quizSceneGeneration else { return }
             quizError = ClassroomNativePresentation.message(for: error, fallback: "答题记录读取失败。")
         }
     }
 
     func select(option: ClassroomQuizOption, for question: ClassroomQuizQuestion) {
-        guard var session = quiz, session.phase == .answering else { return }
+        guard var session = quiz, session.phase == .answering, !submittingQuiz else { return }
         if question.isMultiple {
             var values: [String]
             if case .choices(let existing)? = session.answers[question.id] { values = existing } else { values = [] }
@@ -553,16 +608,18 @@ final class NativeClassroomModel {
         session.evaluation = nil
         session.phase = .answering
         session.message = nil
+        quizAnswerVersion &+= 1
         quiz = session
         scheduleDraftSave()
     }
 
     func setShortAnswer(_ text: String, for question: ClassroomQuizQuestion) {
-        guard var session = quiz, session.phase == .answering else { return }
+        guard var session = quiz, session.phase == .answering, !submittingQuiz else { return }
         session.answers[question.id] = .text(text)
         session.evaluation = nil
         session.phase = .answering
         session.message = nil
+        quizAnswerVersion &+= 1
         quiz = session
         scheduleDraftSave()
     }
@@ -577,109 +634,192 @@ final class NativeClassroomModel {
 
     private func scheduleDraftSave() {
         draftTask?.cancel()
-        let sceneID = currentSceneID
+        guard let identity = quizWriteIdentity(requireAnswering: true) else { return }
+        let version = quizAnswerVersion
         draftTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            await self?.saveDraft(sceneID: sceneID)
+            await self?.saveDraft(identity: identity, answerVersion: version)
         }
     }
 
-    private func saveDraft(sceneID: String) async {
-        guard let session = quiz, currentSceneID == sceneID,
-              !session.attemptID.isEmpty, session.phase == .answering
-        else { return }
+    private func saveDraft(identity: QuizWriteIdentity, answerVersion: Int) async {
+        guard isQuizContextCurrent(identity), let session = quiz,
+              session.phase == .answering, answerVersion == quizAnswerVersion else { return }
+        await quizWriteGate.acquire()
+        if Task.isCancelled {
+            await quizWriteGate.release()
+            return
+        }
+        guard isQuizContextCurrent(identity), let current = quiz,
+              current.phase == .answering else {
+            await quizWriteGate.release()
+            return
+        }
+        // 写锁内读取最新 attempt 与 start_new 标记：重做分配可能刚刚完成。
+        let attemptID = current.attemptID
+        let startNew = current.startNewOnNextSave
+        let answers = current.answers
         do {
             let saved = try await persistQuizAttempt(
-                sceneID: sceneID, attemptID: session.attemptID, phase: "draft", answers: session.answers,
-                results: nil, startNewAttempt: session.startNewOnNextSave)
-            if var current = quiz, current.attemptID == session.attemptID, current.phase == .answering {
-                current.attemptID = saved.attemptID
-                current.startNewOnNextSave = false
-                quiz = current
-            }
+                sceneID: identity.sceneID, attemptID: attemptID, phase: "draft",
+                answers: answers, results: nil, startNewAttempt: startNew)
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.attemptID = saved.attemptID
+            latest.startNewOnNextSave = false
+            quiz = latest
+        } catch is CancellationError {
+            await quizWriteGate.release()
         } catch {
+            await quizWriteGate.release()
             // 草稿保存失败不打断答题；提交时会再次校验。
         }
     }
 
     func submitQuiz() async {
-        guard var session = quiz, let set = currentQuizSet else { return }
+        guard !submittingQuiz, !syncingQuiz,
+              var session = quiz, session.phase == .answering,
+              let set = currentQuizSet,
+              let identity = quizWriteIdentity()
+        else { return }
+        submittingQuiz = true
+        defer { submittingQuiz = false }
         draftTask?.cancel()
         draftTask = nil
-        let sceneID = currentSceneID
+        let evaluation = ClassroomQuizEvaluation.evaluate(
+            questions: set.questions, answers: session.answers, studentLed: set.studentLed)
         session.phase = .submitting
         session.message = nil
         quiz = session
-        let evaluation = ClassroomQuizEvaluation.evaluate(
-            questions: set.questions, answers: session.answers, studentLed: set.studentLed)
+
+        await quizWriteGate.acquire()
+        if Task.isCancelled {
+            await quizWriteGate.release()
+            return
+        }
+        guard isQuizContextCurrent(identity), let current = quiz, current.phase == .submitting else {
+            await quizWriteGate.release()
+            return
+        }
+        let sentAttemptID = current.attemptID
+        let startNew = current.startNewOnNextSave
+        let answers = current.answers
         let submitted: ClassroomQuizAttempt
         do {
             submitted = try await persistQuizAttempt(
-                sceneID: sceneID, attemptID: session.attemptID, phase: "submitted", answers: session.answers,
-                results: nil, startNewAttempt: session.startNewOnNextSave)
+                sceneID: identity.sceneID, attemptID: sentAttemptID, phase: "submitted",
+                answers: answers, results: nil, startNewAttempt: startNew)
+        } catch is CancellationError {
+            await quizWriteGate.release()
+            return
         } catch {
-            guard currentSceneID == sceneID else { return }
-            session.phase = .answering
-            session.evaluation = nil
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var failed = quiz else { return }
+            failed.phase = .answering
+            failed.evaluation = nil
             if let api = error as? APIError, api.code == "QUIZ_ATTEMPT_CONFLICT" {
-                session.message = ClassroomNativePresentation.message(for: error, fallback: "答题记录已变化，请重新提交。")
-                quiz = session
-                await loadQuiz(sceneID: sceneID)
-                if currentSceneID == sceneID, var reloaded = quiz {
-                    reloaded.message = session.message; quiz = reloaded
+                failed.message = ClassroomNativePresentation.message(for: error, fallback: "答题记录已变化，请重新提交。")
+                quiz = failed
+                await loadQuiz(sceneID: identity.sceneID)
+                if currentSceneID == identity.sceneID, var reloaded = quiz {
+                    reloaded.message = failed.message
+                    quiz = reloaded
                 }
             } else {
-                session.message = ClassroomNativePresentation.message(for: error, fallback: "提交失败，请重试。")
-                quiz = session
+                failed.message = ClassroomNativePresentation.message(for: error, fallback: "提交失败，请重试。")
+                quiz = failed
+                // 提交未被确认时补一份草稿，退出课堂也不会丢失最新答案。
+                scheduleDraftSave()
             }
             return
         }
-        guard currentSceneID == sceneID else { return }
-        session.attemptID = submitted.attemptID
-        session.startNewOnNextSave = false
-        session.phase = .reviewed
-        session.evaluation = evaluation
-        quiz = session
+        guard isQuizContextCurrent(identity), var updated = quiz else {
+            await quizWriteGate.release()
+            return
+        }
+        updated.attemptID = submitted.attemptID
+        updated.startNewOnNextSave = false
+        updated.phase = .reviewed
+        updated.evaluation = evaluation
+        quiz = updated
         do {
             let reviewed = try await persistQuizAttempt(
-                sceneID: sceneID, attemptID: submitted.attemptID, phase: "reviewed",
-                answers: session.answers, results: evaluation.jsonResults(), startNewAttempt: false)
-            guard currentSceneID == sceneID else { return }
-            session.attemptID = reviewed.attemptID
-            session.needsSync = false
+                sceneID: identity.sceneID, attemptID: submitted.attemptID, phase: "reviewed",
+                answers: updated.answers, results: evaluation.jsonResults(), startNewAttempt: false)
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.attemptID = reviewed.attemptID
+            latest.needsSync = false
+            latest.message = nil
+            quiz = latest
+            ClassroomPerformanceProbe.shared.recordQuizSubmit(stageKey: cacheKey)
+        } catch is CancellationError {
+            await quizWriteGate.release()
         } catch {
-            guard currentSceneID == sceneID else { return }
-            session.needsSync = true
-            session.message = "结果已判分，但还没有同步到服务器。可以点“重新同步结果”。"
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.needsSync = true
+            latest.message = "结果已判分，但还没有同步到服务器。可以点“重新同步结果”。"
+            quiz = latest
         }
-        guard currentSceneID == sceneID else { return }
-        quiz = session
-        ClassroomPerformanceProbe.shared.recordQuizSubmit(stageKey: cacheKey)
     }
 
-    /// 已提交但结果没落库时，用本地判分补一次 reviewed，避免学生看到“提交了但没有结果”。
+    /// 已提交但结果没落库时，用本地判分补一次 reviewed；场景/轮次变化后不写回。
     func syncQuizIfNeeded() async {
-        guard var session = quiz, session.needsSync, let set = currentQuizSet else { return }
+        guard !syncingQuiz, !submittingQuiz,
+              let session = quiz, session.needsSync,
+              let set = currentQuizSet,
+              let identity = quizWriteIdentity()
+        else { return }
+        syncingQuiz = true
+        defer { syncingQuiz = false }
         let evaluation = ClassroomQuizEvaluation.evaluate(
             questions: set.questions, answers: session.answers, studentLed: set.studentLed)
+
+        await quizWriteGate.acquire()
+        if Task.isCancelled {
+            await quizWriteGate.release()
+            return
+        }
+        guard isQuizContextCurrent(identity), let current = quiz, current.needsSync else {
+            await quizWriteGate.release()
+            return
+        }
         do {
             let reviewed = try await persistQuizAttempt(
-                sceneID: currentSceneID, attemptID: session.attemptID, phase: "reviewed",
-                answers: session.answers, results: evaluation.jsonResults(), startNewAttempt: false)
-            session.attemptID = reviewed.attemptID
-            session.evaluation = evaluation
-            session.needsSync = false
-            session.message = nil
-            quiz = session
+                sceneID: identity.sceneID, attemptID: current.attemptID, phase: "reviewed",
+                answers: current.answers, results: evaluation.jsonResults(), startNewAttempt: false)
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.attemptID = reviewed.attemptID
+            latest.evaluation = evaluation
+            latest.needsSync = false
+            latest.message = nil
+            quiz = latest
+        } catch is CancellationError {
+            await quizWriteGate.release()
         } catch {
-            session.message = ClassroomNativePresentation.message(for: error, fallback: "结果同步失败。")
-            quiz = session
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.message = ClassroomNativePresentation.message(for: error, fallback: "结果同步失败。")
+            quiz = latest
         }
     }
 
+    /// 重做立即申请新根 attempt；即使响应未返回，也用轮次隔离上一轮。
     func retryQuiz() {
-        guard var session = quiz else { return }
+        guard !submittingQuiz, !syncingQuiz, var session = quiz else { return }
+        draftTask?.cancel()
+        draftTask = nil
+        quizLoadTask?.cancel()
+        quizLoadTask = nil
+        quizSubmitTask?.cancel()
+        quizSubmitTask = nil
+        quizSyncTask?.cancel()
+        quizSyncTask = nil
+        quizAnswerVersion &+= 1
+        quizRound &+= 1
         session.phase = .answering
         session.answers = [:]
         session.evaluation = nil
@@ -688,6 +828,40 @@ final class NativeClassroomModel {
         session.needsSync = false
         session.startNewOnNextSave = true
         quiz = session
+        guard let identity = quizWriteIdentity() else { return }
+        quizSubmitTask = Task { [weak self] in
+            await self?.allocateQuizAttempt(identity: identity)
+        }
+    }
+
+    private func allocateQuizAttempt(identity: QuizWriteIdentity) async {
+        await quizWriteGate.acquire()
+        if Task.isCancelled {
+            await quizWriteGate.release()
+            return
+        }
+        guard isQuizContextCurrent(identity), let current = quiz,
+              current.phase == .answering, current.startNewOnNextSave else {
+            await quizWriteGate.release()
+            return
+        }
+        do {
+            let allocated = try await persistQuizAttempt(
+                sceneID: identity.sceneID, attemptID: current.attemptID, phase: "draft",
+                answers: [:], results: nil, startNewAttempt: true)
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.attemptID = allocated.attemptID
+            latest.startNewOnNextSave = false
+            quiz = latest
+        } catch is CancellationError {
+            await quizWriteGate.release()
+        } catch {
+            await quizWriteGate.release()
+            guard isQuizContextCurrent(identity), var latest = quiz else { return }
+            latest.message = ClassroomNativePresentation.message(for: error, fallback: "重新答题失败。")
+            quiz = latest
+        }
     }
 
     // MARK: - PBL / simulation
@@ -778,10 +952,12 @@ final class NativeClassroomModel {
         narrationPhase = .loadingAudio
         let url: URL
         if let cached = audioCache.url(accountKey: accountKey, artifactID: artifactID) {
+            audioCache.markPlaying(accountKey: accountKey, resourceID: artifactID)
             url = cached
         } else {
             let resource = try await service.downloadNarration(courseID: courseID, artifactID: artifactID)
-            url = try audioCache.store(resource.url, accountKey: accountKey, artifactID: artifactID)
+            url = try await audioCache.store(resource.url, accountKey: accountKey, artifactID: artifactID)
+            audioCache.markPlaying(accountKey: accountKey, resourceID: artifactID)
         }
         guard currentSceneID == sceneID else { return }
         currentAudioResourceID = artifactID
@@ -838,8 +1014,9 @@ final class NativeClassroomModel {
             guard currentSceneID == sceneID, classicAudio?.cacheID == audio.cacheID else { return }
             let ext = ClassroomMediaReference.audioExtension(
                 path: audio.apiPath, contentType: resource.mimeType ?? audio.contentType) ?? "wav"
-            let url = try audioCache.store(resource.url, accountKey: accountKey,
-                                          resourceID: audio.cacheID, fileExtension: ext)
+            let url = try await audioCache.store(resource.url, accountKey: accountKey,
+                                                 resourceID: audio.cacheID, fileExtension: ext)
+            audioCache.markPlaying(accountKey: accountKey, resourceID: audio.cacheID)
             deliveredURL = url
             guard currentSceneID == sceneID, classicAudio?.cacheID == audio.cacheID else { return }
             currentAudioResourceID = audio.cacheID
@@ -998,10 +1175,18 @@ final class NativeClassroomModel {
         narrationTask?.cancel()
         narrationTask = nil
         draftTask?.cancel()
+        draftTask = nil
+        quizLoadTask?.cancel()
+        quizLoadTask = nil
+        quizSubmitTask?.cancel()
+        quizSubmitTask = nil
+        quizSyncTask?.cancel()
+        quizSyncTask = nil
         saveTask?.cancel()
         saveTask = nil
         stateTask?.cancel()
         stateTask = nil
+        audioCache.clearPlaying()
         player.stop()
         narrationIsPaused = false
         started = false
@@ -1040,6 +1225,30 @@ extension NativeClassroomModel {
         var plan: JSONValue
         var stage: JSONValue
         var savedAt: Date
+    }
+}
+
+/// 串行化同一会话的测验写入：提交、同步、重做与草稿按进入顺序到达服务端。
+private actor ClassroomQuizWriteGate {
+    private var locked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !locked {
+            locked = true
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            locked = false
+        } else {
+            waiters.removeFirst().resume()
+        }
     }
 }
 
@@ -1426,7 +1635,9 @@ extension NativeClassroomModel {
         try abortIfStale(sceneID: sceneID, token: sequenceToken)
         let ext = ClassroomMediaReference.audioExtension(
             path: audio.apiPath, contentType: resource.mimeType ?? audio.contentType) ?? "wav"
-        return try audioCache.store(resource.url, accountKey: accountKey,
-                                    resourceID: audio.cacheID, fileExtension: ext)
+        let stored = try await audioCache.store(resource.url, accountKey: accountKey,
+                                                resourceID: audio.cacheID, fileExtension: ext)
+        audioCache.markPlaying(accountKey: accountKey, resourceID: audio.cacheID)
+        return stored
     }
 }

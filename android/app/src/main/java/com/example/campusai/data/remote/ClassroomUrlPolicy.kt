@@ -156,9 +156,20 @@ object ClassroomUrlPolicy {
             return embedded != null && isPrivateIpv4(embedded)
         }
         // —— IPv4 字面量 / 域名 ——
-        // 注意：`fc`/`fd` 这类 IPv6 ULA 前缀判定只对含 ':' 的字面量生效，
-        // 否则会把 `fd-classroom.example.edu` 这种合法域名误判成内网。
+        // 只有四段合法数字才按 IPv4 判断私网；否则 `10.classroom.example.edu`
+        // 这类以 "10." 开头的合法域名会被误拦。
+        if (!isIpv4Literal(value)) return false
         return isPrivateIpv4(value)
+    }
+
+    private fun isIpv4Literal(value: String): Boolean {
+        val parts = value.split('.')
+        if (parts.size != 4) return false
+        return parts.all { part ->
+            part.isNotEmpty() && part.length <= 3 &&
+                part.all { it.isDigit() } &&
+                part.toIntOrNull() in 0..255
+        }
     }
 
     /**

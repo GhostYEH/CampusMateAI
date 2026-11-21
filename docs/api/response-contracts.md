@@ -387,7 +387,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - `type`、`nativeRenderer`、`description`、`objects`、`interactions` 必填。`visualizationType` 可选，用于描述学科场景。`description` 为 1–1500 字符。`interactions` 固定为相机的 `orbit` 与 `zoom`，客户端提供重置视角，场景有动画时提供播放与暂停。
 - `objects` 及其 `children` 共 1–16 个对象，最多三层。`id` 匹配 `[A-Za-z_][A-Za-z0-9_-]{0,63}` 且全场唯一。`name` 为 1–80 字符。`type` 支持 `box`、`sphere`、`cylinder`、`cone`、`torus` 和 `plane`。基准边长为 1，球半径为 0.5，圆柱和圆锥半径为 0.5、高为 1、沿 Y 轴。平面和圆环在 XY 平面，圆环主半径为 0.36、管半径为 0.12。
 - `position` 和 `rotation` 可选，缺省为零向量。`position` 的各分量为 −40 至 40。`rotation` 为 Euler XYZ 弧度，各分量为 −360 至 360。`scale` 可用标量或 `{x,y,z}`，各分量为 0.03 至 12，缺省为 1。子物体的变换相对于父物体。
-- `material.color` 为 `#RRGGBB`。可选字段 `type` 支持 `standard`（默认）、`lambert`、`phong`、`basic`、`emissive`，普通材质受灯光影响，`basic` 和 `emissive` 使用不受灯光影响的颜色。`wireframe` 与 `transparent` 为布尔值。`opacity` 为 0.15–1，低于 1 时要求 `transparent=true`。
+- `material.color` 为 `#RRGGBB`。可选字段 `type` 支持 `standard`（默认）、`lambert`、`phong`、`basic`、`emissive`，后三者的外观由客户端灯光近似渲染。`wireframe` 与 `transparent` 为布尔值。`opacity` 为 0.15–1，低于 1 时要求 `transparent=true`。
 - `animation` 可选。`type` 支持 `rotate`、`orbit`、`bounce`、`pulse`。`axis` 为 `x`、`y`、`z`，默认为 `y`。`speed` 为每秒 0.05–6 弧度，默认为 1。旋转使用对象中心，公转使用父空间原点。弹跳沿轴移动 `0.25 * abs(sin(phase))`，脉动按 `1 + 0.12 * sin(phase)` 缩放。
 - `widget_highlight` 的 `target` 为 `#` 加上述对象 ID。Android 对完整验证通过的几何及动作本地渲染，可处理 `native`、`sandbox-html` 和仅因 `widget_requires_external_cdn` 降级的计划。未知版本、对象、控件或动作回到对应的兼容路径。Web 与 iOS 沿用已有的兼容内容，HarmonyOS 和小程序的三维原生渲染尚未接入。
 

@@ -59,13 +59,15 @@ app/src/main/java/com/example/campusai/
 
 Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选择自定义主题、上传个人资料并生成课堂。课程接口保留状态、计划、生成、进度、历史、重试和内容组成。自主选题的资料、生成、进度和历史使用 [`/self-classroom` 接口](../docs/api/14-magicclass.md#self-classroom)。课程已提取的个人上传资料可用于生成上下文，自定义资料按当前学生隔离，不混用其他课程资料。
 
-课程经典、自主选题和受管工作台共用原生课堂舞台。新课和课堂大厅最近学习优先打开原生播放器，投影幕、老师讲解与翻页动效适用于所有原生课件。可以旋转手机切换横竖屏。
+课程经典、自主选题和受管工作台已接入原生播放入口，设备验证见[原生课堂审计](../docs/android-native-classroom-audit.md)。调试可使用[脱敏课堂联调服务器](../docs/api/integration.md#脱敏联调服务器真实上游不可用时)验证媒体和作答。
 
-适合立体观察的新实验通过[结构化三维模型](../docs/api/response-contracts.md#三维实验配置)接入原生旋转、缩放和对象动画。普通数值实验通过[参数实验配置](../docs/api/response-contracts.md#普通参数实验配置)使用原生滑块、实时结果、预设、曲线和老师的参数演示。已有 ε–δ 实验保留二维曲线与三维时间轨迹。需要网页专用控件的实验根据播放计划切换运行时。
+原生舞台适用于新旧课件。适合立体观察的新实验通过[结构化三维模型](../docs/api/response-contracts.md#三维实验配置)接入原生旋转、缩放和对象动画。普通数值实验通过[参数实验配置](../docs/api/response-contracts.md#普通参数实验配置)使用原生滑块、实时结果、预设、曲线和老师的参数演示。已有 ε–δ 实验保留二维曲线与三维时间轨迹。需要网页专用控件的实验根据播放计划切换运行时。
 
 仍需网页的课堂操作可从应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) 打开。地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验。正式构建要求公开 HTTPS 与可信 Origin 精确匹配，调试例外限代码规定的本地课堂入口。经典播放使用 `session_id` 与 `classroom_id`，受管工作台通过 `workspace_id`、`stage_id` 和 `scene_id` 读取场景。编辑在有权限的工作台完成，独立课堂应用使用自身的认证。共同课堂的课件共享与通话能力另见下文。
 
-课堂内的 AI 同学沿用上游 `ClassmatePanes`（小圆/阿拓/小满/阿哲的换页发言、沉默、点名与预算）；`ClassroomViewer` 另注入 `campusmate:classroom-rewards:v1` 进度 HUD，按翻页累计 XP、等级、连击与成就，不依赖本站 JWT。该 HUD 与 Web 原生课堂同一套规则，但 Android 原生编译尚未在本机验证，不能据此宣称真机通过。
+课堂内的 AI 同学沿用上游 `ClassmatePanes`（小圆/阿拓/小满/阿哲的换页发言、沉默、点名与预算）；`ClassroomViewer` 另注入 `assets/classroom-rewards.js`（与 iOS 共用同一份脚本），规则与 Android 原生 `ClassroomRewardsEngine` 对齐：首次访问页面 +12 XP、首次交卷按答对题数 ×6、满分 +20、连击从第二份起 +12、重做按场景去重、成就 ID 与原生一致。网页账本 key 由「服务 + 账号 + 课堂地址」派生，不再使用不带账号信息的固定 key；旧 `campusmate:classroom-rewards:v1` 只在面板注明“未绑定账号、未并入”，不迁移也不删除。只有页面提供稳定的 `data-scene-id` 才记账，匹配不到稳定场景时 HUD 明确显示未计入进度，而不是按标题猜测。
+
+原生播放器现在有明确的播放会话：经典、自主选题、受管课堂和作业复习入口共用同一套生命周期；关闭弹窗、退出页面、换号或 ViewModel 清理时先按原账号落盘学习位置、奖励与待保存草稿，再释放 ExoPlayer、TTS、会话图片缓存与媒体监听并取消任务。旋转不会结束会话，当前页、缩放和草稿保持不变；关闭后重开同一课堂会创建新的播放器与缓存。`ClassroomViewer` 在实际加载、导航和麦克风授权前会独立校验调用方提供的可信 Origin，发布版仍只接受公开 HTTPS，调试版保留 `10.0.2.2`/`127.0.0.1:3000` 的课堂入口。
 
 ### 多人共同课堂
 

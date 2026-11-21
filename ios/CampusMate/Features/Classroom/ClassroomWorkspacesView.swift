@@ -57,6 +57,7 @@ final class ClassroomGenerationModel {
                     destination = NativeClassroomDestination(
                         courseID: courseID, workspaceID: handle.workspaceID,
                         stageID: stageID, title: "新课堂")
+                    rotateKey()
                     phase = .idle
                     return
                 }
@@ -87,12 +88,29 @@ final class ClassroomGenerationModel {
             destination = NativeClassroomDestination(
                 courseID: courseID, workspaceID: handle.workspaceID,
                 stageID: stageID, title: stageTitle)
+            rotateKey()
             phase = .idle
         } catch is CancellationError {
+            // 结果未确认：保留原幂等键，重试同一次生成。
             phase = .idle
         } catch {
+            if isConfirmedGenerationFailure(error) { rotateKey() }
             phase = .failed(ClassroomNativePresentation.message(for: error, fallback: "生成失败，请稍后再试。"))
         }
+    }
+
+    /// 成功后或服务端已明确失败时轮换幂等键；网络中断等未确认结果继续复用原键。
+    private func rotateKey() {
+        idempotencyKey = UUID().uuidString
+        lastPrompt = prompt
+        lastMode = mode
+    }
+
+    private func isConfirmedGenerationFailure(_ error: Error) -> Bool {
+        guard let api = error as? APIError else { return false }
+        if (400..<500).contains(api.statusCode) { return true }
+        return ["GENERATION_FALLBACK", "GENERATION_EMPTY", "GENERATION_NO_STAGE", "GENERATION_FAILED"]
+            .contains(api.code)
     }
 
     func clearDestination() { destination = nil }

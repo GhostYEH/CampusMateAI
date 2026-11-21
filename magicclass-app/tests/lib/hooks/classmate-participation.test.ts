@@ -217,13 +217,16 @@ describe('classmate participation', () => {
   });
 
   it.each([
-    [{ agentId: 'unknown', text: 'Wrong person' }],
-    [
-      { agentId: 'curious', text: 'Same' },
-      { agentId: 'curious', text: 'Duplicate' },
-    ],
-    [{ agentId: 'curious', text: ' ' }],
-  ])('rejects misattributed output without inventing it: %j', async (messages) => {
+    { problem: 'unknown speaker', messages: [{ agentId: 'unknown', text: 'Wrong person' }] },
+    {
+      problem: 'duplicate speaker',
+      messages: [
+        { agentId: 'curious', text: 'Same' },
+        { agentId: 'curious', text: 'Duplicate' },
+      ],
+    },
+    { problem: 'blank message', messages: [{ agentId: 'curious', text: ' ' }] },
+  ])('rejects $problem without inventing dialogue', async ({ messages }) => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ success: true, messages }), { status: 200 }),
     );

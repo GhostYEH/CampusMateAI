@@ -978,7 +978,7 @@ fun FocusHistoryScreen(repository: ApiFocusRepository, appRepository: AppReposit
             onBack = onBack,
             onOpenClassroom = { viewerUrl = it },
         )
-        viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null; historyRefresh++ }, appRepository) }
+        viewerUrl?.let { ClassroomViewer(it, listOf(trustedOrigin), { viewerUrl = null; historyRefresh++ }, appRepository) }
     }
 }
 

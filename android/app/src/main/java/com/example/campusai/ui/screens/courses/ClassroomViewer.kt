@@ -2,6 +2,7 @@ package com.example.campusai.ui.screens.courses
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -43,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import com.example.campusai.BuildConfig
 import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.theme.Muted
@@ -247,118 +249,22 @@ private val classroomMobileFix = """
     })();
 """.trimIndent()
 
-/** Game-like progress HUD for the upstream classroom (WebView side). */
-private val classroomRewardsFix = """
-    (function () {
-      if (window.__campusRewards) return;
-      window.__campusRewards = true;
-      var KEY = 'campusmate:classroom-rewards:v1';
-      var state;
-      try { state = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (_) { state = null; }
-      if (!state || typeof state !== 'object') state = {};
-      state.xp = Number(state.xp) > 0 ? Number(state.xp) : 0;
-      state.combo = Number(state.combo) > 0 ? Number(state.combo) : 0;
-      state.bestCombo = Number(state.bestCombo) > 0 ? Number(state.bestCombo) : 0;
-      state.pages = Array.isArray(state.pages) ? state.pages : [];
-      state.achievements = Array.isArray(state.achievements) ? state.achievements : [];
-      state.lastTitle = state.lastTitle || '';
-      state.lastAt = Number(state.lastAt) || 0;
-      var level = function () { return 1 + Math.floor(state.xp / 100); };
-      var save = function () { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (_) {} };
-      var award = function (id, label) {
-        if (state.achievements.indexOf(id) >= 0) return;
-        state.achievements.push(id);
-        state.achievementLabel = state.achievementLabel || {};
-        state.achievementLabel[id] = label;
-      };
-      var title = function () {
-        var node = document.querySelector('h1, [class*="text-xl"][class*="font-bold"]');
-        var text = node && node.textContent ? node.textContent.trim() : '';
-        return text || document.title || location.pathname;
-      };
-      function render() {
-        var root = document.getElementById('campus-rewards');
-        if (!root) {
-          root = document.createElement('div');
-          root.id = 'campus-rewards';
-          document.body.appendChild(root);
-        }
-        var next = 100 - (state.xp % 100);
-        var badges = state.achievements.map(function (id) {
-          return '<span class="cr-badge">' + (state.achievementLabel[id] || id) + '</span>';
-        }).join('');
-        root.innerHTML = '<button id="campus-rewards-toggle" type="button">' +
-          '<span class="cr-level">Lv.' + level() + '</span>' +
-          '<span class="cr-xp">' + state.xp + ' XP</span>' +
-          '<span class="cr-combo">连击 ' + state.combo + '</span></button>' +
-          '<div id="campus-rewards-panel"><strong>课堂进度</strong>' +
-          '<div class="cr-bar"><i style="width:' + (state.xp % 100) + '%"></i></div>' +
-          '<small>再得 ' + next + ' XP 升到 Lv.' + (level() + 1) + '</small>' +
-          '<p>最高连击 ' + state.bestCombo + ' · 已学 ' + state.pages.length + ' 页</p>' +
-          '<div class="cr-badges">' + (badges || '<em>继续翻页解锁成就</em>') + '</div></div>';
-        var panel = root.querySelector('#campus-rewards-panel');
-        panel.style.display = state.open ? 'block' : 'none';
-        root.querySelector('#campus-rewards-toggle').onclick = function () {
-          state.open = !state.open;
-          save();
-          panel.style.display = state.open ? 'block' : 'none';
-        };
-        save();
-      }
-      function tick() {
-        var now = Date.now();
-        var current = title();
-        if (!current || current === state.lastTitle) return;
-        if (state.lastAt && now - state.lastAt > 5 * 60 * 1000) state.combo = 0;
-        state.lastTitle = current;
-        state.lastAt = now;
-        // Only a page never seen before earns XP. Going back and forth must not
-        // be a way to farm progress; this matches the Web native classroom.
-        var firstVisit = state.pages.indexOf(current) < 0;
-        if (firstVisit) {
-          state.combo += 1;
-          state.bestCombo = Math.max(state.bestCombo, state.combo);
-          state.xp += 12;
-          state.pages.push(current);
-        }
-        if (state.pages.length > 200) state.pages = state.pages.slice(-200);
-        award('first-page', '第一页');
-        if (state.combo >= 3) award('combo-3', '三连页');
-        if (state.pages.length >= 10) award('pages-10', '十页');
-        if (level() >= 5) award('level-5', 'Lv.5');
-        render();
-      }
-      function mount() {
-        if (!document.body) return;
-        if (!document.getElementById('campus-rewards-style')) {
-          var style = document.createElement('style');
-          style.id = 'campus-rewards-style';
-          style.textContent = '#campus-rewards{position:fixed;right:8px;bottom:64px;z-index:9999;' +
-            'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
-            '#campus-rewards-toggle{display:flex;align-items:center;gap:6px;border:1px solid rgba(21,59,52,.18);' +
-            'background:rgba(251,249,241,.96);color:#153b34;border-radius:999px;padding:5px 9px;font-size:11px;' +
-            'font-weight:700;box-shadow:0 6px 18px rgba(21,59,52,.16)}' +
-            '#campus-rewards-toggle .cr-level{background:#153b34;color:#fbf9f1;border-radius:999px;padding:1px 6px}' +
-            '#campus-rewards-toggle .cr-combo{color:#ad6845}' +
-            '#campus-rewards-panel{display:none;width:210px;margin-top:6px;background:#fbf9f1;border:1px solid #e4dfce;' +
-            'border-radius:14px;padding:10px;color:#22332d;box-shadow:0 16px 36px rgba(21,59,52,.18)}' +
-            '#campus-rewards-panel strong{font-size:12px;color:#153b34}' +
-            '.cr-bar{height:6px;border-radius:999px;background:#e4dfce;overflow:hidden;margin:7px 0 4px}' +
-            '.cr-bar i{display:block;height:100%;background:#dab27a}' +
-            '#campus-rewards-panel small{font-size:10px;color:#6c7a72}' +
-            '#campus-rewards-panel p{font-size:10px;color:#6c7a72;margin:5px 0}' +
-            '.cr-badges{display:flex;flex-wrap:wrap;gap:4px}' +
-            '.cr-badge{font-size:10px;background:rgba(21,59,52,.08);border-radius:999px;padding:2px 6px;color:#153b34}' +
-            '.cr-badges em{font-size:10px;color:#8a9690}';
-          document.head.appendChild(style);
-        }
-        render();
-      }
-      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
-      else mount();
-      setInterval(tick, 1500);
-    })();
-""".trimIndent()
+/**
+ * 奖励 HUD 脚本与 iOS 共用 `assets/classroom-rewards.js`。
+ * key 由服务、账号和当前课堂地址派生，网页账本不会跨账号或跨课堂混用。
+ */
+private fun classroomRewardsScript(context: Context, key: String, label: String, bottom: Int = 64): String {
+    val config = JSONObject()
+        .put("key", key)
+        .put("classroomLabel", label)
+        .put("accountBound", true)
+        .put("bottom", bottom)
+        .toString()
+    val asset = runCatching {
+        context.assets.open("classroom-rewards.js").bufferedReader().use { it.readText() }
+    }.getOrDefault("")
+    return "window.__campusRewardsConfig = " + config + ";\n" + asset
+}
 
 /** Keep generated decks in the same campus palette on the managed classroom WebView. */
 private val classroomSlideThemeFix = """
@@ -496,12 +402,63 @@ private val classroomTeacherQuestionFix = """
     })();
 """.trimIndent()
 
+/**
+ * 网页兼容入口。
+ *
+ * 组件边界独立校验可信 Origin：调用方可以只传地址，但加载、导航与麦克风授权
+ * 都基于这里重新计算出的可信 origin，忘记在入口 sanitize 也不会加载任意站点。
+ */
+@Composable
+internal fun ClassroomViewer(
+    url: String,
+    trustedOrigins: List<String?>,
+    onClose: () -> Unit,
+    repository: AppRepository? = null,
+) {
+    val trustedUrl = remember(url, trustedOrigins) {
+        ClassroomUrlPolicy.sanitize(url, trustedOrigins, allowEmulatorDebug = BuildConfig.DEBUG)
+    }
+    if (trustedUrl == null) {
+        Dialog(
+            onDismissRequest = onClose,
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Column(
+                Modifier.fillMaxSize().background(Color(0xFFF2F1E8)).padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    ClassroomUrlPolicy.rejectionReason(url, trustedOrigins),
+                    color = Color(0xFF153B34), fontSize = 15.sp,
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = onClose) { Text("返回") }
+            }
+        }
+        return
+    }
+    ClassroomViewerTrusted(trustedUrl, onClose, repository)
+}
+
 /** A classroom remains inside CampusMate; navigation is confined to its trusted origin. */
 @Composable
-internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRepository? = null) {
+private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository: AppRepository? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val origin = remember(url) { ClassroomUrlPolicy.originOf(url) }
+    val rewardsScript = remember(url, repository) {
+        val account = repository?.classroomAccountScope() ?: "anonymous"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("$account|$url".toByteArray())
+            .take(12)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        classroomRewardsScript(
+            context,
+            key = "campusmate:classroom-rewards:v2:$digest",
+            label = "网页兼容课堂",
+        )
+    }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var loading by remember(url) { mutableStateOf(true) }
     var pageFinished by remember(url) { mutableStateOf(false) }
@@ -809,7 +766,7 @@ internal fun ClassroomViewer(url: String, onClose: () -> Unit, repository: AppRe
                                     view.evaluateJavascript(classroomViewportFix, null)
                                     view.evaluateJavascript(classroomMobileFix, null)
                                     view.evaluateJavascript(classroomTeacherQuestionFix, null)
-                                    view.evaluateJavascript(classroomRewardsFix, null)
+                                    view.evaluateJavascript(rewardsScript, null)
                                     view.evaluateJavascript(classroomSlideThemeFix, null)
                                     if (loadError == null && ClassroomUrlPolicy.originOf(pageUrl) == origin) {
                                         if (enteredAt == null) {

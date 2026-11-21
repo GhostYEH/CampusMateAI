@@ -21,16 +21,20 @@ import java.util.concurrent.TimeUnit
 object ApiClient {
     private val BASE_URL = BuildConfig.API_BASE_URL
 
+    // 登录线程写入，OkHttp 工作线程读取；必须保证可见性，避免续签后仍读到旧 token。
+    @Volatile
     private var accessToken: String? = null
 
     fun setToken(token: String?) {
         accessToken = token
+        if (token == null) lastRefreshedToken = null
     }
 
     /**
      * 由 AppRepository 注入的 token 刷新回调：同步返回新的 access token，失败返回 null。
      * OkHttp Authenticator 在收到 401 时调用它自动续期，避免用户看到「登录已失效」。
      */
+    @Volatile
     private var tokenRefresher: (() -> String?)? = null
 
     fun setTokenRefresher(refresher: (() -> String?)?) {
@@ -115,9 +119,27 @@ object ApiClient {
      * 只对当前课堂媒体接口下的 media|audio 资源添加 Bearer；课件里的外域绝对地址
      * 不携带本站 token。network interceptor 在每次实际发请求前再校验服务域，
      * 跨域重定向直接拒绝，避免凭证离开本站。
+     *
+     * 所有课堂共享同一个 Dispatcher 与连接池，并按课堂做 LRU 复用；
+     * 避免每次进入课堂或旋转都新建线程池和连接池。
      */
+    private val mediaDispatcher = okhttp3.Dispatcher()
+    private val mediaConnectionPool = okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES)
+    private val mediaClientCache = object : LinkedHashMap<String, OkHttpClient>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, OkHttpClient>?): Boolean =
+            size > 6
+    }
+
     fun classroomMediaHttpClient(ref: NativeClassroomRef, followRedirects: Boolean = true): OkHttpClient =
+        synchronized(mediaClientCache) {
+            val key = "${ref.stableKey}|$followRedirects"
+            mediaClientCache.getOrPut(key) { buildClassroomMediaHttpClient(ref, followRedirects) }
+        }
+
+    private fun buildClassroomMediaHttpClient(ref: NativeClassroomRef, followRedirects: Boolean): OkHttpClient =
         OkHttpClient.Builder()
+            .dispatcher(mediaDispatcher)
+            .connectionPool(mediaConnectionPool)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .followRedirects(followRedirects)

@@ -39,7 +39,11 @@ class NativeClassroomCache(
         ).take(20),
     )
 
+    @Volatile
+    private var imageLoaderCreated = false
+
     val imageLoader: ImageLoader by lazy {
+        imageLoaderCreated = true
         ImageLoader.Builder(appContext)
             .memoryCache {
                 MemoryCache.Builder(appContext)
@@ -56,6 +60,13 @@ class NativeClassroomCache(
             .okHttpClient(ApiClient.classroomMediaHttpClient(ref))
             .crossfade(false)
             .build()
+    }
+
+    /** 播放会话结束时释放会话独占的图片加载器；未创建过则不触发懒初始化。 */
+    fun release() {
+        if (!imageLoaderCreated) return
+        imageLoaderCreated = false
+        runCatching { imageLoader.shutdown() }
     }
 
     private val stageFile: File get() = File(root, "stage.json")

@@ -13,7 +13,7 @@
 | `wx/` | TypeScript 微信小程序 |
 | `ml/` | 模型训练、评估、导出与可复现性材料 |
 | `magicclass-app/` | 上游 magic class v1.0.3 入库源码，供导航栏「学习空间」独立进程运行；本地改动必须由 `scripts/magicclass-brand.mjs` 的品牌规则、`scripts/magicclass-feature.edits.json` 的可逆功能补丁或脚本中逐项说明的已声明偏离覆盖，并通过 `node scripts/magicclass-brand.mjs check` 与 `verify` 校验 |
-| `ios/` | iOS 客户端预留目录；当前不存在时不要自行创建 |
+| `ios/` | SwiftUI iOS 客户端（`CampusMate.xcodeproj` + `Packages/CampusCore`）；Windows 上只能静态复查，构建、`swift test` 与模拟器验收需完整 Xcode |
 | `.github/workflows/` | GitHub Actions；除 CI 专项任务外不要改动 |
 
 - 当前 Web 客户端唯一入口是 `webreact/`；旧的 `web/` Vue 客户端已移除。涉及 Web 代码时不要按 `web/` 查找或新建目录。

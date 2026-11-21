@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -15,8 +16,10 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.common.util.UnstableApi
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.nativeplayer.ClassroomActionSequencePlanner
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLevel
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSourceFactory
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceResult
@@ -24,13 +27,13 @@ import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStep
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStepResult
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
 import com.example.campusai.data.classroom.nativeplayer.runClassroomSequence
-import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaSession
 import com.example.campusai.data.classroom.nativeplayer.ClassroomRewardResult
 import com.example.campusai.data.classroom.nativeplayer.ClassroomRewards
 import com.example.campusai.data.classroom.nativeplayer.ClassroomRewardsCodec
 import com.example.campusai.data.classroom.nativeplayer.ClassroomRewardsEngine
+import com.example.campusai.data.classroom.nativeplayer.ClassroomQuizCoordinator
 import com.example.campusai.data.classroom.nativeplayer.NativeAction
 import com.example.campusai.data.classroom.nativeplayer.NativeAnswer
 import com.example.campusai.data.classroom.nativeplayer.NativeClassmate
@@ -47,6 +50,7 @@ import com.example.campusai.data.classroom.nativeplayer.NativePlaybackPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeQuestion
 import com.example.campusai.data.classroom.nativeplayer.NativeQuiz
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizResult
+import com.example.campusai.data.classroom.nativeplayer.NativeQuizUiState
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneDisposition
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
 import com.example.campusai.data.classroom.nativeplayer.NativeScenePlan
@@ -67,9 +71,12 @@ import com.example.campusai.data.remote.MagicClassScenePlaybackDto
 import com.example.campusai.data.repository.AppRepository
 import coil.request.ImageRequest
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -81,6 +88,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -111,22 +120,6 @@ data class NativeClassmateUiState(
     val error: String? = null,
     val selectedAgentId: String? = null,
 )
-
-data class NativeQuizUiState(
-    val sceneId: String = "",
-    val attemptId: String? = null,
-    val phase: String = "draft",
-    val answers: Map<String, NativeAnswer> = emptyMap(),
-    val results: Map<String, NativeQuizResult> = emptyMap(),
-    val selfChecks: Map<String, Boolean> = emptyMap(),
-    val loading: Boolean = false,
-    val saving: Boolean = false,
-    val error: String? = null,
-) {
-    val showReport: Boolean
-        get() = phase == "submitted" || phase == "reviewed" || results.isNotEmpty()
-    val reviewed: Boolean get() = phase == "reviewed"
-}
 
 data class NativeEndSummary(
     val activeSeconds: Long,
@@ -181,6 +174,9 @@ data class NativeClassroomUiState(
     val firstPaintMs: Long? = null,
     val peakMemoryBytes: Long = 0,
     val showMetrics: Boolean = false,
+    /** 缩放与讲义/PPT 选择放在会话状态里，旋转后仍保留。 */
+    val zoom: Float = 1f,
+    val readNotes: Boolean = false,
     val experimentValues: Map<String, Double> = emptyMap(),
 ) {
     val currentScenePlan: NativeScenePlan? get() = plan?.scenes?.getOrNull(index)
@@ -190,8 +186,9 @@ data class NativeClassroomUiState(
     val currentQuiz: NativeQuiz? get() = currentSceneId?.let { document?.quizByScene?.get(it) }
     val currentPbl: NativePblProject? get() = currentSceneId?.let { document?.pblByScene?.get(it) }
     private val currentInteractive
-        get() = document?.interactiveByScene?.get(currentSceneId)
-            ?.takeIf { disposition.mode == NativeSceneMode.NATIVE && currentScenePlan?.type == "interactive" }
+        get() = if (disposition.mode == NativeSceneMode.NATIVE && currentScenePlan?.type == "interactive") {
+            document?.interactiveByScene?.get(currentSceneId)
+        } else null
     val currentLimitExperiment get() = currentInteractive?.limitExperiment
     internal val currentSpatialExperiment get() = currentInteractive?.spatialExperiment
     internal val currentParameterExperiment get() = currentInteractive?.parameterExperiment
@@ -220,14 +217,13 @@ class NativeClassroomViewModel(
     application: Application,
     private val repository: AppRepository,
     private val ref: NativeClassroomRef,
-    private val cache: NativeClassroomCache,
     private val now: () -> Long = { SystemClock.elapsedRealtime() },
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(NativeClassroomUiState())
     val uiState: StateFlow<NativeClassroomUiState> = _uiState.asStateFlow()
-    private val labControls = mutableMapOf<Pair<String, Int>, ClassroomLimitExperiment.Controls>()
-    private val parameterValues = mutableMapOf<Pair<String, Int>, Map<String, Double>>()
+    private val experimentControls = mutableMapOf<Pair<String, Int>, ClassroomLimitExperiment.Controls>()
+    private val parameterValuesByScene = mutableMapOf<Pair<String, Int>, Map<String, Double>>()
     private val spatialControlsByScene = mutableMapOf<Pair<String, Int>, NativeSpatialControls>()
 
     internal fun spatialControls(sceneId: String, revision: Int, playAnimation: Boolean): NativeSpatialControls =
@@ -240,11 +236,11 @@ class NativeClassroomViewModel(
         action: NativeAction? = null,
     ): Boolean {
         val state = _uiState.value
-        if (state.currentSceneId != sceneId || state.revision != revision) return false
+        if (sessionBlocked || state.currentSceneId != sceneId || state.revision != revision) return false
         val experiment = state.currentParameterExperiment ?: return false
         val validated = experiment.validatedChanges(changes) ?: return false
         val values = state.experimentValues + validated
-        parameterValues[sceneId to revision] = values
+        parameterValuesByScene[sceneId to revision] = values
         _uiState.update {
             it.copy(
                 experimentValues = values,
@@ -255,26 +251,48 @@ class NativeClassroomViewModel(
         return true
     }
 
-    internal fun savedExperimentControls(sceneId: String, revision: Int) = labControls[sceneId to revision]
+    internal fun savedExperimentControls(sceneId: String, revision: Int): ClassroomLimitExperiment.Controls? =
+        experimentControls[sceneId to revision]
 
     internal fun saveExperimentControls(sceneId: String, revision: Int, controls: ClassroomLimitExperiment.Controls) {
-        labControls[sceneId to revision] = controls
+        if (!sessionBlocked) experimentControls[sceneId to revision] = controls
     }
 
     private val context = application.applicationContext
-    private val tts = AndroidTextToSpeechSynthesizer(context)
     private val mediaBasePath = ClassroomMediaPolicy.mediaBasePath(BuildConfig.API_BASE_URL, ref)
-    private val mediaDataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(
-        context,
-        ClassroomMediaDataSourceFactory(
-            client = ApiClient.classroomMediaHttpClient(ref, followRedirects = false),
-            ref = ref,
-            apiBaseUrl = BuildConfig.API_BASE_URL,
-        ),
-    )
-    private val player: ExoPlayer =
-        ExoPlayer.Builder(context, DefaultMediaSourceFactory(mediaDataSourceFactory)).build().apply {
-            addListener(object : Player.Listener {
+
+    /**
+     * 一次播放会话独占的媒体资源。
+     *
+     * 退出页面、关闭弹窗或换号时整体释放；重新进入同一课堂会创建新实例。
+     * 旋转不会结束会话，因此仍复用同一实例，当前页、缩放和草稿都由 ViewModel 保留。
+     */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private inner class PlaybackSession(val accountScope: String) {
+        val cache = NativeClassroomCache(context, accountScope, ref)
+        val mediaSession = ClassroomMediaSession(accountScope, ref)
+        val tts = AndroidTextToSpeechSynthesizer(context)
+        val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(
+            context,
+            ClassroomMediaDataSourceFactory(
+                client = ApiClient.classroomMediaHttpClient(ref, followRedirects = false),
+                ref = ref,
+                apiBaseUrl = BuildConfig.API_BASE_URL,
+            ),
+        )
+        val player: ExoPlayer =
+            ExoPlayer.Builder(context, DefaultMediaSourceFactory(dataSourceFactory)).build()
+
+        init {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            player.setHandleAudioBecomingNoisy(true)
+            player.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_ENDED) {
                         updateNarration { it.copy(playing = false) }
@@ -305,9 +323,30 @@ class NativeClassroomViewModel(
             })
         }
 
+        fun release() {
+            runCatching {
+                player.stop()
+                player.release()
+            }
+            runCatching { tts.shutdown() }
+            cache.release()
+            mediaSession.invalidate()
+        }
+    }
+
+    private var playback: PlaybackSession? = null
+    private var sessionBlocked = false
+
+    /** 当前播放会话的图片缓存；会话未启动或已释放时为 null。 */
+    val cache: NativeClassroomCache? get() = playback?.cache
+
+    /** 视频弹窗与讲解音频共用的媒体数据源；会话未启动时为 null。 */
+    val mediaDataSourceFactory: DataSource.Factory? get() = playback?.dataSourceFactory
+
+    private val activePlayer: ExoPlayer? get() = playback?.player
+    private val activeTts: AndroidTextToSpeechSynthesizer? get() = playback?.tts
+
     private var loadJob: Job? = null
-    private var quizJob: Job? = null
-    private var quizDraftJob: Job? = null
     private var narrationJob: Job? = null
     private var classmateJob: Job? = null
     private var actionJob: Job? = null
@@ -321,12 +360,12 @@ class NativeClassroomViewModel(
     private var sequenceVideoWaiter: CompletableDeferred<String?>? = null
     private var sequenceWhiteboardWaiter: CompletableDeferred<Unit>? = null
     private var prefetchJob: Job? = null
+    private val prefetchDisposables = mutableListOf<coil.request.Disposable>()
     private var positionJob: Job? = null
     private var rewardsJob: Job? = null
     private var metricsJob: Job? = null
 
     private var loadGeneration = 0
-    private var quizGeneration = 0
     private var narrationGeneration = 0
     private var activeSceneId: String? = null
     private var pageRequestedAt = 0L
@@ -339,15 +378,130 @@ class NativeClassroomViewModel(
     private var recorded = false
     private var entryRecorded = false
     private var initialAccountScope = repository.classroomAccountScope()
-    private val mediaSession = ClassroomMediaSession(initialAccountScope, ref)
+    private var quizCoordinator: ClassroomQuizCoordinator? = null
+    private val quizWriteMutex = Mutex()
 
     init {
         loadStartedAt = now()
-        load()
         observeAccountSwitch()
     }
 
+    /**
+     * 启动（或复用）一次播放会话。旋转后播放器重新进入组合时直接复用现有会话；
+     * 关闭弹窗或退出页面会先 [endSession]，再次进入时创建全新的播放器与缓存。
+     */
+    fun startSession() {
+        if (playback != null || sessionBlocked) return
+        if (repository.classroomAccountScope() != initialAccountScope) {
+            sessionBlocked = true
+            _uiState.update {
+                it.copy(loading = false, refreshing = false, error = "账号已切换，课堂已停止。")
+            }
+            return
+        }
+        playback = PlaybackSession(initialAccountScope)
+        load()
+    }
+
+    /**
+     * 结束一次播放会话。顺序固定为：
+     * 1. 捕获当前学习位置、奖励与待保存草稿；
+     * 2. 在独立 IO 作用域按原账号可靠落盘（不受 ViewModel 清理取消）；
+     * 3. 取消本会话所有任务并释放播放器、TTS、图片缓存与媒体监听；
+     * 4. 重置会话状态。重复调用是幂等的。
+     */
+    fun endSession() {
+        val session = playback
+        if (session == null) {
+            resetSessionState()
+            return
+        }
+        playback = null
+        val sameAccount = repository.classroomAccountScope() == initialAccountScope
+        val position = _uiState.value.currentSceneId
+        val rewards = _uiState.value.rewards
+        val draftFlush = if (sameAccount) quizCoordinator?.takeDraftFlush() else null
+        if (sameAccount) recordStudyVisit(false)
+        quizCoordinator?.close()
+        quizCoordinator = null
+        cancelSessionJobs()
+        flushSessionState(sameAccount, position, rewards, draftFlush)
+        session.release()
+        resetSessionState()
+    }
+
+    private fun cancelSessionJobs() {
+        loadJob?.cancel(); loadJob = null
+        narrationJob?.cancel(); narrationJob = null
+        classmateJob?.cancel(); classmateJob = null
+        actionJob?.cancel(); actionJob = null
+        prefetchJob?.cancel(); prefetchJob = null
+        prefetchDisposables.forEach { runCatching { it.dispose() } }
+        prefetchDisposables.clear()
+        positionJob?.cancel(); positionJob = null
+        rewardsJob?.cancel(); rewardsJob = null
+        metricsJob?.cancel(); metricsJob = null
+        resetSequenceRuntime(_uiState.value.currentSceneId)
+    }
+
+    /**
+     * 使用独立作用域落盘：ViewModel.onCleared 取消 viewModelScope 后仍能完成。
+     * 位置与奖励始终写回会话所属账号，即使账号已经切换。
+     */
+    private fun flushSessionState(
+        sameAccount: Boolean,
+        position: String?,
+        rewards: ClassroomRewards,
+        draftFlush: (suspend () -> Unit)?,
+    ) {
+        if (position == null && rewards.visited.isEmpty() && rewards.xp <= 0 && draftFlush == null) return
+        val flushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        flushScope.launch {
+            try {
+                withTimeoutOrNull(6_000L) {
+                    if (position != null) {
+                        repository.saveClassroomPosition(ref, position, initialAccountScope)
+                    }
+                    if (rewards.visited.isNotEmpty() || rewards.xp > 0) {
+                        repository.saveClassroomRewardsRaw(
+                            ref,
+                            ClassroomRewardsCodec.encode(rewards),
+                            initialAccountScope,
+                        )
+                    }
+                    if (sameAccount) draftFlush?.invoke()
+                }
+            } finally {
+                flushScope.cancel()
+            }
+        }
+    }
+
+    private fun resetSessionState() {
+        parameterValuesByScene.clear()
+        spatialControlsByScene.clear()
+        loadGeneration++
+        narrationGeneration++
+        activeSceneId = null
+        pageRequestedAt = 0L
+        loadStartedAt = now()
+        firstPaintRecorded = false
+        recorded = false
+        entryRecorded = false
+        hostActive = true
+        activeSince = now()
+        activeAccumulatedMs = 0L
+        enteredAtIso = Instant.now().toString()
+        _uiState.value = NativeClassroomUiState()
+    }
+
+    private fun beginMediaRequest(): Int? = playback?.mediaSession?.beginRequest()
+
+    private fun isMediaRequestCurrent(generation: Int): Boolean =
+        playback?.mediaSession?.isCurrent(generation, repository.classroomAccountScope(), ref) == true
+
     fun load(forceNetwork: Boolean = false) {
+        val sessionCache = playback?.cache ?: return
         loadJob?.cancel()
         val generation = ++loadGeneration
         _uiState.update { it.copy(loading = it.plan == null, refreshing = it.plan != null, error = null) }
@@ -370,14 +524,14 @@ class NativeClassroomViewModel(
             val savedScene = withContext(Dispatchers.IO) { repository.classroomPosition(ref) }
             if (generation != loadGeneration) return@launch
             if (ref.source != NativeClassroomSource.MANAGED) {
-                loadClassic(savedScene, generation, forceNetwork)
+                loadClassic(savedScene, generation, forceNetwork, sessionCache)
                 return@launch
             }
             if (!forceNetwork) {
                 val cached = withContext(Dispatchers.IO) {
-                    val document = cache.readStage()
-                    val playback = cache.readPlayback()
-                    val cachedRevision = cache.readRevision()
+                    val document = sessionCache.readStage()
+                    val playback = sessionCache.readPlayback()
+                    val cachedRevision = sessionCache.readRevision()
                     if (document != null && playback != null && playback.revision == cachedRevision) {
                         Triple(document, cachedRevision, playback)
                     } else {
@@ -429,8 +583,8 @@ class NativeClassroomViewModel(
                 val parsed = withContext(Dispatchers.Default) { NativeClassroomParser.parseStage(stage) }
                 val plan = withContext(Dispatchers.Default) { NativeClassroomParser.parsePlan(playback) }
                 withContext(Dispatchers.IO) {
-                    cache.writeStage(stage.revision, stage.document.orEmpty())
-                    cache.writePlayback(playback)
+                    sessionCache.writeStage(stage.revision, stage.document.orEmpty())
+                    sessionCache.writePlayback(playback)
                 }
                 if (generation != loadGeneration) return@launch
                 withContext(Dispatchers.Main) {
@@ -464,9 +618,10 @@ class NativeClassroomViewModel(
         savedScene: String?,
         generation: Int,
         forceNetwork: Boolean,
+        sessionCache: NativeClassroomCache,
     ) {
         if (!forceNetwork) {
-            val cached = withContext(Dispatchers.IO) { cache.readClassicPlayback() }
+            val cached = withContext(Dispatchers.IO) { sessionCache.readClassicPlayback() }
             if (generation != loadGeneration) return
             if (cached != null) {
                 val document = withContext(Dispatchers.Default) { NativeClassroomParser.parsePlayback(cached) }
@@ -490,7 +645,7 @@ class NativeClassroomViewModel(
         if (playback != null) {
             val document = withContext(Dispatchers.Default) { NativeClassroomParser.parsePlayback(playback) }
             val plan = withContext(Dispatchers.Default) { NativeClassroomParser.parsePlaybackPlan(playback) }
-            withContext(Dispatchers.IO) { cache.writeClassicPlayback(playback) }
+            withContext(Dispatchers.IO) { sessionCache.writeClassicPlayback(playback) }
             if (generation != loadGeneration) return
             withContext(Dispatchers.Main) {
                 if (generation != loadGeneration) return@withContext
@@ -558,17 +713,31 @@ class NativeClassroomViewModel(
         _uiState.update { it.copy(notice = null) }
     }
 
+    fun setZoom(value: Float) {
+        _uiState.update { it.copy(zoom = value.coerceIn(0.7f, 1.6f)) }
+    }
+
+    fun setReadNotes(value: Boolean) {
+        if (!value && (_uiState.value.spotlightElementId != null || _uiState.value.laserElementId != null ||
+                _uiState.value.sequence.active)) return
+        _uiState.update { it.copy(readNotes = value) }
+    }
+
     fun goTo(index: Int) {
         val plan = _uiState.value.plan ?: return
         if (plan.scenes.isEmpty()) return
         val target = index.coerceIn(0, plan.scenes.lastIndex)
         if (target == _uiState.value.index) return
         resetSequenceRuntime(plan.scenes[target].id)
-        val oldQuizState = _uiState.value.quiz
-        val oldQuiz = _uiState.value.currentQuiz
-        if (oldQuiz != null && oldQuizState != null && !oldQuizState.showReport) {
-            // 草稿保存可能比翻页慢；不取消，但 saveDraft 会核对账号，避免迟到写回新账号。
-            viewModelScope.launch { saveDraft(oldQuizState.sceneId, oldQuiz, oldQuizState) }
+        // 翻页前把旧页草稿交给协调器串行落盘；不阻塞翻页，也不取消在途请求。
+        val draftFlush = quizCoordinator?.takeDraftFlush()
+        quizCoordinator?.close()
+        quizCoordinator = null
+        if (draftFlush != null && repository.classroomAccountScope() == initialAccountScope) {
+            // UNDISPATCHED：先把旧页草稿排进共享写锁，后续新页保存一定排在它之后。
+            viewModelScope.launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                withTimeoutOrNull(6_000L) { draftFlush() }
+            }
         }
         pageRequestedAt = now()
         stopAudio()
@@ -630,36 +799,23 @@ class NativeClassroomViewModel(
         prefetchJob?.cancel()
         narrationJob?.cancel()
         actionJob?.cancel()
-        mediaSession.invalidate()
+        playback?.mediaSession?.invalidate()
         stopAudio()
     }
 
     fun onAccountChanged() {
-        if (repository.classroomAccountScope() != initialAccountScope) {
-            loadGeneration++
-            quizGeneration++
-            narrationGeneration++
-            resetSequenceRuntime(_uiState.value.currentSceneId)
-            mediaSession.invalidate()
-            loadJob?.cancel()
-            quizJob?.cancel()
-            quizDraftJob?.cancel()
-            narrationJob?.cancel()
-            classmateJob?.cancel()
-            actionJob?.cancel()
-            prefetchJob?.cancel()
-            positionJob?.cancel()
-            rewardsJob?.cancel()
-            stopAudio()
-            _uiState.update {
-                it.copy(
-                    error = "账号已切换，课堂已停止。",
-                    loading = false,
-                    refreshing = false,
-                    videoUrl = null,
-                    speech = null,
-                )
-            }
+        if (repository.classroomAccountScope() == initialAccountScope) return
+        sessionBlocked = true
+        // 换号：位置与奖励按原账号落盘；草稿/学习记录不能写到新账号。
+        endSession()
+        _uiState.update {
+            it.copy(
+                error = "账号已切换，课堂已停止。",
+                loading = false,
+                refreshing = false,
+                videoUrl = null,
+                speech = null,
+            )
         }
     }
 
@@ -702,15 +858,8 @@ class NativeClassroomViewModel(
     fun finish(completed: Boolean) {
         recordStudyVisit(completed)
         _uiState.update { it.copy(endSummary = null) }
-        // 退出页面只停止播放；ViewModel 可能被返回栈复用，播放器留给 onCleared 释放。
-        resetSequenceRuntime(_uiState.value.currentSceneId)
-        stopAudio()
-        loadJob?.cancel()
-        quizJob?.cancel()
-        quizDraftJob?.cancel()
-        narrationJob?.cancel()
-        classmateJob?.cancel()
-        prefetchJob?.cancel()
+        // 退出即结束播放会话；再次进入同一课堂会创建新的播放器、TTS 与缓存。
+        endSession()
     }
 
     private fun recordStudyVisit(completed: Boolean) {
@@ -731,19 +880,9 @@ class NativeClassroomViewModel(
         )
     }
 
-    private fun releaseMedia() {
-        resetSequenceRuntime(_uiState.value.currentSceneId)
-        mediaSession.invalidate()
-        tts.shutdown()
-        runCatching {
-            player.stop()
-            player.release()
-        }
-    }
-
     override fun onCleared() {
         recordStudyVisit(false)
-        releaseMedia()
+        endSession()
         super.onCleared()
     }
 
@@ -758,15 +897,16 @@ class NativeClassroomViewModel(
         val pbl = _uiState.value.document?.pblByScene?.get(sceneId)
         val interactive = _uiState.value.document?.interactiveByScene?.get(sceneId)
         val actions = documentScene?.actions.orEmpty()
-        val nativeLimit = interactive?.limitExperiment != null && (planScene.widgetType == null || planScene.widgetType == "simulation") &&
-            actions.none {
-                it.supported && it.type.startsWith("widget_") &&
-                    (it.type != "widget_highlight" || ClassroomLimitExperiment.Highlight.fromSelector(it.widgetTarget) == null)
+        val canRunExperiment = interactive?.limitExperiment != null &&
+            (planScene.widgetType == null || planScene.widgetType == "simulation") &&
+            actions.none { action ->
+                action.supported && action.type.startsWith("widget_") &&
+                    (action.type != "widget_highlight" || ClassroomLimitExperiment.Highlight.fromSelector(action.widgetTarget) == null)
             }
         val parameterExperiment = interactive?.parameterExperiment
-        val nativeParameter = (planScene.widgetType == null || planScene.widgetType == "simulation") &&
+        val canRunParameterExperiment = (planScene.widgetType == null || planScene.widgetType == "simulation") &&
             parameterExperiment?.supportsActions(actions) == true
-        val nativeSpatial = (planScene.widgetType == null || planScene.widgetType == "visualization3d") &&
+        val canRunSpatialScene = (planScene.widgetType == null || planScene.widgetType == "visualization3d") &&
             interactive?.spatialExperiment?.supportsActions(actions) == true
         val hasContent = when (planScene.type) {
             "slide" -> slide != null && slide.elements.isNotEmpty()
@@ -784,12 +924,12 @@ class NativeClassroomViewModel(
             hasRenderableContent = hasContent,
             fallbackAvailable = !ref.webFallbackUrl.isNullOrBlank(),
             renderReason = planScene.renderReason,
-            hasNativeExperiment = nativeLimit || nativeParameter,
-            hasNativeSpatialScene = nativeSpatial,
+            hasNativeExperiment = canRunExperiment || canRunParameterExperiment,
+            hasNativeSpatialScene = canRunSpatialScene,
         )
         _uiState.update { state ->
-            val values = if (disposition.mode == NativeSceneMode.NATIVE && nativeParameter) {
-                parameterValues[planScene.id to state.revision] ?: parameterExperiment.initialValues
+            val values = if (disposition.mode == NativeSceneMode.NATIVE && canRunParameterExperiment) {
+                parameterValuesByScene[planScene.id to state.revision] ?: parameterExperiment.initialValues
             } else emptyMap()
             state.copy(disposition = disposition, experimentValues = values)
         }
@@ -799,10 +939,11 @@ class NativeClassroomViewModel(
         resetSequenceRuntime(sceneId)
         stopAudio()
         narrationJob?.cancel()
-        quizJob?.cancel()
         prefetchJob?.cancel()
         actionJob?.cancel()
-        mediaSession.invalidate()
+        playback?.mediaSession?.invalidate()
+        quizCoordinator?.close()
+        quizCoordinator = null
         val planScene = _uiState.value.plan?.scenes?.firstOrNull { it.id == sceneId }
         _uiState.update {
             it.copy(
@@ -900,12 +1041,13 @@ class NativeClassroomViewModel(
         }
         when (action.type) {
             "spotlight", "widget_highlight" -> {
+                val target = if (action.type == "widget_highlight" && _uiState.value.hasNativeExperiment) {
+                    action.widgetTarget
+                } else action.elementId
                 _uiState.update {
                     it.copy(
                         activeAction = action,
-                        spotlightElementId = if (action.type == "widget_highlight" && it.hasNativeExperiment) {
-                            action.widgetTarget
-                        } else action.elementId,
+                        spotlightElementId = target,
                         laserElementId = null,
                         notice = null,
                     )
@@ -1109,15 +1251,15 @@ class NativeClassroomViewModel(
         val sequence = _uiState.value.sequence
         if (!sequence.active || sequence.paused) return
         _uiState.update { it.copy(sequence = it.sequence.copy(paused = true)) }
-        if (sequenceAudioWaiter != null) runCatching { player.pause() }
-        if (sequenceUtterance?.complete(LectureUtterance.Paused) == true) tts.stop()
+        if (sequenceAudioWaiter != null) activePlayer?.let { runCatching { it.pause() } }
+        if (sequenceUtterance?.complete(LectureUtterance.Paused) == true) activeTts?.stop()
     }
 
     fun resumeSequence() {
         val sequence = _uiState.value.sequence
         if (!sequence.active || !sequence.paused) return
         _uiState.update { it.copy(sequence = it.sequence.copy(paused = false)) }
-        if (sequenceAudioWaiter != null) runCatching { player.play() }
+        if (sequenceAudioWaiter != null) activePlayer?.let { runCatching { it.play() } }
     }
 
     fun stopSequence() {
@@ -1198,10 +1340,19 @@ class NativeClassroomViewModel(
                 notice = null,
             )
         }
+        val target = activePlayer
+        if (target == null) {
+            if (sequenceAudioWaiter === waiter) {
+                sequenceAudioWaiter = null
+                sequenceAudioMediaId = null
+                sequenceAudioToken = 0
+            }
+            return ClassroomSequenceStepResult.Failed("课堂已结束。")
+        }
         try {
-            player.setMediaItem(MediaItem.Builder().setUri(resolved).setMediaId(mediaId).build())
-            player.prepare()
-            player.playWhenReady = true
+            target.setMediaItem(MediaItem.Builder().setUri(resolved).setMediaId(mediaId).build())
+            target.prepare()
+            target.playWhenReady = true
         } catch (error: Exception) {
             if (sequenceAudioWaiter === waiter) {
                 sequenceAudioWaiter = null
@@ -1248,12 +1399,17 @@ class NativeClassroomViewModel(
                 sequenceUtterance = waiter
                 updateNarration { it.copy(speaking = true, error = null) }
                 val result = try {
-                    tts.speak(
-                        NativeClassroomText.forSpeech(part),
-                        onDone = { waiter.complete(LectureUtterance.Finished) },
-                        onError = { waiter.complete(LectureUtterance.Failed(it)) },
-                    )
-                    withTimeoutOrNull(90_000L) { waiter.await() }
+                    val speaker = activeTts
+                    if (speaker == null) {
+                        LectureUtterance.Failed("课堂已结束。")
+                    } else {
+                        speaker.speak(
+                            NativeClassroomText.forSpeech(part),
+                            onDone = { waiter.complete(LectureUtterance.Finished) },
+                            onError = { waiter.complete(LectureUtterance.Failed(it)) },
+                        )
+                        withTimeoutOrNull(90_000L) { waiter.await() }
+                    }
                 } finally {
                     if (sequenceUtterance === waiter) {
                         sequenceUtterance = null
@@ -1625,13 +1781,14 @@ class NativeClassroomViewModel(
     }
 
     private fun downloadNarration(sceneId: String, artifactId: String) {
+        val sessionCache = playback?.cache ?: return
         narrationJob?.cancel()
         val revision = _uiState.value.revision
-        val mediaGeneration = mediaSession.beginRequest()
+        val mediaGeneration = beginMediaRequest() ?: return
         _uiState.update { it.copy(narration = it.narration.copy(loading = true)) }
         narrationJob = viewModelScope.launch {
-            val cached = withContext(Dispatchers.IO) { cache.readAudio(artifactId, revision) }
-            if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@launch
+            val cached = withContext(Dispatchers.IO) { sessionCache.readAudio(artifactId, revision) }
+            if (!isMediaRequestCurrent(mediaGeneration)) return@launch
             if (cached != null) {
                 if (_uiState.value.currentSceneId == sceneId) {
                     _uiState.update {
@@ -1643,11 +1800,11 @@ class NativeClassroomViewModel(
             val bytes = withContext(Dispatchers.IO) {
                 repository.downloadMagicClassArtifact(ref.courseId, artifactId)
             }
-            if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@launch
+            if (!isMediaRequestCurrent(mediaGeneration)) return@launch
             if (_uiState.value.currentSceneId != sceneId) return@launch
             bytes.onSuccess { data ->
-                val file = withContext(Dispatchers.IO) { cache.writeAudio(artifactId, revision, data) }
-                if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@onSuccess
+                val file = withContext(Dispatchers.IO) { sessionCache.writeAudio(artifactId, revision, data) }
+                if (!isMediaRequestCurrent(mediaGeneration)) return@onSuccess
                 _uiState.update {
                     it.copy(
                         narration = it.narration.copy(
@@ -1659,7 +1816,7 @@ class NativeClassroomViewModel(
                     )
                 }
             }.onFailure {
-                if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@onFailure
+                if (!isMediaRequestCurrent(mediaGeneration)) return@onFailure
                 _uiState.update { state ->
                     state.copy(narration = state.narration.copy(loading = false, error = it.message ?: "讲解音频下载失败"))
                 }
@@ -1674,11 +1831,16 @@ class NativeClassroomViewModel(
             _uiState.update { it.copy(notice = "这一页的音频资源没有可访问地址。") }
             return
         }
+        val target = activePlayer
+        if (target == null) {
+            _uiState.update { it.copy(notice = "课堂已结束，请重新进入。") }
+            return
+        }
         stopAudio()
         runCatching {
-            player.setMediaItem(MediaItem.fromUri(resolved))
-            player.prepare()
-            player.playWhenReady = true
+            target.setMediaItem(MediaItem.fromUri(resolved))
+            target.prepare()
+            target.playWhenReady = true
             updateNarration { it.copy(playing = true, error = null) }
         }.onFailure {
             _uiState.update { state -> state.copy(notice = "本页音频无法播放。") }
@@ -1691,11 +1853,16 @@ class NativeClassroomViewModel(
             _uiState.update { it.copy(notice = "讲解音频地址不可用，可以先用系统朗读。") }
             return
         }
+        val target = activePlayer
+        if (target == null) {
+            _uiState.update { it.copy(notice = "课堂已结束，请重新进入。") }
+            return
+        }
         stopAudio()
         runCatching {
-            player.setMediaItem(MediaItem.fromUri(resolved))
-            player.prepare()
-            player.playWhenReady = true
+            target.setMediaItem(MediaItem.fromUri(resolved))
+            target.prepare()
+            target.playWhenReady = true
             updateNarration { it.copy(playing = true, error = null) }
         }.onFailure {
             _uiState.update { it.copy(notice = "讲解音频无法播放，可以先用系统朗读。") }
@@ -1734,10 +1901,15 @@ class NativeClassroomViewModel(
     private fun playAudio(file: File) {
         cancelSequenceForManualMedia()
         stopAudio()
+        val target = activePlayer
+        if (target == null) {
+            updateNarration { state -> state.copy(playing = false, error = "课堂已结束，请重新进入") }
+            return
+        }
         runCatching {
-            player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
-            player.prepare()
-            player.playWhenReady = true
+            target.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            target.prepare()
+            target.playWhenReady = true
             updateNarration { it.copy(playing = true, error = null) }
         }.onFailure {
             updateNarration { state -> state.copy(playing = false, error = "讲解音频无法播放") }
@@ -1750,10 +1922,15 @@ class NativeClassroomViewModel(
             _uiState.update { it.copy(notice = "本页没有可朗读的文字。") }
             return
         }
+        val speaker = activeTts
+        if (speaker == null) {
+            _uiState.update { it.copy(notice = "课堂已结束，请重新进入。") }
+            return
+        }
         cancelSequenceForManualMedia()
         stopAudio()
         updateNarration { it.copy(speaking = true, error = null) }
-        tts.speak(
+        speaker.speak(
             text,
             onDone = { updateNarration { it.copy(speaking = false) } },
             onError = { message ->
@@ -1763,11 +1940,13 @@ class NativeClassroomViewModel(
     }
 
     fun stopAudio() {
-        runCatching {
-            player.stop()
-            player.clearMediaItems()
+        playback?.let { session ->
+            runCatching {
+                session.player.stop()
+                session.player.clearMediaItems()
+            }
+            session.tts.stop()
         }
-        tts.stop()
         _uiState.update { state ->
             state.copy(narration = state.narration.copy(playing = false, speaking = false))
         }
@@ -1805,364 +1984,46 @@ class NativeClassroomViewModel(
     // ── 测验 ─────────────────────────────────────────────────────────────────
 
     private fun loadQuiz(sceneId: String) {
-        quizJob?.cancel()
-        val generation = ++quizGeneration
-        _uiState.update {
-            it.copy(quiz = NativeQuizUiState(sceneId = sceneId, loading = true))
-        }
-        quizJob = viewModelScope.launch {
-            val result = repository.classroomQuizAttempt(ref, sceneId)
-            if (generation != quizGeneration || _uiState.value.currentSceneId != sceneId) return@launch
-            result.onSuccess { dto ->
-                val quiz = _uiState.value.currentQuiz ?: return@onSuccess
-                val state = dto.state
-                val phase = state?.phase ?: "draft"
-                val answers = decodeAnswers(quiz, state?.answers.orEmpty())
-                val results = decodeResults(state?.results.orEmpty())
-                _uiState.update {
-                    it.copy(
-                        quiz = NativeQuizUiState(
-                            sceneId = sceneId,
-                            attemptId = dto.attemptId ?: state?.sessionId,
-                            phase = phase,
-                            answers = answers,
-                            results = results,
-                            loading = false,
-                        ),
-                    )
+        val quiz = _uiState.value.currentQuiz ?: return
+        quizCoordinator?.close()
+        val coordinator = ClassroomQuizCoordinator(
+            sceneId = sceneId,
+            quiz = quiz,
+            writeMutex = quizWriteMutex,
+            isAccountCurrent = { repository.classroomAccountScope() == initialAccountScope },
+            loadAttempt = { id -> repository.classroomQuizAttempt(ref, id) },
+            saveAttempt = { id, request -> repository.saveClassroomQuizAttempt(ref, id, request) },
+            scope = viewModelScope,
+            onState = { state ->
+                if (_uiState.value.currentSceneId == sceneId) {
+                    _uiState.update { current -> current.copy(quiz = state) }
                 }
-                if (phase == "reviewed" && results.isNotEmpty()) {
-                    settleQuiz(sceneId, results.values.count { it.correct == true }, results.size)
-                }
-            }.onFailure {
-                _uiState.update { state ->
-                    state.copy(quiz = state.quiz?.copy(loading = false, error = it.message ?: "测验读取失败"))
-                }
-            }
-        }
+            },
+            onSettled = { correct, total -> settleQuiz(sceneId, correct, total) },
+        )
+        quizCoordinator = coordinator
+        coordinator.load()
     }
 
     fun setAnswer(questionId: String, answer: NativeAnswer) {
-        val quizState = _uiState.value.quiz ?: return
-        _uiState.update {
-            it.copy(quiz = quizState.copy(answers = quizState.answers + (questionId to answer), error = null))
-        }
-        scheduleDraftSave(quizState.sceneId)
-    }
-
-    private fun scheduleDraftSave(sceneId: String) {
-        val quiz = _uiState.value.currentQuiz ?: return
-        val quizState = _uiState.value.quiz ?: return
-        quizDraftJob?.cancel()
-        quizDraftJob = viewModelScope.launch {
-            delay(700)
-            if (_uiState.value.currentSceneId == sceneId) saveDraft(sceneId, quiz, quizState)
-        }
-    }
-
-    private suspend fun saveDraft(sceneId: String, quiz: NativeQuiz, quizState: NativeQuizUiState) {
-        if (quizState.sceneId != sceneId || quizState.showReport) return
-        val accountScope = repository.classroomAccountScope()
-        val response = repository.saveClassroomQuizAttempt(
-                ref,
-                sceneId,
-            MagicClassQuizAttemptRequest(
-                attemptId = quizState.attemptId,
-                phase = "draft",
-                answers = encodeAnswers(quiz, quizState.answers),
-            ),
-        )
-        if (accountScope != repository.classroomAccountScope()) return
-        if (_uiState.value.currentSceneId != sceneId) return
-        response.onSuccess { dto ->
-            val returnState = dto.state
-            if (returnState != null) {
-                _uiState.update { state ->
-                    val current = state.quiz ?: return@update state
-                    if (current.sceneId != sceneId) return@update state
-                    state.copy(
-                        quiz = current.copy(
-                            attemptId = dto.attemptId ?: current.attemptId,
-                            answers = decodeAnswers(quiz, returnState.answers),
-                            error = null,
-                        ),
-                    )
-                }
-            }
-        }.onFailure {
-            _uiState.update { state ->
-                val current = state.quiz ?: return@update state
-                if (current.sceneId != sceneId) return@update state
-                state.copy(quiz = current.copy(error = it.message ?: "测验草稿保存失败"))
-            }
-        }
+        quizCoordinator?.setAnswer(questionId, answer)
     }
 
     fun submitQuiz() {
-        val ui = _uiState.value
-        val quiz = ui.currentQuiz ?: return
-        val quizState = ui.quiz ?: return
-        val unanswered = quiz.questions.count { question -> !quizState.answers[question.id]?.hasValue.orFalse() }
-        if (unanswered > 0) {
-            _uiState.update {
-                it.copy(quiz = quizState.copy(error = "还有 $unanswered 道题未作答"))
-            }
-            return
-        }
-        if (quizState.saving) return
-        val results = gradeQuiz(quiz, quizState.answers)
-        val hasShort = quiz.questions.any { it.isShortAnswer }
-        _uiState.update {
-            it.copy(quiz = quizState.copy(saving = true, error = null, results = results, phase = "submitted"))
-        }
-        quizDraftJob?.cancel()
-        quizJob?.cancel()
-        quizJob = viewModelScope.launch {
-            val phase = if (hasShort) "submitted" else "reviewed"
-            val response = repository.saveClassroomQuizAttempt(
-                ref,
-                quizState.sceneId,
-                MagicClassQuizAttemptRequest(
-                    attemptId = quizState.attemptId,
-                    phase = phase,
-                    answers = encodeAnswers(quiz, quizState.answers),
-                    results = encodeResults(results.values),
-                ),
-            )
-            if (_uiState.value.currentSceneId != quizState.sceneId) return@launch
-            response.onSuccess { dto ->
-                _uiState.update { state ->
-                    val current = state.quiz ?: return@update state
-                    state.copy(
-                        quiz = current.copy(
-                            saving = false,
-                            phase = phase,
-                            attemptId = dto.attemptId ?: current.attemptId,
-                            results = results,
-                        ),
-                    )
-                }
-                if (!hasShort) {
-                    settleQuiz(quizState.sceneId, results.values.count { it.correct == true }, results.size)
-                }
-            }.onFailure {
-                _uiState.update { state ->
-                    val current = state.quiz ?: return@update state
-                    state.copy(
-                        quiz = current.copy(
-                            saving = false,
-                            phase = "submitted",
-                            error = it.message ?: "测验提交失败，答案仍保留在本机",
-                        ),
-                    )
-                }
-            }
-        }
+        quizCoordinator?.submit()
     }
 
     fun setShortAnswerSelfCheck(questionId: String, correct: Boolean) {
-        val quizState = _uiState.value.quiz ?: return
-        _uiState.update {
-            it.copy(quiz = quizState.copy(selfChecks = quizState.selfChecks + (questionId to correct)))
-        }
+        quizCoordinator?.setShortAnswerSelfCheck(questionId, correct)
     }
 
     fun finishQuizReview() {
-        val ui = _uiState.value
-        val quiz = ui.currentQuiz ?: return
-        val quizState = ui.quiz ?: return
-        val shorts = quiz.questions.filter { it.isShortAnswer }
-        if (shorts.any { quizState.selfChecks[it.id] == null }) {
-            _uiState.update {
-                it.copy(quiz = quizState.copy(error = "还有主观题没有完成核对"))
-            }
-            return
-        }
-        if (quizState.saving) return
-        val updated = quizState.results.toMutableMap()
-        shorts.forEach { question ->
-            val correct = quizState.selfChecks[question.id] == true
-            updated[question.id] = NativeQuizResult(
-                questionId = question.id,
-                correct = correct,
-                earned = if (correct) question.points else 0.0,
-                comment = "已按参考答案自行核对",
-                selfChecked = true,
-            )
-        }
-        _uiState.update {
-            it.copy(
-                quiz = quizState.copy(
-                    results = updated,
-                    phase = "reviewed",
-                    saving = true,
-                    error = null,
-                ),
-            )
-        }
-        quizJob?.cancel()
-        quizJob = viewModelScope.launch {
-            val response = repository.saveClassroomQuizAttempt(
-                ref,
-                quizState.sceneId,
-                MagicClassQuizAttemptRequest(
-                    attemptId = quizState.attemptId,
-                    phase = "reviewed",
-                    answers = encodeAnswers(quiz, quizState.answers),
-                    results = encodeResults(updated.values),
-                ),
-            )
-            if (_uiState.value.currentSceneId != quizState.sceneId) return@launch
-            response.onSuccess {
-                _uiState.update { state ->
-                    val current = state.quiz ?: return@update state
-                    state.copy(quiz = current.copy(saving = false, phase = "reviewed", results = updated))
-                }
-                settleQuiz(quizState.sceneId, updated.values.count { it.correct == true }, updated.size)
-            }.onFailure {
-                _uiState.update { state ->
-                    val current = state.quiz ?: return@update state
-                    state.copy(quiz = current.copy(saving = false, error = it.message ?: "测验报告保存失败"))
-                }
-            }
-        }
+        quizCoordinator?.finishReview()
     }
 
     fun retryQuiz() {
-        val ui = _uiState.value
-        val quiz = ui.currentQuiz ?: return
-        val quizState = ui.quiz ?: return
-        if (quizState.saving) return
-        quizJob?.cancel()
-        quizJob = viewModelScope.launch {
-            val response = repository.saveClassroomQuizAttempt(
-                ref,
-                quizState.sceneId,
-                MagicClassQuizAttemptRequest(
-                    attemptId = quizState.attemptId,
-                    phase = "draft",
-                    answers = emptyMap(),
-                    startNewAttempt = true,
-                ),
-            )
-            if (_uiState.value.currentSceneId != quizState.sceneId) return@launch
-            response.onSuccess { dto ->
-                _uiState.update {
-                    it.copy(
-                        quiz = NativeQuizUiState(
-                            sceneId = quizState.sceneId,
-                            attemptId = dto.attemptId ?: quizState.attemptId,
-                            phase = "draft",
-                        ),
-                    )
-                }
-            }.onFailure {
-                _uiState.update { state ->
-                    state.copy(quiz = state.quiz?.copy(error = it.message ?: "重新答题失败"))
-                }
-            }
-        }
+        quizCoordinator?.retry()
     }
-
-    private fun gradeQuiz(quiz: NativeQuiz, answers: Map<String, NativeAnswer>): Map<String, NativeQuizResult> {
-        return quiz.questions.associate { question ->
-            val result = when {
-                question.isShortAnswer -> NativeQuizResult(
-                    questionId = question.id,
-                    correct = null,
-                    earned = 0.0,
-                    comment = "主观题请对照参考答案自行核对",
-                )
-                !question.autoGradable -> NativeQuizResult(
-                    questionId = question.id,
-                    correct = null,
-                    earned = 0.0,
-                    comment = "本题没有下发标准答案，请对照解析",
-                )
-                else -> {
-                    val selected = answers[question.id]?.selected.orEmpty()
-                    val correct = if (question.isMultiple) {
-                        selected == question.answerKey.toSet()
-                    } else {
-                        selected.size == 1 && selected.first() in question.answerKey
-                    }
-                    NativeQuizResult(
-                        questionId = question.id,
-                        correct = correct,
-                        earned = if (correct) question.points else 0.0,
-                        comment = if (correct) null else question.analysis.ifBlank { null },
-                    )
-                }
-            }
-            question.id to result
-        }
-    }
-
-    private fun decodeAnswers(quiz: NativeQuiz, raw: Map<String, Any?>): Map<String, NativeAnswer> {
-        return quiz.questions.associate { question ->
-            val value = raw[question.id]
-            val answer = when {
-                question.isShortAnswer -> NativeAnswer(text = value.asText())
-                value is List<*> -> NativeAnswer(selected = value.mapNotNull { it.asText().takeIf { text -> text.isNotBlank() } }.toSet())
-                else -> NativeAnswer(selected = value.asText().takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty())
-            }
-            question.id to answer
-        }
-    }
-
-    private fun encodeAnswers(quiz: NativeQuiz, answers: Map<String, NativeAnswer>): Map<String, Any?> {
-        return quiz.questions.mapNotNull { question ->
-            val answer = answers[question.id] ?: return@mapNotNull null
-            if (!answer.hasValue) return@mapNotNull null
-            val value: Any = when {
-                question.isShortAnswer -> answer.text
-                question.isMultiple -> answer.selected.toList()
-                else -> answer.selected.firstOrNull().orEmpty()
-            }
-            question.id to value
-        }.toMap()
-    }
-
-    private fun decodeResults(raw: List<Map<String, Any?>>): Map<String, NativeQuizResult> {
-        return raw.mapNotNull { item ->
-            val id = item["questionId"].asText().ifBlank { item["question_id"].asText() }
-            if (id.isBlank()) return@mapNotNull null
-            val correct = when (item["correct"]) {
-                is Boolean -> item["correct"] as Boolean
-                is Number -> (item["correct"] as Number).toInt() != 0
-                else -> when (item["status"].asText()) {
-                    "correct" -> true
-                    "incorrect" -> false
-                    else -> null
-                }
-            }
-            id to NativeQuizResult(
-                questionId = id,
-                correct = correct,
-                earned = item["earned"].asDouble()?.takeIf { value -> value >= 0 } ?: 0.0,
-                comment = item["aiComment"].asText().ifBlank { item["comment"].asText() }.ifBlank { null },
-                selfChecked = item["selfChecked"] as? Boolean ?: false,
-            )
-        }.toMap()
-    }
-
-    private fun encodeResults(results: Collection<NativeQuizResult>): List<Map<String, Any?>> =
-        results.map { result ->
-            mapOf(
-                "questionId" to result.questionId,
-                "correct" to result.correct,
-                "status" to when (result.correct) {
-                    true -> "correct"
-                    false -> "incorrect"
-                    null -> "ungraded"
-                },
-                "earned" to result.earned,
-                "aiComment" to result.comment,
-                "selfChecked" to result.selfChecked,
-            )
-        }
-
-    private fun Boolean?.orFalse(): Boolean = this == true
 
     // ── AI 同学 ──────────────────────────────────────────────────────────────
 
@@ -2368,15 +2229,18 @@ class NativeClassroomViewModel(
 
     private fun prefetchAdjacent(sceneId: String) {
         val plan = _uiState.value.plan ?: return
+        val imageLoader = playback?.cache?.imageLoader ?: return
         val index = plan.scenes.indexOfFirst { it.id == sceneId }
         if (index < 0) return
         val neighbours = listOfNotNull(plan.scenes.getOrNull(index + 1), plan.scenes.getOrNull(index - 1))
-        val mediaGeneration = mediaSession.beginRequest()
+        val mediaGeneration = beginMediaRequest() ?: return
+        prefetchDisposables.forEach { runCatching { it.dispose() } }
+        prefetchDisposables.clear()
         prefetchJob = viewModelScope.launch {
             delay(220)
-            if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@launch
+            if (!isMediaRequestCurrent(mediaGeneration)) return@launch
             for (neighbour in neighbours) {
-                if (!mediaSession.isCurrent(mediaGeneration, repository.classroomAccountScope(), ref)) return@launch
+                if (!isMediaRequestCurrent(mediaGeneration)) return@launch
                 val slide = _uiState.value.document?.slideByScene?.get(neighbour.id) ?: continue
                 for (image in slide.elements.filterIsInstance<NativeCanvasElement.Image>()) {
                     val url = ClassroomMediaPolicy.resolve(
@@ -2386,7 +2250,7 @@ class NativeClassroomViewModel(
                     )?.url ?: continue
                     val cacheKey = "${ref.stableKey}:${_uiState.value.revision}:image-${image.id}:$url"
                     runCatching {
-                        cache.imageLoader.enqueue(
+                        imageLoader.enqueue(
                             ImageRequest.Builder(context)
                                 .data(url)
                                 .size(1280, 720)
@@ -2394,7 +2258,7 @@ class NativeClassroomViewModel(
                                 .diskCacheKey(cacheKey)
                                 .build(),
                         )
-                    }
+                    }.onSuccess { prefetchDisposables += it }
                 }
             }
         }
@@ -2407,11 +2271,10 @@ class NativeClassroomViewModel(
             application: Application,
             repository: AppRepository,
             ref: NativeClassroomRef,
-            cache: NativeClassroomCache,
         ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return NativeClassroomViewModel(application, repository, ref, cache) as T
+                return NativeClassroomViewModel(application, repository, ref) as T
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.example.campusai.data.focus.voice
 
 import android.content.Context
+import android.media.AudioManager
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -60,7 +62,11 @@ class AndroidTextToSpeechSynthesizer(context: Context) : FocusSpeechSynthesizer 
             tts.language = Locale.SIMPLIFIED_CHINESE
         }
         speaking = request
-        if (tts.speak(request.text, TextToSpeech.QUEUE_FLUSH, null, request.id) == TextToSpeech.ERROR) {
+        // 与课堂 ExoPlayer 使用同一媒体流，系统音频焦点能统一打断/恢复。
+        val params = Bundle().apply {
+            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+        }
+        if (tts.speak(request.text, TextToSpeech.QUEUE_FLUSH, params, request.id) == TextToSpeech.ERROR) {
             finish(request.id, "系统语音朗读暂不可用")
         }
     }

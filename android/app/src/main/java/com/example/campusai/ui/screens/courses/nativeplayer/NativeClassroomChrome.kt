@@ -369,7 +369,7 @@ internal fun NativeClassroomActions(
     actions: List<NativeAction>,
     active: NativeAction?,
     speech: String?,
-    speaking: Boolean,
+    teacherSpeaking: Boolean,
     lectureScript: String?,
     onStart: () -> Unit,
     onPause: () -> Unit,
@@ -424,13 +424,16 @@ internal fun NativeClassroomActions(
                         Modifier.size(40.dp).background(PrimarySoft, RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (speaking) ClassroomTeacherSignal(Modifier.size(22.dp))
-                        else Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = Primary, modifier = Modifier.size(22.dp))
+                        if (teacherSpeaking) {
+                            ClassroomTeacherSignal(Modifier.size(22.dp))
+                        } else {
+                            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = Primary, modifier = Modifier.size(22.dp))
+                        }
                     }
                 }
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        if (speaking && (sidePanel || !teachingSlide)) ClassroomTeacherSignal(Modifier.size(14.dp))
+                        if (teacherSpeaking && (sidePanel || !teachingSlide)) ClassroomTeacherSignal(Modifier.size(14.dp))
                         Text(if (teachingSlide) "AI 老师" else "本页动作", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                     Text(
@@ -455,14 +458,15 @@ internal fun NativeClassroomActions(
                 }
             }
             if (sequence.total > 1) {
-                val finished = if (sequence.active) sequence.current - 1 else sequence.current
-                val progress = animateFloatAsState(
-                    (finished.toFloat() / sequence.total).coerceIn(0f, 1f),
-                    animationSpec = if (LocalReduceMotion.current) snap() else tween(240, easing = CampusMotion.settleEasing),
-                    label = "classroom steps",
+                val finishedSteps = if (sequence.active) sequence.current - 1 else sequence.current
+                val reduceMotion = LocalReduceMotion.current
+                val stepProgress = animateFloatAsState(
+                    (finishedSteps.toFloat() / sequence.total).coerceIn(0f, 1f),
+                    animationSpec = if (reduceMotion) snap() else tween(240, easing = CampusMotion.settleEasing),
+                    label = "classroom teaching progress",
                 )
                 LinearProgressIndicator(
-                    progress = { progress.value },
+                    progress = { stepProgress.value },
                     modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(3.dp)),
                     color = Primary,
                     trackColor = Line,
@@ -492,11 +496,7 @@ internal fun NativeClassroomActions(
                     Text(
                         text = transcript, color = TextPrimary, fontSize = 14.sp, lineHeight = 21.sp,
                         modifier = Modifier.fillMaxWidth()
-                            .then(when {
-                                sidePanel -> Modifier.weight(1f).verticalScroll(captionScroll)
-                                !teachingSlide -> Modifier.heightIn(max = 122.dp).verticalScroll(captionScroll)
-                                else -> Modifier
-                            })
+                            .then(if (sidePanel) Modifier.weight(1f).verticalScroll(captionScroll) else Modifier)
                             .padding(bottom = 10.dp),
                     )
                 }

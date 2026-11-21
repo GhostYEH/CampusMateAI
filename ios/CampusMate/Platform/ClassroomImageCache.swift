@@ -13,6 +13,7 @@ final class ClassroomImageCache {
     /// 视图在 body 里读取图片缓存时，后台解码完成会通过这个版本号触发重绘。
     private(set) var revision = 0
     private let cache = NSCache<NSString, UIImage>()
+    @ObservationIgnored private var preloadTask: Task<Void, Never>?
 
     private init() {
         cache.totalCostLimit = 48 * 1024 * 1024
@@ -41,8 +42,10 @@ final class ClassroomImageCache {
             return PendingImage(id: image.id, data: image.data, source: image.source)
         }
         guard !pending.isEmpty else { return }
-        Task.detached(priority: .utility) { [weak self] in
+        preloadTask?.cancel()
+        preloadTask = Task.detached(priority: .utility) { [weak self] in
             for item in pending {
+                if Task.isCancelled { return }
                 var decoded: UIImage?
                 var byteCount = 0
                 if let data = item.data {
@@ -50,17 +53,24 @@ final class ClassroomImageCache {
                     byteCount = data.count
                 } else if let source = item.source, let client,
                           let path = classroomMediaPath(source, mediaBasePath: mediaBasePath),
-                          let resource = try? await client.download(path: path),
-                          let data = try? Data(contentsOf: resource.url),
-                          data.count <= 6 * 1024 * 1024 {
-                    decoded = UIImage(data: data)
-                    byteCount = data.count
+                          let resource = try? await client.download(path: path) {
+                    if Task.isCancelled {
+                        try? FileManager.default.removeItem(at: resource.url)
+                        return
+                    }
+                    let size = (try? resource.url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+                    if size > 0, size <= 6 * 1024 * 1024,
+                       let data = try? Data(contentsOf: resource.url) {
+                        decoded = UIImage(data: data)
+                        byteCount = data.count
+                    }
+                    try? FileManager.default.removeItem(at: resource.url)
                 }
                 guard let image = decoded else { continue }
                 let boxed = SendableImage(image: image)
                 let key = classroomImageCacheKey(scope: scope, sceneID: sceneID, elementID: item.id)
                 await MainActor.run {
-                    guard let self else { return }
+                    guard let self, !Task.isCancelled else { return }
                     self.cache.setObject(boxed.image, forKey: key as NSString, cost: byteCount)
                     self.revision &+= 1
                 }
@@ -68,7 +78,16 @@ final class ClassroomImageCache {
         }
     }
 
-    func removeAll() { cache.removeAllObjects() }
+    /// 翻页/退出时丢弃仍在进行或排队的邻页预取。
+    func cancelPreloads() {
+        preloadTask?.cancel()
+        preloadTask = nil
+    }
+
+    func removeAll() {
+        cancelPreloads()
+        cache.removeAllObjects()
+    }
 
 }
 

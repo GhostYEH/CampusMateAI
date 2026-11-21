@@ -32,7 +32,7 @@ const ROUTING_TIMEOUT_MS = 8_000;
  * rule never fabricates dialogue.
  */
 async function decideSpeakers(args: {
-  model: string;
+  model: Parameters<typeof callLLM>[0]['model'];
   request: ClassmateRequest;
   signal: AbortSignal;
   thinkingConfig: Parameters<typeof callLLM>[3];

@@ -14,8 +14,8 @@ data class NativeSceneDisposition(
 )
 
 /**
- * 原生能力由「授权数据 + 服务端 render.kind + 场景能力」共同决定，
- * 不由页面类型或客户端猜测决定。不可原生渲染时，只有存在可信网页 URL 才回退。
+ * 服务端 render.kind 控制兼容正文的准入。已识别的实验配置可直接交给原生控件，
+ * HTML 或 URL 仍使用服务端指定的沙箱模式。
  */
 object NativePlaybackPolicy {
     fun decide(
@@ -29,9 +29,11 @@ object NativePlaybackPolicy {
         hasNativeSpatialScene: Boolean = false,
     ): NativeSceneDisposition {
         if (sceneType == "interactive" && hasDocument) {
-            val localAllowed = renderKind == NativeRenderKind.NATIVE || renderKind == NativeRenderKind.SANDBOX_HTML
-            val externalCdnMissing = renderKind == NativeRenderKind.UNSUPPORTED && renderReason == "widget_requires_external_cdn"
-            if ((localAllowed && (hasNativeExperiment || hasNativeSpatialScene)) || (hasNativeSpatialScene && externalCdnMissing)) {
+            val permitsLocalContent = renderKind == NativeRenderKind.NATIVE || renderKind == NativeRenderKind.SANDBOX_HTML
+            val needsExternalRenderer = renderKind == NativeRenderKind.UNSUPPORTED && renderReason == "widget_requires_external_cdn"
+            if ((permitsLocalContent && (hasNativeExperiment || hasNativeSpatialScene)) ||
+                (hasNativeSpatialScene && needsExternalRenderer)
+            ) {
                 return NativeSceneDisposition(NativeSceneMode.NATIVE)
             }
         }

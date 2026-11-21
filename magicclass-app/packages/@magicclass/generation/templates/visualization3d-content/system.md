@@ -13,6 +13,29 @@ Your output must be a complete HTML document with:
 5. **Mobile-responsive design**
 6. **postMessage listener** for widget actions (REQUIRED)
 
+## Portable classroom geometry
+
+When the lesson can be represented with basic solids, use the portable profile below. Embed the same complete geometry used by the HTML view in the JSON script. Build the Three.js meshes from those objects so the browser and Android show the same lesson.
+
+- Set `type` to `visualization3d` and `nativeRenderer` to `classroom-spatial/1`. Include a clear `description` and the two `interactions` in the example. The shared controls are camera orbit, zoom, view reset, and play/pause when objects are animated.
+- Declare 1–16 objects total and at most 3 levels of nesting. Give each a unique `id` (`[A-Za-z_][A-Za-z0-9_-]{0,63}`) and a learner-facing `name`. Use only `box`, `sphere`, `cylinder`, `cone`, `torus`, or `plane`. The base box is 1×1×1. The sphere has radius 0.5. The cone and cylinder have radius 0.5 and height 1 along Y. The torus lies in XY with radii 0.36 and 0.12. The plane is 1×1 in XY.
+- `position` and `rotation` are optional `{x,y,z}` vectors (position components from −40 to 40, Euler XYZ rotation in radians). `scale` is optional, either a number or an `{x,y,z}` vector with components from 0.03 to 12. Use `children` for relative transforms. All material colors are `#RRGGBB`; optional properties are `type` (`standard`, `lambert`, `phong`, `basic`, `emissive`), `wireframe`, `transparent`, and `opacity` (0.15–1, with `transparent: true` for opacity below 1).
+- Optional `animation` per object has `type` (`rotate`, `orbit`, `bounce`, `pulse`), `axis` (`x`, `y`, `z`, default `y`), and `speed` (0.05–6 radians per second, default 1). Apply rotation about the object's center and orbit about the parent origin. Bounce uses `0.25 * abs(sin(phase))` along the axis and pulse multiplies the initial scale by `1 + 0.12 * sin(phase)`.
+- For portable widgets, `HIGHLIGHT_ELEMENT` with target `#<objectId>` should highlight that object and its learner-facing name. Use the browser profile below for exercises that require imported models, textures, custom controls, presets, or other web-specific behavior.
+
+Example structure. Replace the example object and description with the actual lesson geometry.
+
+```json
+{
+  "type": "visualization3d",
+  "nativeRenderer": "classroom-spatial/1",
+  "visualizationType": "geometry",
+  "description": "Observe the faces of the prism as it rotates.",
+  "objects": [{"id":"prism","name":"Prism","type":"box","scale":{"x":1.8,"y":1,"z":1},"material":{"color":"#DAB27A"},"animation":{"type":"rotate","axis":"y","speed":0.6}}],
+  "interactions": [{"type":"orbit","target":"camera"},{"type":"zoom","target":"camera"}]
+}
+```
+
 ## ⚠️ CRITICAL REQUIREMENTS
 
 ### 1. LIGHTING - Objects MUST be clearly visible
@@ -145,7 +168,9 @@ const earth = new THREE.Mesh(earthGeometry, earthMaterial);
 - **Sun**: Bright yellow-orange with glow effect (use emissive material)
 - **Moon**: Gray with craters (use noise pattern)
 
-## Widget Config Schema
+## Browser-only Widget Config Schema
+
+The following schema illustrates extended web-only features. The portable profile above defines the geometry and controls for eligible lessons.
 
 ```json
 {

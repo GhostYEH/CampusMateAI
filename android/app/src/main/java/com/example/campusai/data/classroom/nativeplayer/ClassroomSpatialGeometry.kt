@@ -16,10 +16,8 @@ internal object ClassroomSpatialGeometry {
                 SpatialVector(-.5f, -.5f, .5f), SpatialVector(.5f, -.5f, .5f),
                 SpatialVector(.5f, .5f, .5f), SpatialVector(-.5f, .5f, .5f),
             ),
-            faces = listOf(
-                intArrayOf(0, 3, 2, 1), intArrayOf(4, 5, 6, 7), intArrayOf(0, 4, 7, 3),
-                intArrayOf(1, 2, 6, 5), intArrayOf(0, 1, 5, 4), intArrayOf(3, 7, 6, 2),
-            ),
+            faces = listOf(intArrayOf(0, 3, 2, 1), intArrayOf(4, 5, 6, 7), intArrayOf(0, 4, 7, 3),
+                intArrayOf(1, 2, 6, 5), intArrayOf(0, 1, 5, 4), intArrayOf(3, 7, 6, 2)),
         )
         mapOf(
             SpatialShape.BOX to box,
@@ -33,7 +31,7 @@ internal object ClassroomSpatialGeometry {
             SpatialShape.TORUS to revolve((0..8).map { index ->
                 val angle = index * PI / 4
                 (.12f * sin(angle).toFloat()) to (.36f + .12f * cos(angle).toFloat())
-            }).let { mesh ->
+            }).let { mesh -> // Three.js torus lies in the XY plane.
                 mesh.copy(vertices = mesh.vertices.map { SpatialVector(it.x, -it.z, it.y) })
             },
         )
@@ -60,7 +58,7 @@ internal object ClassroomSpatialGeometry {
 
     fun bounds(experiment: ClassroomSpatialExperiment): Pair<SpatialVector, Float> {
         val ranges = experiment.objects.map { obj ->
-            val orbit = obj.animation?.kind == SpatialAnimation.Kind.ORBIT
+            val orbit = obj.animation?.type == SpatialAnimation.Type.ORBIT
             val center = if (orbit) SpatialVector.Zero else obj.position
             val radius = subtreeRadius(obj) + if (orbit) obj.position.length() else 0f
             val extent = SpatialVector(radius, radius, radius)
@@ -69,18 +67,21 @@ internal object ClassroomSpatialGeometry {
         val min = SpatialVector(ranges.minOf { it.first.x }, ranges.minOf { it.first.y }, ranges.minOf { it.first.z })
         val max = SpatialVector(ranges.maxOf { it.second.x }, ranges.maxOf { it.second.y }, ranges.maxOf { it.second.z })
         val center = (min + max) * .5f
-        val radius = ranges.maxOf { (low, high) -> ((low + high) * .5f - center).length() + (high.x - low.x) * .5f }
+        val radius = ranges.maxOf { (low, high) ->
+            val pos = (low + high) * .5f
+            (pos - center).length() + (high.x - low.x) * .5f
+        }
         return center to radius.coerceAtLeast(.01f)
     }
 
     private fun subtreeRadius(obj: SpatialObject): Float {
         val scale = maxOf(obj.scale.x, obj.scale.y, obj.scale.z)
         val children = obj.children.maxOfOrNull { it.position.length() + subtreeRadius(it) } ?: 0f
-        val radius = maxOf(.87f, children) * scale
-        return when (obj.animation?.kind) {
-            SpatialAnimation.Kind.BOUNCE -> radius + .25f
-            SpatialAnimation.Kind.PULSE -> radius * 1.12f
-            else -> radius
+        val localRadius = maxOf(.87f, children) * scale
+        return when (obj.animation?.type) {
+            SpatialAnimation.Type.BOUNCE -> localRadius + .25f
+            SpatialAnimation.Type.PULSE -> localRadius * 1.12f
+            else -> localRadius
         }
     }
 
@@ -89,15 +90,15 @@ internal object ClassroomSpatialGeometry {
         val phase = elapsed * (animation?.speed ?: 0f)
         var position = obj.position
         var scale = obj.scale
-        var angles = obj.rotation
-        when (animation?.kind) {
-            SpatialAnimation.Kind.ROTATE -> angles += animation.axis * phase
-            SpatialAnimation.Kind.ORBIT -> position = SpatialRotation(animation.axis * phase).apply(position)
-            SpatialAnimation.Kind.BOUNCE -> position += animation.axis * (.25f * abs(sin(phase)))
-            SpatialAnimation.Kind.PULSE -> scale *= 1f + .12f * sin(phase)
+        var rotation = obj.rotation
+        when (animation?.type) {
+            SpatialAnimation.Type.ROTATE -> rotation += animation.axis * phase
+            SpatialAnimation.Type.ORBIT -> position = SpatialRotation(animation.axis * phase).apply(position)
+            SpatialAnimation.Type.BOUNCE -> position += animation.axis * (.25f * abs(sin(phase)))
+            SpatialAnimation.Type.PULSE -> scale *= (1f + .12f * sin(phase))
             null -> Unit
         }
-        val rotation = SpatialRotation(angles)
-        return { point -> rotation.apply(point.scaled(scale)) + position }
+        val rotate = SpatialRotation(rotation)
+        return { point -> rotate.apply(point.scaled(scale)) + position }
     }
 }

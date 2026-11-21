@@ -1,6 +1,9 @@
 package com.example.campusai.ui.screens.courses.nativeplayer
 
+import android.app.Activity
 import android.app.Application
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -79,12 +82,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import coil.ImageLoader
 import com.example.campusai.BuildConfig
-import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSourceFactory
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeCanvasElement
@@ -93,7 +96,6 @@ import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomText
 import com.example.campusai.data.classroom.nativeplayer.NativePlaybackPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
-import com.example.campusai.data.remote.ApiClient
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.courses.ClassroomWood
 import com.example.campusai.ui.theme.Accent
@@ -123,32 +125,21 @@ fun NativeClassroomPlayer(
     val application = context.applicationContext as Application
     val session by repository.session.collectAsStateWithLifecycle()
     val accountScope = remember(session) { repository.classroomAccountScope() }
-    val cache = remember(ref.stableKey, accountScope) {
-        NativeClassroomCache(context, accountScope, ref)
-    }
     val vm: NativeClassroomViewModel = viewModel(
         key = "native-classroom-${ref.stableKey}-$accountScope",
-        factory = NativeClassroomViewModel.factory(application, repository, ref, cache),
+        factory = NativeClassroomViewModel.factory(application, repository, ref),
     )
     val state by vm.uiState.collectAsStateWithLifecycle()
     val mediaBase = remember(ref.stableKey) {
         ClassroomMediaPolicy.mediaBasePath(BuildConfig.API_BASE_URL, ref)
     }
-    val videoDataSourceFactory = remember(ref.stableKey, accountScope) {
-        DefaultDataSource.Factory(
-            context,
-            ClassroomMediaDataSourceFactory(
-                client = ApiClient.classroomMediaHttpClient(ref, followRedirects = false),
-                ref = ref,
-                apiBaseUrl = BuildConfig.API_BASE_URL,
-            ),
-        )
-    }
+    // 图片缓存与视频数据源都由播放会话持有；旋转复用同一会话，退出时随会话释放。
+    val cache = vm.cache
+    val videoDataSourceFactory = vm.mediaDataSourceFactory
+    val activity = remember(context) { context.findActivity() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val view = LocalView.current
     var panel by rememberSaveable(ref.stableKey) { mutableStateOf<String?>(null) }
-    var zoom by rememberSaveable(ref.stableKey) { mutableFloatStateOf(1f) }
-    var readNotes by rememberSaveable(ref.stableKey, state.currentSceneId) { mutableStateOf(false) }
     var closing by remember(ref.stableKey) { mutableStateOf(false) }
 
     SideEffect {
@@ -160,6 +151,10 @@ fun NativeClassroomPlayer(
         }
     }
 
+    LaunchedEffect(vm) {
+        vm.startSession()
+    }
+
     DisposableEffect(lifecycleOwner, vm) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -169,9 +164,19 @@ fun NativeClassroomPlayer(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        // 旋转后重新组合时生命周期可能已经 RESUMED，观察者收不到补发的 ON_RESUME。
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            vm.onHostResume()
+        }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            vm.onHostPause()
+            if (activity?.isChangingConfigurations == true) {
+                // 旋转：保留当前页、缩放和草稿，重新组合后继续同一播放会话。
+                vm.onHostPause()
+            } else {
+                // 关闭弹窗、离开页面或进程重建：可靠落盘后释放播放器、TTS 与图片缓存。
+                vm.endSession()
+            }
         }
     }
 
@@ -188,7 +193,7 @@ fun NativeClassroomPlayer(
         }.orEmpty()
     }
     val lectureVisible = state.spotlightElementId != null || state.laserElementId != null || state.sequence.active
-    val showCanvas = lessonText.isEmpty() || !readNotes || lectureVisible
+    val showCanvas = lessonText.isEmpty() || !state.readNotes || lectureVisible
     val scene = state.currentScene
     val lectureScript = remember(slide, scene, sceneTitle) {
         if (slide == null) null else {
@@ -217,31 +222,33 @@ fun NativeClassroomPlayer(
         }
     }
     LaunchedEffect(state.sequence.active) {
-        if (state.sequence.active) readNotes = false
+        if (state.sequence.active) vm.setReadNotes(false)
     }
-
     val reduceMotion = LocalReduceMotion.current
     val pageTurn = remember(vm) { Animatable(0f) }
-    val page = state.index.takeIf { state.currentSceneId != null }
-    var previousPage by remember(vm) { mutableStateOf(page) }
-    LaunchedEffect(page, reduceMotion) {
+    val visiblePage = state.index.takeIf { state.currentSceneId != null }
+    var previousPage by remember(vm) { mutableStateOf(visiblePage) }
+    LaunchedEffect(visiblePage, reduceMotion) {
         val previous = previousPage
-        previousPage = page
-        if (reduceMotion || previous == null || page == null || page == previous) {
+        previousPage = visiblePage
+        if (reduceMotion || visiblePage == null || previous == null || visiblePage == previous) {
             pageTurn.snapTo(0f)
         } else {
-            pageTurn.snapTo(if (page > previous) 1f else -1f)
+            pageTurn.snapTo(if (visiblePage > previous) 1f else -1f)
             pageTurn.animateTo(0f, tween(350, easing = CampusMotion.settleEasing))
         }
     }
-    val speaking = !state.sequence.paused && (state.narration.speaking || state.narration.playing ||
-        (state.sequence.active && !state.sequence.preparing && state.activeAction?.type == "speech"))
+    val teacherSpeaking = !state.sequence.paused && (
+        state.narration.speaking || state.narration.playing ||
+            (state.sequence.active && !state.sequence.preparing && state.activeAction?.type == "speech")
+        )
+
     NativeClassroomTheme {
         BoxWithConstraints(modifier.fillMaxSize().background(Background)) {
             val landscape = maxWidth > maxHeight
             val splitLecture = landscape && maxWidth >= 580.dp
-            NativeClassroomStage(pageTurn.asState(), speaking, landscape, Modifier.matchParentSize())
             val controlsInHeader = slidePage && splitLecture && maxWidth >= 720.dp
+            NativeClassroomStage(pageTurn.asState(), teacherSpeaking, splitLecture, Modifier.matchParentSize())
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))) {
                 NativeTopBar(
                     title = state.plan?.title ?: ref.title.ifBlank { "课堂" },
@@ -254,8 +261,8 @@ fun NativeClassroomPlayer(
                     onToggleMetrics = vm::toggleMetrics,
                 ) {
                     if (controlsInHeader) {
-                        SlideToolbar(lessonText.isNotEmpty(), showCanvas, lectureVisible, zoom,
-                            { readNotes = it }, { zoom = it })
+                        SlideToolbar(lessonText.isNotEmpty(), showCanvas, lectureVisible, state.zoom,
+                            vm::setReadNotes, vm::setZoom)
                         Spacer(Modifier.width(8.dp))
                     }
                 }
@@ -293,13 +300,13 @@ fun NativeClassroomPlayer(
                                 ref = ref,
                                 vm = vm,
                                 cache = cache,
-                                zoom = zoom,
+                                zoom = state.zoom,
                                 mediaBase = mediaBase,
                                 lessonText = lessonText,
                                 showCanvas = showCanvas,
                                 lectureVisible = lectureVisible,
-                                onReadNotes = { readNotes = it },
-                                onZoom = { zoom = it },
+                                onReadNotes = vm::setReadNotes,
+                                onZoom = vm::setZoom,
                                 onOpenFallback = onOpenFallback,
                                 fitSlide = fitSlide,
                                 controlsInHeader = controlsInHeader,
@@ -316,7 +323,7 @@ fun NativeClassroomPlayer(
                                 actions = state.currentScene?.actions.orEmpty(),
                                 active = state.activeAction,
                                 speech = state.speech,
-                                speaking = speaking,
+                                teacherSpeaking = teacherSpeaking,
                                 lectureScript = lectureScript,
                                 onStart = if (slidePage) vm::startLecture else vm::startSequence,
                                 onPause = vm::pauseSequence,
@@ -344,7 +351,9 @@ fun NativeClassroomPlayer(
                                 Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                if (experimentPage) NativeSceneHeading(sceneTitle, "interactive", compact = true)
+                                if (experimentPage) {
+                                    NativeSceneHeading(sceneTitle, "interactive", compact = true)
+                                }
                                 Row(
                                     Modifier.weight(1f).fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(gap),
@@ -405,13 +414,14 @@ fun NativeClassroomPlayer(
         if (panel == "directory") {
             NativePanelDialog(title = "课堂地图", onDismiss = { panel = null }) {
                 val plan = state.plan
-                if (plan != null) {
+                val imageLoader = cache?.imageLoader
+                if (plan != null && imageLoader != null) {
                     NativeDirectoryPanel(
                         plan = plan,
                         document = state.document,
                         index = state.index,
                         visitedSceneIds = state.rewards.visited,
-                        imageLoader = cache.imageLoader,
+                        imageLoader = imageLoader,
                         assetKeyPrefix = "${ref.stableKey}:${state.revision}",
                         mediaBase = mediaBase,
                         onSelect = {
@@ -448,7 +458,8 @@ fun NativeClassroomPlayer(
         if (state.whiteboardOpen) {
             NativePanelDialog(title = "白板", onDismiss = { vm.dismissWhiteboard(state.currentSceneId) }) {
                 val board = state.document?.whiteboard
-                if (board == null) {
+                val imageLoader = cache?.imageLoader
+                if (board == null || imageLoader == null) {
                     NativeUnavailablePanel(
                         reason = "这份课件没有下发白板内容。",
                         hasFallback = false,
@@ -461,7 +472,7 @@ fun NativeClassroomPlayer(
                         if (width > 0.dp) {
                             NativeSlideCanvas(
                                 slide = board,
-                                imageLoader = cache.imageLoader,
+                                imageLoader = imageLoader,
                                 assetKeyPrefix = "${ref.stableKey}:${state.revision}:whiteboard",
                                 mediaBase = mediaBase,
                                 modifier = Modifier.width(width).height(width / board.aspectRatio),
@@ -472,10 +483,11 @@ fun NativeClassroomPlayer(
             }
         }
         val videoUrl = state.videoUrl
-        if (videoUrl != null) {
+        val videoFactory = videoDataSourceFactory
+        if (videoUrl != null && videoFactory != null) {
             VideoDialog(
                 url = videoUrl,
-                dataSourceFactory = videoDataSourceFactory,
+                dataSourceFactory = videoFactory,
                 onDismiss = { vm.dismissVideo(videoUrl) },
                 onEnded = { vm.onVideoEnded(videoUrl) },
                 onFailed = { vm.onVideoFailed(videoUrl, it) },
@@ -505,7 +517,7 @@ private fun NativeSceneBody(
     state: NativeClassroomUiState,
     ref: NativeClassroomRef,
     vm: NativeClassroomViewModel,
-    cache: NativeClassroomCache,
+    cache: NativeClassroomCache?,
     zoom: Float,
     mediaBase: String?,
     lessonText: List<NativeCanvasElement.Text>,
@@ -518,6 +530,11 @@ private fun NativeSceneBody(
     controlsInHeader: Boolean,
     modifier: Modifier,
 ) {
+    val imageLoader = cache?.imageLoader
+    if (imageLoader == null) {
+        LoadingClassroom()
+        return
+    }
     val hasFallback = !ref.webFallbackUrl.isNullOrBlank()
     val openFallback: () -> Unit = { ref.webFallbackUrl?.let(onOpenFallback) }
     when {
@@ -532,7 +549,7 @@ private fun NativeSceneBody(
         state.disposition.mode == NativeSceneMode.NATIVE -> NativeSceneContent(
             state = state,
             vm = vm,
-            cache = cache,
+            imageLoader = imageLoader,
             zoom = zoom,
             assetKeyPrefix = "${ref.stableKey}:${state.revision}",
             mediaBase = mediaBase,
@@ -580,7 +597,7 @@ private fun NativeSceneBody(
 private fun NativeSceneContent(
     state: NativeClassroomUiState,
     vm: NativeClassroomViewModel,
-    cache: NativeClassroomCache,
+    imageLoader: ImageLoader,
     zoom: Float,
     assetKeyPrefix: String,
     mediaBase: String?,
@@ -631,7 +648,7 @@ private fun NativeSceneContent(
                                     Box(Modifier.width(width).height(width / slide.aspectRatio).clip(RoundedCornerShape(9.dp))) {
                                         NativeSlideCanvas(
                                             slide = slide,
-                                            imageLoader = cache.imageLoader,
+                                            imageLoader = imageLoader,
                                             spotlightElementId = state.spotlightElementId,
                                             laserElementId = state.laserElementId,
                                             onVideoClick = { vm.playVideo(it.source) },
@@ -842,6 +859,7 @@ private fun LoadingClassroom() {
 }
 
 @Composable
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun VideoDialog(
     url: String,
     dataSourceFactory: DataSource.Factory,
@@ -953,4 +971,11 @@ private fun VideoDialog(
             }
         }
     }
+}
+
+/** Dialog 的 LocalContext 是 ContextThemeWrapper，需要解开后判断是否因旋转销毁。 */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
