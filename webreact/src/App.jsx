@@ -34,6 +34,7 @@ const MagicClassGenerationPreviewPage = lazy(() => import("./pages/magicclassGen
 const MagicClassClassroomEntryPage = lazy(() => import("./pages/magicclassClassroomEntryPage.jsx"));
 const MagicClassWorkbenchPage = lazy(() => import("./pages/magicclassWorkbenchPage.jsx"));
 const LearningSpacePage = lazy(() => import("./pages/LearningSpacePage.jsx"));
+const LearningSpaceHomePage = lazy(() => import("./pages/LearningSpaceHomePage.jsx"));
 const pages = {
   LoginPage, HomePage, CoursesPage, CourseDetailPage,
   TasksPage, TaskDetailPage, StudyPage, IslandPage,
@@ -45,7 +46,7 @@ const pages = {
   ProfilePage, ProfileSectionPage: lazyProfilePage("ProfileSectionPage"),
   LearningStatePage, PredictionPage,
   FinalReviewPage, CourseResearchPage, NoticeWorkflowPage, MagicClassWorkspacePage, MagicClassGenerationPreviewPage,
-  MagicClassClassroomEntryPage, MagicClassWorkbenchPage, LearningSpacePage,
+  MagicClassClassroomEntryPage, MagicClassWorkbenchPage, LearningSpacePage, LearningSpaceHomePage,
   SettingsPage: lazyIntegrationPage("SettingsPage"), AcademicPage: lazyIntegrationPage("AcademicPage"), ChaoxingPage: lazyIntegrationPage("ChaoxingPage"),
 };
 
@@ -85,8 +86,10 @@ export default function App() {
       {/* 旧工作台页面保留为兼容深链。 */}
       <Route path="/courses/:courseId/workspaces/:workspaceId/legacy" element={<Page name="MagicClassWorkspacePage" />} />
       <Route path="/courses/:courseId" element={<Page name="CourseDetailPage" />} />
-      {/* 导航栏「学习空间」：承载以独立进程、独立 Origin 运行的上游 magic class 应用。 */}
-      <Route path="/learning-space" element={<Page name="LearningSpacePage" />} />
+      {/* 导航栏「学习空间」：原生课堂入口，不再内嵌上游应用。 */}
+      <Route path="/learning-space" element={<Page name="LearningSpaceHomePage" />} />
+      {/* 旧内嵌版保留为显式回退入口，需要上游完整工作台时才进入。 */}
+      <Route path="/learning-space/legacy" element={<Page name="LearningSpacePage" />} />
       <Route path="/tasks" element={<Page name="TasksPage" />} />
       <Route path="/tasks/:kind/:id" element={<Page name="TaskDetailPage" />} />
       <Route path="/community" element={<Page name="CommunityPage" />} />

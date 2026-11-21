@@ -54,7 +54,7 @@
 <a id="assignment-review-flow"></a>
 ## 已截止作业与自主练习接入
 
-所有下列 API 均以 `/api/v1` 为前缀并携带本站 Bearer access token。列表来自个人待办 `/tasks`，不是班级作业 `/student/assignments`，也不是独立学习空间 Origin 下的 `/api/*`。每日同步只采集数据；学生点击“进入练习与详解”才创建或恢复生成任务。
+所有下列 API 均以 `/api/v1` 为前缀并携带本站 Bearer access token。列表来自个人待办 `/tasks`，不是班级作业 `/student/assignments`，也不是独立学习空间 Origin 下的 `/api/*`。每日同步自动采集题目和已完成作业的批改结果、整理错题；课堂生成仍需学生点击一次，避免后台替所有账号自动消耗模型。
 
 ### 截止规则与兼容性
 
@@ -65,8 +65,8 @@
 | 读取作业 | `GET /api/v1/tasks?page=1&page_size=200` | 不传 status，逐页保留 source=chaoxing、status 为 pending/completed、未删除且有效 deadline 已到期的作业。接口没有 source 参数。 |
 | 读取剩余页 | 按 has_more 递增 page，直到 false | total/has_more 统计全部个人待办，即使某页没有符合条件的作业也继续；Web 按截止时间倒序展示。 |
 | 展示作业 | id/title/source_name/course_id/deadline/status | 使用本站 id 作为 task_id；区分已提交与未提交，不把过期当成已提交。缺课程时保留条目并提示同步。 |
-| 预览题目 | `GET /api/v1/chaoxing/assignments/{task_id}/content` | 只读取已同步快照，不为列表每条预请求。 |
-| 开始练习 | `POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 无请求体，不接受客户端截止时间、题目、答案、课程归属或生成策略。 |
+| 预览题目 | `GET /api/v1/chaoxing/assignments/{task_id}/content` | 只读取已同步快照，不为列表每条预请求。返回逐题 `is_correct`（已批改时）及 `wrong_count/results_available/can_generate_wrong`。 |
+| 开始练习 | `POST /api/v1/chaoxing/assignments/{task_id}/classroom` | 可选 JSON `{"scope":"all"\|"wrong"}`，缺省 `all`。`wrong` 只使用报告页明确批改为错误的题，课堂只出变式、不出现原题重做；`all` 保留原题重做和变式。不接受客户端截止时间、题目、答案、课程归属或生成策略。 |
 | 补同步题目 | 409 assignment_content_not_current 时同步一次后重试 | 调用 `POST /api/v1/chaoxing/sync`；HTTP 200 也可能 complete=false，遇到 sync_in_progress 或再次失败时提示，不循环。 |
 | 等待生成 | `GET /api/v1/courses/{course_id}/jobs/{job_id}` | queued/running 每约 2 秒轮询，最长 30 分钟；201 仅代表已接受/复用任务。 |
 | 重试失败 | `POST /api/v1/courses/{course_id}/jobs/{job_id}/retry` | failed/cancelled 才重试；返回 job 本身，同次点击不无限重试。 |
@@ -81,13 +81,21 @@
 
 列表不代表一定可生成。登录过期时，已有列表/快照仍可读取；同步失败不得清空列表。completed_at 是本站确认完成的时间，remote_submitted_at 是可空的远端提交时间；二者不能用来判断作业是否截止，不能互相冒充。
 
+### 自动采集逐题对错与错题整理
+
+已提交/已批改（`status=completed`）的作业在每日同步时，除工作页题干外还会尝试读取学习通批改报告页；报告页题目容器内的 `.cuo` 表示学生答错、`.dui` 表示答对，一个答错题可能同时带两者，因此 `.cuo` 优先。后端只把布尔结果写入题目快照的 `is_correct`，**不保存学生原始作答、教师批语或官方答案正文**。报告页读取失败时回退到工作页题干，仍保存原快照，但该批题目不会写入 `is_correct`；因此错题整理是“有逐题批改结果时才可用”，不是对未批改作业做推断。
+
+`GET content` 据此计算：`wrong_count` 为明确 `is_correct=false` 的题数；`results_available` 为至少一道题有明确批改结果；`can_generate_wrong` 需同时满足可生成、课程存在且 `wrong_count>0`。全部正确时 `wrong_count=0` 且 `results_available=true`，客户端应显示“无错题”，不要调用错题生成。没有逐题结果时 `results_available=false`，客户端只能提供全部题目复习。
+
 ### 练习优先的生成与学习行为
 
-网关指定受管生成模式 `quiz`，通过内部 `assignment_review.question_count` 传递原题数量；这不是公开请求字段，也不按学生输入的提示词前缀识别模式。专用系统提示词要求先重做原题、再做变式、按需求助和解析。生成校验检查首场景为 quiz、至少两个 quiz 且占总场景至少三分之二、最多两页补救 slide、每道原题均有 retry 和 transfer、变式总数至少 3 道、每题 2–3 条不同提示、可用题干/答案/解析；不合格时反馈给模型重生成一次，仍失败则 job 失败，不能用普通讲座或本地模板顶替。
+网关指定受管生成模式 `quiz`，通过内部 `assignment_review` 传递本次覆盖的原题编号与是否要求原题重做；这不是公开请求字段，也不按学生输入的提示词前缀识别模式。`scope=all` 时先重做原题、再做变式、按需求助和解析；`scope=wrong` 时只针对明确批改为错的题生成变式，首场景即 quiz，全部 `exerciseRole=transfer`，不出现 `retry` 或原题重做。
 
-题目语义是否正确、变式是否合适以及提示是否隐含答案仍需真实模型验收；结构校验不能证明教学质量。原题/变式的对应元数据和 Web 交互详见[课堂模块](14-magicclass.md#assignment-practice-profile)。题干和选项不含学生历史作答或官方答案，AI须独立推导并标明不是教师批阅。
+生成校验检查首场景为 quiz、至少两个 quiz 且占总场景至少三分之二、最多两页补救 slide、覆盖指定原题编号、每题 2–3 条不同提示、可用题干/答案/解析。`scope=all` 要求每道原题有 retry 和 transfer、变式总数至少 3 道；`scope=wrong` 要求每道错题有 transfer、变式总数至少 3 道，且任何 retry 都会判不合格。变式会与课堂内 retry 原题及网关传入的原题题干做 NFKC 归一化、去标点、数字掩码和字符片段相似度校验，复制原题、只替换数字/名称/标点或高度雷同都会判为不合格。不合格时反馈给模型重生成一次，仍失败则 job 失败，不能用普通讲座或本地模板顶替。
 
-工作台采用 v2 策略隔离旧的讲解式课堂；第一次使用新策略创建新工作台，旧课件保留。新策略下按本人/课程/作业复用工作台，相同题目及需求复用 job；题目/标题/策略改变会产生新任务。失败任务重复 POST 仍返回同一 job，需显式 retry。
+题目语义是否正确、变式是否合适以及提示是否隐含答案仍需真实模型验收；结构校验不能证明教学质量，文本相似度校验只能拦截复制和浅层改写，语义级变式质量仍需真实模型产物抽检。原题/变式的对应元数据和 Web 交互详见[课堂模块](14-magicclass.md#assignment-practice-profile)。题干和选项不含学生历史作答或官方答案，AI须独立推导并标明不是教师批阅。
+
+工作台采用 v2 策略隔离旧的讲解式课堂；第一次使用新策略创建新工作台，旧课件保留。新策略下 `scope=all` 按本人/课程/作业复用工作台，`scope=wrong` 使用同一作业的独立错题工作台标识，避免和全部题目复习互相覆盖；相同题目及需求复用 job，题目/标题/策略改变会产生新任务。失败任务重复 POST 仍返回同一 job，需显式 retry。
 
 ### 错误恢复
 
@@ -101,47 +109,49 @@ HTTPException 使用统一 `{code:"HTTP_ERROR",message:"assignment_not_ended",de
 | 409 assignment_deadline_unknown | 截止时间缺失或无效 | 同步后再试，不自行放行。 |
 | 409 assignment_course_unavailable | 无课程关联 | 同步课程，保留列表。 |
 | 409 assignment_content_not_current | 无题目或快照状态与作业不一致 | 同步一次，再失败时检查 assignments 警告。 |
+| 409 assignment_results_unavailable | 请求 `scope=wrong`，但快照中没有逐题批改结果 | 先同步；报告页仍不可用时只能按全部题目复习，不推断错题。 |
+| 409 assignment_no_wrong_questions | 请求 `scope=wrong`，逐题结果可用但错题数为 0 | 提示本次全对，不生成错题课；可改用全部题目复习。 |
 | 409 sync_in_progress | 已有同步或账号操作 | 等待，避免并发重复同步。 |
 | 422 assignment_images_require_text | 图片无可读文字描述 | 当前没有 OCR 补录接口，不能用占位文字生成。 |
 | 422 assignment_content_too_large | 整份需求超出 24,000 UTF-16 code units | 当前不支持选题/分批，不能截题绕过。 |
 | 503 MAGICCLASS_FUSION_UNAVAILABLE | 服务、鉴权或模型不可用 | 按 details.reason 排查，保留作业和任务。 |
 | job.status=failed/cancelled | 生成未完成 | 显示 error_code，由学生触发 retry。 |
 
-旧的 assignment_not_submitted 门槛已移除，客户端应改为截止条件。Web 已适配；Android/HarmonyOS/微信小程序当前未消费作业复习接口，无请求形状迁移，但将来接入须使用新条件与 quiz 学习策略。本次不包含移动端构建或真机验证。
+旧的 assignment_not_submitted 门槛已移除，客户端应改为截止条件。Web 已适配；Android 与 iOS 已接入作业题目、全部/错题生成、job 进度和原生 quiz 阅读器：job completed 后读取 workspace stage document，只渲染讲解文本、题目、提示与解析，不进入旧课堂 session URL，也不渲染 TTS/whiteboard/3D。HarmonyOS/微信小程序尚未接入。本次 Android Gradle 构建（缺项目约定 JDK）和 iOS App target 构建（缺完整 Xcode）未验证，真机学习通页面与在线模型产物仍需验收。
 
 ## 接口契约
 
-每日同步在 FastAPI lifespan 启动，成功结束后间隔 24 小时，普通失败/部分成功 30 分钟后重试，认证问题等待重新连接或下一天重查；每批后等待 60 秒，非实时推送。后端停止时不执行，重启补执行到期账号。后台每批最多 25 账号、15 分钟持久化租约、10 分钟单账号预算，同进程与手动同步/登录/解绑互斥；后台租约不保证跨进程手动操作串行。题目单次最多 12 份、并发 3、每份预算 12 秒，缺失/状态变化/24 小时过期按最近尝试轮转，不保证本批补齐。失败保留旧题目，sync 的 assignments 分区可为 partial，warnings 为 assignment_content:<reason>；HTTP 200 不代表完整成功。远端响应超过 4 MiB 的 content_too_large 与生成需求的长度限制是两个不同环节。
+每日同步在 FastAPI lifespan 启动，成功结束后间隔 24 小时，普通失败/部分成功 30 分钟后重试，认证问题等待重新连接或下一天重查；每批后等待 60 秒，非实时推送。后端停止时不执行，重启补执行到期账号。后台每批最多 25 账号、15 分钟持久化租约、10 分钟单账号预算，同进程与手动同步/登录/解绑互斥；后台租约不保证跨进程手动操作串行。题目单次最多 12 份、并发 3、每份预算 12 秒，缺失/状态变化/24 小时过期按最近尝试轮转，不保证本批补齐。已完成作业的批改报告页与题干共用同一份预算；报告页失败时回退工作页题干，并保留同一题号/题干的旧 `is_correct`，避免把已整理错题冲掉。失败保留旧题目，sync 的 assignments 分区可为 partial，warnings 为 assignment_content:<reason>；HTTP 200 不代表完整成功。远端响应超过 4 MiB 的 content_too_large 与生成需求的长度限制是两个不同环节。
 
 ### `GET /api/v1/chaoxing/assignments/{task_id}/content`
 
 用途：读取本人作业题目快照，不访问学习通。鉴权：Bearer token、活跃用户；仅本人未删除的 source=chaoxing 个人待办。其他用户、普通待办和不存在的作业均 404。path task_id:string 必填，为本站个人待办 id；无请求体。Web 封装 getChaoxingAssignmentContent，实现 chaoxing_assignments.get_content。
 
-200 application/json 全部顶层字段：task_id:string、course_id:string|null、status:string（pending/completed）、available:boolean、current:boolean、can_generate:boolean、fetched_at:string|null、questions:array。每题 `{number:integer,stem:string,options:string[]}`，number 从 1 连续编号，不含原始 HTML、脚本、Cookie、学生答案或官方评分。
+200 application/json 全部顶层字段：task_id:string、course_id:string|null、status:string（pending/completed）、available:boolean、current:boolean、can_generate:boolean、can_generate_wrong:boolean、results_available:boolean、results_complete:boolean、graded_count:integer、wrong_count:integer、fetched_at:string|null、questions:array。每题 `{number:integer,stem:string,options:string[],is_correct?:boolean|null}`；`is_correct` 只在采集过批改报告时出现，`true` 答对、`false` 答错、`null` 尚未取得该题结果；number 为原题序号，不含原始 HTML、脚本、Cookie、学生答案文本或官方评分正文。
 
-available 表示有题目；current 仅比较快照采集时的提交状态与待办状态，不表示新鲜度或实时确认；can_generate 要求截止时间有效且到期、current=true、有课程，pending/completed 均可，不含课程权限、图片、长度或服务可用性检查。无题目时 available/current/can_generate=false、questions=[]、fetched_at=null。采集失败保留旧快照和 fetched_at。
+available 表示有题目；current 仅比较快照采集时的提交状态与待办状态，不表示新鲜度或实时确认；can_generate 要求截止时间有效且到期、current=true、有课程，pending/completed 均可，不含课程权限、图片、长度或服务可用性检查；can_generate_wrong 还要求 `wrong_count>0`。`graded_count` 为有明确批改结果的题数；`results_available` 表示至少一题已批改；`results_complete` 表示全部题目都已批改。只有 results_complete 且 wrong_count=0 才能说“全部正确”，部分批改时不能把未批题当成做对。无题目时 available/current/can_generate/can_generate_wrong/results_available/results_complete=false、graded_count/wrong_count=0、questions=[]、fetched_at=null。采集失败保留旧快照和 fetched_at。
 
 ```json
-{"task_id":"ptask_demo","course_id":"course_demo","status":"pending","available":true,"current":true,"can_generate":true,"fetched_at":"2026-10-16T01:00:00+00:00","questions":[{"number":1,"stem":"x=2时，x+1是多少？","options":["A. 2","B. 3","C. 4"]}]}
+{"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":true,"current":true,"can_generate":true,"can_generate_wrong":true,"results_available":true,"results_complete":true,"graded_count":2,"wrong_count":1,"fetched_at":"2026-10-16T01:00:00+00:00","questions":[{"number":1,"stem":"x=2时，x+1是多少？","options":["A. 2","B. 3","C. 4"],"is_correct":false},{"number":2,"stem":"2+2等于几？","options":["A. 3","B. 4"],"is_correct":true}]}
 ```
 
-异常：401 本站登录无效；404 message=chaoxing_assignment_not_found。完整路径与返回字段不变，仅 can_generate 业务语义更新。
+异常：401 本站登录无效；404 message=chaoxing_assignment_not_found。本次在既有返回上新增 can_generate_wrong/results_available/wrong_count 和可选 is_correct，路径与既有字段不变。
 
 ### `POST /api/v1/chaoxing/assignments/{task_id}/classroom`
 
-用途：为已截止作业生成原题重做、至少 3 道变式和按需解析。鉴权：Bearer token、活跃用户、本人未删除的学习通个人待办、关联课程访问权限；服务端读取截止时间/题目/状态，不接受客户端伪造。
+用途：为已截止作业生成原题重做、变式和按需解析。`scope=all`（默认）覆盖全部题目并保留原题重做；`scope=wrong` 只覆盖报告页明确批改为错的题，课堂只出变式、不出现原题重做。鉴权：Bearer token、活跃用户、本人未删除的学习通个人待办、关联课程访问权限；服务端读取截止时间/题目/状态，不接受客户端伪造。
 
-path task_id:string 必填，无请求体，不需要客户端 Idempotency-Key。Web 封装 generateChaoxingAssignmentClassroom，实现 chaoxing_assignments.generate_review。例：`POST /api/v1/chaoxing/assignments/ptask_demo/classroom`。
+path task_id:string 必填。请求体可选 `application/json`：`{"scope":"all"|"wrong"}`，缺省/空对象视为 `all`；其他字段忽略或由 FastAPI 校验为 422。不需要客户端 Idempotency-Key。Web 封装 generateChaoxingAssignmentClassroom，实现 chaoxing_assignments.generate_review。例：`POST /api/v1/chaoxing/assignments/ptask_demo/classroom`，错题课 body `{"scope":"wrong"}`。
 
-前置条件：有效截止时间已到期；快照 remote_status 与任务当前 pending/completed 一致且有题目；有关联且有权访问的课程；受管服务与模型已配置。未识别图片/需求过长返回 422。服务端不会隐式同步或截断题目，不要求已提交或已评分。
+前置条件：有效截止时间已到期；快照 remote_status 与任务当前 pending/completed 一致且有题目；有关联且有权访问的课程；受管服务与模型已配置。`scope=wrong` 还要求 `results_available=true` 且至少一道 `is_correct=false`。未识别图片/需求过长返回 422。服务端不会隐式同步或截断题目，不要求已提交或已评分。
 
-201 application/json：task_id/course_id/workspace_id:string、question_count:integer，加既有 source="provider"、job:object（id/status/progress/artifact_id/mode/error_code）以及可选 job_id/stage_id/stage。mode 改为 quiz，其余字段不变。
+201 application/json：task_id/course_id/workspace_id:string、scope:"all"|"wrong"、question_count:integer，加既有 source="provider"、job:object（id/status/progress/artifact_id/mode/error_code）以及可选 job_id/stage_id/stage。mode 为 quiz，其余字段不变。`scope=wrong` 时 question_count 是错题数，原题编号可能不连续，由内部 `source_numbers` 保留。
 
 ```json
-{"task_id":"ptask_demo","course_id":"course_demo","workspace_id":"ws_demo","question_count":1,"source":"provider","job_id":"job_demo","job":{"id":"job_demo","status":"queued","progress":0,"artifact_id":null,"mode":"quiz","error_code":null}}
+{"task_id":"ptask_demo","course_id":"course_demo","workspace_id":"ws_demo","scope":"wrong","question_count":2,"source":"provider","job_id":"job_demo","job":{"id":"job_demo","status":"queued","progress":0,"artifact_id":null,"mode":"quiz","error_code":null}}
 ```
 
-错误：401/403/404 鉴权与权限错误；409 assignment_not_ended、assignment_deadline_unknown、assignment_course_unavailable、assignment_content_not_current；422 assignment_images_require_text/assignment_content_too_large；503 MAGICCLASS_FUSION_UNAVAILABLE；其余受管权限、限流、幂等错误沿用[课堂契约](14-magicclass.md)。生成、轮询、重试和播放按上表执行。
+错误：401/403/404 鉴权与权限错误；409 assignment_not_ended、assignment_deadline_unknown、assignment_course_unavailable、assignment_content_not_current、assignment_results_unavailable、assignment_no_wrong_questions；422 assignment_images_require_text/assignment_content_too_large；503 MAGICCLASS_FUSION_UNAVAILABLE；其余受管权限、限流、幂等错误沿用[课堂契约](14-magicclass.md)。生成、轮询、重试和播放按上表执行。
 
 部署验收：先验证本人 login/status/sync 与题目快照，再检查 fusion/providers 的 providers.llm 及 fusion/status；覆盖截止前拒绝、截止后未提交允许、未知截止拒绝、补同步、首次生成、重复复用、失败重试、跨用户 404、自由选题/提示/跳过/解析/保存恢复。自动化测试不代替真实学习通页面与在线模型产物验收。配置和调度见[后端说明](../../backend/README.md#学习通每日同步与作业复习)。
 

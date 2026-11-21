@@ -15,6 +15,7 @@ vi.mock('@/lib/utils/model-config', () => ({
 }));
 
 import {
+  CLASSROOM_TOKEN_BUDGET,
   classmateRequestBody,
   requestClassmateParticipation,
   useClassmateParticipation,
@@ -48,9 +49,11 @@ const successful = (a = 'Why halves?', b = 'Try dividing a cake.') =>
         { agentId: 'curious', text: a },
         { agentId: 'practical', text: b },
       ],
+      routed: { selected: ['curious', 'practical'], needs: 0.8, by: 'router' },
     }),
     { status: 200 },
   );
+const quiet = () => new Response(JSON.stringify({ success: true, messages: [] }), { status: 200 });
 
 describe('classmate participation', () => {
   let root: Root;
@@ -75,6 +78,7 @@ describe('classmate participation', () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
+    localStorage.clear();
     container = document.createElement('div');
     document.body.append(container);
     root = createRoot(container);
@@ -192,20 +196,34 @@ describe('classmate participation', () => {
     expect(output).toMatchObject({ status: 'idle', messages: {} });
   });
 
-  it.each(
+  it('accepts a page where only one classmate speaks', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ success: true, messages: [{ agentId: 'curious', text: 'Why halves?' }] }),
+        { status: 200 },
+      ),
+    );
+    props = { ...props, started: true };
+    await render();
+    expect(output).toMatchObject({ status: 'ready', messages: { curious: 'Why halves?' } });
+    expect(output.messages.practical).toBeUndefined();
+  });
+
+  it('accepts a page that needs nobody', async () => {
+    fetchMock.mockResolvedValue(quiet());
+    props = { ...props, started: true };
+    await render();
+    expect(output).toMatchObject({ status: 'ready', messages: {} });
+  });
+
+  it.each([
+    [{ agentId: 'unknown', text: 'Wrong person' }],
     [
-      [{ agentId: 'unknown', text: 'Wrong person' }],
-      [
-        { agentId: 'curious', text: 'Same' },
-        { agentId: 'curious', text: 'Duplicate' },
-      ],
-      [{ agentId: 'curious', text: 'Only one' }],
-      [
-        { agentId: 'curious', text: ' ' },
-        { agentId: 'practical', text: 'Example' },
-      ],
-    ].map((messages) => ({ messages })),
-  )('rejects incomplete or misattributed output: %j', async ({ messages }) => {
+      { agentId: 'curious', text: 'Same' },
+      { agentId: 'curious', text: 'Duplicate' },
+    ],
+    [{ agentId: 'curious', text: ' ' }],
+  ])('rejects misattributed output without inventing it: %j', async (messages) => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({ success: true, messages }), { status: 200 }),
     );
@@ -215,5 +233,120 @@ describe('classmate participation', () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow(/classmate response/);
+  });
+
+  it('carries what the class already said into the next page in this browser', async () => {
+    fetchMock.mockResolvedValueOnce(successful());
+    fetchMock.mockResolvedValueOnce(successful('Second page question', 'Second page example'));
+    props = { ...props, started: true };
+    await render();
+    props = { ...props, scene: { ...scene, id: 'page-b', title: 'Decimals' } as Scene };
+    await render();
+    const sent = JSON.parse(String(fetchMock.mock.calls[1][1]?.body)) as {
+      memory?: { pages: string[]; lines: { agentId: string }[]; recentAgentIds: string[] };
+    };
+    expect(sent.memory?.pages).toEqual(['Fractions']);
+    expect(sent.memory?.lines.map((line) => line.agentId)).toEqual(['curious', 'practical']);
+    expect(sent.memory?.recentAgentIds).toEqual(['curious', 'practical']);
+    const stored = JSON.parse(String(localStorage.getItem('maic:classmate-memory:course-a')));
+    expect(stored.lines).toHaveLength(4);
+    expect(stored.pages).toEqual(['Fractions', 'Decimals']);
+  });
+
+  it('restores continuity memory when the classroom is reopened', async () => {
+    localStorage.setItem(
+      'maic:classmate-memory:course-a',
+      JSON.stringify({
+        pages: ['Fractions'],
+        lines: [{ agentId: 'curious', text: 'Why halves?' }],
+        recentAgentIds: ['curious'],
+      }),
+    );
+    fetchMock.mockResolvedValue(quiet());
+    props = { ...props, started: true };
+    await render();
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
+      memory?: { pages: string[] };
+    };
+    expect(sent.memory?.pages).toEqual(['Fractions']);
+  });
+
+  it('asks one classmate directly, remembers the answer and counts its tokens', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          message: { agentId: 'curious', text: 'Because the cake splits into halves.' },
+          usage: { tokens: 700 },
+        }),
+        { status: 200 },
+      ),
+    );
+    await render();
+    let answer = '';
+    await act(async () => {
+      answer = await output.ask('curious', '  Why halves?  ');
+    });
+    expect(answer).toBe('Because the cake splits into halves.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/chat/classmates/ask');
+    const sent = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)) as {
+      question: string;
+      agents: AgentConfig[];
+    };
+    expect(sent.question).toBe('Why halves?');
+    expect(sent.agents.map((agent) => agent.id)).toEqual(['curious']);
+    expect(localStorage.getItem('maic:classmate-usage:course-a')).toBe('700');
+    const memory = JSON.parse(String(localStorage.getItem('maic:classmate-memory:course-a'))) as {
+      lines: { agentId: string; text: string }[];
+    };
+    expect(memory.lines).toEqual([
+      { agentId: 'curious', text: 'Because the cake splits into halves.' },
+    ]);
+  });
+
+  it('refuses to ask a teacher or an unknown person, and surfaces a failed answer', async () => {
+    await render();
+    await expect(output.ask('teacher', 'Why?')).rejects.toThrow(/Unknown classmate/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: 'provider down' }), { status: 502 }),
+    );
+    await expect(output.ask('curious', 'Why?')).rejects.toThrow(/provider down/);
+  });
+
+  it('stops automatic reactions once the course budget is spent', async () => {
+    localStorage.setItem('maic:classmate-usage:course-a', String(CLASSROOM_TOKEN_BUDGET));
+    fetchMock.mockResolvedValue(successful());
+    props = { ...props, started: true };
+    await render();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(output.budgetLimited).toBe(true);
+    expect(output.status).toBe('idle');
+    await expect(output.ask('curious', 'Why?')).rejects.toThrow(/budget/);
+
+    props = { ...props, scene: { ...scene, id: 'page-b', title: 'Decimals' } as Scene };
+    await render();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('crosses the budget in the middle of a lesson and stops the next page', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          messages: [{ agentId: 'curious', text: 'Why halves?' }],
+          usage: { tokens: CLASSROOM_TOKEN_BUDGET },
+        }),
+        { status: 200 },
+      ),
+    );
+    props = { ...props, started: true };
+    await render();
+    expect(output.status).toBe('ready');
+    expect(output.budgetLimited).toBe(true);
+    props = { ...props, scene: { ...scene, id: 'page-b', title: 'Decimals' } as Scene };
+    await render();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

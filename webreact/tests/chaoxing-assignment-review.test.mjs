@@ -63,6 +63,42 @@ test("submitted work resumes a failed job and opens its lesson in playback", asy
   } finally { await view.close(); }
 });
 
+test("graded wrong questions offer a transfer-only lesson scoped to wrong items", async () => {
+  const calls = [];
+  globalThis.__homeworkApi = {
+    getChaoxingAssignmentContent: async () => ({
+      available: true, current: true, can_generate: true, can_generate_wrong: true,
+      results_available: true, results_complete: true, graded_count: 1, wrong_count: 2, questions,
+    }),
+    generateChaoxingAssignmentClassroom: async (id, options) => {
+      calls.push([id, options]);
+      return { course_id: "course", workspace_id: "wrong-review", job: { id: "job", status: "completed" } };
+    },
+  };
+  const view = await mount("completed");
+  try {
+    assert.match(view.host.textContent, /错题 2 道/);
+    await act(async () => button(view.host, "生成错题讲解").click());
+    assert.deepEqual(calls, [["work", { scope: "wrong" }]]);
+    await act(async () => button(view.host, "进入课堂学习").click());
+    assert.equal(view.host.querySelector("output").textContent, "/courses/course/workspaces/wrong-review?mode=playback");
+  } finally { await view.close(); }
+});
+
+test("all-correct work reports no wrong questions and hides the wrong-lesson button", async () => {
+  globalThis.__homeworkApi = {
+    getChaoxingAssignmentContent: async () => ({
+      available: true, current: true, can_generate: true, can_generate_wrong: false,
+      results_available: true, results_complete: true, graded_count: 1, wrong_count: 0, questions,
+    }),
+  };
+  const view = await mount("completed");
+  try {
+    assert.match(view.host.textContent, /全部正确/);
+    assert.equal(button(view.host, "生成错题讲解"), undefined);
+  } finally { await view.close(); }
+});
+
 test("missing submitted question snapshot gives a useful error and permits synchronization", async () => {
   let synced = 0;
   globalThis.__homeworkApi = {

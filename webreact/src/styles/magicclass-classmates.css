@@ -1,0 +1,358 @@
+/* 原生课堂的同学条：深绿身份 + 米白气泡，固定在画布左上，不抢幻灯片。 */
+.nc-root {
+  --nc-ink: #153b34;
+  --nc-amber: #dab27a;
+  --nc-copper: #ad6845;
+  --nc-cream: #fbf9f1;
+  --nc-line: #e4dfce;
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 29;
+  max-width: min(300px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.nc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(21, 59, 52, 0.18);
+  background: rgba(251, 249, 241, 0.94);
+  color: var(--nc-ink);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(21, 59, 52, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.nc-toggle:focus-visible {
+  outline: 2px solid var(--nc-amber);
+  outline-offset: 2px;
+}
+
+.nc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nc-copper);
+}
+
+.nc-dot.is-thinking {
+  animation: nc-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes nc-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.nc-budget {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(218, 178, 122, 0.18);
+  color: #7a5228;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nc-preview {
+  max-width: 260px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: rgba(251, 249, 241, 0.92);
+  border: 1px solid var(--nc-line);
+  font-size: 11px;
+  color: #42524b;
+  display: grid;
+  gap: 1px;
+  box-shadow: 0 4px 12px rgba(21, 59, 52, 0.08);
+}
+
+.nc-preview strong {
+  color: var(--nc-ink);
+  font-size: 10px;
+}
+
+.nc-preview span {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.nc-panel {
+  width: 280px;
+  max-height: min(460px, 72vh);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid var(--nc-line);
+  background: var(--nc-cream);
+  padding: 12px;
+  box-shadow: 0 18px 40px rgba(21, 59, 52, 0.2);
+  display: grid;
+  gap: 10px;
+  color: #22332d;
+}
+
+.nc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.nc-head strong {
+  display: block;
+  font-size: 14px;
+  color: var(--nc-ink);
+}
+
+.nc-head span {
+  font-size: 10px;
+  color: #6c7a72;
+}
+
+.nc-close {
+  border: none;
+  background: transparent;
+  color: #6c7a72;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.nc-close:hover {
+  background: rgba(21, 59, 52, 0.08);
+}
+
+.nc-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.nc-avatar {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  border: 1px solid var(--nc-line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: #6c7a72;
+}
+
+.nc-avatar span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(21, 59, 52, 0.08);
+  color: var(--nc-ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.nc-avatar small {
+  font-size: 10px;
+}
+
+.nc-avatar.is-selected {
+  border-color: var(--nc-copper);
+  box-shadow: 0 0 0 2px rgba(173, 104, 69, 0.18);
+  color: var(--nc-copper);
+}
+
+.nc-avatar.is-selected span {
+  background: var(--nc-copper);
+  color: #fff7ee;
+}
+
+.nc-empty {
+  font-size: 11px;
+  color: #6c7a72;
+}
+
+.nc-feed {
+  display: grid;
+  gap: 6px;
+}
+
+.nc-status {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #6c7a72;
+}
+
+.nc-bubble {
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--nc-line);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.nc-bubble__name {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--nc-copper);
+  margin-bottom: 2px;
+}
+
+.nc-bubble p {
+  margin: 0;
+}
+
+.nc-error {
+  margin: 0;
+  font-size: 11px;
+  color: #a6402f;
+}
+
+.nc-error p {
+  margin: 0 0 4px;
+}
+
+.nc-error button {
+  border: 1px solid rgba(166, 64, 47, 0.35);
+  background: transparent;
+  color: #a6402f;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.nc-ask {
+  display: flex;
+  gap: 6px;
+}
+
+.nc-ask label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nc-ask input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--nc-line);
+  background: #fff;
+  font-size: 11px;
+}
+
+.nc-ask input:focus-visible {
+  outline: 2px solid var(--nc-amber);
+  outline-offset: 1px;
+}
+
+.nc-ask button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: none;
+  background: var(--nc-copper);
+  color: #fff7ee;
+  cursor: pointer;
+}
+
+.nc-ask button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nc-hint {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #8a9690;
+}
+
+@media (max-width: 640px) {
+  .nc-root {
+    top: 6px;
+    left: 6px;
+    max-width: calc(100% - 12px);
+  }
+
+  .nc-panel {
+    width: min(280px, calc(100vw - 24px));
+    max-height: 60vh;
+  }
+
+  .nc-preview {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nc-dot.is-thinking {
+    animation: none;
+  }
+}
+
+/* 收起态不再是一个“用户图标 + 同学”，而是能看见四人小队的冒险编队。 */
+.nc-squad {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 2px;
+}
+
+.nc-squad i {
+  width: 18px;
+  height: 18px;
+  margin-left: -5px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(251, 249, 241, 0.8);
+  background: #153b34;
+  color: #fbf9f1;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.nc-squad i:nth-child(2) { background: #ad6845; }
+.nc-squad i:nth-child(3) { background: #dab27a; color: #153b34; }
+.nc-squad i:nth-child(4) { background: #6c7a72; }
+
+.nc-squad i:first-child {
+  margin-left: 0;
+}
+
+.nc-online {
+  color: #8a9690;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .nc-online {
+    display: none;
+  }
+}

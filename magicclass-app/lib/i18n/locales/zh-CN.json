@@ -720,7 +720,14 @@
       "discussionPending": "待发起讨论",
       "loading": "正在准备课堂发言…",
       "idle": "正在跟随课堂学习",
-      "error": "同学发言加载失败"
+      "error": "同学发言加载失败",
+      "ask": "提问",
+      "askSubmit": "发送",
+      "askPlaceholder": "向这位同学提问…",
+      "askLoading": "正在回答…",
+      "askError": "同学没能回答，请重试。",
+      "quiet": "这次先听大家说",
+      "budget": "本课的同学发言额度已用完"
     },
     "teacher": "教师",
     "you": "你",

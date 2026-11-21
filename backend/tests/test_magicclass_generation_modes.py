@@ -105,6 +105,15 @@ def test_requirement_states_final_composition_is_decided_by_generator():
         assert "不保证包含某一种特定形式" in req, f"{mode} 缺少『不保证』声明"
 
 
+def test_requirement_pins_the_campus_visual_palette():
+    """讲义模板必须跟随全局配色，避免生成器默认白底灰黑或紫蓝渐变。"""
+    for mode in CANONICAL_MODES:
+        req = build_requirement(course_context="[课程] 高等数学", mode=mode)
+        for token in ("#153B34", "#F2F1E8", "#DAB27A", "#AD6845"):
+            assert token in req, f"{mode} 模板缺少全局配色 {token}"
+        assert "视觉模板" in req and "不是学科模板" in req
+
+
 def test_requirement_does_not_ask_for_nonexistent_scene_types():
     """magicclass 的场景类型只有 slide/quiz/interactive/pbl。
 

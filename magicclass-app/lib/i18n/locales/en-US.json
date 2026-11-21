@@ -720,7 +720,14 @@
       "discussionPending": "Discussion pending",
       "loading": "Preparing a reaction...",
       "idle": "Following this lesson",
-      "error": "Could not load classmate reactions"
+      "error": "Could not load classmate reactions",
+      "ask": "Ask",
+      "askSubmit": "Ask",
+      "askPlaceholder": "Ask this classmate a question…",
+      "askLoading": "Answering…",
+      "askError": "The classmate could not answer. Try again.",
+      "quiet": "Listening this time",
+      "budget": "This lesson's class participation budget is used up"
     },
     "teacher": "TEACHER",
     "you": "YOU",

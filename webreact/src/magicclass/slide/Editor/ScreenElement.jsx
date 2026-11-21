@@ -27,11 +27,17 @@ import { BaseTableElement } from '../components/element/TableElement/BaseTableEl
 import { BaseVideoElement } from '../components/element/VideoElement/BaseVideoElement.jsx';
 import { BaseCodeElement } from '../components/element/CodeElement/BaseCodeElement.jsx';
 import { useSceneSelector } from '../_compat/scene-context.js';
-import { magicClassElementIdAttributes, screenElementDomId } from '../_compat/element-dom.js';
+import {
+  magicClassElementIdAttributes,
+  SCREEN_ELEMENT_ID_PREFIX,
+} from '../_compat/element-dom.js';
 
 export function ScreenElement({
   elementInfo,
   elementIndex,
+  // 同一张画布会被主舞台和侧栏缩略图同时渲染；DOM id 必须按宿主分配前缀，
+  // 否则 `getElementById` 只会命中先出现的缩略图，聚光灯会聚焦到错误坐标。
+  elementIdPrefix = SCREEN_ELEMENT_ID_PREFIX,
   animate,
   renderImage,
   renderVideo,
@@ -78,7 +84,7 @@ export function ScreenElement({
   return (
     <div
       className="screen-element"
-      id={screenElementDomId(elementInfo.id)}
+      id={`${elementIdPrefix}${elementInfo.id}`}
       {...magicClassElementIdAttributes(elementInfo.id)}
       style={{
         zIndex: elementIndex,

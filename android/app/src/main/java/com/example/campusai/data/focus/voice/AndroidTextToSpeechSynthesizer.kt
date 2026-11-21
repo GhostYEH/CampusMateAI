@@ -9,63 +9,79 @@ import java.util.Locale
 import java.util.UUID
 
 class AndroidTextToSpeechSynthesizer(context: Context) : FocusSpeechSynthesizer {
-    @Volatile private var ready = false
-    @Volatile private var closed = false
-    @Volatile private var pending: Triple<String, () -> Unit, (String) -> Unit>? = null
-    private var onDone: (() -> Unit)? = null
-    private var onError: ((String) -> Unit)? = null
-    private lateinit var tts: TextToSpeech
+    private enum class EngineState { INITIALIZING, READY, UNAVAILABLE, CLOSED }
 
-    init {
-        tts = TextToSpeech(context.applicationContext) { status ->
-            ready = status == TextToSpeech.SUCCESS
-            Handler(Looper.getMainLooper()).post {
-                if (!closed) {
-                    val waiting = pending
-                    pending = null
-                    if (waiting != null) {
-                        if (ready) speak(waiting.first, waiting.second, waiting.third)
-                        else waiting.third("系统语音朗读暂不可用")
-                    }
-                }
+    private class SpeechRequest(
+        val text: String,
+        val onDone: () -> Unit,
+        val onError: (String) -> Unit,
+        val id: String = UUID.randomUUID().toString(),
+    )
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var state = EngineState.INITIALIZING
+    private var pending: SpeechRequest? = null
+    private var speaking: SpeechRequest? = null
+
+    private val tts = TextToSpeech(context.applicationContext) { status ->
+        mainHandler.post {
+            if (state != EngineState.CLOSED) {
+                state = if (status == TextToSpeech.SUCCESS) EngineState.READY else EngineState.UNAVAILABLE
+                val request = pending
+                pending = null
+                if (request != null) submit(request)
             }
-        }.apply {
-            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String) = Unit
-                override fun onDone(utteranceId: String) { this@AndroidTextToSpeechSynthesizer.onDone?.invoke() }
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String) { this@AndroidTextToSpeechSynthesizer.onError?.invoke("系统语音朗读失败") }
-                override fun onError(utteranceId: String, errorCode: Int) { this@AndroidTextToSpeechSynthesizer.onError?.invoke("系统语音朗读失败") }
-            })
         }
+    }.apply {
+        setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String) = Unit
+            override fun onDone(utteranceId: String) = finish(utteranceId)
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String) = finish(utteranceId, "系统语音朗读失败")
+            override fun onError(utteranceId: String, errorCode: Int) = finish(utteranceId, "系统语音朗读失败")
+            override fun onStop(utteranceId: String, interrupted: Boolean) = finish(utteranceId, "系统语音朗读已中断")
+        })
     }
 
     override fun speak(text: String, onDone: () -> Unit, onError: (String) -> Unit) {
-        if (!ready) {
-            if (closed) onError("系统语音朗读暂不可用")
-            else pending = Triple(text, onDone, onError)
+        submit(SpeechRequest(text, onDone, onError))
+    }
+
+    private fun submit(request: SpeechRequest) {
+        if (state == EngineState.INITIALIZING) {
+            pending = request
+            return
+        }
+        if (state != EngineState.READY) {
+            request.onError("系统语音朗读暂不可用")
             return
         }
         if (tts.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE) >= TextToSpeech.LANG_AVAILABLE) {
             tts.language = Locale.SIMPLIFIED_CHINESE
         }
-        this.onDone = onDone
-        this.onError = onError
-        val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
-        if (result == TextToSpeech.ERROR) onError("系统语音朗读暂不可用")
+        speaking = request
+        if (tts.speak(request.text, TextToSpeech.QUEUE_FLUSH, null, request.id) == TextToSpeech.ERROR) {
+            finish(request.id, "系统语音朗读暂不可用")
+        }
+    }
+
+    private fun finish(id: String, error: String? = null) {
+        mainHandler.post {
+            val request = speaking?.takeIf { it.id == id } ?: return@post
+            speaking = null
+            if (error == null) request.onDone() else request.onError(error)
+        }
     }
 
     override fun stop() {
         pending = null
+        speaking = null
         tts.stop()
-        onDone = null
-        onError = null
     }
 
     override fun shutdown() {
-        closed = true
+        state = EngineState.CLOSED
         stop()
         tts.shutdown()
-        ready = false
     }
 }

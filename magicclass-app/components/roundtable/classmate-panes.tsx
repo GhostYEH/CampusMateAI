@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, MessageCircle, Send } from 'lucide-react';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import { Button } from '@/components/ui/button';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
@@ -15,6 +15,10 @@ export interface ClassmateParticipation {
   status: 'idle' | 'loading' | 'ready' | 'error';
   error: string | null;
   retry: () => void;
+  /** Ask one named classmate directly; the answer is page-scoped. */
+  ask?: (agentId: string, question: string) => Promise<string>;
+  /** The course-level class participation budget is spent: no new reactions or answers. */
+  budgetLimited?: boolean;
 }
 
 /** Keep each speaker's last live turn for this page, independently of automatic reactions. */
@@ -77,6 +81,37 @@ export function ClassmatePanes({
 }) {
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [askFor, setAskFor] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [asked, setAsked] = useState<Record<string, string>>({});
+  const [asking, setAsking] = useState<
+    Record<string, { status: 'loading' | 'error'; error?: string }>
+  >({});
+
+  const submitQuestion = async (agentId: string) => {
+    const question = draft.trim();
+    if (!participation?.ask || !question) return;
+    setAsking((state) => ({ ...state, [agentId]: { status: 'loading' } }));
+    try {
+      const answer = await participation.ask(agentId, question);
+      setAsked((state) => ({ ...state, [agentId]: answer }));
+      setAsking((state) => {
+        const next = { ...state };
+        delete next[agentId];
+        return next;
+      });
+      setAskFor(null);
+      setDraft('');
+    } catch (error) {
+      setAsking((state) => ({
+        ...state,
+        [agentId]: {
+          status: 'error',
+          error: error instanceof Error ? error.message : undefined,
+        },
+      }));
+    }
+  };
   const agents = useAgentRegistry((state) => state.agents);
   const classmates = participants.filter((p) => p.role !== 'teacher' && p.role !== 'user');
   useEffect(() => {
@@ -122,7 +157,11 @@ export function ClassmatePanes({
             participation && Object.hasOwn(participation.messages, classmate.id)
               ? participation.messages[classmate.id]
               : undefined;
-          const text = liveText || generatedText;
+          const answerText = Object.hasOwn(asked, classmate.id) ? asked[classmate.id] : undefined;
+          const askState = Object.hasOwn(asking, classmate.id)
+            ? asking[classmate.id].status
+            : undefined;
+          const text = answerText || liveText || generatedText;
           const speaking = speakingAgentId === classmate.id;
           const discussion = discussionAgentId === classmate.id;
           const config = agents[classmate.id];
@@ -206,6 +245,30 @@ export function ClassmatePanes({
                     {t('roundtable.classmates.speaking')}
                   </span>
                 )}
+                {participation?.ask && !participation.budgetLimited && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    data-classmate-ask={classmate.id}
+                    aria-label={`${t('roundtable.classmates.ask')}: ${classmate.name}`}
+                    aria-expanded={askFor === classmate.id}
+                    disabled={askState === 'loading'}
+                    onClick={() => {
+                      setAskFor(askFor === classmate.id ? null : classmate.id);
+                      setDraft('');
+                      setAsking((state) => {
+                        if (!Object.hasOwn(state, classmate.id)) return state;
+                        const next = { ...state };
+                        delete next[classmate.id];
+                        return next;
+                      });
+                    }}
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </header>
               <div
                 data-classmate-speech
@@ -213,6 +276,11 @@ export function ClassmatePanes({
               >
                 {text ? (
                   <p className="whitespace-pre-wrap break-words">{text}</p>
+                ) : askState === 'loading' ? (
+                  <p role="status" className="flex items-center gap-1 text-muted-foreground">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {t('roundtable.classmates.askLoading')}
+                  </p>
                 ) : loading ? (
                   <p role="status" className="flex items-center gap-1 text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -233,10 +301,47 @@ export function ClassmatePanes({
                       {t('common.retry')}
                     </Button>
                   </div>
+                ) : participation?.status === 'ready' ? (
+                  <p className="text-muted-foreground">{t('roundtable.classmates.quiet')}</p>
                 ) : (
                   <p className="text-muted-foreground">{t('roundtable.classmates.idle')}</p>
                 )}
               </div>
+              {askFor === classmate.id && participation?.ask && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitQuestion(classmate.id);
+                  }}
+                  className="mt-2 flex shrink-0 items-center gap-1"
+                >
+                  <input
+                    autoFocus
+                    value={draft}
+                    maxLength={600}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder={t('roundtable.classmates.askPlaceholder')}
+                    aria-label={`${t('roundtable.classmates.askPlaceholder')} ${classmate.name}`}
+                    data-classmate-ask-input={classmate.id}
+                    className="h-6 min-w-0 flex-1 rounded-md border border-border/60 bg-background px-1.5 text-[12px] outline-none focus-visible:border-primary/50"
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    data-classmate-ask-submit={classmate.id}
+                    aria-label={t('roundtable.classmates.askSubmit')}
+                    disabled={!draft.trim() || askState === 'loading'}
+                    className="h-6 w-6 shrink-0"
+                  >
+                    <Send className="h-3 w-3" />
+                  </Button>
+                </form>
+              )}
+              {askState === 'error' && (
+                <p role="alert" className="mt-1 shrink-0 text-[11px] leading-4 text-destructive">
+                  {asking[classmate.id]?.error || t('roundtable.classmates.askError')}
+                </p>
+              )}
             </article>
           );
         })}
@@ -271,6 +376,12 @@ export function ClassmatePanes({
             )}
           </Button>
         ))}
+
+      {participation?.budgetLimited && (
+        <p role="status" className="px-1 pt-1 text-[11px] leading-4 text-muted-foreground">
+          {t('roundtable.classmates.budget')}
+        </p>
+      )}
     </section>
   );
 }

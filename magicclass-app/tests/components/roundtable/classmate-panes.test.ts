@@ -21,6 +21,13 @@ vi.mock('@/lib/hooks/use-i18n', () => ({
         'roundtable.classmates.previous': 'Previous classmates',
         'roundtable.classmates.next': 'Next classmates',
         'roundtable.classmates.discussionPending': 'Discussion pending',
+        'roundtable.classmates.ask': 'Ask',
+        'roundtable.classmates.askSubmit': 'Send',
+        'roundtable.classmates.askPlaceholder': 'Ask this classmate a question',
+        'roundtable.classmates.askLoading': 'Answering...',
+        'roundtable.classmates.askError': 'The classmate could not answer. Try again.',
+        'roundtable.classmates.quiet': 'Listening this time',
+        'roundtable.classmates.budget': 'Class participation budget reached',
         'settings.agentDescriptions.curious': 'Asks why and how',
       })[key] || key,
   }),
@@ -191,6 +198,45 @@ describe('independent classmate panes', () => {
     for (const id of ids) {
       expect(pane(id)?.textContent).toContain(`${id} reaction`);
     }
+  });
+
+  it('says a quiet classmate is listening instead of inventing a reaction', () => {
+    act(() => root.render(createElement(Classroom, { participation: { ...ready, messages: {} } })));
+    expect(pane('curious')?.textContent).toContain('Listening this time');
+    expect(pane('curious')?.textContent).not.toContain('Following this lesson');
+  });
+
+  it('lets the student ask a named classmate and shows only their answer', async () => {
+    const ask = vi.fn(async () => 'Gravity pulls it down.');
+    const participation: ClassmateParticipation = { ...ready, messages: {}, ask };
+    act(() => root.render(createElement(Classroom, { participation })));
+    const open = container.querySelector<HTMLButtonElement>('[data-classmate-ask="curious"]')!;
+    act(() => open.click());
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-classmate-ask-input="curious"]',
+    )!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    act(() => {
+      setValue.call(input, 'Why does it fall?');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const submit = container.querySelector<HTMLButtonElement>(
+      '[data-classmate-ask-submit="curious"]',
+    )!;
+    await act(async () => {
+      submit.click();
+    });
+    expect(ask).toHaveBeenCalledWith('curious', 'Why does it fall?');
+    expect(pane('curious')?.textContent).toContain('Gravity pulls it down.');
+    expect(pane('practical')?.textContent).toContain('Listening this time');
+  });
+
+  it('hides asking and shows a notice when the course budget is spent', () => {
+    act(() =>
+      root.render(createElement(Classroom, { participation: { ...ready, budgetLimited: true } })),
+    );
+    expect(container.querySelector('[data-classmate-ask]')).toBeNull();
+    expect(container.textContent).toContain('Class participation budget reached');
   });
 
   it('shows loading, the real error and a working retry without invented speech', () => {

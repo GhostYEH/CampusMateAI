@@ -4,7 +4,7 @@
 
 [文档导航](README.md)
 
-作业复习列表使用 getTasks 不传 status，分页筛选已截止的学习通作业（包含未提交）；生成返回 quiz 模式。主课堂和旧播放器按 learningProfile=assignment_review 提供自由选题、递进提示和按需解析。完整契约见[作业自主练习](09-integrations.md#assignment-review-flow)。
+作业复习列表使用 getTasks 不传 status，分页筛选已截止的学习通作业（包含未提交）；生成返回 quiz 模式。作业详情面板读取内容快照中的 `wrong_count/graded_count/results_available/results_complete`，全部题目复习保留原题重做，错题复习以 `scope=wrong` 只生成变式。主课堂和旧播放器按 learningProfile=assignment_review 提供自由选题、递进提示和按需解析。完整契约见[作业自主练习](09-integrations.md#assignment-review-flow)。
 
 ## Web 路由
 
@@ -216,7 +216,7 @@
 | [webreact/src/data/api.js:427](../../webreact/src/data/api.js) | synthesizeMagicClassSceneNarration | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/data/api.js:436](../../webreact/src/data/api.js) | getMagicClassArtifact | GET | `/courses/{courseId}/artifacts/{artifactId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/data/api.js:445](../../webreact/src/data/api.js) | enqueueMagicClassStageVideo | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/export/video` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
-| [webreact/src/data/api.js:453](../../webreact/src/data/api.js) | addMagicClassWhiteboard | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | 未匹配，见下一节 |
+| [webreact/src/data/api.js:453](../../webreact/src/data/api.js) | addMagicClassWhiteboard | POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/data/api.js:466](../../webreact/src/data/api.js) | listMagicClassFolders | GET | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/data/api.js:474](../../webreact/src/data/api.js) | createMagicClassFolder | POST | `/courses/{courseId}/folders` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
 | [webreact/src/data/api.js:486](../../webreact/src/data/api.js) | updateMagicClassFolder | PATCH | `/courses/{courseId}/folders/{folderId}` | [课程互动课堂、受管工作台与学习空间入口](14-magicclass.md) |
@@ -303,16 +303,15 @@
 | GET | `/activities/{id}/registration` | getActivityRegistration | 旧活动封装；后端未注册活动接口 |
 | POST | `/activities/{id}/registration` | registerActivity | 旧活动封装；后端未注册活动接口 |
 | DELETE | `/activities/{id}/registration` | cancelActivityRegistration | 旧活动封装；后端未注册活动接口 |
-| POST | `/courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/whiteboard` | addMagicClassWhiteboard | 受管服务有内部实现，但 CampusMate 网关未注册该公开路径；新前端不能直接调用内部服务 |
 | POST | `/api/quiz-grade` | gradeShortAnswerQuestion | magicclass 源码保留的独立上游路径；不是本站 /api/v1 接口，本站测验使用[课程场景 quiz-attempt 契约](14-magicclass.md) |
 
-覆盖方式：340 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
+覆盖方式：356 个后端操作均单独列入模块手册；没有 Web 封装的接口也保留。调用清单通过字面量 HTTP 调用及 _get/_post/_put/_patch 封装核对，动态 fetch 的聊天、Agent SSE、音频请求由协议文档补充。独立学习空间在 iframe 内发往自己的 Origin，见 [学习空间 API](learning-space.md)，不能拼接本站 /api/v1。
 
 `POST /assistant/asr`（本地语音识别）当前没有 Web 封装；Web、HarmonyOS、微信小程序待适配。Android 与 iOS 已接入，均未完成真机录音验收，详见[语音输入契约](10-assistant-knowledge.md#post-apiv1assistantasr)。
 
 ## 动态地址与流式调用补充
 
-在线课堂首页和学习空间侧栏的“已提交作业”使用既有 `getTasks({status:"completed",page,page_size:200})`，按 has_more 读取所有页后筛选 source=chaoxing；点击复用 `generateChaoxingAssignmentClassroom`，题目未就绪时调用一次 `syncChaoxing`，已有失败/取消任务通过 `retryMagicClassJob` 恢复，再用 `getMagicClassJob` 轮询，completed 后跳转工作台播放。编排在 [assignmentReviewModel.js](../../webreact/src/features/magicclass/assignmentReviewModel.js)，展示在 [SubmittedAssignmentReviews.jsx](../../webreact/src/components/SubmittedAssignmentReviews.jsx)；后端协议与错误恢复见[作业复习接入](09-integrations.md#assignment-review-flow)。这是已有接口的组合调用，不是新增独立学习空间 iframe API。
+在线课堂首页和学习空间侧栏的“已截止作业”使用既有 `getTasks({page,page_size:200})` 不传 status，按 has_more 读取所有页后筛选 source=chaoxing、有效 deadline 已到期的 pending/completed；作业详情面板读取 `getChaoxingAssignmentContent`，有错题时额外提供“生成错题讲解（只出变式）”，以 `scope=wrong` 复用同一 `generateChaoxingAssignmentClassroom`。题目未就绪时调用一次 `syncChaoxing`，已有失败/取消任务通过 `retryMagicClassJob` 恢复，再用 `getMagicClassJob` 轮询，completed 后跳转工作台播放。编排在 [assignmentReviewModel.js](../../webreact/src/features/magicclass/assignmentReviewModel.js)，展示在 [SubmittedAssignmentReviews.jsx](../../webreact/src/components/SubmittedAssignmentReviews.jsx) 和 [ChaoxingAssignmentPanel.jsx](../../webreact/src/components/ChaoxingAssignmentPanel.jsx)；后端协议与错误恢复见[作业复习接入](09-integrations.md#assignment-review-flow)。这是已有接口的组合调用，不是新增独立学习空间 iframe API。
 
 以下请求的地址由返回字段或局部变量构造，不能仅靠字面量列表覆盖。
 

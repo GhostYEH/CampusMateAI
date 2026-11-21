@@ -14,7 +14,7 @@ from app.services.chaoxing.assignment_content import (
     parse_assignment_questions,
 )
 from app.services.chaoxing.assignment_sync import sync_assignment_contents
-from app.services.chaoxing.ChaoxingClient import ChaoxingFetchError
+from app.services.chaoxing.ChaoxingClient import ChaoxingClient, ChaoxingFetchError
 from app.services.chaoxing.daily_sync import ChaoxingDailySyncWorker
 from app.services.magicclass.fusion_client import MagicClassFusionClient
 from test_magicclass_workspaces import _setup
@@ -23,6 +23,7 @@ QUESTIONS = [
     {"number": 1, "stem": "当x=2时，x+1是多少？", "options": ["A. 2", "B. 3", "C. 4"]}
 ]
 WORK_URL = "https://mooc1.chaoxing.com/mooc-ans/work/view?workId=1"
+TASK_URL = "https://mooc1-api.chaoxing.com/task?taskrefId=1&courseId=3&classId=4"
 
 
 @pytest.fixture
@@ -36,6 +37,172 @@ def repository():
             )
     yield ChaoxingRepository(db)
     db.dispose()
+
+
+def test_parser_reads_graded_result_markers_without_student_answers():
+    html = """<div class="TiMu"><div class="Zy_TItle"><div class="clearfix">1. 当x=2时，x+1是多少？</div></div>
+    <ul class="Zy_ulTop"><li class="dui">A. 3</li><li>B. 2</li></ul></div>
+    <div class="TiMu"><div class="Zy_TItle"><div class="clearfix">2. 2+2等于几？</div></div>
+    <ul class="Zy_ulTop"><li class="cuo">A. 3</li><li class="dui">B. 4</li></ul></div>
+    <div class="TiMu"><div class="Zy_TItle"><div class="clearfix">3. 尚未批阅的题</div></div>
+    <ul class="Zy_ulTop"><li>A. 1</li><li>B. 2</li></ul></div>"""
+    questions = parse_assignment_questions(html, include_results=True)
+    assert [q["is_correct"] for q in questions] == [True, False, None]
+    assert "我的答案" not in str(questions)
+    assert all("is_correct" not in q for q in parse_assignment_questions(html))
+
+
+@pytest.mark.asyncio
+async def test_fetch_accepts_task_feed_url_without_redirecting():
+    """The global work feed exposes /task?taskrefId=... links.
+
+    The content crawler and the feed parser used to validate different URL
+    shapes, so a real feed link was rejected before any question was read.
+    """
+
+    def respond(request):
+        return httpx.Response(
+            200,
+            text="""<div class="questionLi"><div class="mark_name">1. 题干</div>
+            <ul class="mark_letter"><li>A. 选项一</li><li>B. 选项二</li></ul></div>""",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        result = await fetch_assignment_questions(
+            SimpleNamespace(client=http), TASK_URL
+        )
+    assert result == [{"number": 1, "stem": "1. 题干", "options": ["A. 选项一", "B. 选项二"]}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_task_feed_url_can_redirect_to_work_detail():
+    def respond(request):
+        if request.url.path == "/task":
+            return httpx.Response(
+                302, headers={"location": "/mooc-ans/work/view?workId=1&courseId=3&classId=4"}
+            )
+        return httpx.Response(
+            200,
+            text="""<div class="TiMu"><div class="Zy_TItle"><div class="clearfix">1. 题干</div></div>
+            <ul class="Zy_ulTop"><li>A. 选项一</li><li>B. 选项二</li></ul></div>""",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        result = await fetch_assignment_questions(
+            SimpleNamespace(client=http), TASK_URL
+        )
+    assert result[0]["stem"] == "1. 题干"
+    assert result[0]["options"] == ["A. 选项一", "B. 选项二"]
+
+
+@pytest.mark.asyncio
+async def test_feed_task_link_flows_into_assignment_content():
+    """A parsed /task feed item must be fetchable by the content crawler."""
+    feed_html = """
+    <li onclick="goTask()" data="/task?taskrefId=1&courseId=3&clazzId=4">
+        <div><p>作业一</p><span>未提交</span></div>
+    </li>
+    """
+    question_html = """<div class="TiMu"><div class="Zy_TItle"><div class="clearfix">1. 题干</div></div>
+    <ul class="Zy_ulTop"><li>A. 选项一</li><li>B. 选项二</li></ul></div>"""
+
+    client = ChaoxingClient()
+    seen = []
+
+    async def fake_get(url, **kwargs):
+        seen.append(str(url))
+        if str(url).endswith("/work/stu-work"):
+            return httpx.Response(
+                200, text=feed_html, request=httpx.Request("GET", url)
+            )
+        return httpx.Response(
+            200, text=question_html, request=httpx.Request("GET", url)
+        )
+
+    client.client.get = fake_get
+    try:
+        assignments = await client.get_all_assignments()
+        assert assignments[0]["link"].startswith(
+            "https://mooc1-api.chaoxing.com/task?"
+        )
+        questions = await fetch_assignment_questions(client, assignments[0]["link"])
+        assert questions == [
+            {"number": 1, "stem": "1. 题干", "options": ["A. 选项一", "B. 选项二"]}
+        ]
+        assert len(seen) == 2
+    finally:
+        await client.client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_results_uses_graded_report_page():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.path.endswith("/view"):
+            return httpx.Response(
+                200,
+                text='<input name="workId" value="1"><input name="workAnswerId" value="2"><input name="courseId" value="3"><input name="classId" value="4">',
+            )
+        return httpx.Response(
+            200,
+            text="""<div class="TiMu"><div class="Zy_TItle"><div class="clearfix">题干</div></div>
+            <ul class="Zy_ulTop"><li class="cuo">A. 错选</li><li class="dui">B. 正确</li></ul></div>""",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        result = await fetch_assignment_questions(
+            SimpleNamespace(client=http), WORK_URL, include_results=True
+        )
+    assert len(requests) == 2
+    assert "selectWorkQuestionYiPiYue" in str(requests[1].url)
+    assert result[0]["is_correct"] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_results_keeps_work_page_options_while_merging_report_flags():
+    def respond(request):
+        if request.url.path.endswith("/view"):
+            return httpx.Response(
+                200,
+                text="""<input name="workId" value="1"><input name="workAnswerId" value="2"><input name="courseId" value="3"><input name="classId" value="4">
+                <div class="questionLi"><div class="mark_name">1. 题干</div><ul class="mark_letter"><li>A. 选项一</li><li>B. 选项二</li></ul></div>""",
+            )
+        return httpx.Response(
+            200,
+            text="""<div class="TiMu"><div class="Zy_TItle"><div class="clearfix">1. 题干</div></div>
+            <span class="cuo">我的答案：A</span><span class="dui">正确答案：B</span></div>""",
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        result = await fetch_assignment_questions(
+            SimpleNamespace(client=http), WORK_URL, include_results=True
+        )
+    assert result[0]["options"] == ["A. 选项一", "B. 选项二"]
+    assert result[0]["is_correct"] is False
+
+
+@pytest.mark.asyncio
+async def test_fetch_with_results_falls_back_when_report_page_fails():
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        if request.url.path.endswith("/view"):
+            return httpx.Response(
+                200,
+                text='<input name="workId" value="1"><input name="workAnswerId" value="2"><input name="courseId" value="3"><input name="classId" value="4"><div class="questionLi"><div class="mark_name">题干</div></div>',
+            )
+        return httpx.Response(500, text="report unavailable")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        result = await fetch_assignment_questions(
+            SimpleNamespace(client=http), WORK_URL, include_results=True
+        )
+    assert len(requests) == 2
+    assert result[0]["stem"] == "题干"
+    assert "is_correct" not in result[0]
 
 
 def test_parser_preserves_option_text_and_math_without_student_answers_or_scripts():
@@ -129,9 +296,37 @@ async def test_content_failure_preserves_snapshot_and_recovers_on_submission(
     )
     await sync_assignment_contents(repository, state, batches)
     assert fetch.await_count == 2
+    assert fetch.await_args.kwargs["include_results"] is True
     state.now_iso = (datetime.fromisoformat(now) + timedelta(days=1)).isoformat()
     await sync_assignment_contents(repository, state, batches)
     assert fetch.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_report_page_failure_preserves_previous_question_results(repository, monkeypatch):
+    now = datetime.now(timezone.utc)
+    repository.save_assignment_content(
+        user_id="u",
+        external_id="work",
+        questions=[{**QUESTIONS[0], "is_correct": False}],
+        remote_status="completed",
+        fetched_at=(now - timedelta(days=2)).isoformat(),
+    )
+    state = SimpleNamespace(
+        user=UserRow("u", "u", "hash"),
+        client=SimpleNamespace(client=object()),
+        now_iso=now.isoformat(),
+        warnings=[],
+    )
+    batches = [({}, [{"external_id": "work", "link": WORK_URL, "status": "completed"}])]
+    fetch = AsyncMock(return_value=QUESTIONS)
+    monkeypatch.setattr(
+        "app.services.chaoxing.assignment_sync.fetch_assignment_questions", fetch
+    )
+    await sync_assignment_contents(repository, state, batches)
+    snapshot = repository.get_assignment_content(user_id="u", external_id="work")
+    assert snapshot["questions"][0]["is_correct"] is False
+    assert fetch.await_args.kwargs["include_results"] is True
 
 
 @pytest.mark.asyncio
@@ -295,6 +490,7 @@ def test_review_passes_real_questions_options_and_practice_requirements_with_sta
     prompt = generations[0]["json"]["prompt"]
     assert QUESTIONS[0]["stem"] in prompt and "B. 3" in prompt
     assert "至少3道" in prompt and "可以复用部分原题选项" in prompt
+    assert "不得只替换数字" in prompt and "高度雷同" in prompt
     assert "官方答案" in prompt and "quiz" in prompt
     assert "学生主导" in prompt and "三分之二" in prompt and "hints" in prompt
     assert (
@@ -309,6 +505,130 @@ def test_review_passes_real_questions_options_and_practice_requirements_with_sta
         fetched_at=datetime.now(timezone.utc).isoformat(),
     )
     assert http.post(path, headers=headers).status_code == 409
+
+
+def test_content_reports_graded_wrong_count_without_exposing_raw_answers():
+    container, _transport, http, headers, user, task = review_setup()
+    container.personal_task_repository.complete(task.id, user_id=user.id)
+    container.chaoxing_repository.save_assignment_content(
+        user_id=user.id,
+        external_id=task.external_id,
+        questions=[
+            {**QUESTIONS[0], "is_correct": False},
+            {
+                "number": 2,
+                "stem": "第二题",
+                "options": ["A. 1", "B. 2"],
+                "is_correct": True,
+            },
+            {
+                "number": 3,
+                "stem": "尚未批阅",
+                "options": ["A. 1", "B. 2"],
+                "is_correct": None,
+            },
+        ],
+        remote_status="completed",
+        fetched_at=datetime.now(timezone.utc).isoformat(),
+    )
+    result = http.get(
+        f"/api/v1/chaoxing/assignments/{task.id}/content", headers=headers
+    ).json()
+    assert result["wrong_count"] == 1
+    assert result["graded_count"] == 2
+    assert result["results_available"] is True
+    assert result["results_complete"] is False
+    assert result["can_generate_wrong"] is True
+    assert result["questions"][0]["is_correct"] is False
+
+
+def test_wrong_scope_only_passes_incorrect_questions_and_requests_transfer_only():
+    script = [
+        (200, {"llm": True}),
+        (201, {"id": "ws_wrong"}),
+        (201, {"source": "provider", "job": {"id": "job_wrong", "status": "queued"}}),
+    ]
+    container, transport, http, headers, user, task = review_setup(script)
+    container.personal_task_repository.complete(task.id, user_id=user.id)
+    container.chaoxing_repository.save_assignment_content(
+        user_id=user.id,
+        external_id=task.external_id,
+        questions=[
+            {**QUESTIONS[0], "is_correct": False},
+            {
+                "number": 2,
+                "stem": "这道题做对了",
+                "options": ["A. 1", "B. 2"],
+                "is_correct": True,
+            },
+            {
+                "number": 3,
+                "stem": "这道也做错了",
+                "options": ["A. 1", "B. 2"],
+                "is_correct": False,
+            },
+        ],
+        remote_status="completed",
+        fetched_at=datetime.now(timezone.utc).isoformat(),
+    )
+    response = http.post(
+        f"/api/v1/chaoxing/assignments/{task.id}/classroom",
+        headers=headers,
+        json={"scope": "wrong"},
+    )
+    assert response.status_code == 201
+    assert response.json()["scope"] == "wrong"
+    assert response.json()["question_count"] == 2
+    generation = next(
+        call for call in transport.calls if call["url"].endswith("/generate")
+    )
+    assert generation["json"]["assignment_review"] == {
+        "question_count": 2,
+        "source_numbers": [1, 3],
+        "source_stems": [
+            QUESTIONS[0]["stem"],
+            "这道题做对了",
+            "这道也做错了",
+        ],
+        "retry_required": False,
+    }
+    prompt = generation["json"]["prompt"]
+    assert "只针对本次作业中已判定错误的题目" in prompt
+    assert "不得出现exerciseRole=retry" in prompt
+    assert QUESTIONS[0]["stem"] in prompt
+    assert "这道题做对了" not in prompt
+    workspace = next(
+        call for call in transport.calls if call["url"].endswith("/workspaces")
+    )
+    assert workspace["json"]["name"] == "作业错题变式讲解"
+
+
+def test_wrong_scope_rejects_ungraded_or_all_correct_work():
+    container, transport, http, headers, user, task = review_setup()
+    container.personal_task_repository.complete(task.id, user_id=user.id)
+    path = f"/api/v1/chaoxing/assignments/{task.id}"
+    container.chaoxing_repository.save_assignment_content(
+        user_id=user.id,
+        external_id=task.external_id,
+        questions=QUESTIONS,
+        remote_status="completed",
+        fetched_at=datetime.now(timezone.utc).isoformat(),
+    )
+    response = http.post(path + "/classroom", headers=headers, json={"scope": "wrong"})
+    assert response.status_code == 409
+    assert response.json()["message"] == "assignment_results_unavailable"
+    assert transport.calls == []
+
+    container.chaoxing_repository.save_assignment_content(
+        user_id=user.id,
+        external_id=task.external_id,
+        questions=[{**QUESTIONS[0], "is_correct": True}],
+        remote_status="completed",
+        fetched_at=datetime.now(timezone.utc).isoformat(),
+    )
+    response = http.post(path + "/classroom", headers=headers, json={"scope": "wrong"})
+    assert response.status_code == 409
+    assert response.json()["message"] == "assignment_no_wrong_questions"
 
 
 def test_review_does_not_generate_a_fake_lesson_when_provider_is_unconfigured():

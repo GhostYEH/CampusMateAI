@@ -8,6 +8,28 @@ from starlette.concurrency import run_in_threadpool
 from .assignment_content import fetch_assignment_questions
 
 
+def _preserve_results(questions: list[dict], previous: list[dict]) -> list[dict]:
+    """Keep graded flags when a later report fetch falls back to the work page.
+
+    A report-page failure returns questions without any `is_correct` key. If the
+    same numbered question with the same stem was graded before, retain that
+    boolean instead of silently turning the snapshot back into "ungraded".
+    """
+    if any("is_correct" in question for question in questions):
+        return questions
+    questions = [dict(question) for question in questions]
+    graded = {
+        (question.get("number"), question.get("stem")): question["is_correct"]
+        for question in previous
+        if question.get("is_correct") is not None
+    }
+    for question in questions:
+        value = graded.get((question.get("number"), question.get("stem")))
+        if value is not None:
+            question["is_correct"] = value
+    return questions
+
+
 async def sync_assignment_contents(repository, state, batches) -> str | None:
     # Existing test/integration clients may expose only the work-list contract.
     if not hasattr(state.client, "client"):
@@ -39,18 +61,23 @@ async def sync_assignment_contents(repository, state, batches) -> str | None:
                     (
                         snapshot.get("last_attempt_at", "") if snapshot else "",
                         assignment,
+                        snapshot["questions"] if snapshot else [],
                     )
                 )
     semaphore = asyncio.Semaphore(3)
     failures = []
 
-    async def sync_one(assignment):
+    async def sync_one(assignment, previous_questions):
         async with semaphore:
             try:
                 async with asyncio.timeout(12):
                     questions = await fetch_assignment_questions(
-                        state.client, assignment["link"]
+                        state.client,
+                        assignment["link"],
+                        include_results=assignment.get("status") == "completed",
                     )
+                    if assignment.get("status") == "completed":
+                        questions = _preserve_results(questions, previous_questions)
                     await run_in_threadpool(
                         repository.save_assignment_content,
                         user_id=state.user.id,
@@ -71,7 +98,12 @@ async def sync_assignment_contents(repository, state, batches) -> str | None:
                 )
 
     candidates.sort(key=lambda pair: pair[0])
-    await asyncio.gather(*(sync_one(item) for _attempted_at, item in candidates[:12]))
+    await asyncio.gather(
+        *(
+            sync_one(item, previous)
+            for _attempted_at, item, previous in candidates[:12]
+        )
+    )
     if len(candidates) > 12:
         failures.append("assignment_content_pending")
     if failures:

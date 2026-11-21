@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .client import (
     GENERATION_STEPS,
@@ -36,7 +36,12 @@ from .compatibility import (
 )
 from .composition import ClassroomComposition, parse_classroom_composition
 from .errors import (
+    ClassroomContentInvalid,
+    ClassroomContentMissing,
+    ClassroomGenerationFailed,
+    ClassroomPlaybackNotReady,
     MagicClassAuthError,
+    MagicClassClassroomMissing,
     MagicClassInvalidOrigin,
     MagicClassIncompatible,
     MagicClassNotEnabled,
@@ -108,6 +113,8 @@ class MagicClassClassroomService:
                 probe_timeout_seconds=settings.magicclass_health_timeout_seconds,
             )
         self._client = client
+        from .playback import ClassroomDocumentCache  # 延迟导入，避免 schemas ↔ services 包导入环
+        self._playback_cache = ClassroomDocumentCache()
         self._sleeper = sleeper
         # 契约指纹探测缓存：(过期时刻, 结果)。成功按 MAGICCLASS_PROBE_TTL_SECONDS
         # 缓存；失败只缓存很短时间，避免服务刚恢复仍被判不可用。
@@ -263,6 +270,10 @@ class MagicClassClassroomService:
             raise MagicClassNotEnabled()
         return self._client
 
+    def require_client(self) -> MagicClassClient:
+        """给媒体代理用的受控入口；仍复用同一套启用/配置校验。"""
+        return self._require_client()
+
     async def _probe(self) -> MagicClassProbeResult:
         """带 TTL 缓存的契约指纹探测。"""
         ttl = float(self._settings.magicclass_probe_ttl_seconds)
@@ -290,6 +301,83 @@ class MagicClassClassroomService:
             raise MagicClassAuthError()
         raise MagicClassIncompatible()
 
+    # ===== 经典课堂原生播放 =====
+
+    def ensure_playback_ready(self, session: MagicClassSession) -> None:
+        """播放前的前置状态校验：生成中/失败都给出稳定恢复语义。"""
+        status = getattr(session, "status", "") or ""
+        if status == "failed":
+            raise ClassroomGenerationFailed(
+                details={
+                    "status": "failed",
+                    "step": getattr(session, "step", "") or "",
+                    "progress": int(getattr(session, "progress", 0) or 0),
+                    "error_code": getattr(session, "error_code", None),
+                    "error": redact_public_text(getattr(session, "error", None) or ""),
+                    "retryable": True,
+                    "recovery": "retry_generation",
+                }
+            )
+        if status != "succeeded":
+            raise ClassroomPlaybackNotReady(
+                details={
+                    "status": status,
+                    "step": getattr(session, "step", "") or "",
+                    "progress": int(getattr(session, "progress", 0) or 0),
+                    "message": redact_public_text(getattr(session, "message", "") or ""),
+                    "poll_after_seconds": max(
+                        1, int(self._settings.magicclass_poll_interval_ms / 1000)
+                    ),
+                    "recovery": "poll_job",
+                }
+            )
+        if not getattr(session, "classroom_id", None):
+            raise ClassroomPlaybackNotReady(
+                details={
+                    "status": "succeeded",
+                    "step": getattr(session, "step", "") or "",
+                    "progress": 100,
+                    "reason": "classroom_id_missing",
+                    "poll_after_seconds": max(
+                        1, int(self._settings.magicclass_poll_interval_ms / 1000)
+                    ),
+                    "recovery": "poll_job",
+                }
+            )
+
+    async def load_playback_classroom(
+        self, session: MagicClassSession
+    ) -> Tuple[Dict[str, Any], str]:
+        """读取（并缓存）已授权会话对应的课堂正文。
+
+        返回 `(classroom, content_version)`。正文只读；缓存命中不绕过账号/课程校验，
+        因为调用方必须先完成会话归属查询再调用这里。
+        """
+        self.ensure_playback_ready(session)
+        classroom_id = str(session.classroom_id or "")
+        cached = self._playback_cache.get(classroom_id)
+        if cached is not None:
+            return cached
+        client = self._require_client()
+        try:
+            payload = await client.fetch_classroom(classroom_id)
+        except MagicClassClassroomMissing as exc:
+            raise ClassroomContentMissing(
+                details={
+                    "classroom_id": classroom_id,
+                    "reason": "upstream_classroom_missing",
+                    "recovery": "retry_generation_or_use_compat",
+                }
+            ) from exc
+        classroom = payload.get("classroom")
+        if not isinstance(classroom, dict):
+            raise ClassroomContentInvalid(
+                details={"reason": "classroom_document_missing"}
+            )
+        from .playback import content_version_for  # 同上，放到调用点打破导入环
+        version, size = content_version_for(classroom)
+        self._playback_cache.put(classroom_id, classroom, version, size)
+        return classroom, version
     # ===== 状态 =====
 
     async def status(self) -> Dict[str, Any]:

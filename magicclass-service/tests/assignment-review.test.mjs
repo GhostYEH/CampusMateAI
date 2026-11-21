@@ -7,20 +7,44 @@ import { JobRepository } from '../src/jobs/repository.ts';
 import { createProviderJobWorker } from '../src/provider/worker.ts';
 import { createGenerationRoutes } from '../src/generation/routes.ts';
 import { reviewGeneratedStage } from '../src/generation/generator.ts';
+import { assignmentReviewGuide } from '../src/generation/assignment-review.ts';
 import { buildSceneNarration } from '../src/tts/narration.ts';
 import { createHarness, mintAssertion, withServer } from './helpers.mjs';
 
 const spec = { question_count: 2 };
-const question = (source, role, n = 1) => ({
-  type: 'single', question: `原题${source}的${role}练习${n}：x=${n}时x+1是多少？`,
+const wrongSpec = {
+  question_count: 2,
+  source_numbers: [2, 5],
+  source_stems: ['解方程2x+3=7，求x。', '一个三角形底6厘米、高4厘米，面积是多少？'],
+  retry_required: false,
+};
+const originalOne = '当x=2时，x+1的值是多少？';
+const originalTwo = '一件商品原价100元，打八折后的价格是多少元？';
+const transferOne = '某班有3组学生，每组4人，另有2名老师，总人数是多少人？';
+const transferTwo = '一辆汽车3小时行驶180千米，按同样速度5小时能行驶多少千米？';
+const transferThree = '一个长方形长6厘米、宽4厘米，它的周长是多少厘米？';
+const question = (source, role, text, n = 1) => ({
+  type: 'single', question: text,
   options: [{ label: String(n + 1), value: 'A' }, { label: String(n + 2), value: 'B' }],
-  answer: ['A'], analysis: `AI参考解析：将${n}代入x+1得到${n + 1}，另一选项多加了1。`, points: 1,
-  sourceQuestionNumber: source, exerciseRole: role, hints: ['先识别已知量和要求的量。', '把已知量代入题目给定的表达式。'],
+  answer: ['A'], analysis: `AI参考解析：先整理已知条件，再按${role === 'retry' ? '原题' : '变式'}条件独立推导。`, points: 1,
+  sourceQuestionNumber: source, exerciseRole: role, hints: ['先识别已知量和要求的量。', '把已知量代入题目给定的关系。'],
 });
 function lesson() {
   return { stage: { name: '函数自主练习' }, scenes: [
-    { title: '原题重做', type: 'quiz', content: { type: 'quiz', questions: [question(1, 'retry'), question(2, 'retry')] } },
-    { title: '变式练习', type: 'quiz', content: { type: 'quiz', questions: [question(1, 'transfer', 2), question(2, 'transfer', 2), question(1, 'transfer', 3)] } },
+    { title: '原题重做', type: 'quiz', content: { type: 'quiz', questions: [question(1, 'retry', originalOne), question(2, 'retry', originalTwo)] } },
+    { title: '变式练习', type: 'quiz', content: { type: 'quiz', questions: [
+      question(1, 'transfer', transferOne), question(2, 'transfer', transferTwo), question(1, 'transfer', transferThree, 3),
+    ] } },
+  ] };
+}
+function wrongLesson() {
+  return { stage: { name: '作业错题变式讲解' }, scenes: [
+    { title: '错题变式', type: 'quiz', content: { type: 'quiz', questions: [
+      question(2, 'transfer', '某数的3倍减去5等于16，求这个数。'), question(5, 'transfer', '一块平行四边形底8厘米、高5厘米，面积是多少？'),
+    ] } },
+    { title: '再练一题', type: 'quiz', content: { type: 'quiz', questions: [
+      question(2, 'transfer', '某数的4倍加上7等于31，求这个数。', 3),
+    ] } },
   ] };
 }
 
@@ -37,6 +61,54 @@ test('assignment quality gate checks practice balance, complete coverage and pro
     const doc = lesson(); change(doc);
     assert.match(reviewGeneratedStage(doc, 'quiz', '', spec).join(';'), expected);
   }
+});
+
+test('assignment quality gate rejects transfer questions that copy or merely renumber originals', () => {
+  const copied = lesson();
+  copied.scenes[1].content.questions[0].question = originalOne;
+  assert.match(
+    reviewGeneratedStage(copied, 'quiz', '', spec).join(';'),
+    /transfer practice must not copy an original question/,
+  );
+
+  const renumbered = lesson();
+  renumbered.scenes[1].content.questions[0].question = '当x=7时，x+1的值是多少？';
+  assert.match(
+    reviewGeneratedStage(renumbered, 'quiz', '', spec).join(';'),
+    /transfer practice must change more than numbers, names or punctuation/,
+  );
+
+  const paraphrased = lesson();
+  paraphrased.scenes[1].content.questions[0].question = '当x=8时，x+1的结果是多少？';
+  assert.match(
+    reviewGeneratedStage(paraphrased, 'quiz', '', spec).join(';'),
+    /transfer practice is too similar to an original question/,
+  );
+});
+
+test('wrong-question review is transfer-only, covers selected numbers, and checks against original stems', () => {
+  assert.deepEqual(reviewGeneratedStage(wrongLesson(), 'quiz', '', wrongSpec), []);
+  assert.match(assignmentReviewGuide(wrongSpec), /错题原题2、5/);
+  assert.match(assignmentReviewGuide(wrongSpec), /不得出现retry/);
+  assert.match(assignmentReviewGuide(wrongSpec), /全部为transfer/);
+
+  const retry = wrongLesson();
+  retry.scenes[0].content.questions[0].exerciseRole = 'retry';
+  assert.match(reviewGeneratedStage(retry, 'quiz', '', wrongSpec).join(';'), /must not include original retry/);
+
+  const missing = wrongLesson();
+  missing.scenes[0].content.questions.pop();
+  assert.match(reviewGeneratedStage(missing, 'quiz', '', wrongSpec).join(';'), /cover every wrong original/);
+
+  const copied = wrongLesson();
+  copied.scenes[0].content.questions[0].question = '解方程2x+3=7，求x。';
+  assert.match(reviewGeneratedStage(copied, 'quiz', '', wrongSpec).join(';'), /must not copy an original question/);
+
+  const renumbered = wrongLesson();
+  renumbered.scenes[0].content.questions[0].question = '解方程5x+3=18，求x。';
+  assert.match(reviewGeneratedStage(renumbered, 'quiz', '', wrongSpec).join(';'), /change more than numbers/);
+
+  assert.match(reviewGeneratedStage(wrongLesson(), 'quiz', '', { ...wrongSpec, source_stems: undefined }).join(';'), /requires the original stems/);
 });
 
 test('authenticated review job uses the dedicated prompt, repairs weak drafts and persists student-led quiz metadata', async () => {

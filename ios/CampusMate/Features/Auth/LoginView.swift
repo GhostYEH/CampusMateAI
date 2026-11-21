@@ -88,6 +88,18 @@ struct LoginView: View {
     private let formText = Color(hex: 0xF8FAFF)
     private let formMuted = Color(hex: 0xEBF0FF, opacity: 0.74)
 
+    /// UI tests create a disposable account for every launch. The real password
+    /// content type makes iOS offer to save those credentials, and that system
+    /// sheet can arrive seconds later over the home screen. Keep the production
+    /// autofill behavior, but opt out only when the test runner asks for it.
+    private var allowsPasswordAutofill: Bool {
+        #if DEBUG
+        !ProcessInfo.processInfo.arguments.contains("-campus.disablePasswordAutofill")
+        #else
+        true
+        #endif
+    }
+
     var body: some View {
         ZStack {
             ink.ignoresSafeArea()
@@ -163,7 +175,7 @@ struct LoginView: View {
 
             field(label: "账号", systemImage: "person.fill") {
                 TextField("", text: $username, prompt: Text("学号 / 工号 / 用户名").foregroundStyle(formMuted))
-                    .textContentType(.username)
+                    .textContentType(allowsPasswordAutofill ? .username : nil)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.next)
@@ -187,7 +199,7 @@ struct LoginView: View {
                                 .accessibilityIdentifier("login.password")
                         }
                     }
-                    .textContentType(.password)
+                    .textContentType(allowsPasswordAutofill ? .password : nil)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.go)

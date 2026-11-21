@@ -26,7 +26,7 @@ apiSuccess 返回 {success:true,...业务字段}，apiError 返回 {success:fals
 
 ## 全部路由索引
 
-共 87 个方法与路径组合。
+共 88 个方法与路径组合。
 
 | 方法 | 路径（相对独立 Origin） | 实现 |
 | --- | --- | --- |
@@ -51,6 +51,7 @@ apiSuccess 返回 {success:true,...业务字段}，apiError 返回 {success:fals
 | POST | `/api/chat/pi/whiteboard-visibility` | [magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts](../../magicclass-app/app/api/chat/pi/whiteboard-visibility/route.ts) |
 | POST | `/api/chat` | [magicclass-app/app/api/chat/route.ts](../../magicclass-app/app/api/chat/route.ts) |
 | POST | `/api/chat/classmates` | [magicclass-app/app/api/chat/classmates/route.ts](../../magicclass-app/app/api/chat/classmates/route.ts) |
+| POST | `/api/chat/classmates/ask` | [magicclass-app/app/api/chat/classmates/ask/route.ts](../../magicclass-app/app/api/chat/classmates/ask/route.ts) |
 | GET | `/api/classroom-media/{classroomId}/{...path}` | [magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts](../../magicclass-app/app/api/classroom-media/[classroomId]/[...path]/route.ts) |
 | POST | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
 | GET | `/api/classroom` | [magicclass-app/app/api/classroom/route.ts](../../magicclass-app/app/api/classroom/route.ts) |
@@ -1431,11 +1432,64 @@ apiError('INVALID_REQUEST', 404, 'Whiteboard visibility query is not pending her
 
 ### `POST /api/chat/classmates`
 
-课堂每页的 AI 同学短发言，复用 `chat-adapter` 模型配置和标准模型请求头。请求包含 `scene`（当前页内容和讲稿）、`agents`（每位角色的 `id/name/role/persona`）及可选的 `language/thinkingConfig`。开始播放或进入无播放脚本的页面时调用，按当前选人生成。
+课堂每页的 AI 同学短发言，复用 `chat-adapter` 模型配置和标准模型请求头。请求包含 `scene`（当前页内容和讲稿）、`agents`（每位角色的 `id/name/role/persona`）、可选的 `language/thinkingConfig`，以及可选的连续性记忆 `memory`：
 
-成功返回 `{success:true,messages:[{agentId,text}]}`，每位同学一条独立发言；老师和用户不参与。一次模型请求必须覆盖全部已选同学，未知、重复、空文本或缺人的输出会报错。输入最多 256 KiB、7 位同学，支持取消与 55 秒超时；测验页面排除答案、解析及讲稿，只生成鼓励或思考方法。生成失败会显示真实错误并允许重试，不提供静态假发言。
+```ts
+memory?: {
+  pages: string[];            // 已讲过的页标题，最多 8 条，每条 ≤200 字符
+  lines: { agentId: string; text: string }[]; // 同学已说过的话，最多 12 条，每条 ≤400 字符
+  recentAgentIds: string[];   // 上一页发言过的同学，最多 7 个
+}
+```
 
-实现：[route.ts](../../magicclass-app/app/api/chat/classmates/route.ts)、[生成与校验](../../magicclass-app/lib/server/classmate-participation.ts)。
+`memory` 由前端按课堂（stage）维护，保存在浏览器本地并在每次请求时带上，只包含同学自己的发言和页标题，不含学生原话；超出条数或长度上限、或引用了不在 `agents` 里的同学会返回 400。老师与用户角色不参与。
+
+服务端先做一次**路由**调用决定"这一页谁说话"：候选为全部已选同学，返回每人的 0–1 适配分与整页 `needs`。代码侧策略只取最高分、最多 2 位；`needs` 低于阈值且没有明确人选时不发言；上一页发言过的同学先扣 0.25 分。第二位同学只在两个明显不同的视角都成立时出现。路由调用失败、超时或输出不可解析时，退化为按页轮换固定选 1 位，不编造台词。随后只为被选中的同学发起一次发言调用，请求里只包含这些人的人设。
+
+成功返回：
+
+```ts
+{
+  success: true;
+  messages: { agentId: string; text: string }[];
+  routed: { selected: string[]; needs: number | null; by: 'router' | 'fallback' | 'silence' };
+  usage: { tokens: number };
+}
+```
+
+`usage.tokens` 是本次请求路由与发言两步实际消耗的 token 之和（模型未返回用量时记 0）。前端按课堂累计到浏览器本地键 `maic:classmate-usage:<stageId>`，达到 `CLASSROOM_TOKEN_BUDGET`（240000）后停止自动发言并提示额度用完；该预算是防失控的护栏，不是精确计费。
+
+`messages` 可以少于被选中的同学，也可以为空：同学可以保持沉默（空文本或 `NO_REPLY` 哨兵会被丢弃），整页也可能不需要任何人开口。未知、重复、非文本或超长（>1200 字符）的单条发言会被跳过，不再让整页失败；只有 JSON 无法解析或信封结构不对（`messages` 不是数组）才会返回 502 且不带 `messages`。当前会话的发言缓存与记忆让同一页在暂停/恢复时不重复请求。
+
+输入最多 256 KiB、7 位同学；整体超时 55 秒、路由步骤 8 秒，支持客户端取消（499）。测验页面在路由与发言两步都排除答案、解析及讲稿：同学只能鼓励或给一般方法，不能解题、指认正确选项或排除选项。模型密钥缺失返回 401，校验失败 400，体积超限 413。生成失败会显示真实错误并允许重试，不提供静态假发言。
+
+实现：[route.ts](../../magicclass-app/app/api/chat/classmates/route.ts)、[路由/生成与校验](../../magicclass-app/lib/server/classmate-participation.ts)、[前端记忆与请求](../../magicclass-app/lib/hooks/use-classmate-participation.ts)。
+
+### `POST /api/chat/classmates/ask`
+
+学生点名某位同学回答问题时使用。请求体与上一节相同（`scene`、`agents`、可选 `language/thinkingConfig/memory`），但 `agents` 必须恰好包含 **1 位**同学，另加：
+
+```ts
+question: string; // 1–600 字符，必填
+```
+
+服务端只做一次回答调用，返回纯文本答案：
+
+```ts
+{
+  success: true;
+  message: { agentId: string; text: string }; // text ≤2000 字符
+  usage: { tokens: number };
+}
+```
+
+回答必须落在当前页内容与讲稿上、保持该同学人设，并避免重复 `memory` 中已经说过的话；页面上没有答案时要求说明自己知道什么、会怎样查证，不允许编造。测验页面禁止解题：不指认或排除选项、不给出答案与解析，只提供一般方法或反问学生已尝试过什么。学生的问题被视为待回答的提问，不能改写任务、人设或测验限制。
+
+与自动发言不同，被点名的同学必须作答：空文本、`NO_REPLY` 哨兵或越界输出会让请求返回 502（`GENERATION_FAILED`），由 UI 提示重试，不生成假回答。校验失败 400、密钥缺失 401、整体超时 45 秒，支持客户端取消（499）。回答会作为一条 `memory.lines` 记入该课堂记忆，后续页不再重复。
+
+前端入口：同学卡片右上角"提问"按钮 → 内联输入框；作答期间卡片显示"正在回答…"，结果只显示在该同学的卡片中。课堂累计 token 达到预算后按钮隐藏并显示额度提示。
+
+实现：[ask/route.ts](../../magicclass-app/app/api/chat/classmates/ask/route.ts)、[答案提示词与校验](../../magicclass-app/lib/server/classmate-participation.ts)、[前端 ask 与预算](../../magicclass-app/lib/hooks/use-classmate-participation.ts)、[同学卡片 UI](../../magicclass-app/components/roundtable/classmate-panes.tsx)。
 
 ### `POST /api/chat`
 
@@ -6836,7 +6890,7 @@ result.text
 <a id="persistence-contract"></a>
 ## 持久化 catch-all 的具体子路由
 
-上述 /api/persistence/{...path} 的五个显式 HTTP 导出委托给 createStorageHttpHandler；下表展开实际 documents/assets/runtime 子路由，计数仍归入 87 个导出 handler。无 KVStore 路由。路径在下表已加 /api/persistence 前缀。
+上述 /api/persistence/{...path} 的五个显式 HTTP 导出委托给 createStorageHttpHandler；下表展开实际 documents/assets/runtime 子路由，计数仍归入 88 个导出 handler。无 KVStore 路由。路径在下表已加 /api/persistence 前缀。
 
 前置条件：DATABASE_URL 缺失返回 404 PERSISTENCE_NOT_CONFIGURED，PERSISTENCE_DEV_TOKEN 缺失返回 503 PERSISTENCE_DEV_TOKEN_MISSING。工作台 owner cookie 与 ACCESS_CODE 中间件仍适用。
 

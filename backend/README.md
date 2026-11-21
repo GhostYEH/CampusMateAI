@@ -67,20 +67,20 @@ CampusMate AI 的产品方向是通用型助手，不要求绑定某所学校。
 
 每轮最多读取 25 个到期账号，逐个执行；持久化租约为 15 分钟，单账号执行预算为 10 分钟。同进程内后台同步、手动同步、登录、解绑共用用户互斥锁；后台任务在共享同一 SQLite 数据库时通过租约避免多进程重复领取。该租约不覆盖其他进程的手动同步和账号修改，不能据此承诺所有跨进程操作全局串行。正常关闭取消后台任务，强制退出后租约到期可再次领取。停止后端期间不会执行同步。
 
-作业列表、提交状态、成绩和题目快照分别处理。单次题目获取最多 12 份、并发 3、每份预算 12 秒；缺失、提交状态变化或采集超过 24 小时的快照进入队列，按最近尝试时间轮转。部分题目失败时保留已有快照，sync 返回 HTTP 200 也可能 `complete=false`，须查看 `sections.assignments` 与 `warnings`。`completed` 包括已交、待批阅等平台观测，不要求已评分；它表示最近同步结果，不是访问列表时再次向学习通确认。
+作业列表、提交状态、成绩和题目快照分别处理。单次题目获取最多 12 份、并发 3、每份预算 12 秒；缺失、提交状态变化或采集超过 24 小时的快照进入队列，按最近尝试时间轮转。已完成作业会额外尝试批改报告页的逐题对错，只保存 `is_correct` 布尔值，不保存学生原始作答；报告页失败时回退题干并保留同一题号/题干的旧对错标记。部分题目失败时保留已有快照，sync 返回 HTTP 200 也可能 `complete=false`，须查看 `sections.assignments` 与 `warnings`。`completed` 包括已交、待批阅等平台观测，不要求已评分；它表示最近同步结果，不是访问列表时再次向学习通确认。
 
 Web 在线课堂首页、学习空间侧栏及作业详情复用同一组后端接口：
 
 1. `GET /api/v1/tasks?page=1&page_size=200`，不传 status，按 `has_more` 翻页，再筛选 `source=chaoxing`、未删除且有效截止时间已到期的 pending/completed 条目。使用返回的本站 `id` 作为 task_id。
-2. `GET /api/v1/chaoxing/assignments/{task_id}/content` 读取题干和选项；`can_generate` 要求有效截止时间已到期、课程关联与题目状态匹配，未提交也可复习，不包含课堂服务可用性检测。
-3. 用户点击进入时 `POST /api/v1/chaoxing/assignments/{task_id}/classroom`。服务端按本人、课程、作业、题目需求计算幂等键，创建或复用讲解任务。每日同步只采集作业，不主动生成课堂。
+2. `GET /api/v1/chaoxing/assignments/{task_id}/content` 读取题干、选项、逐题 `is_correct` 及 `wrong_count/graded_count/results_available/results_complete/can_generate_wrong`；`can_generate` 要求有效截止时间已到期、课程关联与题目状态匹配，未提交也可复习，不包含课堂服务可用性检测。
+3. 用户点击进入时 `POST /api/v1/chaoxing/assignments/{task_id}/classroom`，请求体可选 `{"scope":"all"|"wrong"}`；all 保留原题重做，wrong 只覆盖明确批改为错的题并只出变式。服务端按本人、课程、作业、范围、题目需求计算幂等键，创建或复用任务。每日同步只采集作业和批改结果，不主动生成课堂。
 4. 对 queued/running 用 `GET /api/v1/courses/{course_id}/jobs/{job_id}` 查询；失败/取消可用对应 `/retry` 接口重试；completed 后进入返回工作台学习。Web 在题目未就绪时尝试一次同步，生成成功后自动进入播放。
 
-生成采用作业专用 quiz 策略：先重做全部原题，再做每题对应的变式（总数至少 3 道），至少三分之二场景为练习；学生自由选题、跳过、逐步求助，提交后主动展开解析，简答/证明题自行核对；这是模型生成的学习内容，不是学习通官方批阅。未识别的图片、过长题目或模型不可用会返回明确错误，不生成替代模板。
+生成采用作业专用 quiz 策略。`scope=all` 先重做全部原题，再做每题对应的变式（总数至少 3 道）；`scope=wrong` 不出现原题重做，每道错题至少一道变式，总数至少 3 道。两种模式都至少三分之二场景为练习，变式与原题做文本去重/相似度校验，错题模式还会用原题题干拦截复制。学生自由选题、跳过、逐步求助，提交后主动展开解析，简答/证明题自行核对；这是模型生成的学习内容，不是学习通官方批阅。未识别的图片、过长题目或模型不可用会返回明确错误，不生成替代模板。
 
 运行依赖见 [backend/.env.example](.env.example) 与 [受管服务配置](../magicclass-service/.env.example)：后端设置 `MAGICCLASS_FUSION_ENABLED=true`、可达的 `MAGICCLASS_SERVICE_URL`，两服务使用一致的 `MAGICCLASS_INTERNAL_SECRET`；受管服务另需配置 `MAGICCLASS_PROVIDER_BASE_URL`、`MAGICCLASS_PROVIDER_API_KEY`、`MAGICCLASS_PROVIDER_MODEL`。只设置后端通用 LLM 不代表课堂生成模型已配置。独立学习空间的 `MAGICCLASS_ENABLED` / `MAGICCLASS_EMBED_ORIGIN` 控制另一条内嵌链路，不代替受管课堂配置。
 
-持久化涉及后端的 `chaoxing_credentials`（加密 Cookie）、`personal_tasks`（列表与提交状态）、`chaoxing_assignment_content`（题目快照及尝试时间）、`chaoxing_auto_sync`（下次尝试时间、租约与最近错误），以及受管服务自己的工作台、任务和幂等数据。新增表由数据库初始化建立；部署时保留两服务的数据目录及稳定密钥。没有公开的每日同步配置、立即执行后台 tick、下次执行时间或租约查询 API；维护时通过受控数据库诊断和日志排查，不手工改业务状态来伪造提交。
+持久化涉及后端的 `chaoxing_credentials`（加密 Cookie）、`personal_tasks`（列表与提交状态）、`chaoxing_assignment_content`（题目快照、可选逐题对错及尝试时间）、`chaoxing_auto_sync`（下次尝试时间、租约与最近错误），以及受管服务自己的工作台、任务和幂等数据。新增表由数据库初始化建立；部署时保留两服务的数据目录及稳定密钥。没有公开的每日同步配置、立即执行后台 tick、下次执行时间或租约查询 API；维护时通过受控数据库诊断和日志排查，不手工改业务状态来伪造提交。
 
 排查时先看本人 `/chaoxing/status` 是否需重新连接，再检查手动 `/chaoxing/sync` 的分区结果与题目快照。`chaoxing_daily_sync_tick_failed` 表示后台轮次异常，`chaoxing_daily_sync_failed` 表示单账号执行异常；日志中的 error_type 只用于定位，不能当作前端协议。作业复习接口的错误码、请求/响应示例、跨端适配与联调步骤见[外部连接](../docs/api/09-integrations.md#assignment-review-flow)。
 
@@ -89,7 +89,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests/test_chaoxing_assignment_review.py tests/test_chaoxing_sync_service.py tests/test_chaoxing_sync_sections.py tests/test_app_lifespan.py tests/test_openapi_docs.py -q
 ```
 
-自动化测试覆盖用户隔离、截止门槛、题目采集与保留、后台租约与重启恢复、幂等生成和服务不可用分支。真实学习通页面解析、有效账号登录态以及外部模型生成质量仍需在实际部署验证。Web 已适配一键进入；Android、HarmonyOS 和微信小程序尚未接入该作业复习入口。
+自动化测试覆盖用户隔离、截止门槛、逐题对错解析与失败保留、后台租约与重启恢复、全部/错题范围幂等生成和服务不可用分支。真实学习通报告页的 `.dui/.cuo` 结构、有效账号登录态以及外部模型生成质量仍需在实际部署验证。Web 已适配全部题目和错题变式入口；Android 与 iOS 已接入作业题目、生成进度和原生 quiz 阅读器。HarmonyOS 和微信小程序尚未接入该作业复习入口。
 
 ## 在线课堂
 
@@ -124,7 +124,7 @@ cd backend
 .\.venv\Scripts\python.exe -m pytest tests/test_learning_rooms.py tests/test_learning_room_rtc.py tests/test_openapi_docs.py -q
 ```
 
-课程内互动课堂会先检查课程访问权限及受管服务状态，生成前可查看计划，提交后可查询进度、内容组成和历史会话。Web 的课堂工作台还通过课程 workspace 接口管理场景、播放、编辑与导出。导航栏“学习空间”则承载以独立进程运行的上游 `magicclass-app`。
+课程内互动课堂会先检查课程访问权限及受管服务状态，生成前可查看计划，提交后可查询进度、内容组成和历史会话。Web 的课堂工作台还通过课程 workspace 接口管理场景、播放、编辑与导出。导航栏“学习空间”则承载以独立进程运行的上游 `magicclass-app`。经典课堂（课程课堂与自主选题课堂）的原生播放、媒体读取与经典 quiz 作答由 `magicclass_playback` 路由统一提供，移动端使用同一套 `classroom-playback/1` 字段；详细契约见 [`docs/api/14-magicclass.md`](../docs/api/14-magicclass.md)。 真实上游不可用时，可用 `python tests/fixtures/classroom_playback_server.py --port 8000` 启动只用于双端联调的脱敏样例（合成课堂、合法 PNG/WAV，不是实际生成课堂），入口和限制见 [`docs/api/integration.md`](../docs/api/integration.md#脱敏联调服务器真实上游不可用时)。
 
 课程课堂生成与受管工作台依赖 `magicclass-service` 和相应模型提供方；导航栏独立学习空间依赖 `magicclass-app`。服务未启用、不可达或缺少所需配置时，接口会返回真实的不可用状态；仓库中的页面和测试并不等于每台机器都能生成课堂。
 

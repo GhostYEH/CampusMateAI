@@ -61,7 +61,7 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       const body = parseBody(request);
       const mode = body.mode;
       if (!isGenerationMode(mode)) throw new WorkspaceError('invalid_request', `mode must be one of ${GENERATION_MODES.join(', ')}`);
-      if (body.assignment_review !== undefined && (!isAssignmentReviewSpec(body.assignment_review) || mode !== 'quiz')) throw new WorkspaceError('invalid_request', 'assignment_review requires quiz mode and a positive question_count');
+      if (body.assignment_review !== undefined && (!isAssignmentReviewSpec(body.assignment_review) || mode !== 'quiz')) throw new WorkspaceError('invalid_request', 'assignment_review requires quiz mode, a positive question_count, and valid source numbers/stems');
       if (body.assignment_review && !options.provider) throw new WorkspaceError('invalid_request', 'assignment review requires a real generation provider');
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
       if (!prompt) throw new WorkspaceError('invalid_request', 'prompt is required');

@@ -31,10 +31,14 @@ import com.example.campusai.data.behavior.PresenceStateMachine
 import com.example.campusai.data.behavior.StudyBehavior
 import com.example.campusai.data.behavior.StableBehaviorEvent
 import com.example.campusai.data.camera.CameraErrorListener
+import com.example.campusai.data.focus.ClassroomAttention
+import com.example.campusai.data.focus.ClassroomAttentionTracker
 import com.example.campusai.data.focus.FocusObservation
 import com.example.campusai.data.focus.FocusObservationConfig
 import com.example.campusai.data.focus.FocusState
 import com.example.campusai.data.focus.FocusStateProcessor
+import com.example.campusai.data.focus.TeacherFocusReminderEngine
+import com.example.campusai.data.focus.TeacherReminder
 import com.example.campusai.data.model.ExpressionLabel
 import com.example.campusai.data.model.ExpressionResult
 import com.example.campusai.data.model.FocusMode
@@ -146,6 +150,23 @@ class ExpressionSessionManager(
 
     private val _gentleReminder = MutableStateFlow<String?>(null)
     val gentleReminder: StateFlow<String?> = _gentleReminder.asStateFlow()
+
+    private val teacherReminderEngine = TeacherFocusReminderEngine()
+    private val _teacherReminder = MutableStateFlow<TeacherReminder?>(null)
+    val teacherReminder: StateFlow<TeacherReminder?> = _teacherReminder.asStateFlow()
+
+    private val classroomAttentionTracker = ClassroomAttentionTracker()
+    private val _classroomAttention = MutableStateFlow(ClassroomAttention())
+    val classroomAttention: StateFlow<ClassroomAttention> = _classroomAttention.asStateFlow()
+
+    private var classroomSupervisionEnabled = false
+    private var classroomCameraPermissionGranted = false
+    private var classroomPageVisible = false
+    private var classroomForeground = true
+    private var classroomAnalysisActive = false
+    private var lastTeacherObservationMs = Long.MIN_VALUE
+    private var lastClassroomObservationMs = Long.MIN_VALUE
+
     val modeLabel: String get() = (service as? ObservableExpressionRecognitionService)?.modeLabel ?: if (useMock) "Mock 表情模型" else "本机 LiteRT"
 
     init {
@@ -248,31 +269,80 @@ class ExpressionSessionManager(
         }
     }
 
+    /**
+     * 共同课堂的专注观察与专注页共用同一条相机/模型链路，但独立门槛：
+     * 仅在课堂页面可见、App 在前台、用户明确开启且已授权摄像头时运行。
+     */
+    suspend fun updateClassroomEligibility(
+        enabled: Boolean = classroomSupervisionEnabled,
+        permissionGranted: Boolean = classroomCameraPermissionGranted,
+        visible: Boolean = classroomPageVisible,
+        foreground: Boolean = classroomForeground,
+    ) {
+        releaseJob?.cancel()
+        mutex.withLock {
+            classroomSupervisionEnabled = enabled
+            classroomCameraPermissionGranted = permissionGranted
+            classroomPageVisible = visible
+            classroomForeground = foreground
+            syncLocked()
+        }
+    }
+
+    suspend fun beginClassroomSupervision() {
+        releaseJob?.cancel()
+        mutex.withLock {
+            resetObservationLocked()
+            classroomAttentionTracker.reset()
+            _classroomAttention.value = ClassroomAttention()
+            lastClassroomObservationMs = Long.MIN_VALUE
+        }
+    }
+
+    suspend fun endClassroomSupervision() {
+        releaseJob?.cancel()
+        mutex.withLock {
+            classroomSupervisionEnabled = false
+            classroomAnalysisActive = false
+            classroomAttentionTracker.reset()
+            _classroomAttention.value = ClassroomAttention()
+            lastClassroomObservationMs = Long.MIN_VALUE
+            syncLocked()
+        }
+    }
+
     suspend fun beginFocusSession() {
         releaseJob?.cancel()
         mutex.withLock {
-            processor = FocusStateProcessor(observationConfig)
-            behaviorTemporalSmoother.reset()
-            behaviorSignalProcessor.reset()
-            learningContinuityStateMachine.reset()
-            _learningContinuityState.value = LearningContinuityState.OBSERVING
-            behaviorObservationHistory.reset(System.currentTimeMillis())
-            _behaviorObservation.value = behaviorObservationHistory.snapshot()
-            _behaviorDisplayState.value = BehaviorDisplayState.Observing
-            synchronized(presenceLock) {
-                presenceStateMachine.reset()
-                latestPersonDetected = false
-                latestFaceDetected = false
-                latestBehaviorEvidence = false
-            }
-            _presence.value = PresenceSnapshot()
-            _personDetection.value = PersonDetectionSnapshot()
-            behaviorObservationActive = false
-            behaviorObservationEverActive = false
-            focusSupervisor.reset()
-            reminderState.clearAll()
-            _gentleReminder.value = null
+            resetObservationLocked()
         }
+    }
+
+    private fun resetObservationLocked() {
+        processor = FocusStateProcessor(observationConfig)
+        behaviorTemporalSmoother.reset()
+        behaviorSignalProcessor.reset()
+        learningContinuityStateMachine.reset()
+        _learningContinuityState.value = LearningContinuityState.OBSERVING
+        behaviorObservationHistory.reset(System.currentTimeMillis())
+        _behaviorObservation.value = behaviorObservationHistory.snapshot()
+        _behaviorDisplayState.value = BehaviorDisplayState.Observing
+        synchronized(presenceLock) {
+            presenceStateMachine.reset()
+            latestPersonDetected = false
+            latestFaceDetected = false
+            latestBehaviorEvidence = false
+        }
+        _presence.value = PresenceSnapshot()
+        _personDetection.value = PersonDetectionSnapshot()
+        behaviorObservationActive = false
+        behaviorObservationEverActive = false
+        focusSupervisor.reset()
+        reminderState.clearAll()
+        _gentleReminder.value = null
+        teacherReminderEngine.reset()
+        _teacherReminder.value = null
+        lastTeacherObservationMs = Long.MIN_VALUE
     }
 
     suspend fun finishFocusSession(actualFocusMinutes: Int): FocusSessionSummary {
@@ -295,6 +365,8 @@ class ExpressionSessionManager(
             ).copy(behaviorSummary = behaviorSummary)
             _gentleReminder.value = null
             reminderState.clearAll()
+            teacherReminderEngine.reset()
+            _teacherReminder.value = null
             summary
         }
     }
@@ -337,10 +409,14 @@ class ExpressionSessionManager(
     private suspend fun syncLocked() {
         val focusEligible = assistanceEnabled && cameraPermissionGranted && timerRunning && pageVisible && appForeground
         val focusShouldRun = focusEligible && focusMode == FocusMode.FOCUS
+        val classroomShouldRun = classroomSupervisionEnabled && classroomCameraPermissionGranted &&
+            classroomPageVisible && classroomForeground
         val counselorShouldRun = counselorAssistanceEnabled && counselorCameraPermissionGranted &&
             counselorPageVisible && counselorAppForeground
-        val shouldRun = focusShouldRun || counselorShouldRun
+        val analysisShouldRun = focusShouldRun || classroomShouldRun
+        val shouldRun = analysisShouldRun || counselorShouldRun
         focusAnalysisActive = focusShouldRun
+        classroomAnalysisActive = classroomShouldRun
         _observationActive.value = shouldRun
 
         if (!shouldRun) {
@@ -351,11 +427,14 @@ class ExpressionSessionManager(
             behaviorSignalProcessor.reset()
             clearTransientObservationState()
             val fallbackStatus: ExpressionServiceStatus = when {
-                !assistanceEnabled && !counselorAssistanceEnabled -> ExpressionServiceStatus.Off
+                !assistanceEnabled && !counselorAssistanceEnabled && !classroomSupervisionEnabled ->
+                    ExpressionServiceStatus.Off
                 (assistanceEnabled && !cameraPermissionGranted) ||
-                    (counselorAssistanceEnabled && !counselorCameraPermissionGranted) ->
+                    (counselorAssistanceEnabled && !counselorCameraPermissionGranted) ||
+                    (classroomSupervisionEnabled && !classroomCameraPermissionGranted) ->
                     ExpressionServiceStatus.Error("需要摄像头权限")
                 (assistanceEnabled && (!timerRunning || focusMode != FocusMode.FOCUS)) ||
+                    (classroomSupervisionEnabled && (!classroomPageVisible || !classroomForeground)) ||
                     (counselorAssistanceEnabled && (!counselorPageVisible || !counselorAppForeground)) ->
                     ExpressionServiceStatus.Paused
                 else -> ExpressionServiceStatus.Off
@@ -367,7 +446,7 @@ class ExpressionSessionManager(
             return
         }
 
-        if (focusShouldRun && !behaviorObservationActive) {
+        if (analysisShouldRun && !behaviorObservationActive) {
             behaviorSignalProcessor.reset()
             behaviorSignalProcessor.beginBehaviorObservation(System.currentTimeMillis())
             _behaviorDisplayState.value = BehaviorDisplayState.Observing
@@ -384,7 +463,7 @@ class ExpressionSessionManager(
             behaviorCollectorJob = scope.launch {
                 var lastUiBehaviorUpdateMs = 0L
                 behaviorAnalyzer.predictions.collectLatest { prediction ->
-                    if (!focusAnalysisActive) return@collectLatest
+                    if (!focusAnalysisActive && !classroomAnalysisActive) return@collectLatest
                     val smoothedPrediction = behaviorTemporalSmoother.smooth(prediction)
                     // Inference may complete at the camera cadence. Keep the
                     // visible status calm while the signal processor receives
@@ -421,6 +500,7 @@ class ExpressionSessionManager(
                             StableBehaviorEvent.STABLE_LEARNING in events -> reminderState.clearBehavior()
                     }
                     _gentleReminder.value = reminderState.message()
+                    observeSupervision(smoothedPrediction.timestampMs)
                     // READ/WRITE is only V1 learning evidence. It must not
                     // override FER, head-pose, or eye-derived focus state.
                 }
@@ -435,6 +515,7 @@ class ExpressionSessionManager(
                             timestampMs = detection.timestampMs,
                             personDetected = detection.personDetected,
                         )
+                        observeSupervision(detection.timestampMs)
                     }
                 }
             }
@@ -450,7 +531,7 @@ class ExpressionSessionManager(
                     if (!_observationActive.value) return@collectLatest
                     latestResult = result
                     _result.value = result
-                    if (!focusAnalysisActive) return@collectLatest
+                    if (!focusAnalysisActive && !classroomAnalysisActive) return@collectLatest
                     updatePresence(
                         timestampMs = result.timestamp,
                         faceDetected = result.facePresent,
@@ -482,6 +563,7 @@ class ExpressionSessionManager(
                         reminderState.clearExpression()
                     }
                     _gentleReminder.value = reminderState.message()
+                    observeSupervision(result.timestamp)
                 }
             }
         }
@@ -489,23 +571,54 @@ class ExpressionSessionManager(
             target.initialize()
             serviceInitialized = true
         }
-        if (focusShouldRun && !behaviorAnalyzersAttached) {
+        if (analysisShouldRun && !behaviorAnalyzersAttached) {
             behaviorAnalyzer.ensureInitialized()
             personAnalyzer.ensureInitialized()
             cameraPipeline.addAnalyzer(behaviorAnalyzer)
             cameraPipeline.addAnalyzer(personAnalyzer)
             behaviorAnalyzersAttached = true
-        } else if (!focusShouldRun && behaviorAnalyzersAttached) {
+        } else if (!analysisShouldRun && behaviorAnalyzersAttached) {
             cameraPipeline.removeAnalyzer(behaviorAnalyzer)
             cameraPipeline.removeAnalyzer(personAnalyzer)
             behaviorAnalyzer.reset()
             personAnalyzer.pause()
             behaviorAnalyzersAttached = false
             _focusState.value = FocusState.UNAVAILABLE
+            _classroomAttention.value = ClassroomAttention()
         }
         cameraPipeline.start()
         target.start()
-        if (focusShouldRun) personAnalyzer.start()
+        if (analysisShouldRun) personAnalyzer.start()
+    }
+
+    /**
+     * Feeds the teacher reminder and classroom attention from already-derived
+     * on-device observations. Timestamps are monotonic-guarded because three
+     * collectors (behavior, person, expression) can report independently.
+     */
+    private fun observeSupervision(timestampMs: Long) {
+        if (focusAnalysisActive && timestampMs >= lastTeacherObservationMs) {
+            lastTeacherObservationMs = timestampMs
+            teacherReminderEngine.observe(
+                displayState = _behaviorDisplayState.value,
+                presence = _presence.value.state,
+                focusState = _focusState.value,
+                timestampMs = timestampMs,
+            )?.let { _teacherReminder.value = it }
+        }
+        if (classroomAnalysisActive && timestampMs >= lastClassroomObservationMs) {
+            lastClassroomObservationMs = timestampMs
+            _classroomAttention.value = classroomAttentionTracker.process(
+                displayState = _behaviorDisplayState.value,
+                presence = _presence.value.state,
+                focusState = _focusState.value,
+                timestampMs = timestampMs,
+            )
+        }
+    }
+
+    fun dismissTeacherReminder() {
+        _teacherReminder.value = null
     }
 
     private fun initialResult() = ExpressionResult(
@@ -520,6 +633,7 @@ class ExpressionSessionManager(
     private fun clearTransientObservationState() {
         _observationActive.value = false
         focusAnalysisActive = false
+        classroomAnalysisActive = false
         latestResult = initialResult()
         _result.value = latestResult
         _behaviorPrediction.value = null
@@ -537,6 +651,11 @@ class ExpressionSessionManager(
         behaviorObservationActive = false
         reminderState.clearAll()
         _gentleReminder.value = null
+        classroomAttentionTracker.reset()
+        _classroomAttention.value = ClassroomAttention()
+        lastClassroomObservationMs = Long.MIN_VALUE
+        _teacherReminder.value = null
+        lastTeacherObservationMs = Long.MIN_VALUE
     }
 
     private fun updatePresence(

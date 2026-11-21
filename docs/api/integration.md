@@ -236,9 +236,9 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 ## 学习通与教务同步
 
-连接学习通后，服务端在后端运行期间自动执行每日同步（成功结束后间隔 24 小时，重启补执行，部分失败 30 分钟后重试），无需打开 Web；每批处理结束后再等待 60 秒扫描，不是固定零点或实时提交推送。题目快照与列表独立采集，按 sync 的 assignments 分区及 warnings 展示部分成功。作业的 completed 表示最近同步时的平台观测，can_generate/current 不是实时联网或服务可用性检测。
+连接学习通后，服务端在后端运行期间自动执行每日同步（成功结束后间隔 24 小时，重启补执行，部分失败 30 分钟后重试），无需打开 Web；每批处理结束后再等待 60 秒扫描，不是固定零点或实时提交推送。题目快照与列表独立采集，按 sync 的 assignments 分区及 warnings 展示部分成功。已完成作业还会尝试采集批改报告页的逐题对错，只保存 `is_correct` 布尔值，不保存学生原始作答；报告页失败时保留题干但错题整理不可用。作业的 completed 表示最近同步时的平台观测，can_generate/current 不是实时联网或服务可用性检测。
 
-在线课堂先分页读取 `GET /tasks?page=1&page_size=200`（不传 status），逐页筛选 source=chaoxing、未删除且有效 deadline 已到期的 pending/completed 条目；接口没有 source 过滤参数，total/has_more 也不是学习通作业数量。使用本站个人待办 id 作为 task_id，completed_at 仅表示本站确认完成时间。点击后 `POST /chaoxing/assignments/{task_id}/classroom`，按返回 course_id/job.id 轮询既有课堂 job 接口；409 assignment_content_not_current 可先同步一次，失败任务显式 retry，completed 后自动进入 workspace 播放和作答。可用 `GET /chaoxing/assignments/{task_id}/content` 预览题目。重复生成同份需求会复用任务，不提交客户端题干或伪造完成状态，也不在每日同步时自动生成课堂。截止前（含提前提交）返回 assignment_not_ended，未知截止返回 assignment_deadline_unknown；不再以是否提交作为门槛。生成 mode=quiz，持久化 learningProfile=assignment_review 与题目 hints/sourceQuestionNumber/exerciseRole，学生选题、逐步提示、提交后按需展开解析；主观题自行核对，不冒充自动批阅。完整示例、错误恢复和时间语义见[一键讲解接入](09-integrations.md#assignment-review-flow)。新增流程当前已适配 Web，移动端可按契约接入。
+在线课堂先分页读取 `GET /tasks?page=1&page_size=200`（不传 status），逐页筛选 source=chaoxing、未删除且有效 deadline 已到期的 pending/completed 条目；接口没有 source 过滤参数，total/has_more 也不是学习通作业数量。使用本站个人待办 id 作为 task_id，completed_at 仅表示本站确认完成时间。点击后 `POST /chaoxing/assignments/{task_id}/classroom`，按返回 course_id/job.id 轮询既有课堂 job 接口；请求体可选 `{"scope":"all"|"wrong"}`，wrong 只使用明确批改为错的题并只出变式。409 assignment_content_not_current 可先同步一次，错题课另有 assignment_results_unavailable/assignment_no_wrong_questions；失败任务显式 retry，completed 后 Web 进入 workspace 播放和作答，Android/iOS 读取 stage document 进入原生 quiz 阅读器。可用 `GET /chaoxing/assignments/{task_id}/content` 预览题目及 `wrong_count/results_available`。重复生成同份 scope 需求会复用任务，不提交客户端题干或伪造完成状态，也不在每日同步时自动生成课堂。截止前（含提前提交）返回 assignment_not_ended，未知截止返回 assignment_deadline_unknown；不再以是否提交作为门槛。生成 mode=quiz，持久化 learningProfile=assignment_review 与题目 hints/sourceQuestionNumber/exerciseRole，学生选题、逐步提示、提交后按需展开解析；主观题自行核对，不冒充自动批阅。完整示例、错误恢复和时间语义见[一键讲解接入](09-integrations.md#assignment-review-flow)。新增流程已适配 Web、Android 与 iOS；HarmonyOS 和微信小程序仍待接入。
 
 学习通：login → status → sync（按返回 sections/warnings 展示部分成功）→ 课程局部 sync → disconnect。局部同步 depth=fast/deep，sections 为逗号分隔；force_refresh 及支持分区见课程接口。reauth_required/verification_required 表示外部连接需重新认证，不能循环刷新本站 JWT。
 
@@ -315,3 +315,69 @@ Token 有效期 120 秒，60 秒后通过同一 rtc-token 接口续期并调用 
 学生登录后读取 `/self-classroom/status` 与 `/self-classroom`，可先用 multipart 的 file 和 Idempotency-Key 上传到 `/self-classroom/materials`，保留返回的资料 ID 与提取状态。主题不能为空；`POST /self-classroom/generate` 发送 learning_objective 和本人已提取的 selected_material_ids，收到202后按 poll_interval_ms 轮询 `/self-classroom/jobs/{session_id}`，终态停止。成功但 url 为空时显示不可打开原因，不拼接或猜测播放地址。数据归属当前学生的 __self_study__，不需要课程选课，也不可复用其他课程或其他账号的资料。新增接口的完整参数与异常见[课堂模块](14-magicclass.md#self-classroom)。
 
 课程列表 CourseOut 新增 starts_at/ends_at（可空时间字符串），个人待办 PersonalTaskOut 新增 remote_submitted_at（可空远端提交时间）。客户端应允许 null；展示已提交作业时可用该字段，缺失则说明时间未获取，不能用 completed_at 冒充远端精确提交时间。Android 已有字段/接口适配源码，Web 现有作业讲解链路保持兼容；HarmonyOS、微信小程序未接入自主选题，跨端构建和真机交互未在本次验证。
+
+## 经典课堂原生播放接入（Android/iOS）
+
+普通经典课堂（课程课堂与自主选题课堂）的原生播放由后端统一提供，Android/iOS 共用同一套字段。受管工作台使用 `workspace_id` / `stage_id` / `scene_id`，不能与经典课堂的 `session_id` / `classroom_id` 混用；经典课堂没有真实 workspace 映射。
+
+接入顺序：
+
+1. 通过 `POST /api/v1/courses/{course_id}/interactive-classroom/generate`（或自主选题 `POST /api/v1/self-classroom/generate`）取得 `session.session_id`；历史入口为 `GET /api/v1/courses/{course_id}/interactive-classroom` / `GET /api/v1/self-classroom` 的 `items[].session_id`。
+2. `GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/playback` 或 `GET /api/v1/self-classroom/{session_id}/playback`，带 Bearer access token。`classroom_id` 由服务端按会话查得，客户端不要传或拼接。
+3. 若返回 `409 CLASSROOM_NOT_READY`，按 `details.poll_after_seconds` 轮询原 `jobs/{session_id}`；`409 CLASSROOM_GENERATION_FAILED` 走现有重试；`410 CLASSROOM_CONTENT_MISSING` 提示重新生成或改用网页兼容。
+4. 按 `scenes[]` 的 `order` 播放；`render.kind=native` 走原生 slide/quiz，`sandbox-html`/`sandbox-url` 走受限 WebView，`unsupported` 按 `reason` 降级。`steps` 是服务端给出的动作顺序，`spotlight`/`laser` 等 fire-and-forget 不进 `steps`。
+5. `media[].available=true` 时用 API Base 拼接 `media[].url` 并按需请求，带 Authorization；URL 中的 `/media/media/...`、`/media/audio/...` 是“路由前缀 + 相对路径”，原样拼接。音视频拖动用单段 `Range`。`available=false` 不猜地址，按 `reason` 显示降级。
+6. `native.available` 只表示至少存在一个可原生播放计划（slide/quiz，或受限 sandbox 页面），不代表老师问答、PBL、白板写入、讨论全部原生可用；逐场景按 `render.kind` / `actions[].supported` 判断。只有 `native.available=false` 或场景全部 `unsupported` 时，才按 `compat.recommended` 选择旧网页入口；`compat.browser_embed_available=false` 时不得强行 iframe。
+
+### 脱敏联调服务器（真实上游不可用时）
+
+当前仓库提供只用于双端联调的合成样例服务器，不连接真实 magic class，也不代表真实生成课堂：
+
+```powershell
+# 在 backend 目录启动
+python tests\fixtures\classroom_playback_server.py --host 127.0.0.1 --port 8000
+```
+
+启动信息会打印 `course_id`、`course_session_id`、`self_session_id`、`foreign_session_id`。使用 demo 学生账号 `student_demo` / `Demo123456` 登录后，按正式接口读取：
+
+- 课程播放：`GET /api/v1/courses/{course_id}/interactive-classroom/sess_fixture_course/playback`
+- 自主播放：`GET /api/v1/self-classroom/sess_fixture_self/playback`
+- 图片：`GET .../sess_fixture_course/media/media/img_1.png`（68 bytes，1x1 合法 PNG）
+- 讲解音频分别读取 `.../media/audio/tts_s1_a1.wav` 与 `.../media/audio/tts_s1_followup.wav`。同一页的 `steps` 先后引用低音、高音两段测试音，每段一秒，用来检查顺序和切页停止。
+- 视频读取 `.../media/media/vid_1.mp4`，内容取自项目已有的 Android 登录视频素材，可以验证画布打开视频和拖动。
+- 测验：`GET/POST .../sess_fixture_course/scenes/sc_quiz/quiz-attempt`
+- 无权限：`sess_fixture_foreign`（属于其他账号）或缺少 Bearer
+
+媒体必须带 `Authorization: Bearer ...`。完整读取返回 200，音视频支持单段 Range。`sc_int` 是 `sandbox-html` 场景，`sc_pbl` 是需要网页兼容的降级场景，真实网页兼容需用真实课堂验收。详细字段见[课堂 API](14-magicclass.md#经典课堂原生播放与媒体)。
+
+经典课堂原生互动能力核对（首批）：
+
+| 能力 | 现有接口 / 数据 | 接入结论 | 证据与边界 |
+| --- | --- | --- | --- |
+| 测验作答与恢复 | 新增 `GET/POST .../scenes/{scene_id}/quiz-attempt`；复用 `quiz_attempt_store`，以 `classroom_id` 代替 stage | 现有接口可复用（新增经典入口） | 经典课堂无 workspace，原受管 quiz 接口要求 `workspace_id/stage_id`；新入口只接受本人会话与 quiz 场景，状态仍为 `attempt_id/state` |
+| 讲解音频 | 播放响应 `actions[].type=speech` + `media[]` 的 audio；上游生成时已写入 TTS 文件 | 现有接口可复用 | 不需要调用受管 `narration`（该接口要求 workspace/stage）；`audioUrl` 重写为本站媒体地址，`play()` 前先授权读取 |
+| 老师问答 | 上游没有经典课堂独立教师问答接口 | 继续由兼容路径提供 | 仅 PBL instructor / 课堂 chat 存在，依赖上游运行时；原生不伪造 |
+| AI 同学 | `GET /api/v1/magicclass/classmates/roster`、`POST .../respond`、`POST .../ask` | 课程经典课堂可复用；自主选题暂不可直接复用 | `roster`/`budget` 只要求登录；`respond`/`ask` 当前只校验真实课程，`__self_study__` 会 403。自主选题需要另补 session 级权限入口，本轮未新增 |
+| 白板 | 播放响应 `whiteboards` 为只读快照计数，完整白板页未下发；保存接口要求 `workspace_id/stage_id` | 仅计数；原生暂不渲染完整白板，展示/保存继续兼容 | 经典课堂没有真实 stage 映射，不能伪造；编辑/保存继续由兼容路径提供 |
+| 讨论 / PBL | 上游 `discussion` 需要 `/api/chat/pi` SSE、provider keys 与客户端 storeState；`pbl` 需要完整 PBL runtime | 继续由兼容路径提供 | 播放响应分别标 `discussion_requires_compat_runtime` / `pbl_requires_compat_runtime`；原生只展示内容与降级说明 |
+| 互动运行时 | `interactive` 的 `html` / `url` 与 `widgetType` | 现有接口可复用（沙箱） | `html` → `sandbox-html`；外域 `url` → `sandbox-url`；受信内部 URL 被剥离时标 `interactive_url_requires_internal_access`；外部 3D 依赖 `magicclass_external_3d_available` |
+
+补充说明：`magicclass_external_3d_available` 只控制 external CDN 型 3D；课堂媒体一律经本站代理，不把上游内部凭据或内部 Origin 下发客户端。旧课件缺正文、缺场景 ID、未知场景/动作均按播放响应的 `warnings` / `reason` 降级，不整节课失败。
+
+各端当前调用状态（本轮后端完成时）：
+
+| 端 | 现有调用 | 与新契约的关系 | 验证状态 |
+| --- | --- | --- | --- |
+| Android | `ApiService.kt` 已声明经典 `playback` / 经典 `quiz-attempt` 路径和 `ClassroomPlaybackDto`；媒体没有独立 Retrofit 方法 | 播放与 quiz 已按本契约接入；媒体需播放器用 `media[].url` + API Base + Authorization 读取 | 后端契约测试通过；Android 编译/真机未由后端验证 |
+| iOS | `ClassroomClassicPlayback` 将经典 `playback` 投影到原生计划；`ClassroomService` 使用课程/自主 session 路径调用经典 `playback` 与 `quiz-attempt`，媒体按 `media[].url` 读取 | 已接入经典播放与 quiz；`NativeClassroomView` 的 `workspaceID="classic"` 只是本地播放器标识，不是后端 stage 映射；媒体需播放器补 Authorization | iOS 编译/真机未由后端验证 |
+| Web | `webreact/src/data/api.js` 仍用 `composition`、`jobs`、历史列表与内嵌课堂 | 不调用新原生接口；继续走网页兼容 | `node --test scripts/tests/web-api-docs.test.mjs` 通过 |
+| HarmonyOS | 未检索到经典课堂调用 | 新契约待接入 | 未验证 |
+| 微信小程序 | 未检索到经典课堂调用 | 新契约待接入 | 未验证 |
+剩余缺口（本轮不伪装成已支持）：
+
+- `pbl` 场景：需要上游完整 PBL runtime/storeState，播放响应标 `render.kind=unsupported`、`reason=pbl_requires_compat_runtime`。
+- `discussion` 动作：上游走 `/api/chat/pi` SSE 且依赖 provider keys 与客户端 storeState，播放响应标 `supported=false`、`reason=discussion_requires_compat_runtime`，并进入 `dropped_actions`。
+- 老师问答：经典课堂上游没有独立教师问答接口，继续由受管 PBL/兼容页面提供，不新增伪造接口。
+- 经典白板保存：经典课堂白板是只读快照，`whiteboards` 仅返回数量；写接口仍要求真实 `workspace_id/stage_id`，不能用 `classroom_id` 冒充。
+- 外部媒体 / 其他课堂媒体 / 裸资源 ID：不代理、不猜 URL，`media[].available=false` + `reason`，需要重新生成或走兼容入口。
+- 自主选题 AI 同学：`respond`/`ask` 仍要求真实课程，`__self_study__` 无合法课程记录，当前 403；`roster`/`budget` 可用。需要 session 级共享入口后才能原生接入。

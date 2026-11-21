@@ -6,6 +6,7 @@ import CampusCore
 /// entry points (self-topic, course classroom, classmates).
 struct ClassroomHubView: View {
     @Environment(\.dismiss) private var dismiss
+    private var palette: CampusPalette { .classroom }
 
     var body: some View {
         CampusSecondaryScaffold(title: "互动课堂") {
@@ -16,7 +17,7 @@ struct ClassroomHubView: View {
                             .resizable().scaledToFill()
                             .frame(height: 210)
                             .clipped()
-                        LinearGradient(colors: [.clear, Color(hex: 0x101F3F, opacity: 0.85)],
+                        LinearGradient(colors: [.clear, Color(hex: 0x182638, opacity: 0.85)],
                                        startPoint: .center, endPoint: .bottom)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("把一门课变成一次对话").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
@@ -30,29 +31,34 @@ struct ClassroomHubView: View {
 
                     NavigationLink { ClassicClassroomView(scope: .personal) } label: {
                         hubRow(icon: "sparkles", title: "自主选题课堂",
-                               detail: "自己定主题，上传资料后生成", accent: Color(hex: 0xE08A4E))
+                               detail: "自己定主题，上传资料后生成", accent: palette.accent)
                     }
                     .buttonStyle(.plain)
                     NavigationLink { CoursesView() } label: {
                         hubRow(icon: "books.vertical", title: "从课程开始",
-                               detail: "进入图书馆，选择一门真实课程", accent: Color(hex: 0x285B4B))
+                               detail: "进入图书馆，选择一门真实课程", accent: palette.primary)
+                    }
+                    .buttonStyle(.plain)
+                    NavigationLink { NativeClassroomCoursePickerView() } label: {
+                        hubRow(icon: "rectangle.on.rectangle.badge.play", title: "原生课堂",
+                               detail: "在 App 内播放课件、翻页、练习与讲解", accent: palette.primary)
                     }
                     .buttonStyle(.plain)
                     NavigationLink { LearningRoomsView() } label: {
                         hubRow(icon: "person.2", title: "同学一起学",
-                               detail: "共同课堂、文字讨论与共享页码", accent: Color(hex: 0x6D8B9B))
+                               detail: "共同课堂、文字讨论与共享页码", accent: palette.muted)
                     }
                     .buttonStyle(.plain)
 
                     HStack(alignment: .top, spacing: 9) {
-                        Image(systemName: "info.circle").font(.system(size: 13)).foregroundStyle(Color(hex: 0x285B4B))
+                        Image(systemName: "info.circle").font(.system(size: 13)).foregroundStyle(palette.primary)
                         Text("自主选题和课程课堂分别保存。共同课堂通过 UID 邀请同学，文字与通话权限按成员关系校验。")
-                            .campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
+                            .campusFont(.caption).foregroundStyle(palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(hex: 0xE4EEE5).opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
+                    .background(palette.primarySoft.opacity(0.7), in: RoundedRectangle(cornerRadius: 16))
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 30)
@@ -68,15 +74,15 @@ struct ClassroomHubView: View {
                 .fill(accent.opacity(0.14)).frame(width: 46, height: 46)
                 .overlay(Image(systemName: icon).font(.system(size: 20, weight: .medium)).foregroundStyle(accent))
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).campusFont(.subtitle).foregroundStyle(Color(hex: 0x1B2730))
-                Text(detail).campusFont(.caption).foregroundStyle(Color(hex: 0x667784))
+                Text(title).campusFont(.subtitle).foregroundStyle(palette.textPrimary)
+                Text(detail).campusFont(.caption).foregroundStyle(palette.muted)
             }
             Spacer()
-            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(hex: 0x667784))
+            Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(palette.muted)
         }
         .padding(15)
-        .background(Color(hex: 0xFFFEF8), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Color(hex: 0xD7DED5, opacity: 0.7), lineWidth: 1))
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.line.opacity(0.7), lineWidth: 1))
     }
 }
 
@@ -84,7 +90,7 @@ struct ClassicClassroomView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.campus) private var palette
+    private var palette: CampusPalette { .classroom }
     let scope: ClassroomScope
     @State private var model = ClassroomModel()
     @State private var goal = ""
@@ -94,9 +100,16 @@ struct ClassicClassroomView: View {
     @State private var practice = false
     @State private var importing = false
     @State private var playing = false
+    @State private var nativePlaying = false
     @State private var confirmRetry = false
     @State private var upload: PendingUpload?
     private struct PendingUpload { let name: String; let mime: String; let data: Data; let key = UUID().uuidString }
+
+    private var accountKey: String { app.serverURL + "|" + (app.session?.user.id ?? "") }
+    private var classicCourseID: String {
+        if case .course(let id) = scope { return id }
+        return "__self_study__"
+    }
 
     var body: some View {
         CampusSecondaryScaffold(title: scope == .personal ? "自主选题课堂" : "课程课堂") {
@@ -107,7 +120,7 @@ struct ClassicClassroomView: View {
                         HStack(alignment: .top, spacing: 9) {
                             Image(systemName: "exclamationmark.triangle").foregroundStyle(Color(hex: 0xC25450))
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("课堂生成暂不可用").campusFont(.body).fontWeight(.semibold).foregroundStyle(Color(hex: 0x1B2730))
+                                Text("课堂生成暂不可用").campusFont(.body).fontWeight(.semibold).foregroundStyle(palette.textPrimary)
                                 Text(model.status["reason"].string ?? model.status["compatibility_reason"].string ?? "请联系服务维护者配置课堂服务。")
                                     .campusFont(.caption).foregroundStyle(Color(hex: 0x8E3430))
                                     .fixedSize(horizontal: false, vertical: true)
@@ -218,11 +231,18 @@ struct ClassicClassroomView: View {
         .fullScreenCover(isPresented: $playing) {
             NavigationStack {
                 if let url = ClassroomPlayback.validURL(session: model.session, status: model.status, allowLocalDebug: AppModel.allowsHTTP) {
-                    TrustedWebView(url: url, origins: [model.status["embed_origin"].text], onError: { model.error = $0 })
+                    TrustedWebView(url: url, origins: [model.status["embed_origin"].text], injectedScript: ClassroomRewards.script + "\n" + ClassroomMobileLayout.script + "\n" + ClassroomSlideTheme.script, persistentStorage: true, onError: { model.error = $0 })
                         .navigationTitle("互动课堂").navigationBarTitleDisplayMode(.inline)
                         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { playing = false } } }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $nativePlaying) {
+            NativeClassroomView(courseID: classicCourseID, workspaceID: "classic", stageID: model.sessionID,
+                                title: "互动课堂", client: app.client, accountKey: accountKey,
+                                classicScope: scope, webClassroom: nativeWebFallback)
+                .environment(app)
+                .campusPalette(.classroom)
         }
         .fileImporter(isPresented: $importing,
                       allowedContentTypes: [.pdf, .plainText, UTType(filenameExtension: "md") ?? .plainText,
@@ -244,6 +264,14 @@ struct ClassicClassroomView: View {
             Button("确认重新生成") { Task { await generate(retry: true) } }
         }
         .errorAlert(Binding(get: { model.error }, set: { model.error = $0 }))
+        .campusPalette(.classroom)
+    }
+
+    private var nativeWebFallback: NativeClassroomWebFallback? {
+        guard let url = ClassroomPlayback.validURL(session: model.session, status: model.status,
+                                                   allowLocalDebug: AppModel.allowsHTTP),
+              let origin = model.status["embed_origin"].string else { return nil }
+        return NativeClassroomWebFallback(url: url, origin: origin)
     }
 
     private var sessionSection: some View {
@@ -264,10 +292,16 @@ struct ClassicClassroomView: View {
                 if let error = model.session["error"].string?.nonEmpty {
                     Text(error).campusFont(.caption).foregroundStyle(.secondary)
                 }
-                if ClassroomPlayback.validURL(session: model.session, status: model.status, allowLocalDebug: AppModel.allowsHTTP) != nil {
-                    CampusPrimaryButton(title: "开始学习", systemImage: "play.fill") { playing = true }
-                } else if model.session["status"].text == "succeeded" {
-                    Text(model.session["url_unavailable_reason"].string ?? model.status["browser_embed_reason"].string ?? "课堂已生成，当前没有可安全打开的播放地址。")
+                if model.session["status"].text == "succeeded", model.session["partial"].bool != true {
+                    CampusPrimaryButton(title: "进入原生课堂", systemImage: "play.fill") {
+                        nativePlaying = true
+                    }
+                    .accessibilityIdentifier("classic.classroom.nativePlay")
+                }
+                if nativeWebFallback != nil {
+                    CampusSecondaryButton(title: "网页兼容", systemImage: "safari") { playing = true }
+                } else if model.session["status"].text == "succeeded", model.session["partial"].bool == true {
+                    Text(model.session["url_unavailable_reason"].string ?? model.status["browser_embed_reason"].string ?? "这节课堂还没有可用的播放地址。")
                         .campusFont(.caption).foregroundStyle(.secondary)
                 }
                 HStack(spacing: 10) {

@@ -711,6 +711,24 @@
     "retry": "Erneut versuchen"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "Fragen",
+      "askSubmit": "Senden",
+      "askPlaceholder": "Diese:n Klassenkamerad:in fragen…",
+      "askLoading": "Antwortet…",
+      "askError": "Die Person konnte nicht antworten. Bitte erneut versuchen.",
+      "quiet": "Diesmal nur zuhören",
+      "budget": "Das Sprechbudget dieser Stunde ist aufgebraucht",
+      "title": "Klassenkameraden",
+      "style": "Sicht der Klassenkameraden",
+      "speaking": "Spricht",
+      "previous": "Vorherige Klassenkameraden",
+      "next": "Nächste Klassenkameraden",
+      "discussionPending": "Diskussion ausstehend",
+      "loading": "Reaktion wird vorbereitet…",
+      "idle": "Folgt dieser Stunde",
+      "error": "Reaktionen konnten nicht geladen werden"
+    },
     "teacher": "LEHRKRAFT",
     "you": "DU",
     "inputPlaceholder": "Gib deine Nachricht ein...",

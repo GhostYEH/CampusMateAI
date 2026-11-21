@@ -45,6 +45,22 @@ export function startActionTimeline(planScene, scene, { paused = false } = {}) {
   };
 }
 
+/**
+ * 没有预设动作时的聚焦兜底：挑上半页面积最大的文字元素，通常是标题。
+ * 只返回已存在元素的 id，找不到就返回空串，调用方不猜。
+ */
+export function keyTextElementId(scene) {
+  if (scene?.content?.type !== "slide") return "";
+  const elements = Array.isArray(scene.content.canvas?.elements) ? scene.content.canvas.elements : [];
+  const texts = elements.filter((element) => element?.type === "text" && typeof element.id === "string");
+  if (!texts.length) return "";
+  const top = texts.filter((element) => Number(element.top) < 260);
+  const ranked = (top.length ? top : texts).slice().sort(
+    (a, b) => (Number(b.width) * Number(b.height)) - (Number(a.width) * Number(a.height)),
+  );
+  return ranked[0].id;
+}
+
 function completed(session, cursor) {
   return { ...session, cursor, status: "completed", clearEffects: false };
 }

@@ -49,6 +49,7 @@ from .routes import (
     final_review,
     course_research,
     magicclass_classroom,
+    magicclass_playback,
     magicclass_archive,
     magicclass_discovery,
     magicclass_editor,
@@ -60,9 +61,11 @@ from .routes import (
     magicclass_provider,
     magicclass_tts,
     magicclass_narration,
+    magicclass_whiteboard,
     magicclass_quiz,
     magicclass_course_context,
     magicclass_learning_space,
+    magicclass_classmates,
     learning_rooms,
     study_rooms,
 )
@@ -137,6 +140,11 @@ api_router.include_router(edu.router)
 # magic class 互动课堂适配层(学生侧课程智能辅导空间)
 api_router.include_router(magicclass_classroom.router)
 api_router.include_router(magicclass_classroom.self_router)
+# 经典课堂原生播放与媒体(Android/iOS 共用;服务端会话 + 上游课堂正文)
+api_router.include_router(magicclass_playback.router)
+api_router.include_router(magicclass_playback.self_router)
+# 课堂 AI 同学:固定人设 + 服务端凭据代理,浏览器不接触模型密钥
+api_router.include_router(magicclass_classmates.router)
 api_router.include_router(magicclass_fusion.router)
 # magic class 学习工作台(受管服务的 workspace/stage 持久化)
 api_router.include_router(magicclass_workspaces.router)
@@ -154,6 +162,8 @@ api_router.include_router(magicclass_generation.router)
 api_router.include_router(magicclass_tts.router)
 # magic class 按场景的讲解音频(按需生成;讲稿由服务端从场景正文派生,浏览器只给 scene id)
 api_router.include_router(magicclass_narration.router)
+# magic class 舞台白板(完整快照 + If-Match + Idempotency-Key)
+api_router.include_router(magicclass_whiteboard.router)
 api_router.include_router(magicclass_quiz.router)
 api_router.include_router(magicclass_discussion.router)
 api_router.include_router(magicclass_provider.router)

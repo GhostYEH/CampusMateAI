@@ -294,6 +294,9 @@ struct TaskDetailView: View {
                     }
                     Rectangle().fill(CampusJournal.blue.opacity(0.4)).frame(height: 1)
                     detailRows
+                    if item.source == "chaoxing" {
+                        ChaoxingAssignmentReviewSection(task: item)
+                    }
                     if !item.canChangeCompletion {
                         Label("此任务由来源系统同步，请在原系统办理，再同步最新状态。", systemImage: "arrow.triangle.2.circlepath")
                             .font(.system(size: 12)).foregroundStyle(CampusJournal.muted)

@@ -21,14 +21,16 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from typing import Any, AsyncIterator, Dict, Optional
+from urllib.parse import quote, urlparse
 
 import httpx
 
 from .errors import (
     MagicClassAuthError,
+    MagicClassClassroomMissing,
     MagicClassInvalidOrigin,
     MagicClassProtocolError,
     MagicClassRateLimited,
@@ -38,6 +40,7 @@ from .errors import (
 
 _JOB_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 _CLASSROOM_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,192}$")
+_MEDIA_REL_RE = re.compile(r"^(media|audio)/[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 ACCESS_COOKIE_NAME = "magicclass_access"
 
@@ -315,8 +318,11 @@ class MagicClassClient:
         *,
         params: Optional[dict] = None,
         json_body: Optional[dict] = None,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
-        response = await self._send(method, path, params=params, json_body=json_body)
+        response = await self._send(
+            method, path, params=params, json_body=json_body, timeout=timeout
+        )
         # cookie 过期时重新校验一次访问码,只重试一次,避免请求风暴。
         if response.status_code == 401 and self._access_cookie:
             self._reset_access()
@@ -345,6 +351,14 @@ class MagicClassClient:
             err = payload.get("error") or payload.get("errorCode") or "未知错误"
             raise MagicClassProtocolError(f"magic class 返回失败: {str(err)[:200]}")
         return payload
+
+    async def chat(self, path: str, payload: dict, *, timeout: float = 60.0) -> Dict[str, Any]:
+        """调用受管课堂的对话契约（同学发言/点名回答）。
+
+        与生成任务不同，这类请求是同步返回的短任务；单独给出超时，避免用
+        30 秒的全局值把一次正常的长回答误判成服务不可用。
+        """
+        return await self._request("POST", path, json_body=payload, timeout=timeout)
 
     async def _send(
         self,
@@ -535,15 +549,106 @@ class MagicClassClient:
         return MagicClassSubmitResult(job_id=job_id, status=status, step=step)
 
     async def fetch_classroom(self, classroom_id: str) -> Dict[str, Any]:
-        """只读回读课堂文档（用于如实统计真实组成）。
+        """只读回读课堂文档（用于如实统计真实组成与原生播放）。
 
         端点：`GET /api/classroom?id={classroomId}`，返回
         `{success:true, classroom:{id, stage, scenes[], createdAt}}`。
+
+        与通用 `_request` 的差别：上游 404/410 要保留成
+        `MagicClassClassroomMissing`，让播放层输出 410（历史课件正文缺失），
+        而不是被折叠成 502 协议错误。
         """
         validated = self._validate_classroom_id(classroom_id)
         if validated is None:
             raise MagicClassProtocolError("课堂 ID 无效")
-        return await self._request("GET", "/api/classroom", params={"id": validated})
+        path = "/api/classroom"
+        params = {"id": validated}
+        response = await self._send("GET", path, params=params)
+        if response.status_code == 401 and self._access_cookie:
+            self._reset_access()
+            async with self._client() as client:
+                await self._ensure_access(client)
+            response = await self._send("GET", path, params=params)
+
+        if response.status_code in (404, 410):
+            raise MagicClassClassroomMissing(validated)
+        if response.status_code == 401:
+            raise MagicClassAuthError("magic class 鉴权失败")
+        if response.status_code == 403:
+            raise MagicClassAuthError("magic class 拒绝访问")
+        if response.status_code == 429:
+            raise MagicClassRateLimited()
+        if response.status_code >= 500:
+            raise MagicClassServerError(
+                f"magic class 返回 HTTP {response.status_code}"
+            )
+        if response.status_code not in (200, 201, 202):
+            raise MagicClassProtocolError(
+                f"magic class 返回意外 HTTP {response.status_code}"
+            )
+        try:
+            payload = response.json()
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise MagicClassProtocolError("magic class 返回了无效 JSON") from exc
+        if not isinstance(payload, dict):
+            raise MagicClassProtocolError("magic class 返回结构异常")
+        if payload.get("success") is not True:
+            err = payload.get("error") or payload.get("errorCode") or "未知错误"
+            raise MagicClassProtocolError(f"magic class 返回失败: {str(err)[:200]}")
+        classroom = payload.get("classroom")
+        if not isinstance(classroom, dict):
+            raise MagicClassProtocolError("magic class 返回的课堂正文结构异常")
+        return payload
+
+    @asynccontextmanager
+    async def open_classroom_media(
+        self,
+        classroom_id: str,
+        relative_path: str,
+        *,
+        range_header: Optional[str] = None,
+    ) -> AsyncIterator[httpx.Response]:
+        """流式读取上游课堂媒体，调用方负责消费完并关闭上下文。
+
+        只接受 `media/<file>` 或 `audio/<file>`，路径由播放服务先行校验；
+        这里再做一次防御，绝不把客户端输入拼成任意上游 URL。
+        """
+        validated = self._validate_classroom_id(classroom_id)
+        if validated is None:
+            raise MagicClassProtocolError("课堂 ID 无效")
+        if not _MEDIA_REL_RE.match(relative_path):
+            raise MagicClassProtocolError("课堂媒体路径无效")
+        path = (
+            f"/api/classroom-media/{validated}/"
+            + quote(relative_path, safe="/")
+        )
+        headers = {"Range": range_header} if range_header else None
+        client = self._client()
+        response: Optional[httpx.Response] = None
+        try:
+            await self._ensure_access(client)
+            request = client.build_request("GET", path, headers=headers)
+            response = await client.send(request, stream=True)
+            if response.status_code == 401 and self._access_cookie:
+                await response.aclose()
+                response = None
+                self._reset_access()
+                await self._ensure_access(client)
+                request = client.build_request("GET", path, headers=headers)
+                response = await client.send(request, stream=True)
+            yield response
+        except httpx.TimeoutException as exc:
+            raise MagicClassUnavailable(
+                f"magic class 媒体读取超时: {type(exc).__name__}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise MagicClassUnavailable(
+                f"magic class 媒体连接失败: {type(exc).__name__}"
+            ) from exc
+        finally:
+            if response is not None:
+                await response.aclose()
+            await client.aclose()
 
     async def poll(self, job_id: str) -> MagicClassPollResult:
         validated = self._validate_magicclass_job_id(job_id)

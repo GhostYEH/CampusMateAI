@@ -711,6 +711,24 @@
     "retry": "Làm lại"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "Hỏi",
+      "askSubmit": "Gửi",
+      "askPlaceholder": "Hỏi bạn học này…",
+      "askLoading": "Đang trả lời…",
+      "askError": "Bạn học không thể trả lời. Hãy thử lại.",
+      "quiet": "Lần này mình lắng nghe",
+      "budget": "Đã dùng hết hạn mức phát biểu của bạn học trong bài này",
+      "title": "Bạn học",
+      "style": "Góc nhìn của bạn học",
+      "speaking": "Đang nói",
+      "previous": "Bạn học trước",
+      "next": "Bạn học sau",
+      "discussionPending": "Chờ thảo luận",
+      "loading": "Đang chuẩn bị ý kiến…",
+      "idle": "Đang theo dõi bài này",
+      "error": "Không tải được ý kiến của bạn học"
+    },
     "teacher": "GIẢNG VIÊN",
     "you": "BẠN",
     "inputPlaceholder": "Nhập tin nhắn…",

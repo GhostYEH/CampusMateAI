@@ -33,20 +33,20 @@
   flex: 0 0 auto;
   width: 44px; height: 44px;
   border-radius: 13px;
-  color: #5c53be;
-  background: #f0edff;
+  color: #153b34;
+  background: #f7f1e3;
 }
 
 /* 阶段点阵：已过 / 当前 / 未来，三态必须一眼可辨。 */
 .magicclass-entry__steps { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; }
 .magicclass-entry__step { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; transition: background-color .2s ease; }
-.magicclass-entry__step.is-current { background: #f5f3ff; }
+.magicclass-entry__step.is-current { background: #f5efe2; }
 .magicclass-entry__step-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .magicclass-entry__step-copy strong { font-size: 13.5px; font-weight: 550; color: var(--muted); }
 .magicclass-entry__step-copy small { font-size: 11.5px; color: #93a0b5; }
 .magicclass-entry__step.is-done .magicclass-entry__step-copy strong { color: #46536b; }
-.magicclass-entry__step.is-current .magicclass-entry__step-copy strong { color: #4c3fa8; }
-.magicclass-entry__step.is-current .magicclass-entry__step-copy small { color: #6b62c4; }
+.magicclass-entry__step.is-current .magicclass-entry__step-copy strong { color: #153b34; }
+.magicclass-entry__step.is-current .magicclass-entry__step-copy small { color: #ad6845; }
 
 .magicclass-entry__dot {
   display: grid;
@@ -58,15 +58,15 @@
   background: #e3e8f0;
 }
 .magicclass-entry__step.is-done .magicclass-entry__dot { background: var(--green); }
-.magicclass-entry__step.is-current .magicclass-entry__dot { background: #685bd2; animation: magicclass-entry-pulse 1.6s ease-in-out infinite; }
+.magicclass-entry__step.is-current .magicclass-entry__dot { background: #ad6845; animation: magicclass-entry-pulse 1.6s ease-in-out infinite; }
 
 @keyframes magicclass-entry-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(104, 91, 210, .4); }
-  50% { box-shadow: 0 0 0 6px rgba(104, 91, 210, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(173, 104, 69, .4); }
+  50% { box-shadow: 0 0 0 6px rgba(173, 104, 69, 0); }
 }
 
 .magicclass-entry__bar { height: 6px; border-radius: 999px; background: #eef1f7; overflow: hidden; }
-.magicclass-entry__bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #685bd2, #7d9fe8); transition: width .4s ease; }
+.magicclass-entry__bar span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #153b34, #dab27a); transition: width .4s ease; }
 
 .magicclass-entry__hint { margin: 0; font-size: 12px; color: var(--muted); }
 
@@ -104,12 +104,12 @@
   border-radius: 8px;
   font-size: 12px;
   font-weight: 550;
-  color: #4c3fa8;
-  background: #f0edff;
+  color: #153b34;
+  background: #f5efe2;
   transition: background-color .16s ease, box-shadow .16s ease;
 }
-.magicclass-course-rail__enter:hover { background: #e5e0ff; box-shadow: 0 6px 16px -8px rgba(92, 83, 190, .55); }
-.magicclass-course-rail__enter:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(104, 91, 210, .3); }
+.magicclass-course-rail__enter:hover { background: #eadfcb; box-shadow: 0 6px 16px -8px rgba(21, 59, 52, .35); }
+.magicclass-course-rail__enter:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(218, 178, 122, .4); }
 
 @media (max-width: 767px) {
   .magicclass-course-rail__enter { margin-left: 0; }
@@ -240,4 +240,184 @@
 @media (prefers-reduced-motion: reduce) {
   .magicclass-entry__step.is-current .magicclass-entry__dot { animation: none; }
   .magicclass-entry__bar span { transition: none; }
+}
+
+/*
+ * 手机宽度下圆桌保留「主讲 + 发言区」两栏，收起右侧参与者栏。
+ * 320px 时若三栏全部保留，中间只剩约 90px：标题被迫换行、输入框和「开始讨论」
+ * 一起溢出。参与者名单在讨论开始后本来也是空的，窄屏先让发言区拿到整行。
+ */
+@media (max-width: 520px) {
+  .rt-root .rt-teacher { width: 64px; }
+  .rt-root .rt-participants { display: none; }
+  .rt-root .rt-form { padding-left: 6px; padding-right: 6px; }
+  .rt-root .rt-heading { white-space: nowrap; }
+}
+
+/* 原生课堂的场景底板：暖纸色 + 柔和光晕，和普通灰底 PPT 播放器区分开。
+   不再铺整块点阵，避免网格压在讲义正文上影响阅读（真实 768/1440 截图复现）。 */
+.campus-stage {
+  background-image:
+    radial-gradient(75% 65% at 50% 0%, rgba(251, 249, 241, 0.7), transparent 72%),
+    linear-gradient(180deg, rgba(21, 59, 52, 0.025), transparent 34%);
+}
+
+.rt-quest {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: #153b34;
+  color: #dab27a;
+  font-size: 8px;
+  line-height: 1.4;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+}
+
+/* 画布上方的关卡任务条：把当前页明确说成“第几关、目标是什么、奖励多少”。 */
+.campus-mission {
+  flex: none;
+  width: calc(100% - 24px);
+  max-width: 960px;
+  margin: 42px auto 0;
+  padding: 7px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(218, 178, 122, 0.38);
+  border-radius: 10px;
+  background: linear-gradient(90deg, #153b34, #1b473e);
+  color: #fbf9f1;
+  box-shadow: 0 8px 20px rgba(21, 59, 52, 0.2);
+}
+
+.campus-mission__stage {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.campus-mission__step {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #dab27a;
+  color: #153b34;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.campus-mission__stage strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.campus-mission__objective {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: rgba(251, 249, 241, 0.66);
+}
+
+.campus-mission__label {
+  margin-right: 6px;
+  color: #dab27a;
+  font-weight: 700;
+}
+
+.campus-mission__meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.campus-mission__state {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(251, 249, 241, 0.12);
+  color: rgba(251, 249, 241, 0.78);
+  font-size: 9px;
+}
+
+.campus-mission__state.is-done {
+  background: rgba(218, 178, 122, 0.18);
+  color: #e8c897;
+}
+
+.campus-mission__xp {
+  font-size: 10px;
+  font-weight: 800;
+  color: #e8c897;
+}
+
+@media (max-width: 640px) {
+  .campus-mission {
+    width: calc(100% - 12px);
+    margin: 42px auto 0;
+    padding: 5px 7px;
+    gap: 6px;
+  }
+
+  .campus-mission__objective {
+    display: none;
+  }
+
+  .campus-mission__stage strong {
+    font-size: 10px;
+  }
+
+  .campus-mission__state {
+    display: none;
+  }
+}
+
+/*
+ * 真实 iPhone Safari 尺寸验收：375px 宽时 80px 头栏 + 192px 圆桌会把
+ * 16:9 讲义压成约 155px 高，正文被迫缩小并裁边；工具栏在 Safari 中也会
+ * 超出可视宽度。手机端收紧头栏、圆桌和主讲栏，把高度还给画布。
+ */
+@media (max-width: 640px) {
+  .magicclass-root header {
+    height: 56px !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  .magicclass-root header h1 {
+    font-size: 17px !important;
+  }
+
+  .rt-root {
+    height: 148px !important;
+  }
+
+  .rt-root .rt-teacher {
+    display: none;
+  }
+
+  .rt-root .rt-form {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .rt-root > div:first-child {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .rt-root > div:first-child::-webkit-scrollbar {
+    display: none;
+  }
 }

@@ -278,6 +278,10 @@ private struct CourseBookBody: View {
             NavigationLink { ClassicClassroomView(scope: .course(courseID)) } label: {
                 row(icon: "play.rectangle", title: "互动课堂", subtitle: "围绕这门课生成课堂")
             }
+            Rectangle().fill(line.opacity(0.55)).frame(height: 1).padding(.leading, 46)
+            NavigationLink { ClassroomWorkspacesView(courseID: courseID, courseName: displayName) } label: {
+                row(icon: "rectangle.on.rectangle.badge.play", title: "原生课堂", subtitle: "课件、讲解、练习都在 App 内播放")
+            }
             if let classes = detail.value["classes"].array, !classes.isEmpty {
                 Rectangle().fill(line.opacity(0.55)).frame(height: 1).padding(.leading, 46)
                 NavigationLink { ClassDetailView(classID: classes[0]["id"].text, name: classes[0]["name"].text) } label: {

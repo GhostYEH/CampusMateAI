@@ -13,6 +13,7 @@ from app.api.routes import (
     magicclass_generation,
     magicclass_materials,
     magicclass_narration,
+    magicclass_whiteboard,
     magicclass_provider,
     magicclass_tts,
     magicclass_workspaces,
@@ -26,7 +27,7 @@ from test_magicclass_workspaces import _setup
 CLIENT_ROUTES = (
     magicclass_archive, magicclass_discovery, magicclass_discussion,
     magicclass_editor, magicclass_fusion, magicclass_generation,
-    magicclass_materials, magicclass_narration, magicclass_provider,
+    magicclass_materials, magicclass_narration, magicclass_provider, magicclass_whiteboard,
     magicclass_tts, magicclass_workspaces,
 )
 

@@ -409,6 +409,8 @@ struct LearningRoomView: View {
                     .foregroundStyle(palette.textPrimary)
                     .tint(palette.primary)
                     .focused($inputFocused)
+                    .frame(minHeight: 40, alignment: .leading)
+                    .contentShape(Rectangle())
                     .padding(.horizontal, 12).padding(.vertical, 9)
                     .background(palette.surface, in: RoundedRectangle(cornerRadius: 18))
                     .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(palette.line, lineWidth: 1))

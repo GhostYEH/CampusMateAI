@@ -56,6 +56,7 @@ export function CtrlDivider() {
 /**
  * @param {object} props
  * @param {string} [props.title] 中间的一级标题（参考的 `currentSceneTitle`），可为空
+ * @param {string} [props.eyebrow] 标题上方的小标签，课堂可注入章节/关卡语义
  * @param {React.ReactNode} [props.backControl] 左槽自定义返回控件；不传则用内置 ArrowLeft 按钮
  * @param {boolean} [props.hideBackControl] 整个左槽返回控件都不渲染
  * @param {() => void} [props.onBack] 内置返回按钮的回调
@@ -68,6 +69,7 @@ export function CtrlDivider() {
  */
 export function MagicClassClassroomHeader({
   title = "",
+  eyebrow = ZH.currentScene,
   backControl,
   hideBackControl = false,
   onBack,
@@ -110,8 +112,8 @@ export function MagicClassClassroomHeader({
             参考的 `currentSceneTitle || t('common.loading')` 在移植里退化为
             `title || ''`：按集成契约 `title` 可以为空，且这里没有加载态可言。 */}
         <div className="flex flex-col min-w-0 overflow-hidden">
-          <span className="text-[10px] uppercase tracking-widest font-bold text-gray-400 dark:text-gray-500 mb-0.5">
-            {ZH.currentScene}
+          <span className="text-[10px] uppercase tracking-widest font-bold text-[#AD6845] dark:text-[#DAB27A] mb-0.5 truncate">
+            {eyebrow}
           </span>
           <h1
             className="text-xl font-bold text-gray-800 dark:text-gray-200 tracking-tight truncate"
@@ -146,7 +148,7 @@ export function MagicClassClassroomHeader({
               onClick={onTogglePresentation}
               className={cn(
                 ctrlBtn,
-                isPresenting ? "text-violet-600 dark:text-violet-400" : "text-gray-500 dark:text-gray-400",
+                isPresenting ? "text-[#AD6845] dark:text-[#DAB27A]" : "text-gray-500 dark:text-gray-400",
               )}
               aria-label={presentationLabel}
               title={presentationLabel}

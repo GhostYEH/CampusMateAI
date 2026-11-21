@@ -34,22 +34,10 @@ import { SceneProvider } from './_compat/scene-context.js';
 import { SLIDE_RENDERER_STYLES } from './_compat/styles.js';
 import { RendererScreenCanvas } from './Editor/RendererScreenCanvas.jsx';
 
-const DEFAULT_THEME = {
-  fontColor: '#333333',
-  fontName: 'Microsoft YaHei',
-};
+import { campusBackground, campusElements, campusTheme } from '../../features/magicclass/slideTheme.js';
 
 function identity(src) {
   return src;
-}
-
-function normalizeTheme(theme) {
-  if (!theme) return DEFAULT_THEME;
-  return {
-    ...theme,
-    fontColor: theme.fontColor ?? DEFAULT_THEME.fontColor,
-    fontName: theme.fontName ?? DEFAULT_THEME.fontName,
-  };
 }
 
 export function MagicClassSlideSurface({
@@ -61,10 +49,14 @@ export function MagicClassSlideSurface({
   sceneData = null,
   style,
   effectsEnabled = true,
+  // 同一页会在主舞台与侧栏缩略图各渲染一次；缩略图必须使用独立 DOM id 前缀，
+  // 否则聚光灯会按缩略图坐标挖洞，主画布整页变暗。
+  elementIdPrefix,
 }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
-  const theme = useMemo(() => normalizeTheme(canvas?.theme), [canvas?.theme]);
-  const background = canvas?.background;
+  const background = useMemo(() => campusBackground(canvas?.background), [canvas?.background]);
+  const theme = useMemo(() => campusTheme(canvas?.theme, background), [canvas?.theme, background]);
+  const themedElements = useMemo(() => campusElements(elements, theme.fontColor), [elements, theme.fontColor]);
 
   const sceneValue = useMemo(
     () => ({
@@ -74,29 +66,31 @@ export function MagicClassSlideSurface({
       canvas: {
         theme,
         background,
-        elements: elements ?? [],
+        elements: themedElements ?? [],
       },
     }),
-    [sceneId, sceneData, theme, background, elements],
+    [sceneId, sceneData, theme, background, themedElements],
   );
 
   // 背景图也走 assetResolver。元素上的 src 交给 `useResolvedSlideMedia` 处理
   // （与参考一致：解析发生在媒体解析层，不在 surface 里）。
   const resolvedCanvas = useMemo(() => {
     if (!canvas || !elements) return canvas;
-    if (typeof assetResolver !== 'function') return canvas;
-    const backgroundImage = background?.type === 'image' ? background.image : undefined;
-    if (!backgroundImage) return canvas;
-    const resolvedBackgroundSrc = resolveAssetWith(assetResolver, backgroundImage.src);
-    if (resolvedBackgroundSrc === backgroundImage.src) return canvas;
-    return {
-      ...canvas,
-      background: {
-        ...background,
-        image: { ...backgroundImage, src: resolvedBackgroundSrc },
-      },
-    };
-  }, [canvas, elements, assetResolver, background]);
+    let nextBackground = background;
+    if (typeof assetResolver === 'function' && background?.type === 'image') {
+      const backgroundImage = background.image;
+      if (backgroundImage?.src) {
+        const resolvedBackgroundSrc = resolveAssetWith(assetResolver, backgroundImage.src);
+        if (resolvedBackgroundSrc !== backgroundImage.src) {
+          nextBackground = {
+            ...background,
+            image: { ...backgroundImage, src: resolvedBackgroundSrc },
+          };
+        }
+      }
+    }
+    return { ...canvas, background: nextBackground, theme, elements: themedElements };
+  }, [canvas, elements, assetResolver, background, theme, themedElements]);
 
   if (!canvas || !elements) {
     return null;
@@ -108,7 +102,12 @@ export function MagicClassSlideSurface({
         <SceneProvider value={sceneValue}>
           <div className={`h-full w-full ${className || ''}`} style={style}>
             <style dangerouslySetInnerHTML={{ __html: SLIDE_RENDERER_STYLES }} />
-            <RendererScreenCanvas canvas={resolvedCanvas} assetResolver={assetResolver} effectsEnabled={effectsEnabled} />
+            <RendererScreenCanvas
+              canvas={resolvedCanvas}
+              assetResolver={assetResolver}
+              effectsEnabled={effectsEnabled}
+              elementIdPrefix={elementIdPrefix}
+            />
           </div>
         </SceneProvider>
       </MediaStringsProvider>

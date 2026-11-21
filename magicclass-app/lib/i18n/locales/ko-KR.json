@@ -711,6 +711,24 @@
     "retry": "다시 풀기"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "질문하기",
+      "askSubmit": "보내기",
+      "askPlaceholder": "이 친구에게 질문…",
+      "askLoading": "답변 중…",
+      "askError": "친구가 답하지 못했어요. 다시 시도해 주세요.",
+      "quiet": "이번엔 듣고 있을게",
+      "budget": "이 수업의 친구 발언 한도를 모두 썼어요",
+      "title": "친구들",
+      "style": "친구의 시선",
+      "speaking": "발언 중",
+      "previous": "이전 친구",
+      "next": "다음 친구",
+      "discussionPending": "토론 대기 중",
+      "loading": "발언을 준비하는 중…",
+      "idle": "수업을 듣는 중",
+      "error": "친구 발언을 불러오지 못했어요"
+    },
     "teacher": "선생님",
     "you": "나",
     "inputPlaceholder": "메시지를 입력하세요...",

@@ -37,6 +37,7 @@ import { LaserOverlay } from './LaserOverlay.jsx';
 import { RendererScreenCanvas } from './RendererScreenCanvas.jsx';
 import { useSlideBackgroundStyle } from '../_compat/use-slide-background-style.js';
 import { useCanvasStore } from '../_compat/canvas-store.js';
+import { SCREEN_ELEMENT_ID_PREFIX } from '../_compat/element-dom.js';
 import { findElementGeometry } from '../_compat/geometry.js';
 import { useViewportSize } from '../_compat/useViewportSize.js';
 import { useRef, useMemo } from 'react';
@@ -54,7 +55,13 @@ function useCanvasGeometry(canvas) {
   return { viewportSize, viewportRatio };
 }
 
-export function ScreenCanvas({ canvas, effectsEnabled = true }) {
+export function ScreenCanvas({
+  canvas,
+  effectsEnabled = true,
+  // 主舞台用 `screen-element-`；侧栏缩略图必须传独立前缀，避免同一页两份 DOM
+  // 争用同一个 id，让聚光灯测量到缩略图的坐标。
+  elementIdPrefix = SCREEN_ELEMENT_ID_PREFIX,
+}) {
   const canvasScale = useCanvasStore.use.canvasScale();
   const highlightedElementIds = useCanvasStore.use.highlightedElementIds();
   const highlightOptions = useCanvasStore.use.highlightOptions();
@@ -138,7 +145,12 @@ export function ScreenCanvas({ canvas, effectsEnabled = true }) {
           }}
         >
           {elements.map((element, index) => (
-            <ScreenElement key={element.id} elementInfo={element} elementIndex={index + 1} />
+            <ScreenElement
+              key={element.id}
+              elementInfo={element}
+              elementIndex={index + 1}
+              elementIdPrefix={elementIdPrefix}
+            />
           ))}
 
           {/* Highlight overlay - stacked above elements */}
@@ -152,7 +164,7 @@ export function ScreenCanvas({ canvas, effectsEnabled = true }) {
 
         {/* Spotlight overlay - covers the entire slide, positioned via DOM measurement */}
         <SpotlightOverlay
-          elementIdPrefix="screen-element-"
+          elementIdPrefix={elementIdPrefix}
           options={{
             elementId: effectsEnabled ? spotlightElementId : '',
             ...spotlightOptions,
@@ -184,9 +196,22 @@ export function ScreenCanvas({ canvas, effectsEnabled = true }) {
  * 参考的 `PlaybackScreenCanvas` 入口。目标项目没有 feature flag，因此默认走
  * `RendererScreenCanvas`（它内部会按需要回退到 `ScreenCanvas`）。
  */
-export function PlaybackScreenCanvas({ canvas, className, assetResolver, children, effectsEnabled = true }) {
+export function PlaybackScreenCanvas({
+  canvas,
+  className,
+  assetResolver,
+  children,
+  effectsEnabled = true,
+  elementIdPrefix,
+}) {
   return (
-    <RendererScreenCanvas canvas={canvas} className={className} assetResolver={assetResolver} effectsEnabled={effectsEnabled}>
+    <RendererScreenCanvas
+      canvas={canvas}
+      className={className}
+      assetResolver={assetResolver}
+      effectsEnabled={effectsEnabled}
+      elementIdPrefix={elementIdPrefix}
+    >
       {children}
     </RendererScreenCanvas>
   );

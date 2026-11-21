@@ -1,0 +1,646 @@
+/* 课堂游戏化 HUD —— Android 互动课堂的深绿/琥珀配色，嵌在浅色画布右上角。 */
+.cr-hud {
+  --cr-ink: #153b34;
+  --cr-amber: #dab27a;
+  --cr-copper: #ad6845;
+  --cr-cream: #fbf9f1;
+  --cr-line: #e4dfce;
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(320px, calc(100% - 24px));
+  font-family: inherit;
+}
+
+/* 桌面端常驻头栏：不是画布角上的小徽章，而是课堂自己的冒险状态条。 */
+.cr-hud--header {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 20;
+  flex-direction: row;
+  align-items: center;
+  max-width: none;
+  gap: 8px;
+}
+
+.cr-hud--header .cr-hud__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+}
+
+.cr-hud--header .cr-hud__badge {
+  padding: 4px 8px 4px 5px;
+  border-radius: 12px;
+  border-color: rgba(21, 59, 52, 0.32);
+  background: #153b34;
+  color: #fbf9f1;
+  box-shadow: 0 8px 20px rgba(21, 59, 52, 0.2);
+}
+
+.cr-hud--header .cr-hud__level {
+  padding: 2px 7px;
+  border-radius: 7px;
+  background: #dab27a;
+  color: #153b34;
+  font-size: 11px;
+}
+
+.cr-hud--header .cr-hud__rank {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(251, 249, 241, 0.72);
+}
+
+.cr-hud--header .cr-hud__xp {
+  background: rgba(251, 249, 241, 0.18);
+}
+
+.cr-hud--header .cr-hud__xp-text {
+  color: rgba(251, 249, 241, 0.74);
+}
+
+.cr-hud--header .cr-hud__chevron {
+  color: rgba(251, 249, 241, 0.62);
+}
+
+.cr-hud--header .cr-hud__route {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 7px;
+  border: 1px solid rgba(21, 59, 52, 0.16);
+  border-radius: 10px;
+  background: rgba(251, 249, 241, 0.9);
+  box-shadow: 0 5px 14px rgba(21, 59, 52, 0.08);
+}
+
+.cr-hud__pip {
+  width: 19px;
+  height: 19px;
+  border-radius: 6px;
+  border: 1px solid #e4dfce;
+  background: #fff;
+  color: #8a9690;
+  font-size: 9px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cr-hud__pip.is-done {
+  border-color: rgba(21, 59, 52, 0.3);
+  background: rgba(21, 59, 52, 0.1);
+  color: #153b34;
+}
+
+.cr-hud__pip.is-current {
+  border-color: #ad6845;
+  background: #ad6845;
+  color: #fff7ee;
+  box-shadow: 0 0 0 2px rgba(173, 104, 69, 0.18);
+}
+
+.cr-hud__route-count {
+  margin-left: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #6c7a72;
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-hud__gain,
+.cr-hud__levelup {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 45;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #dab27a;
+  color: #153b34;
+  font-size: 10px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(21, 59, 52, 0.16);
+  pointer-events: none;
+  animation: cr-gain-rise 1.3s ease both;
+}
+
+.cr-hud__levelup {
+  top: calc(100% + 26px);
+  background: #ad6845;
+  color: #fff7ee;
+  animation-duration: 1.8s;
+}
+
+@keyframes cr-gain-rise {
+  0% { opacity: 0; transform: translateY(4px) scale(0.9); }
+  18% { opacity: 1; transform: translateY(0) scale(1); }
+  78% { opacity: 1; transform: translateY(-2px); }
+  100% { opacity: 0; transform: translateY(-7px); }
+}
+
+
+.cr-hud__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(21, 59, 52, 0.16);
+  background: rgba(251, 249, 241, 0.94);
+  box-shadow: 0 6px 18px rgba(21, 59, 52, 0.12);
+  color: var(--cr-ink);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.cr-hud__badge:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 9px 22px rgba(21, 59, 52, 0.16);
+}
+
+.cr-hud__badge:focus-visible {
+  outline: 2px solid var(--cr-amber);
+  outline-offset: 2px;
+}
+
+.cr-hud__level {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--cr-ink);
+}
+
+.cr-hud__xp {
+  position: relative;
+  width: 54px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(21, 59, 52, 0.1);
+  overflow: hidden;
+}
+
+.cr-hud__xp > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cr-amber), #e8c897);
+  transition: width 0.35s ease;
+}
+
+.cr-hud__xp-text {
+  font-size: 10px;
+  color: #6c7a72;
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-hud__combo {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--cr-copper);
+  color: #fff6ec;
+  font-size: 10px;
+  font-weight: 800;
+  animation: cr-combo-pop 0.5s ease;
+}
+
+@keyframes cr-combo-pop {
+  0% { transform: scale(0.7); opacity: 0.4; }
+  60% { transform: scale(1.12); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.cr-hud__chevron {
+  color: #6c7a72;
+  transition: transform 0.16s ease;
+}
+
+.cr-hud[data-open="true"] .cr-hud__chevron {
+  transform: rotate(180deg);
+}
+
+.cr-hud__toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(173, 104, 69, 0.3);
+  background: #fff7ec;
+  color: var(--cr-copper);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  animation: cr-toast-in 0.25s ease;
+}
+
+@keyframes cr-toast-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cr-hud__panel {
+  width: 300px;
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--cr-line);
+  background: var(--cr-cream);
+  padding: 14px;
+  box-shadow: 0 18px 40px rgba(21, 59, 52, 0.2);
+  display: grid;
+  gap: 12px;
+  color: #22332d;
+}
+
+.cr-hud__panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cr-hud__panel-head strong {
+  display: block;
+  font-size: 16px;
+  color: var(--cr-ink);
+}
+
+.cr-hud__panel-head span {
+  font-size: 11px;
+  color: #6c7a72;
+}
+
+.cr-hud__close {
+  border: none;
+  background: transparent;
+  color: #6c7a72;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.cr-hud__close:hover {
+  background: rgba(21, 59, 52, 0.08);
+}
+
+.cr-hud__section h3 {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #22332d;
+}
+
+.cr-hud__section h3 small {
+  margin-left: auto;
+  font-weight: 500;
+  color: #6c7a72;
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-hud__map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cr-hud__node {
+  position: relative;
+  width: 27px;
+  height: 27px;
+  border-radius: 8px;
+  border: 1px solid var(--cr-line);
+  background: #fff;
+  color: #8a9690;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.cr-hud__node:hover {
+  transform: translateY(-1px);
+  border-color: var(--cr-amber);
+}
+
+.cr-hud__node.is-done {
+  border-color: rgba(21, 59, 52, 0.32);
+  background: rgba(21, 59, 52, 0.09);
+  color: var(--cr-ink);
+}
+
+.cr-hud__node.is-current {
+  border-color: var(--cr-copper);
+  box-shadow: 0 0 0 2px rgba(173, 104, 69, 0.2);
+  color: var(--cr-copper);
+}
+
+.cr-hud__node i {
+  position: absolute;
+  right: -2px;
+  top: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cr-amber);
+  border: 1px solid #fff;
+}
+
+.cr-hud__empty {
+  margin: 0;
+  font-size: 11px;
+  color: #6c7a72;
+}
+
+.cr-hud__badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cr-hud__badge-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px dashed var(--cr-line);
+  color: #9aa49e;
+  font-size: 10px;
+  background: transparent;
+}
+
+.cr-hud__badge-item.is-earned {
+  border-style: solid;
+  border-color: rgba(218, 178, 122, 0.7);
+  background: rgba(218, 178, 122, 0.16);
+  color: #7a5228;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .cr-hud {
+    top: 6px;
+    right: 6px;
+  }
+
+  /* 窄屏收起进度条，但保留 XP 数字：手机上也必须能看见真实进度。 */
+  .cr-hud__xp {
+    display: none;
+  }
+
+  .cr-hud__panel {
+    width: 260px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-hud__badge,
+  .cr-hud__node,
+  .cr-hud__combo,
+  .cr-hud__toast {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* 侧栏的本章冒险路线：把“翻页列表”变成可读的关卡路径。 */
+.cr-quest {
+  margin: 2px 8px 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(218, 178, 122, 0.22), transparent 55%),
+    linear-gradient(155deg, #153b34, #1d4a41);
+  color: #fbf9f1;
+  box-shadow: 0 10px 22px rgba(21, 59, 52, 0.22);
+  border: 1px solid rgba(218, 178, 122, 0.26);
+}
+
+.cr-quest__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cr-quest__head > div {
+  min-width: 0;
+}
+
+.cr-quest__kicker {
+  display: block;
+  font-size: 9px;
+  line-height: 1.2;
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  color: #dab27a;
+}
+
+.cr-quest__head strong {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cr-quest__count {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(251, 249, 241, 0.14);
+  color: #fbf9f1;
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.cr-quest__bar {
+  height: 5px;
+  margin: 8px 0 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(251, 249, 241, 0.14);
+}
+
+.cr-quest__bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #dab27a, #e8c897);
+  transition: width 0.35s ease;
+}
+
+.cr-quest__path {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.cr-quest__path::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(218, 178, 122, 0.34);
+}
+
+.cr-quest__stop {
+  position: relative;
+  z-index: 1;
+}
+
+.cr-quest__stop > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 5px 5px 3px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cr-quest__stop > button:hover {
+  background: rgba(251, 249, 241, 0.08);
+}
+
+.cr-quest__stop.is-current > button {
+  border-color: rgba(218, 178, 122, 0.52);
+  background: rgba(218, 178, 122, 0.13);
+}
+
+.cr-quest__index {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(218, 178, 122, 0.44);
+  background: #153b34;
+  color: #dab27a;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.cr-quest__stop.is-done .cr-quest__index {
+  border-color: rgba(251, 249, 241, 0.5);
+  background: rgba(251, 249, 241, 0.16);
+  color: #fbf9f1;
+}
+
+.cr-quest__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.cr-quest__copy strong {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.cr-quest__copy small {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  color: rgba(251, 249, 241, 0.62);
+}
+
+.cr-quest__stop.is-current .cr-quest__copy small {
+  color: #e8c897;
+}
+
+.cr-quest__stop > button > svg,
+.cr-quest__beacon {
+  flex: none;
+  color: rgba(251, 249, 241, 0.72);
+}
+
+.cr-quest__beacon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #dab27a;
+  box-shadow: 0 0 0 3px rgba(218, 178, 122, 0.2);
+  animation: cr-beacon 1.4s ease-in-out infinite;
+}
+
+@keyframes cr-beacon {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(218, 178, 122, 0.16); }
+  50% { box-shadow: 0 0 0 6px rgba(218, 178, 122, 0.08); }
+}
+
+.cr-quest__empty {
+  font-size: 10px;
+  color: rgba(251, 249, 241, 0.62);
+}
+
+.cr-quest__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(251, 249, 241, 0.14);
+  font-size: 9px;
+  color: rgba(251, 249, 241, 0.66);
+}
+
+.cr-quest__badges {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.cr-quest__badges i {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px dashed rgba(251, 249, 241, 0.24);
+  color: rgba(251, 249, 241, 0.34);
+}
+
+.cr-quest__badges i.is-earned {
+  border-style: solid;
+  border-color: rgba(218, 178, 122, 0.55);
+  background: rgba(218, 178, 122, 0.16);
+  color: #e8c897;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-quest__beacon {
+    animation: none;
+  }
+}

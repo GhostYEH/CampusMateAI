@@ -696,6 +696,24 @@
     "retry": "重新答題"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "提問",
+      "askSubmit": "送出",
+      "askPlaceholder": "向這位同學提問…",
+      "askLoading": "正在回答…",
+      "askError": "同學沒能回答，請重試。",
+      "quiet": "這次先聽大家說",
+      "budget": "本課的同學發言額度已用完",
+      "title": "AI 同學",
+      "style": "同學視角",
+      "speaking": "發言中",
+      "previous": "查看前面的同學",
+      "next": "查看後面的同學",
+      "discussionPending": "待發起討論",
+      "loading": "正在準備課堂發言…",
+      "idle": "正在跟隨課堂學習",
+      "error": "同學發言載入失敗"
+    },
     "teacher": "教師",
     "you": "你",
     "inputPlaceholder": "輸入你的訊息...",

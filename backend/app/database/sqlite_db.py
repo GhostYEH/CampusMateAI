@@ -56,6 +56,33 @@ CREATE TABLE IF NOT EXISTS learning_room_messages (
 CREATE INDEX IF NOT EXISTS idx_learning_room_messages_room ON learning_room_messages(room_id, id);
 """
 
+# 共同课堂专注监督：只保存端侧算好的粗粒度状态，不保存画面、人脸或逐帧结果。
+# low_since 用于服务端判断“持续分心/离席”是否达到老师提醒阈值。
+LEARNING_ROOM_SUPERVISION_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS learning_room_attention (
+    room_id TEXT NOT NULL REFERENCES learning_rooms(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK(state IN ('FOCUSED', 'POSSIBLY_DISTRACTED', 'DISTRACTED', 'AWAY', 'UNKNOWN')),
+    source TEXT NOT NULL CHECK(source IN ('ON_DEVICE', 'PAGE_VISIBILITY', 'HEARTBEAT')),
+    low_since TEXT,
+    updated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(room_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_learning_room_attention_room ON learning_room_attention(room_id, updated_at);
+CREATE TABLE IF NOT EXISTS learning_room_nudges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id TEXT NOT NULL REFERENCES learning_rooms(id) ON DELETE CASCADE,
+    from_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('TEACHER', 'HOST')),
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_learning_room_nudges_room ON learning_room_nudges(room_id, id);
+CREATE INDEX IF NOT EXISTS idx_learning_room_nudges_target ON learning_room_nudges(room_id, target_user_id, created_at);
+"""
+
 # 多人自习室（互相监督）：成员在席状态 + 同步番茄钟 + 房内文字鼓励。
 # 与上面的「共同课堂(learning_rooms)」是两套独立概念：这里没有课件/音视频，
 # 只维护成员在线状态、一个由发起人控制的共享计时器和轻量鼓励消息。
@@ -2329,6 +2356,7 @@ class Database:
             _SchemaStep("core", SCHEMA_SQL),
             _SchemaStep("multi_role", MULTI_ROLE_SCHEMA_SQL),
             _SchemaStep("learning_room", LEARNING_ROOM_SCHEMA_SQL),
+            _SchemaStep("learning_room_supervision", LEARNING_ROOM_SUPERVISION_SCHEMA_SQL),
             _SchemaStep("study_room", STUDY_ROOM_SCHEMA_SQL),
             _SchemaStep("university", UNIVERSITY_SCHEMA_SQL),
             _SchemaStep("community", COMMUNITY_SCHEMA_SQL),

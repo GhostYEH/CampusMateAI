@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, File, Form, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -21,6 +21,7 @@ from ...services.learning_room_rtc import (
     issue_room_token,
     rtc_available,
 )
+from ...services.learning_room_supervision import TEACHER_NAME
 from ..deps import current_user
 
 router = APIRouter(prefix="/magicclass/learning-space", tags=["学习空间"])
@@ -84,6 +85,80 @@ class MessageIn(BaseModel):
         if not value.strip():
             raise ValueError("消息不能为空")
         return value.strip()
+
+
+AttentionState = Literal[
+    "FOCUSED", "POSSIBLY_DISTRACTED", "DISTRACTED", "AWAY", "UNKNOWN"
+]
+AttentionSource = Literal["ON_DEVICE", "PAGE_VISIBILITY", "HEARTBEAT"]
+
+
+class AttentionIn(BaseModel):
+    state: AttentionState
+    source: AttentionSource = "ON_DEVICE"
+
+
+class NudgeIn(BaseModel):
+    target_uid: str | None = Field(default=None, max_length=128)
+    content: str | None = Field(default=None, max_length=200)
+
+    @field_validator("target_uid")
+    @classmethod
+    def trim_target(cls, value):
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
+
+    @field_validator("content")
+    @classmethod
+    def trim_nudge(cls, value):
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
+
+
+class NudgeOut(BaseModel):
+    id: int
+    from_uid: str | None = None
+    target_uid: str | None = None
+    kind: Literal["TEACHER", "HOST"]
+    content: str
+    created_at: str
+
+
+class AttentionReportOut(BaseModel):
+    state: AttentionState
+    updated_at: str
+    teacher_reminder: NudgeOut | None = None
+
+
+class SupervisionMemberOut(BaseModel):
+    uid: str
+    name: str = ""
+    is_host: bool = False
+    state: AttentionState
+    source: AttentionSource
+    updated_at: str | None = None
+    online: bool
+    attention_age_seconds: int | None = None
+
+
+class SupervisionStatsOut(BaseModel):
+    total: int
+    online: int
+    focused: int
+    needs_attention: int
+
+
+class SupervisionOut(BaseModel):
+    me: SupervisionMemberOut
+    members: list[SupervisionMemberOut]
+    stats: SupervisionStatsOut | None = None
+    teacher_summary: str | None = None
+    teacher_name: str = TEACHER_NAME
+    nudges: list[NudgeOut]
 
 
 @router.get(
@@ -608,6 +683,168 @@ def send(
     同一 client_id 与相同正文重试返回原消息；改变正文返回 409 LEARNING_ROOM_ERROR。
     """
     return repo.send(room_id, user.id, body.content, body.client_id)
+
+
+@router.put(
+    "/rooms/{room_id}/attention",
+    response_model=AttentionReportOut,
+    summary="上报课堂专注状态",
+    responses={
+        200: {
+            "description": "当前成员的粗粒度专注状态；持续异常时返回老师提醒",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "value": {
+                                "state": "POSSIBLY_DISTRACTED",
+                                "updated_at": "2026-10-05T00:00:00+00:00",
+                                "teacher_reminder": None,
+                            }
+                        }
+                    }
+                }
+            },
+        },
+        404: {"description": "LEARNING_ROOM_ERROR：课堂不存在或尚未接受邀请"},
+        410: {"description": "LEARNING_ROOM_ERROR：共同课堂已结束"},
+    },
+)
+def report_attention(
+    room_id: str,
+    body: Annotated[
+        AttentionIn,
+        Body(
+            openapi_examples={
+                "端侧识别": {
+                    "summary": "端侧识别到可能分心",
+                    "value": {"state": "POSSIBLY_DISTRACTED", "source": "ON_DEVICE"},
+                },
+                "页面可见性": {
+                    "summary": "浏览器页面暂时不可见",
+                    "value": {"state": "AWAY", "source": "PAGE_VISIBILITY"},
+                },
+            }
+        ),
+    ],
+    user: UserRow = Depends(current_user),
+    repo=Depends(_repository),
+):
+    """accepted 成员上报自己的粗粒度课堂状态，约 15–20 秒一次。
+
+    只接受状态枚举，不接收画面、人脸、音频或逐帧结果。持续分心/离席达到阈值
+    后，服务端生成一条老师口吻的提醒（4 分钟冷却、每堂最多 4 次），并在响应中
+    直接返回，客户端无需额外轮询。成员离开或课堂结束后拒绝写入。
+    """
+    return repo.report_attention(room_id, user.id, body.state, body.source)
+
+
+@router.get(
+    "/rooms/{room_id}/supervision",
+    response_model=SupervisionOut,
+    summary="读取课堂专注监督",
+    responses={
+        200: {
+            "description": "本人状态、发起人可见的成员状态、课堂统计与增量老师提醒",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "value": {
+                                "me": {
+                                    "uid": "usr_guest_example",
+                                    "name": "同学乙",
+                                    "is_host": False,
+                                    "state": "FOCUSED",
+                                    "source": "ON_DEVICE",
+                                    "updated_at": "2026-10-05T00:00:00+00:00",
+                                    "online": True,
+                                    "attention_age_seconds": 8,
+                                },
+                                "members": [],
+                                "stats": None,
+                                "teacher_summary": None,
+                                "teacher_name": "小伴老师",
+                                "nudges": [],
+                            }
+                        }
+                    }
+                }
+            },
+        },
+        404: {"description": "LEARNING_ROOM_ERROR：课堂不存在或尚未接受邀请"},
+    },
+)
+def supervision(
+    room_id: str,
+    after: int = Query(0, ge=0, le=9223372036854775807),
+    user: UserRow = Depends(current_user),
+    repo=Depends(_repository),
+):
+    """accepted 成员读取监督快照，`after` 为上次已读提醒 ID。
+
+    - 每位成员都能看到自己的状态与发给自己的提醒。
+    - 只有发起人能看到其他成员的状态、课堂统计和全部提醒。
+    - 超过 45 秒没有新上报的成员标记为离线，不继续展示旧状态。
+    """
+    return repo.supervision(room_id, user.id, after)
+
+
+@router.post(
+    "/rooms/{room_id}/nudges",
+    status_code=201,
+    response_model=NudgeOut,
+    summary="发送课堂老师提醒",
+    responses={
+        201: {
+            "description": "提醒已创建，返回内容与目标",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "成功": {
+                            "value": {
+                                "id": 12,
+                                "from_uid": "usr_host_example",
+                                "target_uid": "usr_guest_example",
+                                "kind": "HOST",
+                                "content": "同学乙，老师提醒你：把注意力回到课件上，跟着这一页继续听。",
+                                "created_at": "2026-10-05T00:00:00+00:00",
+                            }
+                        }
+                    }
+                }
+            },
+        },
+        403: {"description": "LEARNING_ROOM_ERROR：只有发起人可以执行此操作"},
+        404: {"description": "LEARNING_ROOM_ERROR：目标不是当前课堂成员"},
+    },
+)
+def nudge(
+    room_id: str,
+    body: Annotated[
+        NudgeIn,
+        Body(
+            openapi_examples={
+                "提醒一位同学": {
+                    "summary": "按默认老师话术提醒",
+                    "value": {"target_uid": "usr_guest_example"},
+                },
+                "全班提醒": {
+                    "summary": "不传 target_uid 即全班提醒",
+                    "value": {"content": "同学们，跟老师一起看这一页，专注听完再讨论。"},
+                },
+            }
+        ),
+    ],
+    user: UserRow = Depends(current_user),
+    repo=Depends(_repository),
+):
+    """发起人向一位同学或全班发送老师提醒。
+
+    不传 content 时按目标状态生成默认话术；target_uid 为空表示全班广播。
+    提醒通过监督接口增量返回，不需要音视频通道。
+    """
+    return repo.nudge(room_id, user.id, body.target_uid, body.content)
 
 
 @router.post(

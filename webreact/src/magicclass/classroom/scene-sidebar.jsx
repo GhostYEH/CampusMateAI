@@ -66,6 +66,7 @@ export const PENDING_SCENE_ID = "__pending__";
  * @param {() => void} [props.onLogoClick] logo 点击；不传则用 `<a href="/">`
  * @param {string} [props.logoSrc] logo 图片地址，默认沿用参考项目的 `/logo-horizontal.png`
  * @param {React.ReactNode} [props.headerSlot] 替换 logo 行的自定义内容
+ * @param {React.ReactNode} [props.gameSlot] logo 行下方的游戏化关卡/进度区块
  * @param {(args: object) => React.ReactNode} [props.renderSlideThumbnail] 接入真实幻灯片缩略图
  * @param {(args: object) => React.ReactNode} [props.renderInteractiveThumbnail] 接入真实 iframe 缩略图
  */
@@ -81,6 +82,7 @@ export function MagicClassSceneSidebar({
   onLogoClick,
   logoSrc = "/logo-horizontal.png",
   headerSlot,
+  gameSlot,
   renderSlideThumbnail,
   renderInteractiveThumbnail,
 }) {
@@ -145,9 +147,9 @@ export function MagicClassSceneSidebar({
       {!collapsed && (
         <div
           onMouseDown={handleDragStart}
-          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 group hover:bg-purple-400/30 dark:hover:bg-purple-600/30 active:bg-purple-500/40 dark:active:bg-purple-500/40 transition-colors"
+          className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50 group hover:bg-[#DAB27A]/30 dark:hover:bg-[#DAB27A]/30 active:bg-[#AD6845]/40 dark:active:bg-[#AD6845]/40 transition-colors"
         >
-          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-purple-400 dark:group-hover:bg-purple-500 transition-colors" />
+          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 w-0.5 h-8 rounded-full bg-gray-300 dark:bg-gray-600 group-hover:bg-[#DAB27A] dark:group-hover:bg-[#DAB27A] transition-colors" />
         </div>
       )}
 
@@ -179,6 +181,8 @@ export function MagicClassSceneSidebar({
           </button>
         </div>
 
+        {gameSlot ? <div className="shrink-0">{gameSlot}</div> : null}
+
         {/* Scenes List */}
         <div
           data-testid="scene-list"
@@ -201,7 +205,7 @@ export function MagicClassSceneSidebar({
                 className={cn(
                   "group relative rounded-lg transition-all duration-200 cursor-pointer flex flex-col gap-1 p-1.5",
                   isActive
-                    ? "bg-purple-50 dark:bg-purple-900/20 ring-1 ring-purple-200 dark:ring-purple-700"
+                    ? "bg-[#F5EFE2] dark:bg-[#DAB27A]/15 ring-1 ring-[#DAB27A]/50 dark:ring-[#DAB27A]/40"
                     : "hover:bg-gray-50/80 dark:hover:bg-gray-800/50",
                 )}
               >
@@ -212,7 +216,7 @@ export function MagicClassSceneSidebar({
                       className={cn(
                         "text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shrink-0",
                         isActive
-                          ? "bg-purple-600 dark:bg-purple-500 text-white shadow-sm shadow-purple-500/30"
+                          ? "bg-[#153B34] dark:bg-[#153B34] text-white shadow-sm shadow-[#153B34]/30"
                           : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400",
                       )}
                     >
@@ -223,7 +227,7 @@ export function MagicClassSceneSidebar({
                       className={cn(
                         "text-xs font-bold truncate transition-colors",
                         isActive
-                          ? "text-purple-700 dark:text-purple-300"
+                          ? "text-[#153B34] dark:text-[#E7E2D3]"
                           : "text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100",
                       )}
                     >
@@ -248,9 +252,9 @@ export function MagicClassSceneSidebar({
                     {isSlide && (
                       <div
                         className={cn(
-                          "absolute inset-0 bg-purple-500/0 transition-colors",
+                          "absolute inset-0 bg-[#DAB27A]/0 transition-colors",
                           isActive
-                            ? "bg-purple-500/0"
+                            ? "bg-[#DAB27A]/0"
                             : "group-hover:bg-black/5 dark:group-hover:bg-white/5",
                         )}
                       />

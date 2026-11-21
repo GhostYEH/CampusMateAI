@@ -1,6 +1,6 @@
 # 课程互动课堂、受管工作台与学习空间入口
 
-> 对照日期：2026-10-18。本模块共 76 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
+> 对照日期：2026-10-18。本模块共 92 个 HTTP 方法与路径组合；以当前后端注册路由和 Web 调用为依据。
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
@@ -9,7 +9,7 @@
 
 Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，不传 status，筛选本人学习通未删除且 deadline 有效、已到期的 pending/completed 作业。点击 `POST /api/v1/chaoxing/assignments/{task_id}/classroom` 创建或复用受管工作台与 job，按课程 job GET/retry 接口等待 completed 后进入 `/courses/{course_id}/workspaces/{workspace_id}?mode=playback`。完整截止规则、请求响应、权限及错误见[外部连接模块](09-integrations.md#assignment-review-flow)。
 
-作业采用独立的 quiz 生成策略：先做原题再做变式，至少三分之二场景为 quiz，每道原题均有重做与变式、变式总数至少 3 道，最多两页补救 slide；每题 2–3 条递进提示。普通主题课堂仍按既有生成意图工作。课堂仍由 magicclass-service 生成并在本站播放器学习，不调用 iframe 独立应用的私有生成 API；iframe 不可用时作业侧栏仍能读取。
+作业采用独立的 quiz 生成策略：先做原题再做变式，至少三分之二场景为 quiz，每道原题均有重做与变式、变式总数至少 3 道，最多两页补救 slide；每题 2–3 条递进提示；变式会与原题做文本去重和相似度校验，不能复制原题或只替换数字/名称/标点。普通主题课堂仍按既有生成意图工作。课堂仍由 magicclass-service 生成并在本站播放器学习，不调用 iframe 独立应用的私有生成 API；iframe 不可用时作业侧栏仍能读取。
 
 持久化的作业 quiz content 增加可选字段 `learningProfile="assignment_review"`（由受管服务写入），每个 question 增加 `sourceQuestionNumber:integer`（原题编号）、`exerciseRole:"retry"|"transfer"`、`hints:string[]`。这些是既有 DSL 的向后兼容补充，不新增表或改变 dslVersion。非作业 quiz 不需要这些字段；旧客户端可以忽略，Web 的主课堂和旧播放器均识别该标记并复用 QuizRuntimePanel 的学生主导交互。例：
 
@@ -19,7 +19,7 @@ Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，�
 
 学生自由选题、跳过、逐条展开提示，至少回答一题即可提交本轮。提交前不展示 analysis；提交后每题解析仍折叠，由学生主动展开。简答/证明题和跳过题的结果 `correct=null,earned=0`，不计入自动评分分母；简答题由学生对照参考解法自行核对，不调用未接通的简答批阅端点或虚构分数。选择题由已有答案键在浏览器计算，quiz-attempt 持久化的是学生练习状态/结果，不是教师正式成绩或服务端权威批阅。draft→submitted→reviewed、重做新 attempt、离线保留与重试协议不变。
 
-作业场景不带自动语音/讨论动作；主动请求的题目朗读只读题干，不朗读隐藏解析。生成校验覆盖结构、题目覆盖标记及提示数量，不能证明答案正确或提示没有泄露答案，仍需真实模型验收。新 v2 工作台与旧讲解式课堂隔离，旧课件保留。Web 已适配，Android/HarmonyOS/微信小程序尚未接入此作业策略，未做本次原生构建或真机验证。
+作业场景不带自动语音/讨论动作；主动请求的题目朗读只读题干，不朗读隐藏解析。生成校验覆盖结构、题目覆盖标记及提示数量，不能证明答案正确或提示没有泄露答案，仍需真实模型验收。新 v2 工作台与旧讲解式课堂隔离，旧课件保留。Web 已适配；Android 已接入作业复习入口和原生 quiz 阅读器。iOS 已接入受管工作台原生播放器：读取 stage document 与 `/playback` 计划，原生渲染 slide 画布与讲义兜底、quiz、PBL、simulation 和受限 sandbox；讲解音频只在用户点击后请求合成，下载校验 audio 后用 `AVPlayer` 播放。白板原生只读（不提供编辑/导出/共享），AI 同学/教师对话动作仍由网页课堂承载；经典 `session_id` 课堂从「进入原生课堂」读取 `GET .../{session}/playback` 的 `scenes[].content`，并投影到同一原生播放器。经典讲解使用随课交付的成品音频，白板编辑与 AI 同学讨论使用可信的「网页兼容」入口。iOS 侧尚未在完整 Xcode 环境编译或真机验收，覆盖与缺口见 [`../native-classroom-ios.md`](../native-classroom-ios.md)。HarmonyOS/微信小程序尚未接入；移动端 App 构建与真机验收未完成。
 
 ## 测验并发保存与冲突
 
@@ -52,12 +52,24 @@ Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，�
 | POST | `/api/v1/self-classroom/materials` | 上传自主选题资料 |
 | GET | `/api/v1/self-classroom/jobs/{session_id}` | 自主选题课堂进度 |
 | GET | `/api/v1/self-classroom` | 本人自主选题课堂历史 |
+| GET | `/api/v1/self-classroom/{session_id}/playback` | 自主选题课堂原生播放数据 |
+| GET | `/api/v1/self-classroom/{session_id}/media/{media_path}` | 自主选题课堂媒体读取 |
+| GET | `/api/v1/self-classroom/{session_id}/scenes/{scene_id}/quiz-attempt` | 自主选题课堂测验作答读取 |
+| POST | `/api/v1/self-classroom/{session_id}/scenes/{scene_id}/quiz-attempt` | 自主选题课堂测验作答保存 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/status` | 读取状态 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/plan` | 生成**之前**给学生看的信息：课程、可选资料、推荐形态与理由 |
 | POST | `/api/v1/courses/{course_id}/interactive-classroom/generate` | 生成课堂 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/jobs/{session_id}` | 读取进度 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/composition` | 回读这节课**真实**包含的内容（幻灯片/测验/交互/项目式学习 + widget 分布） |
+| GET | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/playback` | 经典课堂原生播放数据（Android/iOS 共用） |
+| GET | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/media/{media_path}` | 经典课堂媒体读取（图片/音频/视频，支持 Range） |
+| GET | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/scenes/{scene_id}/quiz-attempt` | 经典课堂测验作答读取 |
+| POST | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/scenes/{scene_id}/quiz-attempt` | 经典课堂测验作答保存 |
 | GET | `/api/v1/courses/{course_id}/interactive-classroom` | 列出课堂 |
+| GET | `/api/v1/magicclass/classmates/roster` | 课堂 AI 同学固定名单（人设由服务端提供） |
+| GET | `/api/v1/magicclass/classmates/budget` | 同学预算口径（tokens/记忆条数/提问长度） |
+| POST | `/api/v1/magicclass/classmates/respond` | 生成当前页 AI 同学发言（允许沉默） |
+| POST | `/api/v1/magicclass/classmates/ask` | 点名一位 AI 同学回答学生提问 |
 | POST | `/api/v1/courses/{course_id}/interactive-classroom/{session_id}/retry` | 重新生成一节课堂 |
 | GET | `/api/v1/magicclass/fusion/status` | 受管课堂服务状态 |
 | GET | `/api/v1/magicclass/fusion/recent` | 当前用户**所有可见课程**的最近学习内容（一次请求替代按课程轮询） |
@@ -100,6 +112,7 @@ Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，�
 | POST | `/api/v1/courses/{course_id}/tts` | 合成语音 |
 | GET | `/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/narration` | 读取场景讲解 |
 | POST | `/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/narration` | 合成场景讲解 |
+| POST | `/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/whiteboard` | 保存舞台白板 |
 | GET | `/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/quiz-attempt` | 读取测验作答 |
 | POST | `/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/quiz-attempt` | 保存测验作答 |
 | POST | `/api/v1/courses/{course_id}/discussion` | 运行圆桌讨论 |
@@ -119,12 +132,15 @@ Web 在线课堂首页及学习空间侧栏分页读取 `GET /api/v1/tasks`，�
 | PATCH | `/api/v1/magicclass/learning-space/rooms/{room_id}/cursor` | 发起人更新共享页码 |
 | GET | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 按消息 ID 增量读取交流记录 |
 | POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/messages` | 发送文字消息 |
+| PUT | `/api/v1/magicclass/learning-space/rooms/{room_id}/attention` | 上报课堂粗粒度专注状态 |
+| GET | `/api/v1/magicclass/learning-space/rooms/{room_id}/supervision` | 读取本人状态、发起人名单与增量提醒 |
+| POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/nudges` | 发起人发送老师提醒 |
 | POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/leave` | 离开课堂；发起人操作时结束课堂 |
 | GET | `/api/v1/magicclass/learning-space/rtc/status` | 音视频配置状态 |
 | POST | `/api/v1/magicclass/learning-space/rooms/native` | 创建原生讨论课堂 |
 | POST | `/api/v1/magicclass/learning-space/rooms/{room_id}/rtc-token` | 领取或续期本课堂音视频凭证 |
 
-共同课堂接口均要求 Bearer 登录。UID 复用账号已有的唯一 `id`，注册、登录和个人信息响应同步提供 `uid` 字段。创建课堂用 multipart 的 `title`、`stage_id`、`file` 上传 `.maic.zip`（最多 64 MB）；邀请用 `{ "uid": "usr_…" }`。未接受邀请的用户不能读取课件、成员或消息。翻页用 `{ "scene_index": 0 }`；消息用 `{ "content": "一起讨论", "client_id": "客户端生成的唯一 ID" }`，同一成员在同一课堂重复提交同一个 `client_id` 不会重复写入。消息读取接受 `after`（默认 0），每次最多返回 100 条，按服务端 ID 升序排列。每位发起人最多保留 20 个活动课堂，每个课堂最多 8 位已加入或待接受的成员。
+共同课堂接口均要求 Bearer 登录。UID 复用账号已有的唯一 `id`，注册、登录和个人信息响应同步提供 `uid` 字段。创建课堂用 multipart 的 `title`、`stage_id`、`file` 上传 `.maic.zip`（最多 64 MB）；邀请用 `{ "uid": "usr_…" }`。未接受邀请的用户不能读取课件、成员或消息。翻页用 `{ "scene_index": 0 }`；消息用 `{ "content": "一起讨论", "client_id": "客户端生成的唯一 ID" }`，同一成员在同一课堂重复提交同一个 `client_id` 不会重复写入。消息读取接受 `after`（默认 0），每次最多返回 100 条，按服务端 ID 升序排列。每位发起人最多保留 20 个活动课堂，每个课堂最多 8 位已加入或待接受的成员。专注监督用 `PUT .../attention` 上报 `FOCUSED`/`POSSIBLY_DISTRACTED`/`DISTRACTED`/`AWAY`/`UNKNOWN` 与来源，用 `GET .../supervision?after=上次提醒ID` 读取状态；监督只保存粗粒度状态，不接收画面、人脸或音频。
 
 ## 接口契约
 
@@ -2425,6 +2441,91 @@ for a second synthesis.
 | 503 | MAGICCLASS_FUSION_UNAVAILABLE | '受管 magic class 服务未启用' |
 | 400 | MAGICCLASS_INVALID_REQUEST | '讲解生成请求必须携带有效的 Idempotency-Key' |
 
+### `POST /api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/whiteboard`
+
+用途：按当前舞台 revision 保存完整白板快照。白板是舞台文档的一部分，不是浏览器本地草稿；读回通过 `GET /api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}` 的 `document.stage.whiteboard[0]`。
+
+鉴权：Bearer access token；已登录用户（另有资源归属校验）。
+
+实现：[backend/app/api/routes/magicclass_whiteboard.py](../../backend/app/api/routes/magicclass_whiteboard.py)，`save_stage_whiteboard`。
+
+Web 封装：`addMagicClassWhiteboard`（[webreact/src/data/api.js](../../webreact/src/data/api.js)），课堂组件 `NativeWhiteboard` 调用。
+
+参数：
+
+| 位置 | 名称 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- | --- |
+| path | `course_id` | string | 是 | 课程 ID |
+| path | `workspace_id` | string | 是 | 工作台 ID |
+| path | `stage_id` | string | 是 | 舞台 ID |
+| header | `Idempotency-Key` | string | 是 | 1–200 字符；重试必须复用同一个 key |
+| header | `If-Match` | string | 是 | 当前 stage revision；接受 `7`、`"7"` 或 `W/"7"`，网关规范化后转发给受管服务 |
+
+请求体（`application/json`，必填）：
+
+```json
+{
+  "board": {
+    "id": "<whiteboard_id>",
+    "viewportSize": 1000,
+    "viewportRatio": 0.5625,
+    "background": {"type": "solid", "color": "#F7F3E8"},
+    "elements": [
+      {
+        "id": "<element_id>",
+        "type": "text",
+        "left": 80,
+        "top": 80,
+        "width": 420,
+        "height": 88,
+        "rotate": 0,
+        "content": "<p>极限存在的条件</p>",
+        "defaultFontName": "PingFang SC",
+        "defaultColor": "#153B34"
+      }
+    ]
+  }
+}
+```
+
+约束：
+
+- 必须是**完整快照**；不支持只提交单个元素增量。
+- `board.id` 非空字符串且不超过 192 字符；`viewportSize`、`viewportRatio` 必须为正数；`elements` 必须是数组，最多 2000 个元素。
+- 元素结构由受管服务按 DSL 校验；网关只提前拒绝结构性不可能的请求，避免无效 payload 进入受管服务。
+- 并发写入依赖 `If-Match`；revision 过期时返回 409，客户端应重新读取舞台后再保存，不得静默覆盖。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | 受管服务返回的最新 `revision` 与 `board` 快照；字段可能随受管服务扩展，客户端应原样保存并回填 |
+| 409 | application/json | [统一错误结构](integration.md#errors)，`code=MAGICCLASS_REVISION_CONFLICT` |
+| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+
+成功响应示例：
+
+```json
+{
+  "revision": 8,
+  "board": {
+    "id": "<whiteboard_id>",
+    "viewportSize": 1000,
+    "viewportRatio": 0.5625,
+    "elements": []
+  }
+}
+```
+
+路由及同模块辅助函数显式抛出的业务错误（鉴权、服务内部和依赖还可能产生公共错误）：
+
+| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
+| --- | --- | --- |
+| 400 | MAGICCLASS_INVALID_REQUEST | '白板必须包含合法的 id' / '白板 viewportSize 必须是正数' / '白板 viewportRatio 必须是正数' / '白板 elements 必须是数组' / '白板元素过多' |
+| 400 | MAGICCLASS_INVALID_REQUEST | '白板保存请求必须携带 If-Match（当前 revision）' / '白板保存请求必须携带 Idempotency-Key' |
+| 409 | MAGICCLASS_REVISION_CONFLICT | 受管服务 revision 不匹配 |
+| 503 | MAGICCLASS_FUSION_UNAVAILABLE | '受管 magic class 服务未启用' |
+
 ### `GET /api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/scenes/{scene_id}/quiz-attempt`
 
 用途：读取测验作答。
@@ -2679,10 +2780,91 @@ Web 封装：`getLearningSpaceStatus`（[webreact/src/data/learningSpaceApi.js](
 
 异常：公共鉴权 / 校验错误及依赖服务错误，见 [接入约定](integration.md#errors)。
 
+## 课堂 AI 同学
+
+原生课堂的同学发言与点名回答走本组接口。浏览器只提交**当前页正文**与连续性记忆，同学人设、模型与供应商凭据都由服务端补齐；响应中的 `usage.tokens` 由客户端累计预算。
+
+| 方法 | 完整路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/v1/magicclass/classmates/roster` | 固定同学名单 |
+| GET | `/api/v1/magicclass/classmates/budget` | 预算与长度口径 |
+| POST | `/api/v1/magicclass/classmates/respond` | 当前页发言（可能返回空数组＝这次没人说话） |
+| POST | `/api/v1/magicclass/classmates/ask` | 点名同学回答问题 |
+
+鉴权与课程归属：需要 Bearer access token；`course_id` 必须对当前账号可见，否则 403 `FORBIDDEN`。受管课堂服务未启用时 503 `MAGICCLASS_NOT_ENABLED`，上游超时/失败按 503/502 返回，不泄漏内部地址或凭据。`roster`/`budget` 只要求登录；`respond`/`ask` 只接受真实课程，自主选题的 `__self_study__` 不是课程记录，调用会 403，需另补 session 级共享入口。
+
+### `GET /api/v1/magicclass/classmates/roster`
+
+返回服务端固定的四位同学：
+
+```json
+{"items":[{"id":"cm-xiaoyuan","name":"小圆","role":"peer","persona":"严谨的复习搭子…"}]}
+```
+
+`role` 目前恒为 `peer`；客户端不得自行添加或替换同学。
+
+### `GET /api/v1/magicclass/classmates/budget`
+
+```json
+{"token_budget":240000,"memory_pages":8,"memory_lines":12,"question_chars":600,"answer_chars":2000}
+```
+
+服务端不记账，只给同一套口径；预算由客户端按课堂累计，超限时停止自动发言并关闭提问入口。
+
+### `POST /api/v1/magicclass/classmates/respond`
+
+```json
+{
+  "course_id": "course_db_2025",
+  "scene": {"id":"scene-3","title":"关系模型","type":"slide","content":{"type":"slide","text":"…"},"actions":[]},
+  "memory": {"pages":["实体关系"],"lines":[{"agentId":"cm-xiaoyuan","text":"上次说过主键。"}],"recentAgentIds":["cm-xiaoyuan"]},
+  "language": "zh-CN"
+}
+```
+
+- `scene.content.type` 必须等于 `scene.type`（`slide/quiz/interactive/pbl`），`content` 序列化后 ≤ 40000 字节，`actions` ≤ 20 条。
+- `memory.pages` ≤ 8 条且每条 ≤ 200 字；`lines` ≤ 12 条且每条 ≤ 400 字；`recentAgentIds` ≤ 7 个；引用名单外的同学会被丢弃。
+- 成功响应：
+
+```json
+{"success":true,"messages":[{"agentId":"cm-xiaoyuan","text":"这一页的关键是主键约束。"}],"routed":{"by":"llm","selected":["cm-xiaoyuan"]},"usage":{"tokens":120}}
+```
+
+`messages` 为空表示这一页没有同学开口；客户端不得自行补台词。
+
+### `POST /api/v1/magicclass/classmates/ask`
+
+在 `respond` 的字段基础上增加：
+
+```json
+{"agentId":"cm-xiaoman","question":"这里的第一个前提是什么？"}
+```
+
+- `agentId` 必须在名单内，否则 502 `MAGICCLASS_PROTOCOL_ERROR`，且不会请求上游。
+- `question` 去除首尾空白后 1–600 字。
+- 成功响应：
+
+```json
+{"success":true,"message":{"agentId":"cm-xiaoman","text":"前提是关系满足第一范式。"},"usage":{"tokens":88}}
+```
+
+客户端应把答案写回同一份记忆，避免下一位同学重复。测验页仍由上游拒绝直接给答案，客户端不得提示模型绕过。
+
+### 客户端覆盖
+
+| 平台 | 同学互动 | 游戏化进度 |
+| --- | --- | --- |
+| Web 原生课堂 | 调用上组后端网关：换页发言、允许沉默、点名、记忆与预算 | 原生 XP/等级/连击/成就/关卡地图 |
+| Android | 上游课堂的 `ClassmatePanes` 内置发言、点名与预算；本次补齐课堂内 XP HUD | WebView 注入；首次访问页面 +12 XP，重复翻页不再加分 |
+| iOS | 同上，`TrustedWebView` 注入同样的进度 HUD | 与 Android 相同的 WebView HUD；存储在课堂 WebView 内，独立于 Web 原生课堂，不跨设备同步 |
+| HarmonyOS / 微信小程序 | 未接入课堂播放器，不涉及 | 未接入 |
+
+Android/iOS 的课堂播放仍是受管课堂 WebView，同学回复由上游课堂内部路由；它们不直接调用本组 `/classmates/*`，因此浏览器/客户端都不需要模型凭据。Web 原生课堂是唯一使用本组网关的客户端。
+
 <a id="learning-rooms"></a>
 ## 共同课堂协议与接入
 
-以下 17 个接口属于 CampusMate 后端，统一使用 Bearer access token；路径不能改为 iframe 独立 Origin 的 /api。实现为 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py) 与 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，Web 封装见 [learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)。
+以下 20 个接口属于 CampusMate 后端，统一使用 Bearer access token；路径不能改为 iframe 独立 Origin 的 /api。实现为 [learning_rooms.py](../../backend/app/api/routes/learning_rooms.py) 与 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，Web 封装见 [learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)。
 
 权限按账号 UID 与课堂成员关系校验，不要求与发起人同校或预先选择学校；历史 teacher/admin 账号按普通学生身份参与。发起人创建后自动成为 accepted 成员；待接受邀请的用户不能读取课堂、课件或消息。每位发起人最多保留 20 个活动课堂；每个课堂的 pending 与 accepted 成员合计最多 8 人，包含发起人。
 
@@ -2819,6 +3001,80 @@ Web 封装：`getLearningMessages`（[webreact/src/data/learningRoomApi.js](../.
 Web 封装：`sendLearningMessage`（[webreact/src/data/learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）
 
 成功返回 201，例如 `{"id":1,"content":"一起看第二页","created_at":"2026-10-05T00:00:00+00:00"}`。同一成员、同一课堂的 client_id 去重；同一 ID 与相同正文重试返回原消息；同一 ID 改正文返回 409 `LEARNING_ROOM_ERROR`，避免误报发送成功。新消息使用新 ID。空白或超长正文返回 422 `VALIDATION_FAILED`。Web 现有重试已按正文生成 ID；Android 按课堂及正文保留重试 ID，其余两端待适配。
+
+<a id="classroom-supervision"></a>
+## 共同课堂专注监督
+
+共同课堂的专注监督只同步粗粒度状态，不建立第二条音视频或人脸通道。端侧有能力的客户端（当前为 Android）进入课堂后每 15 秒上报一次在线心跳；只有用户明确开启且摄像头已授权时才做本机识别，并把状态升级为端侧观察结果。Web 只按页面可见性与交互间隔上报；iOS、HarmonyOS、微信小程序未接入时不上报，发起人看到“状态超时”。服务端不接收画面、人脸、音频、逐帧结果或专注度评分。
+
+状态枚举：
+
+| state | 含义 | 客户端展示 |
+| --- | --- | --- |
+| `FOCUSED` | 可观察到学习行为，或页面可见且近期有交互 | 专注听课 |
+| `POSSIBLY_DISTRACTED` | 短时切走、长时间无操作、停止学习行为 | 可能分心 |
+| `DISTRACTED` | 持续手机交互、明显低头/困倦 | 明显分心 |
+| `AWAY` | 不在座位、页面隐藏超过 1 分钟、App 退到后台 | 暂时离开 |
+| `UNKNOWN` | 未开启观察、模型不可用或尚无稳定信号 | 状态未知 |
+
+`source` 只能为 `ON_DEVICE`、`PAGE_VISIBILITY` 或 `HEARTBEAT`。超过 45 秒没有新上报，监督接口把成员标为 `online=false`，不继续展示旧状态；客户端应继续上报或主动把状态改为 `AWAY`。
+
+### `PUT /api/v1/magicclass/learning-space/rooms/{room_id}/attention`
+
+用途：accepted 成员上报自己的状态。path 参数 `room_id` 必填；JSON body 为 `{"state":"POSSIBLY_DISTRACTED","source":"ON_DEVICE"}`。成功 200 [AttentionReportOut](schemas.md#schema-attentionreportout)：
+
+```json
+{"state":"POSSIBLY_DISTRACTED","updated_at":"2026-11-15T02:00:00+00:00","teacher_reminder":null}
+```
+
+持续异常达到阈值时，服务端在同一响应返回老师提醒，客户端可直接展示并朗读，无需额外轮询：
+
+```json
+{"state":"DISTRACTED","updated_at":"2026-11-15T02:00:00+00:00","teacher_reminder":{"id":12,"from_uid":null,"target_uid":"usr_guest_example","kind":"TEACHER","content":"同学，老师看到你分心了。课堂还在继续，把注意力放回这一页。","created_at":"2026-11-15T02:00:00+00:00"}}
+```
+
+自动提醒规则：`DISTRACTED` 持续 30 秒、`POSSIBLY_DISTRACTED` 持续 60 秒、`AWAY` 持续 45 秒后各生成一条；同一同学两次自动提醒至少间隔 240 秒，每堂最多 4 条。状态恢复到 `FOCUSED` 会清空持续计时，不会在下一轮立即重复提醒。该时间是服务端根据上报时间计算的辅助阈值，不是对学生心理或学习效果的判断。
+
+错误：未登录 401 `UNAUTHORIZED`；课堂不存在、不是 accepted 成员 404 `LEARNING_ROOM_ERROR`；课堂已结束 410；状态/来源不在枚举或长度不符 422 `VALIDATION_FAILED`。
+
+Web 封装：`reportLearningAttention`（[learningRoomApi.js](../../webreact/src/data/learningRoomApi.js)）；Android 封装：`LearningRoomApi.reportAttention`。
+
+### `GET /api/v1/magicclass/learning-space/rooms/{room_id}/supervision`
+
+用途：读取监督快照。query `after` 为上次已读提醒 ID（默认 0）。所有 accepted 成员都能读取自己的状态和发给自己的提醒；只有发起人返回其他成员名单、课堂统计与全部提醒。响应 [SupervisionOut](schemas.md#schema-supervisionout)：
+
+```json
+{
+  "me": {"uid":"usr_guest_example","name":"同学乙","is_host":false,"state":"FOCUSED","source":"PAGE_VISIBILITY","updated_at":"2026-11-15T02:00:00+00:00","online":true,"attention_age_seconds":8},
+  "members": [],
+  "stats": null,
+  "teacher_summary": null,
+  "teacher_name": "小伴老师",
+  "nudges": []
+}
+```
+
+发起人的 `members` 包含全部 accepted 成员（包括自己），`stats` 只统计除发起人外的成员，字段为 `total`、`online`、`focused`、`needs_attention`；`teacher_summary` 为一句中文摘要，含专注、需提醒、状态未知和状态超时人数，同样不含发起人。非发起人的 `members` 恒为空数组，`stats`/`teacher_summary` 为 `null`，`nudges` 只含发给自己的或全班的提醒。提醒按 ID 升序，`after` 用于增量拉取，首次同步建议先记录最大 ID 再展示新提醒，避免把历史提醒当成实时打断。
+
+错误：403/404/410 同其他共同课堂成员接口；`after` 超出范围返回 422。
+
+Web 封装：`getLearningSupervision`；Android：`LearningRoomApi.supervision`。
+
+### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/nudges`
+
+用途：发起人向一位同学或全班发送老师提醒。JSON body `{"target_uid":"usr_guest_example","content":"看回第三页，老师等你。"}`；`target_uid` 为空表示全班广播，`content` 为空时由服务端按目标状态生成默认话术，最长 200 字，去除首尾空白后不能为空。成功 201 [NudgeOut](schemas.md#schema-nudgeout)：
+
+```json
+{"id":13,"from_uid":"usr_host_example","target_uid":"usr_guest_example","kind":"HOST","content":"看回第三页，老师等你。","created_at":"2026-11-15T02:00:00+00:00"}
+```
+
+普通成员调用返回 403；目标不是当前课堂 accepted 成员返回 404；不能通过 UID 给课堂外的人发提醒。提醒只写入课堂轮询数据，不走 RTC 媒体通道；Web/Android 学生端会在轮询监督接口时收到并显示，Android 同时用系统 TTS 朗读。发起人自己不会收到发给别人的私人提醒。
+
+Web 封装：`sendLearningNudge`；Android：`LearningRoomApi.nudge`。
+
+**隐私边界**：服务端和数据库只保存状态枚举、来源、时间与提醒文本；不保存画面、人脸特征、音频或逐帧置信度。端侧观察默认关闭，必须由用户主动开启；关闭后应立即上报 `AWAY` 或停止写入。浏览器端不使用摄像头，只按页面可见性和最近交互推断状态，不能等同于端侧视觉识别。
+
+**客户端覆盖**：Android 已接入在线心跳、端侧观察、发起人名单、提醒与朗读；课堂麦克风开启时不自动朗读私人提醒，避免经 RTC 传给其他同学。Web 已接入页面级上报、发起人名单与文字/语音提醒；iOS 当前只有文字课堂，尚未接入 RTC 与专注观察；HarmonyOS、微信小程序未接入共同课堂。Android 原生编译、真机摄像头与 TTS、Web 语音提醒在真实浏览器的手势策略仍需验收，不能据此宣称全端完成。
 
 ### `POST /api/v1/magicclass/learning-space/rooms/{room_id}/leave`
 
@@ -3003,3 +3259,309 @@ Android 已有自主选题、上传和 WebView 调用源码；Web、HarmonyOS、
 | HTTP | Content-Type | 结构 |
 | --- | --- | --- |
 | 200 | application/json | [MagicClassClassroomsOut](schemas.md#schema-magicclassclassroomsout) |
+
+## 经典课堂原生播放与媒体（Android/iOS 共用）
+
+本组接口为普通经典课堂（课程课堂与自主选题课堂）提供同一套原生播放契约，Android/iOS 共用。客户端只持课程上下文与 `session_id`；`classroom_id`、场景正文与媒体地址由服务端按已保存会话查得，客户端不得拼接或直连上游。播放响应固定 `contract_version="classroom-playback/1"`，后续只做向后兼容增量。
+
+经典课堂没有 `workspace_id/stage_id` 映射，受管工作台的 `/workspaces/.../playback` 不适用于这里；`scenes[].id` 是上游原场景 ID，旧课件缺 ID 时服务端生成稳定回退 ID，`source_index` 仅用于排序。`compat.browser_embed_available` 仍只描述旧网页入口，原生读取只看授权、会话状态与正文能力。
+
+### `GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/playback`
+
+用途：读取课程经典课堂的原生播放数据（会话/课件标识、内容版本、有序场景、动作、媒体引用、降级与兼容建议）。
+
+鉴权：Bearer access token；`current_user` + `assert_course_access` + 当前用户在该课程下的会话归属。跨账号或跨课程统一 404，不泄露资源存在性。
+
+实现：[backend/app/api/routes/magicclass_playback.py](../../backend/app/api/routes/magicclass_playback.py)，`get_course_classroom_playback`；数据构建在 [backend/app/services/magicclass/playback.py](../../backend/app/services/magicclass/playback.py)。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `course_id` | string | 是 | — | 课程 ID |
+| path | `session_id` | string | 是 | — | 生成接口或历史列表返回的会话 ID |
+| query | `scene_id` | string | 否 | — | 只播放从该场景开始；必须是播放响应中的 `scenes[].id`，未知场景返回 404 |
+
+请求体：无。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [ClassroomPlaybackOut](schemas.md#schema-classroomplaybackout) |
+| 401 | application/json | 未携带或失效的 access token，统一错误结构 |
+| 403 | application/json | `FORBIDDEN`：非学生或当前账号无权访问该课程 |
+| 404 | application/json | 统一错误结构；会话不存在 / 不属于当前用户 / 不属于该课程 / 未知 `scene_id` |
+| 409 | application/json | `CLASSROOM_NOT_READY` 或 `CLASSROOM_GENERATION_FAILED` |
+| 410 | application/json | `CLASSROOM_CONTENT_MISSING` |
+| 422 | application/json | 运行时为 [统一错误结构](integration.md#errors)（默认 OpenAPI 的 HTTPValidationError 不反映全局处理器） |
+| 429 | application/json | `MAGICCLASS_RATE_LIMITED` |
+| 502 | application/json | `CLASSROOM_CONTENT_INVALID` 或 `MAGICCLASS_SERVER_ERROR` / `MAGICCLASS_PROTOCOL_ERROR` |
+| 503 | application/json | `MAGICCLASS_NOT_ENABLED` / `MAGICCLASS_UNAVAILABLE`（上游不可达；5xx 见 502） |
+
+200 响应顶层字段：
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `contract_version` | string | 是 | — | — |
+| `course_id` | string | 是 | — | — |
+| `session_id` | string | 是 | — | — |
+| `classroom_id` | string | 是 | — | — |
+| `content_version` | string | 是 | — | — |
+| `document_updated_at` | string / null | 否 | — | — |
+| `generated_at` | string | 是 | — | — |
+| `title` | string | 是 | — | — |
+| `mode` | string | 是 | — | — |
+| `partial` | boolean | 是 | — | — |
+| `scenes_count` | integer | 是 | — | — |
+| `source_scenes_count` | integer | 是 | — | — |
+| `start_index` | integer | 是 | — | — |
+| `scenes` | array<[ClassroomPlaybackSceneOut](schemas.md#schema-classroomplaybacksceneout)> | 是 | — | — |
+| `degraded` | array<[ClassroomPlaybackDegradedOut](schemas.md#schema-classroomplaybackdegradedout)> | 是 | — | — |
+| `warnings` | array<[ClassroomPlaybackWarningOut](schemas.md#schema-classroomplaybackwarningout)> | 是 | — | — |
+| `native` | [ClassroomPlaybackNativeOut](schemas.md#schema-classroomplaybacknativeout) | 是 | — | — |
+| `compat` | [ClassroomPlaybackCompatOut](schemas.md#schema-classroomplaybackcompatout) | 是 | — | — |
+
+异常：
+
+| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
+| --- | --- | --- |
+| 404 | NOT_FOUND | '课堂会话不存在' / 请求的 `scene_id` 不存在 |
+| 409 | CLASSROOM_NOT_READY | 生成中或已成功但没有 `classroom_id`；`details` 带 `status`、`step`、`progress`、`poll_after_seconds`、`recovery=poll_job` |
+| 409 | CLASSROOM_GENERATION_FAILED | 会话失败；`details` 带 `error_code`、脱敏后的 `error`、`retryable`、`recovery=retry_generation` |
+| 410 | CLASSROOM_CONTENT_MISSING | 上游课堂文档 404/410；`details.recovery=retry_generation_or_use_compat` |
+| 502 | CLASSROOM_CONTENT_INVALID | 上游正文结构损坏（缺 `classroom` 或 `scenes` 非数组） |
+| 502 | MAGICCLASS_SERVER_ERROR | 上游 5xx；`MAGICCLASS_PROTOCOL_ERROR` 为返回结构损坏 |
+| 429 | MAGICCLASS_RATE_LIMITED | 上游限流；按 `Retry-After` 或现有轮询退避重试 |
+
+说明：`scenes[].render.kind` 为 `native`（slide/quiz）、`sandbox-html`、`sandbox-url`、`unsupported`；`pbl` 标 `pbl_requires_compat_runtime`，未知类型标 `scene_type_unsupported`。`steps` 只含同步动作，`spotlight`/`laser` 等 fire-and-forget 动作不进入 `steps`；不支持的动作进入 `dropped_actions`，`actions[].supported=false` 且带 `reason`。`media[].url` 是本站相对地址，客户端用 API Base 拼接；`available=false` 时只按 `reason` 降级，不猜外部地址。
+
+`render.sandbox` 的类型固定为 `string | null`，不是布尔值：`sandbox-html` / `sandbox-url` 当前为 `"allow-scripts"`；`native` / `unsupported` 为 `null`。它是受限 WebView 的 iframe sandbox 属性，不是页面正文；HTML 从 `scene.content.html` 读取，URL 从 `scene.content.url` 读取，不能把 `sandbox` 当内容或真假值。示例：
+
+```json
+{
+  "id": "sc_int",
+  "type": "interactive",
+  "content": {"type": "interactive", "widgetType": "simulation", "html": "<div>...</div>"},
+  "render": {"kind": "sandbox-html", "sandbox": "allow-scripts", "widget_type": "simulation", "reason": null}
+}
+```
+`native.available=true` 只说明至少存在一个可原生播放计划（`slide`/`quiz`，或受限 `sandbox-html`/`sandbox-url`），不代表老师问答、PBL、白板写入、讨论或 AI 同学全部原生可用；逐场景按 `render.kind` 与 `actions[].supported` 判断。
+
+`speech` 动作的 `payload.audioUrl` 指向同场景的鉴权讲解音频。用相同 URL 在 `role=narration` 的媒体条目里核对可用状态，`media[].element_id` 可辅助关联动作。`content_version` 用于判断课堂 JSON 是否变更。音频关联示例与媒体缓存规则见[实际响应契约](response-contracts.md#经典课堂原生播放与媒体)。
+
+### `GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/media/{media_path}`
+
+用途：按已保存会话读取经典课堂的图片、音频、视频及其他上游媒体。
+
+鉴权：Bearer access token；每次请求重新校验账号、课程、会话归属与课堂归属，缓存命中也不能绕过。`media_path` 只接受 `(media|audio)/文件名`，拒绝 `..`、绝对路径和跨课堂路径。
+
+实现：[backend/app/api/routes/magicclass_playback.py](../../backend/app/api/routes/magicclass_playback.py)，`get_course_classroom_media`；上游流式读取在 [backend/app/services/magicclass/client.py](../../backend/app/services/magicclass/client.py)，`open_classroom_media`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `course_id` | string | 是 | — | 课程 ID |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `media_path` | string | 是 | — | `media/<file>` 或 `audio/<file>`；文件名 ≤128 字 |
+| header | `Range` | string | 否 | — | 单段字节范围；音视频需要拖动时使用 |
+
+请求体：无。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | 上游 `Content-Type` | 完整媒体字节；`Accept-Ranges: bytes`、`Cache-Control: private, no-cache`、`X-Content-Type-Options: nosniff`，透传 `ETag` / `Last-Modified` / `Content-Length` |
+| 206 | 上游 `Content-Type` | 单段 Range；带 `Content-Range: bytes start-end/total` |
+| 404 | application/json | `MEDIA_NOT_FOUND`（路径非法、上游 404/410、媒体不属于该课堂） |
+| 409 | application/json | `CLASSROOM_NOT_READY` / `CLASSROOM_GENERATION_FAILED` |
+| 416 | 上游 `Content-Type` | `Content-Range: bytes */*`；Range 越界 |
+| 422 | application/json | 运行时统一错误结构 |
+| 502 | application/json | `MEDIA_UPSTREAM_ERROR`（上游 5xx/401/403）或 `MAGICCLASS_PROTOCOL_ERROR` |
+| 503 | application/json | `MAGICCLASS_NOT_ENABLED` / `MAGICCLASS_UNAVAILABLE` |
+
+说明：多段 Range 按上游行为忽略并返回 200；客户端不要依赖多段。媒体按需加载，服务端不预取全部资源；URL 过期或上游暂时不可用时重新调用播放接口获取仍然有效的本站地址，不缓存上游内部地址。`Content-Type` 为 `audio/*` 或 `video/*` 时，手机端播放器可直接使用 Range 拖动。返回的 URL 形如 `.../media/media/img_1.png` 或 `.../media/audio/tts.mp3`：第一段 `media` 是路由前缀，后一段 `media|audio` 是资源相对路径，客户端必须原样拼接，不要去掉重复段。
+
+### `GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/scenes/{scene_id}/quiz-attempt`
+
+用途：读取当前学生对经典课堂某个 quiz 场景的作答状态。
+
+鉴权：Bearer access token；课程访问权限 + 会话归属 + `scene_id` 必须是该课堂的 `quiz` 场景。
+
+实现：[backend/app/api/routes/magicclass_playback.py](../../backend/app/api/routes/magicclass_playback.py)，`get_course_classroom_quiz_attempt`；作答持久化复用 `quiz_attempt_store`，以 `classroom_id` 作为 stage 归属、`scene_id` 作为场景键，不伪造 workspace 映射。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `course_id` | string | 是 | — | 课程 ID |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `scene_id` | string | 是 | — | 播放响应中的 quiz 场景 ID |
+
+请求体：无。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [QuizAttemptStateOut](schemas.md#schema-quizattemptstateout) |
+| 404 | application/json | `NOT_FOUND`（会话不存在/不属于本人）或 `SCENE_NOT_FOUND` |
+| 400 | application/json | `SCENE_NOT_QUIZ` |
+| 409 | application/json | `CLASSROOM_NOT_READY` / `CLASSROOM_GENERATION_FAILED` |
+| 422 | application/json | 运行时统一错误结构 |
+
+200 响应顶层字段：
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `attempt_id` | string | 是 | — | — |
+| `state` | object / null | 否 | — | — |
+
+异常：
+
+| HTTP / 分支 | code / 异常 | 原因或 message 表达式 |
+| --- | --- | --- |
+| 404 | SCENE_NOT_FOUND | 场景不存在于该课堂 |
+| 400 | SCENE_NOT_QUIZ | 场景类型不是 quiz |
+| 409 | CLASSROOM_NOT_READY | 会话尚未成功或缺少 `classroom_id` |
+
+### `POST /api/v1/courses/{course_id}/interactive-classroom/{session_id}/scenes/{scene_id}/quiz-attempt`
+
+用途：保存当前学生对经典课堂 quiz 场景的作答（draft/submitted/reviewed），并支持滚动新 attempt。
+
+鉴权：同 GET；`start_new_attempt=true` 时分配新根作答 ID。
+
+实现：同 GET，`save_course_classroom_quiz_attempt`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `course_id` | string | 是 | — | 课程 ID |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `scene_id` | string | 是 | — | quiz 场景 ID |
+
+请求体：[QuizAttemptIn](schemas.md#schema-quizattemptin)
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `attempt_id` | string | 是 | minLength=1; maxLength=128 | — |
+| `phase` | string | 是 | — | — |
+| `answers` | object | 否 | — | — |
+| `results` | array<object> | 否 | — | — |
+| `start_new_attempt` | boolean | 否 | default=false | — |
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [QuizAttemptStateOut](schemas.md#schema-quizattemptstateout) |
+| 400 | application/json | `SCENE_NOT_QUIZ` |
+| 404 | application/json | `NOT_FOUND` / `SCENE_NOT_FOUND` |
+| 409 | application/json | `CLASSROOM_NOT_READY` / `QUIZ_ATTEMPT_CONFLICT` |
+| 422 | application/json | 运行时统一错误结构 |
+
+200 响应顶层字段：
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `attempt_id` | string | 是 | — | — |
+| `state` | object / null | 否 | — | — |
+
+说明：`answers` 的值为字符串或字符串数组；经典课堂的 quiz 结果只保存学生练习状态，不作为教师正式成绩。`draft → submitted → reviewed` 顺序、冲突 409 回读语义与受管工作台一致。
+
+### `GET /api/v1/self-classroom/{session_id}/playback`
+
+用途：读取自主选题课堂的原生播放数据；响应结构与课程课堂完全一致，`course_id` 固定为 `__self_study__`。
+
+鉴权：Bearer access token；仅 `student` 角色 + 本人会话。跨账号统一 404。
+
+实现：[backend/app/api/routes/magicclass_playback.py](../../backend/app/api/routes/magicclass_playback.py)，`get_self_classroom_playback`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `session_id` | string | 是 | — | 自主选题生成接口或历史列表返回的会话 ID |
+| query | `scene_id` | string | 否 | — | 从该场景开始播放 |
+
+请求体：无。
+
+响应：
+
+| HTTP | Content-Type | 结构 |
+| --- | --- | --- |
+| 200 | application/json | [ClassroomPlaybackOut](schemas.md#schema-classroomplaybackout) |
+| 403 | application/json | `FORBIDDEN`（非学生） |
+| 404 | application/json | 会话不存在或不属于本人 |
+| 409 | application/json | `CLASSROOM_NOT_READY` / `CLASSROOM_GENERATION_FAILED` |
+| 410 | application/json | `CLASSROOM_CONTENT_MISSING` |
+| 422 | application/json | 运行时统一错误结构 |
+| 502 | application/json | `CLASSROOM_CONTENT_INVALID` / `MAGICCLASS_SERVER_ERROR` |
+| 503 | application/json | `MAGICCLASS_NOT_ENABLED` / `MAGICCLASS_UNAVAILABLE` |
+
+200 响应顶层字段：同课程课堂播放接口的 [ClassroomPlaybackOut](schemas.md#schema-classroomplaybackout)。
+
+### `GET /api/v1/self-classroom/{session_id}/media/{media_path}`
+
+用途：读取自主选题课堂媒体；鉴权、Range、Content-Type 与课程课堂媒体接口一致。
+
+鉴权：学生角色 + 本人会话；每次请求重新校验。
+
+实现：`get_self_classroom_media`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `media_path` | string | 是 | — | `media/<file>` 或 `audio/<file>` |
+| header | `Range` | string | 否 | — | 单段字节范围 |
+
+请求体：无。
+
+响应：200 / 206 / 416 为媒体字节，404 `MEDIA_NOT_FOUND`，409 `CLASSROOM_NOT_READY`，422 统一错误结构，502 `MEDIA_UPSTREAM_ERROR`，503 `MAGICCLASS_*`；头与课程课堂媒体一致。
+
+### `GET /api/v1/self-classroom/{session_id}/scenes/{scene_id}/quiz-attempt`
+
+用途：读取自主选题课堂 quiz 场景的本人作答状态。
+
+鉴权：学生角色 + 本人会话 + quiz 场景。
+
+实现：`get_self_classroom_quiz_attempt`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `scene_id` | string | 是 | — | quiz 场景 ID |
+
+请求体：无。
+
+响应：200 [QuizAttemptStateOut](schemas.md#schema-quizattemptstateout)；404 `SCENE_NOT_FOUND` / 会话不存在；400 `SCENE_NOT_QUIZ`；409 `CLASSROOM_NOT_READY`；422 统一错误结构。
+
+200 响应顶层字段：同课程课堂 quiz GET 的字段表。
+
+### `POST /api/v1/self-classroom/{session_id}/scenes/{scene_id}/quiz-attempt`
+
+用途：保存自主选题课堂 quiz 作答。
+
+鉴权：同 GET。
+
+实现：`save_self_classroom_quiz_attempt`。
+
+参数：
+
+| 位置 | 名称 | 类型 | OpenAPI 必填 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| path | `session_id` | string | 是 | — | 会话 ID |
+| path | `scene_id` | string | 是 | — | quiz 场景 ID |
+
+请求体：[QuizAttemptIn](schemas.md#schema-quizattemptin)；字段同上表。
+
+响应：200 [QuizAttemptStateOut](schemas.md#schema-quizattemptstateout)；400 `SCENE_NOT_QUIZ`；404 `SCENE_NOT_FOUND` / 会话不存在；409 `CLASSROOM_NOT_READY` / `QUIZ_ATTEMPT_CONFLICT`；422 统一错误结构。
+
+说明：自主选题与课程课堂共用同一套播放/媒体/quiz 实现；客户端不需要为两者维护不同字段解析，只需按入口区分 `course_id` 是否固定为 `__self_study__`。

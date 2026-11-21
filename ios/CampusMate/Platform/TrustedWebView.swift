@@ -38,12 +38,15 @@ struct TrustedWebView: UIViewRepresentable {
     let origins: [String]
     var loginMode = false
     var bridge: WebLoginBridge?
+    var injectedScript: String?
+    /// 课堂奖励、白板草稿需要跨课堂保留；登录桥则继续使用一次性存储。
+    var persistentStorage = false
     var onError: (String) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        configuration.websiteDataStore = persistentStorage ? .default() : .nonPersistent()
         configuration.allowsInlineMediaPlayback = true
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
@@ -54,7 +57,7 @@ struct TrustedWebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.parent = self
         bridge?.webView = view
-        let identity = url.absoluteString + origins.sorted().joined(separator: "|") + String(loginMode)
+        let identity = url.absoluteString + origins.sorted().joined(separator: "|") + String(loginMode) + (injectedScript ?? "")
         guard context.coordinator.requestedIdentity != identity else { return }
         context.coordinator.requestedIdentity = identity
         guard trusted(url) else { Task { @MainActor in onError("页面地址不在可信服务列表中，已停止打开。") }; return }
@@ -75,6 +78,9 @@ struct TrustedWebView: UIViewRepresentable {
             if url.absoluteString == "about:blank" { return .allow }
             guard parent.trusted(url) else { parent.onError("页面试图跳转到未授权地址，已阻止。"); return .cancel }
             return .allow
+        }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if let script = parent.injectedScript { webView.evaluateJavaScript(script, completionHandler: nil) }
         }
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: any Error) {
             if (error as NSError).code != NSURLErrorCancelled { parent.onError(error.localizedDescription) }

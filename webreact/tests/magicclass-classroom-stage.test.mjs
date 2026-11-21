@@ -24,8 +24,11 @@ import { sandboxPolicyFor } from "../src/features/magicclass/playerModel.js";
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
 
 const stageSource = read("src/components/magicclass/magicclassClassroomStage.jsx");
+const sceneRendererSource = read("src/magicclass/scene/scene-renderer.jsx");
+const quizViewSource = read("src/magicclass/scene/quiz-view.jsx");
 const shellSource = read("src/magicclass/classroom/shell.jsx");
 const workbenchSource = read("src/pages/magicclassWorkbenchPage.jsx");
+const legacyPanelSource = read("src/components/magicclass/WorkspacePanel.jsx");
 const cssSource = read("src/styles/magicclass.css");
 const workbenchCss = read("src/styles/magicclass-workbench.css");
 
@@ -61,8 +64,15 @@ test("the classroom shows real slide thumbnails from the same document", () => {
   assert.match(stageSource, /content: contentByScene\[entry\.id\]\?\.content/, "正文必须按场景并入侧栏列表");
   assert.match(stageSource, /renderSlideThumbnail/, "必须把 slide 缩略图渲染器交给侧栏");
   // 缩略图复用播放画布，因此缩略图与实际内容不可能不一致。
-  assert.match(stageSource, /<MagicClassSlideSurface canvas=\{canvas\}/, "缩略图必须复用同一套画布渲染");
-  assert.match(stageSource, /elements\.length === 0\) return null/, "没有元素的旧画布必须交回占位分支，而不是画空白");
+  assert.match(stageSource, /<MagicClassSlideSurface[\s\S]*?canvas=\{canvas\}/, "缩略图必须复用同一套画布渲染");
+  // 同一张画布在主舞台和缩略图各渲染一次；缩略图必须使用独立 DOM id 前缀，
+  // 否则 getElementById 会命中侧栏缩略图，聚光灯把整页压暗而不是聚焦标题。
+  assert.match(stageSource, /elementIdPrefix=\{`thumb-\$\{sceneId/, "缩略图必须使用独立元素 id 前缀");
+  // 没有画布的历史讲义不能画空白灰块：主舞台有 CampusMate 讲义兜底，侧栏也必须
+  // 给出可辨认的同款缩略图，否则学生会以为这一页没有内容。
+  assert.match(stageSource, /data-thumbnail-scene=/, "无画布缩略图必须带场景标识");
+  assert.match(stageSource, /CAMPUSMATE/, "无画布缩略图必须使用讲义模板");
+  assert.match(stageSource, /title=\{contentByScene\[sceneId\]\?\.title/, "缩略图必须拿到真实场景标题");
 });
 
 // ===== 2. 沙箱只减不增 =====
@@ -157,8 +167,9 @@ test("the canvas toolbar matches the reference and the canvas is not wrapped in 
   assert.match(stageSource, /aria-label="Toggle sidebar"/, "工具栏必须带侧栏开关");
   assert.match(stageSource, /tabular-nums select-none font-medium/, "工具栏必须带页码");
   assert.match(shellSource, /侧栏开关\*\*不放在头栏\*\*/, "头栏不得再放侧栏开关");
-  // 画布区底色必须与参考 canvas-area 一致（浅色模式是 gray-50）。
-  assert.match(stageSource, /bg-gray-50 dark:bg-gray-900/, "画布区底色必须与参考一致");
+  // 画布区底色不再按参考 canvas-area 的 gray-50：CampusMate 原生课堂要用
+  // 暖纸色场景底板 + 细网格，才能在视觉上区别于普通 PPT 播放器。
+  assert.match(stageSource, /campus-stage bg-\[#E9E4D6\] dark:bg-gray-900/, "画布区必须使用 CampusMate 课堂场景底板");
   assert.doesNotMatch(stageSource, /flex flex-col bg-gray-900"/, "不得把画布区写死成深色");
 });
 
@@ -220,6 +231,8 @@ test("the classroom header survives a 320px viewport", () => {
   assert.match(headerSource, /px-4 sm:px-8/, "头栏内边距必须窄屏收窄");
   assert.match(headerSource, /gap-2 sm:gap-4/, "头栏间距必须窄屏收窄");
   assert.match(headerSource, /flex items-center gap-2 sm:gap-4 shrink-0/, "右控制簇不得被压缩到溢出");
+  // 320px 实测「返回编辑」会被挤成两行；按钮必须禁止换行，否则头栏高度抖动。
+  assert.match(stageSource, /className="whitespace-nowrap shrink-0"/, "返回编辑按钮必须禁止换行");
   // 侧栏 220px 的默认宽度在 320px 下会把主列压到 100px，必须自动收起。
   assert.match(stageSource, /useNarrowViewport\(\)/, "课堂必须在窄屏自动收起侧栏");
   assert.match(stageSource, /setCollapsed\(narrow\)/, "跨断点时必须重算侧栏开合");
@@ -262,4 +275,111 @@ test("the action player invokes the canvas store API rather than treating its sn
     "视频动作必须调用 store 的真实 playVideo 命令");
   assert.doesNotMatch(stageSource, /useCanvasStore\.getState\(\)\.resetEffects/,
     "getState 只返回快照，不能把它当作命令 API");
+});
+
+test("the narration control keeps its label horizontal at every width", () => {
+  // ctrlBtn 是 28px 的图标按钮（w-7）。讲解入口带真实中文标签，直接复用会把文字
+ // 压进 28px 列里竖排；必须显式改成自适应宽度并禁止换行。
+  assert.match(
+    stageSource,
+    /w-auto min-w-6 h-6 px-2 gap-1 whitespace-nowrap/,
+    "带文字的讲解按钮必须覆盖 ctrlBtn 的固定宽度并禁止换行",
+  );
+});
+
+test("the roundtable collapses the empty participant rail on phone widths", () => {
+  const roundtableSource = read("src/magicclass/roundtable/index.jsx");
+  const classroomCss = read("src/styles/magicclass-classroom.css");
+  // 320px 保留「主讲 90 + 参与者 140」会把中间发言区压到约 90px：
+  // 标题换行、输入框和「开始讨论」一起溢出。窄屏只留主讲 + 发言区。
+  assert.match(roundtableSource, /rt-teacher w-\[90px\] shrink-0/, "主讲栏必须可被窄屏规则识别");
+  assert.match(roundtableSource, /rt-participants w-\[140px\] shrink-0/, "参与者栏必须可被窄屏规则识别");
+  assert.match(roundtableSource, /flex-1 min-w-0 h-7/, "讨论输入框必须允许在窄屏收缩");
+  assert.match(roundtableSource, /inline-flex items-center gap-1 shrink-0/, "开始讨论按钮不得被挤压");
+  assert.match(classroomCss, /@media \(max-width: 520px\)/, "圆桌必须有手机断点");
+  assert.match(classroomCss, /\.rt-root \.rt-participants \{ display: none; \}/, "手机断点必须收起空的参与者栏");
+  assert.match(classroomCss, /\.rt-root \.rt-teacher \{ width: 64px; \}/, "手机断点必须收窄主讲栏");
+});
+
+test("the rewards HUD keeps real XP numbers visible on phone widths", () => {
+  const rewardsCss = read("src/styles/magicclass-rewards.css");
+  // 只隐藏进度条，不隐藏 XP 数字：手机上也必须能看见真实进度。
+  const narrowBlock = rewardsCss.match(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.match(narrowBlock, /\.cr-hud__xp \{/, "窄屏应保留 XP 数字规则");
+  assert.doesNotMatch(narrowBlock, /\.cr-hud__xp-text/, "窄屏不得把 XP 数字一起隐藏");
+});
+
+test("classroom accents stay on the CampusMate ink/amber/copper palette", () => {
+  const roundtableSource = read("src/magicclass/roundtable/index.jsx");
+  const sidebarSource = read("src/magicclass/classroom/scene-sidebar.jsx");
+  const classroomCss = read("src/styles/magicclass-classroom.css");
+  // 参考项目的紫色强调（purple/violet/#685bd2）不属于本项目的课堂体系；
+  // 课堂主要交互必须落在深绿、琥珀、铜色三档上。
+  assert.doesNotMatch(roundtableSource, /purple|violet/i, "圆桌不得残留参考项目的紫色强调");
+  assert.doesNotMatch(sidebarSource, /purple|violet/i, "侧栏不得残留参考项目的紫色强调");
+  assert.match(roundtableSource, /#AD6845/, "圆桌主按钮必须使用铜色");
+  assert.match(roundtableSource, /#DAB27A/, "圆桌焦点/激活态必须使用琥珀色");
+  assert.match(sidebarSource, /#153B34/, "侧栏选中态必须使用墨绿");
+  assert.match(classroomCss, /background: linear-gradient\(90deg, #153b34, #dab27a\)/, "生成进度条必须使用课堂主色");
+});
+
+test("desktop classroom exposes the adventure HUD, quest route and stage mission", () => {
+  const hudSource = read("src/components/magicclass/ClassroomGameHud.jsx");
+  const sidebarSource = read("src/magicclass/classroom/scene-sidebar.jsx");
+  const classroomCss = read("src/styles/magicclass-classroom.css");
+
+  // 游戏化不是画布角上的一枚小徽章：桌面端 HUD 必须进头栏，侧栏必须有关卡路线，
+  // 画布上方必须有关卡任务条；三者都从同一个真实 rewards 模型取数。
+  assert.match(stageSource, /variant=\{narrow \? "overlay" : "header"\}/, "桌面端 HUD 必须切换到头栏形态");
+  assert.match(stageSource, /headerActions=\{narrow \? undefined : classroomActions\}/, "桌面端 HUD 必须注入头栏");
+  assert.match(stageSource, /const classroomActions = React\.useMemo/, "头栏动作必须聚合 HUD 与白板入口");
+  assert.match(stageSource, /<ClassroomQuestMap/, "侧栏必须显示本章冒险路线");
+  assert.match(stageSource, /gameSlot: questMap/, "冒险路线必须接入侧栏插槽");
+  assert.match(sidebarSource, /gameSlot/, "侧栏必须提供游戏化插槽");
+  assert.match(stageSource, /campus-mission/, "画布上方必须有关卡任务条");
+  assert.match(hudSource, /export function ClassroomQuestMap/, "关卡路线必须是可独立测试的组件");
+  assert.match(hudSource, /cr-hud__gain/, "XP 增量必须有真实结算反馈");
+  assert.match(classroomCss, /\.campus-mission \{/, "关卡任务条必须有样式");
+});
+
+test("the classroom header follows the current scene, not the stage title", () => {
+  // 头栏文案是「当前场景」。绑定 plan.title 时，翻页后正文与侧栏都变了，
+  // 头栏仍停在第一节标题（真实浏览器复现）。
+  assert.match(
+    stageSource,
+    /title=\{current\?\.title \|\| plan\?\.title \|\| fallbackTitle\}/,
+    "头栏标题必须优先取当前场景标题",
+  );
+});
+
+test("原生测验交卷会结算课堂连击与满分成就", () => {
+  // 普通 quiz 场景走 MagicClassSceneRenderer → QuizView；此前只有作业复盘
+  // QuizRuntimePanel 调了 rewards.grade，普通测验答得再好也不会推进连击。
+  assert.match(sceneRendererSource, /onQuizGraded/, "场景分发器必须把交卷结果向外传");
+  assert.match(sceneRendererSource, /<QuizView[\s\S]*?onGraded=\{onQuizGraded\}/, "QuizView 必须接收交卷回调");
+  assert.match(stageSource, /onQuizGraded=\{\(payload\) => rewards\?\.grade\(\{ sceneId: scene\.id, \.\.\.payload \}\)\}/,
+    "课堂必须把测验结果写进同一份 rewards 模型");
+  assert.match(quizViewSource, /onGradedRef\.current\?\.\(\{/, "交卷成功后必须调用结算回调");
+  assert.match(quizViewSource, /correct: ordered\.filter\(\(result\) => result\.status === 'correct'\)\.length/,
+    "结算只统计明确答对的题，不能把简答基础分算成连击");
+  assert.match(quizViewSource, /total: ordered\.length/, "总分题数必须来自实际结果");
+});
+
+test("主工作台在能力允许时提供真实的 MP4 导出", () => {
+  // MP4 是任务式导出。能力来自服务端 export-video，入口必须和 PPTX/Markdown/DOCX
+  // 一样出现在主工作台，而不是只藏在旧 /legacy 的 WorkspacePanel。
+  assert.match(workbenchSource, /canExportVideo=\{fusion\.canExportVideo\}/, "主工作台必须读取服务端视频能力");
+  assert.match(workbenchSource, /enqueueMagicClassStageVideo\(/, "MP4 必须走真实入队接口");
+  assert.match(workbenchSource, /getMagicClassArtifact\(/, "MP4 必须取回真实产物");
+  assert.match(workbenchSource, /导出 MP4/, "导出菜单必须显示 MP4 入口");
+});
+
+test("旧工作台也不把只有 job_id 的 202 响应当成失败", () => {
+  // 202 只承诺已入队，不承诺响应里有 job 快照。旧 WorkspacePanel 的
+  // `while (job && ...)` 会在 `{job_id, job:null}` 时跳过轮询并直接失败。
+  assert.match(
+    legacyPanelSource,
+    /while \(!job \|\| \["queued", "running"\]\.includes\(job\.status\)\)/,
+    "视频导出轮询必须覆盖只有 job_id 的快照",
+  );
 });

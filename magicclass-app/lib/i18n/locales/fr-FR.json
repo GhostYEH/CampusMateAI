@@ -711,6 +711,24 @@
     "retry": "Recommencer"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "Demander",
+      "askSubmit": "Envoyer",
+      "askPlaceholder": "Poser une question à ce camarade…",
+      "askLoading": "Réponse en cours…",
+      "askError": "Le camarade n'a pas pu répondre. Réessayez.",
+      "quiet": "Cette fois, j'écoute",
+      "budget": "Le budget de participation de ce cours est épuisé",
+      "title": "Camarades de classe",
+      "style": "Point de vue des camarades",
+      "speaking": "Parle",
+      "previous": "Camarades précédents",
+      "next": "Camarades suivants",
+      "discussionPending": "Discussion en attente",
+      "loading": "Préparation d’une réaction…",
+      "idle": "Suit ce cours",
+      "error": "Impossible de charger les réactions des camarades"
+    },
     "teacher": "PROFESSEUR",
     "you": "VOUS",
     "inputPlaceholder": "Saisissez votre message…",

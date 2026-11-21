@@ -257,6 +257,39 @@ async def test_chaoxing_global_work_feed_keeps_only_real_pending_status(mock_htt
 
 
 @pytest.mark.asyncio
+async def test_chaoxing_global_work_feed_normalizes_relative_task_links(mock_httpx_client):
+    response = MagicMock(status_code=200, text="""
+        <li onclick="goTask()" data="/task?taskrefId=1&courseId=11&clazzId=22">
+            <div><p>未完成作业</p><span>未提交</span><span>《课程》</span></div>
+        </li>
+    """)
+    response.raise_for_status = MagicMock()
+    mock_httpx_client.return_value = response
+
+    assignments = await ChaoxingClient().get_all_assignments()
+
+    assert assignments[0]["link"] == (
+        "https://mooc1-api.chaoxing.com/task?taskrefId=1&courseId=11&clazzId=22"
+    )
+
+
+@pytest.mark.asyncio
+async def test_chaoxing_global_work_feed_accepts_data_url_attribute(mock_httpx_client):
+    response = MagicMock(status_code=200, text="""
+        <li data-url="https://mooc2-ans.chaoxing.com/work/view?workId=9&courseId=11&clazzId=22">
+            <div class="work-title">作业9</div><span class="status">未提交</span>
+        </li>
+    """)
+    response.raise_for_status = MagicMock()
+    mock_httpx_client.return_value = response
+
+    assignments = await ChaoxingClient().get_all_assignments()
+
+    assert assignments[0]["external_id"] == "9"
+    assert assignments[0]["link"].startswith("https://mooc2-ans.chaoxing.com/work/view")
+
+
+@pytest.mark.asyncio
 async def test_chaoxing_notice_inbox_parses_course_and_creator(mock_httpx_client):
     response = MagicMock(status_code=200)
     response.raise_for_status = MagicMock()

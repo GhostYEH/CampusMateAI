@@ -34,6 +34,9 @@ class ChaoxingDailySyncWorker:
             self._task = None
 
     async def _run(self) -> None:
+        # 启动瞬间不要和用户手动“同步学习通”抢同一把用户锁；先让应用完成
+        # 冷启动，再进入每日补偿同步节奏。
+        await asyncio.sleep(60)
         while True:
             try:
                 await self.tick()

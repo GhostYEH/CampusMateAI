@@ -65,17 +65,17 @@ export function MagicClassRoundtable({
   const participants = speakers.length > 1 ? speakers.slice(1) : [];
 
   return (
-    <div className="magicclass-root h-[192px] w-full flex flex-col relative z-10 transition-all duration-300 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md">
+    <div className="rt-root magicclass-root h-[192px] w-full flex flex-col relative z-10 transition-all duration-300 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md">
       {/* Toolbar strip — 参考项目把画布工具栏并进了这里 */}
       <div className="transition-opacity duration-300">{toolbar}</div>
 
       <div className="flex-1 flex items-stretch min-h-0">
         {/* 左：主讲人 */}
-        <div className="w-[90px] shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 relative overflow-hidden">
-          <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-purple-50/50 dark:from-purple-900/10 to-transparent pointer-events-none" />
+        <div className="rt-teacher w-[90px] shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 relative overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-[#DAB27A]/20 dark:from-[#DAB27A]/10 to-transparent pointer-events-none" />
           <div className="absolute top-3 inset-x-0 flex flex-col items-center justify-center gap-1 opacity-10 pointer-events-none">
-            <BookOpen size={20} className="text-purple-900 dark:text-purple-100" />
-            <div className="w-8 h-0.5 bg-purple-900 dark:bg-purple-100 rounded-full" />
+            <BookOpen size={20} className="text-[#153B34] dark:text-[#F2F1E8]" />
+            <div className="w-8 h-0.5 bg-[#153B34] dark:bg-[#F2F1E8] rounded-full" />
           </div>
           <div className="flex-1 flex flex-col items-center justify-center gap-1.5 px-2 pt-6 min-h-0 relative">
             <div
@@ -88,11 +88,11 @@ export function MagicClassRoundtable({
                 className={cn(
                   "absolute inset-0 rounded-full border-2 transition-all duration-500",
                   busy
-                    ? "border-purple-500 dark:border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.4)]"
+                    ? "border-[#DAB27A] dark:border-[#DAB27A] shadow-[0_0_12px_rgba(218,178,122,0.4)]"
                     : "border-gray-200 dark:border-gray-700",
                 )}
               />
-              <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 z-10 shadow-sm border border-gray-50 dark:border-gray-700 flex items-center justify-center text-sm font-black text-purple-700 dark:text-purple-300">
+              <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 z-10 shadow-sm border border-gray-50 dark:border-gray-700 flex items-center justify-center text-sm font-black text-[#153B34] dark:text-[#E7E2D3]">
                 {speakerInitial(teacher?.name || "主讲")}
               </div>
             </div>
@@ -103,7 +103,7 @@ export function MagicClassRoundtable({
         </div>
 
         {/* 中：发言气泡 */}
-        <div className="flex-1 min-w-0 flex flex-col relative">
+        <div className="rt-center flex-1 min-w-0 flex flex-col relative">
           {errorText ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-1.5 px-4 text-center" role="alert">
               <MessageSquare className="w-4 h-4 text-red-400" />
@@ -151,7 +151,7 @@ export function MagicClassRoundtable({
                 {[0, 1, 2].map((index) => (
                   <span
                     key={index}
-                    className="w-1.5 h-1.5 rounded-full bg-purple-400 dark:bg-purple-500 animate-[thinkDotPulse_1s_ease-in-out_infinite]"
+                    className="w-1.5 h-1.5 rounded-full bg-[#AD6845] dark:bg-[#DAB27A] animate-[thinkDotPulse_1s_ease-in-out_infinite]"
                     style={{ animationDelay: `${index * 0.2}s` }}
                   />
                 ))}
@@ -160,16 +160,17 @@ export function MagicClassRoundtable({
             </div>
           ) : (
             <form
-              className="flex-1 flex flex-col items-center justify-center gap-1.5 px-4"
+              className="rt-form flex-1 flex flex-col items-center justify-center gap-1.5 px-4"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!rejection) onStart?.();
               }}
             >
-              <div className="flex items-center gap-1.5">
+              <div className="rt-heading flex items-center gap-1.5">
+                <span className="rt-quest">QUEST</span>
                 <Users className="w-3.5 h-3.5 text-gray-400 dark:text-gray-500" />
                 <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-                  圆桌讨论
+                  小队研讨
                 </span>
               </div>
               <div className="w-full max-w-[520px] flex items-center gap-1.5">
@@ -179,12 +180,12 @@ export function MagicClassRoundtable({
                   maxLength={2000}
                   aria-label="圆桌讨论主题"
                   placeholder={sceneTitle ? `围绕「${sceneTitle}」讨论…` : "输入想讨论的主题"}
-                  className="flex-1 h-7 rounded-md bg-white/80 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 px-2.5 text-[12px] text-gray-700 dark:text-gray-200 outline-none focus:border-purple-300 dark:focus:border-purple-600 transition-colors"
+                  className="flex-1 min-w-0 h-7 rounded-md bg-white/80 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 px-2.5 text-[12px] text-gray-700 dark:text-gray-200 outline-none focus:border-[#DAB27A] dark:focus:border-[#DAB27A] transition-colors"
                 />
                 <button
                   type="submit"
                   disabled={Boolean(rejection)}
-                  className="h-7 px-3 rounded-md text-[11px] font-bold text-white bg-purple-600 hover:bg-purple-500 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1"
+                  className="h-7 px-3 rounded-md text-[11px] font-bold text-white bg-[#AD6845] hover:bg-[#C07A55] active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-1 shrink-0"
                 >
                   <Send className="w-3 h-3" />
                   开始讨论
@@ -195,7 +196,7 @@ export function MagicClassRoundtable({
         </div>
 
         {/* 右：参与者 */}
-        <div className="w-[140px] shrink-0 flex flex-col border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 py-2 px-2 min-h-0">
+        <div className="rt-participants w-[140px] shrink-0 flex flex-col border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 py-2 px-2 min-h-0">
           <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">
             参与者
           </span>

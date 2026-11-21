@@ -304,6 +304,10 @@ fun TaskDetailScreen(
 
             Spacer(Modifier.height(18.dp))
 
+            if (!isEditing && task.source == "chaoxing") {
+                ChaoxingAssignmentReviewSection(task = task, repository = repository)
+            }
+
             // ── Action buttons ──
             Column(
                 Modifier

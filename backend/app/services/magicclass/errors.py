@@ -80,6 +80,75 @@ class MagicClassInvalidOrigin(AppException):
     message = "互动课堂返回地址校验失败"
 
 
+class MagicClassClassroomMissing(Exception):
+    """上游课堂正文不存在（404/410），供播放层转换成稳定的 410。
+
+    这不是 AppException：它只在上游客户端内部区分“课堂文件被删”与
+    “请求/鉴权/协议失败”，由播放服务决定对外的恢复语义。
+    """
+
+    def __init__(self, classroom_id: str) -> None:
+        self.classroom_id = classroom_id
+        super().__init__(f"classroom content missing: {classroom_id}")
+
+
+# ===== 经典课堂原生播放与媒体 =====
+
+
+class ClassroomPlaybackNotReady(AppException):
+    """生成中或尚无课件，播放请求应继续轮询而不是伪造空课堂。"""
+
+    code = "CLASSROOM_NOT_READY"
+    http_status = 409
+    message = "课堂仍在生成中，尚不能播放"
+
+
+class ClassroomGenerationFailed(AppException):
+    code = "CLASSROOM_GENERATION_FAILED"
+    http_status = 409
+    message = "课堂生成失败，不能播放"
+
+
+class ClassroomContentMissing(AppException):
+    """上游课件正文被删除或历史课堂文件缺失。"""
+
+    code = "CLASSROOM_CONTENT_MISSING"
+    http_status = 410
+    message = "课堂正文已不存在"
+
+
+class ClassroomContentInvalid(AppException):
+    """课件 JSON 顶层结构损坏，无法安全还原场景。"""
+
+    code = "CLASSROOM_CONTENT_INVALID"
+    http_status = 502
+    message = "课堂正文结构异常，无法播放"
+
+
+class ClassroomSceneNotFound(AppException):
+    code = "SCENE_NOT_FOUND"
+    http_status = 404
+    message = "课堂场景不存在"
+
+
+class ClassroomSceneNotQuiz(AppException):
+    code = "SCENE_NOT_QUIZ"
+    http_status = 400
+    message = "该场景不是测验场景"
+
+
+class ClassroomMediaNotFound(AppException):
+    code = "MEDIA_NOT_FOUND"
+    http_status = 404
+    message = "课堂媒体不存在"
+
+
+class ClassroomMediaUpstreamError(AppException):
+    code = "MEDIA_UPSTREAM_ERROR"
+    http_status = 502
+    message = "课堂媒体读取失败，请稍后重试"
+
+
 # 说明：曾经存在 `MagicClassGenerationFailed`，但它从未被抛出过。
 # 生成失败在设计上是**任务状态**（`status="failed"` + `error_code`），不是 HTTP 异常：
 # 客户端是轮询任务的，抛出异常会让它拿不到失败状态与重试入口。因此删除该无用抽象。
@@ -94,4 +163,13 @@ __all__ = [
     "MagicClassProtocolError",
     "MagicClassIncompatible",
     "MagicClassInvalidOrigin",
+    "MagicClassClassroomMissing",
+    "ClassroomPlaybackNotReady",
+    "ClassroomGenerationFailed",
+    "ClassroomContentMissing",
+    "ClassroomContentInvalid",
+    "ClassroomSceneNotFound",
+    "ClassroomSceneNotQuiz",
+    "ClassroomMediaNotFound",
+    "ClassroomMediaUpstreamError",
 ]

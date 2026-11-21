@@ -7,6 +7,8 @@ const errors = {
   assignment_content_not_current: "还没有取得提交后的题目，请先同步作业。",
   assignment_images_require_text: "题目包含尚未识别的图片，暂时无法生成完整讲解。",
   assignment_content_too_large: "这份作业内容较长，超出了单次课堂可处理的范围。",
+  assignment_results_unavailable: "还没有取得逐题批改结果，暂时无法单独整理错题。",
+  assignment_no_wrong_questions: "本次作业没有错题，不需要生成错题变式课。",
   chaoxing_assignment_not_found: "这份作业已不存在，请刷新列表。",
   sync_in_progress: "学习通正在同步，请稍后再次进入讲解。",
 };
@@ -55,17 +57,17 @@ function waitForPoll(signal) {
 }
 
 /** Resume the server's idempotent review and return only a completed lesson. */
-export async function enterAssignmentReview(taskId, api, { signal, onPhase, wait = waitForPoll }) {
+export async function enterAssignmentReview(taskId, api, { signal, onPhase, wait = waitForPoll, scope = "all" } = {}) {
   let result;
   try {
-    result = await api.generateChaoxingAssignmentClassroom(taskId);
+    result = await api.generateChaoxingAssignmentClassroom(taskId, { scope });
   } catch (error) {
     if (signal.aborted) return null;
     if (errorCode(error) !== "assignment_content_not_current") throw error;
     onPhase({ state: "syncing" });
     await api.syncChaoxing();
     if (signal.aborted) return null;
-    result = await api.generateChaoxingAssignmentClassroom(taskId);
+    result = await api.generateChaoxingAssignmentClassroom(taskId, { scope });
   }
   if (signal.aborted) return null;
   if (!result?.course_id || !result?.workspace_id || !result?.job?.id) throw new Error("课堂未返回有效的生成任务，请重试。");

@@ -16,6 +16,12 @@ export const getLearningArchive = (id) => client.get(`${roomPath(id)}/archive`, 
 export const setLearningCursor = (id, sceneIndex) => client.patch(`${roomPath(id)}/cursor`, { scene_index: sceneIndex });
 export const getLearningMessages = (id, after = 0) => client.get(`${roomPath(id)}/messages`, { params: { after } }).then(dataOf);
 export const sendLearningMessage = (id, content, clientId) => client.post(`${roomPath(id)}/messages`, { content, client_id: clientId }).then(dataOf);
+export const reportLearningAttention = (id, state, source = "PAGE_VISIBILITY") =>
+  client.put(`${roomPath(id)}/attention`, { state, source }).then(dataOf);
+export const getLearningSupervision = (id, after = 0) =>
+  client.get(`${roomPath(id)}/supervision`, { params: { after } }).then(dataOf);
+export const sendLearningNudge = (id, targetUid = null, content = null) =>
+  client.post(`${roomPath(id)}/nudges`, { target_uid: targetUid, content }).then(dataOf);
 
 export function createLearningRoom({ archive, title, stageId }) {
   const form = new FormData();

@@ -4,6 +4,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -28,6 +29,46 @@ data class ClassroomRtcToken(
     val provider: String, val app_id: String, val room_id: String, val user_id: String,
     val token: String, val expires_at: Long, val refresh_after_seconds: Int,
 )
+
+data class LearningAttentionRequest(val state: String, val source: String)
+data class LearningTeacherNudge(
+    val id: Long,
+    val from_uid: String?,
+    val target_uid: String?,
+    val kind: String,
+    val content: String,
+    val created_at: String,
+)
+data class LearningAttentionReport(
+    val state: String,
+    val updated_at: String,
+    val teacher_reminder: LearningTeacherNudge?,
+)
+data class LearningSupervisionMember(
+    val uid: String,
+    val name: String = "",
+    val is_host: Boolean = false,
+    val state: String,
+    val source: String,
+    val updated_at: String?,
+    val online: Boolean,
+    val attention_age_seconds: Int?,
+)
+data class LearningSupervisionStats(
+    val total: Int,
+    val online: Int,
+    val focused: Int,
+    val needs_attention: Int,
+)
+data class LearningSupervision(
+    val me: LearningSupervisionMember,
+    val members: List<LearningSupervisionMember>,
+    val stats: LearningSupervisionStats?,
+    val teacher_summary: String?,
+    val teacher_name: String,
+    val nudges: List<LearningTeacherNudge>,
+)
+data class LearningNudgeRequest(val target_uid: String? = null, val content: String? = null)
 
 /** CampusMate control plane only. Media is handled by the RTC SDK. */
 interface LearningRoomApi {
@@ -55,4 +96,10 @@ interface LearningRoomApi {
     suspend fun send(@Path("id") id: String, @Body body: LearningMessageRequest): Map<String, Any>
     @PATCH("magicclass/learning-space/rooms/{id}/cursor")
     suspend fun cursor(@Path("id") id: String, @Body body: LearningCursorRequest)
+    @PUT("magicclass/learning-space/rooms/{id}/attention")
+    suspend fun reportAttention(@Path("id") id: String, @Body body: LearningAttentionRequest): LearningAttentionReport
+    @GET("magicclass/learning-space/rooms/{id}/supervision")
+    suspend fun supervision(@Path("id") id: String, @Query("after") after: Long): LearningSupervision
+    @POST("magicclass/learning-space/rooms/{id}/nudges")
+    suspend fun nudge(@Path("id") id: String, @Body body: LearningNudgeRequest): LearningTeacherNudge
 }

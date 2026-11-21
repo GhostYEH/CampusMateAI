@@ -1,6 +1,20 @@
 @import "open-glass-ui/styles.css";
 @font-face { font-family: CampusSans; src: url('/assets/NotoSansSC-VF.ttf') format('truetype'); font-display: swap; }
 :root { color-scheme: light; font-family: CampusSans, 'Noto Sans SC', system-ui, sans-serif; color: #182134; background: #f5f7fb; font-synthesis: none; --ink: #182134; --muted: #6e788b; --line: #e3e8f0; --surface: #fff; --wash: #f5f7fb; --blue: #3267d6; --blue-soft: #eaf0ff; --violet: #765eea; --orange: #ed8b3a; --green: #3a9b78; --red: #d45d63; --shadow: 0 16px 44px rgba(40, 53, 82, .08); --radius: 18px; }
+@media (max-width: 640px) {
+  /* iOS Safari 对 17MB 的 NotoSansSC-VF 变量字体存在字形回退问题：
+     真实 iPhone 模拟器上中文会渲染成方块。手机端直接使用系统中文栈，
+     桌面端仍保留自托管的 CampusSans。 */
+  :root,
+  body,
+  .magicclass-root {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  }
+
+  .magicclass-root {
+    --font-sans: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  }
+}
 * { box-sizing: border-box; } html { scroll-padding-top: 96px; } html, body, #root { min-height: 100%; margin: 0; } body { min-width: 320px; background: var(--wash); } button, input, textarea, select { font: inherit; } button, a { -webkit-tap-highlight-color: transparent; } a { color: inherit; text-decoration: none; }
 .skip-link { position: fixed; top: 10px; left: 10px; z-index: 80; padding: 9px 12px; border-radius: 8px; color: #fff; background: var(--blue); transform: translateY(-160%); transition: transform .18s ease; } .skip-link:focus-visible { transform: translateY(0); }
 button { cursor: pointer; } button:disabled { cursor: wait; opacity: .58; } :focus-visible { outline: 3px solid rgba(50, 103, 214, .38); outline-offset: 3px; }

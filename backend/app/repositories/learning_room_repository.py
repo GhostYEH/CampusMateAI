@@ -8,10 +8,25 @@ from uuid import uuid4
 
 from ..core.exceptions import AppException
 from ..database.sqlite_db import Database
+from ..services.learning_room_supervision import (
+    ATTENTION_STALE_AFTER_SECONDS,
+    AUTO_NUDGE_COOLDOWN_SECONDS,
+    AUTO_NUDGE_MAX_PER_MEMBER,
+    AUTO_NUDGE_THRESHOLDS_SECONDS,
+    BAD_ATTENTION_STATES,
+    broadcast_nudge_text,
+    host_nudge_text,
+    teacher_nudge_text,
+)
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_time(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _error(message: str, status: int = 409) -> AppException:
@@ -207,6 +222,219 @@ class LearningRoomRepository:
             if message["content"] != content:
                 raise _error("消息 ID 已用于其他内容，请使用新的 client_id")
             return message
+
+    def report_attention(
+        self, room_id: str, user_id: str, state: str, source: str
+    ) -> dict:
+        """Upsert one member's coarse attention state and maybe emit a teacher nudge."""
+        now = _now()
+        now_dt = _parse_time(now)
+        with self.db.transaction(immediate=True) as conn:
+            self._member(conn, room_id, user_id)
+            previous = conn.execute(
+                "SELECT state, low_since FROM learning_room_attention WHERE room_id=? AND user_id=?",
+                (room_id, user_id),
+            ).fetchone()
+            low_since = previous["low_since"] if previous else None
+            if state in BAD_ATTENTION_STATES:
+                if not previous or previous["state"] != state or not low_since:
+                    low_since = now
+            else:
+                low_since = None
+            conn.execute(
+                "INSERT INTO learning_room_attention(room_id,user_id,state,source,low_since,updated_at,created_at) "
+                "VALUES (?,?,?,?,?,?,?) ON CONFLICT(room_id,user_id) DO UPDATE SET "
+                "state=excluded.state,source=excluded.source,low_since=excluded.low_since,updated_at=excluded.updated_at",
+                (room_id, user_id, state, source, low_since, now, now),
+            )
+            reminder = self._maybe_auto_nudge(conn, room_id, user_id, state, low_since, now_dt)
+        return {"state": state, "updated_at": now, "teacher_reminder": reminder}
+
+    def _maybe_auto_nudge(
+        self, conn, room_id: str, user_id: str, state: str, low_since: str | None, now: datetime
+    ) -> dict | None:
+        """Rule-based teacher message for sustained distraction, with cooldown and cap."""
+        threshold = AUTO_NUDGE_THRESHOLDS_SECONDS.get(state)
+        if threshold is None or not low_since:
+            return None
+        if (now - _parse_time(low_since)).total_seconds() < threshold:
+            return None
+        sent = conn.execute(
+            "SELECT id, created_at FROM learning_room_nudges WHERE room_id=? AND target_user_id=? AND kind='TEACHER' ORDER BY id DESC",
+            (room_id, user_id),
+        ).fetchall()
+        if len(sent) >= AUTO_NUDGE_MAX_PER_MEMBER:
+            return None
+        if sent and (now - _parse_time(sent[0]["created_at"])).total_seconds() < AUTO_NUDGE_COOLDOWN_SECONDS:
+            return None
+        content = teacher_nudge_text(state, len(sent) + 1)
+        cursor = conn.execute(
+            "INSERT INTO learning_room_nudges(room_id,from_user_id,target_user_id,kind,content,created_at) "
+            "VALUES (?,NULL,?,'TEACHER',?,?)",
+            (room_id, user_id, content, now.isoformat()),
+        )
+        return {
+            "id": cursor.lastrowid,
+            "kind": "TEACHER",
+            "target_uid": user_id,
+            "content": content,
+            "created_at": now.isoformat(),
+        }
+
+    def supervision(self, room_id: str, user_id: str, after: int) -> dict:
+        """Read own attention, the host's roster, and incremental teacher/host nudges."""
+        with self._snapshot() as conn:
+            room = self._member(conn, room_id, user_id)
+            host_id = room["host_id"]
+            is_host = host_id == user_id
+            now = datetime.now(timezone.utc)
+
+            def attention(uid: str) -> dict | None:
+                row = conn.execute(
+                    "SELECT state,source,updated_at FROM learning_room_attention WHERE room_id=? AND user_id=?",
+                    (room_id, uid),
+                ).fetchone()
+                if not row:
+                    return None
+                age = max(0, int((now - _parse_time(row["updated_at"])).total_seconds()))
+                return {
+                    "state": row["state"],
+                    "source": row["source"],
+                    "updated_at": row["updated_at"],
+                    "online": age <= ATTENTION_STALE_AFTER_SECONDS,
+                    "attention_age_seconds": age,
+                }
+
+            mine = attention(user_id) or {
+                "state": "UNKNOWN",
+                "source": "HEARTBEAT",
+                "updated_at": None,
+                "online": False,
+                "attention_age_seconds": None,
+            }
+            me_name = conn.execute(
+                "SELECT COALESCE(display_name,username) AS name FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            mine.update({
+                "uid": user_id,
+                "name": me_name["name"] if me_name else "",
+                "is_host": is_host,
+            })
+
+            members = []
+            rows = conn.execute(
+                "SELECT u.id AS uid, COALESCE(u.display_name,u.username) AS name "
+                "FROM learning_room_members m JOIN users u ON u.id=m.user_id "
+                "WHERE m.room_id=? AND m.status='accepted' ORDER BY u.id",
+                (room_id,),
+            ).fetchall()
+            for row in rows:
+                item = attention(row["uid"]) or {
+                    "state": "UNKNOWN",
+                    "source": "HEARTBEAT",
+                    "updated_at": None,
+                    "online": False,
+                    "attention_age_seconds": None,
+                }
+                item.update({"uid": row["uid"], "name": row["name"], "is_host": row["uid"] == host_id})
+                members.append(item)
+
+            if is_host:
+                recent = conn.execute(
+                    "SELECT id,from_user_id,target_user_id,kind,content,created_at FROM learning_room_nudges "
+                    "WHERE room_id=? AND id>? ORDER BY id LIMIT 50",
+                    (room_id, after),
+                ).fetchall()
+            else:
+                recent = conn.execute(
+                    "SELECT id,from_user_id,target_user_id,kind,content,created_at FROM learning_room_nudges "
+                    "WHERE room_id=? AND id>? AND (target_user_id IS NULL OR target_user_id=?) ORDER BY id LIMIT 50",
+                    (room_id, after, user_id),
+                ).fetchall()
+
+            stats = None
+            summary = None
+            if is_host:
+                students = [m for m in members if not m["is_host"]]
+                live = [m for m in students if m["online"]]
+                focused = sum(1 for m in live if m["state"] == "FOCUSED")
+                needs = sum(1 for m in live if m["state"] in BAD_ATTENTION_STATES)
+                stats = {
+                    "total": len(students),
+                    "online": len(live),
+                    "focused": focused,
+                    "needs_attention": needs,
+                }
+                offline = len(students) - len(live)
+                unknown = max(0, len(live) - focused - needs)
+                parts = [f"{focused} 位同学在专注听课"]
+                if needs:
+                    parts.append(f"{needs} 位需要老师提醒")
+                if unknown:
+                    parts.append(f"{unknown} 位状态未知")
+                if offline:
+                    parts.append(f"{offline} 位状态超时")
+                summary = "，".join(parts) + "。"
+
+        return {
+            "me": mine,
+            "members": members if is_host else [],
+            "stats": stats,
+            "teacher_summary": summary,
+            "nudges": [
+                {
+                    "id": row["id"],
+                    "from_uid": row["from_user_id"],
+                    "target_uid": row["target_user_id"],
+                    "kind": row["kind"],
+                    "content": row["content"],
+                    "created_at": row["created_at"],
+                }
+                for row in recent
+            ],
+        }
+
+    def nudge(
+        self, room_id: str, host_id: str, target_uid: str | None, content: str | None
+    ) -> dict:
+        """Host/teacher sends a private or broadcast reminder; missing text uses a preset."""
+        with self.db.transaction(immediate=True) as conn:
+            self._member(conn, room_id, host_id, host_only=True)
+            name = ""
+            state = "UNKNOWN"
+            if target_uid:
+                member = conn.execute(
+                    "SELECT COALESCE(u.display_name,u.username) AS name FROM learning_room_members m "
+                    "JOIN users u ON u.id=m.user_id WHERE m.room_id=? AND m.user_id=? AND m.status='accepted'",
+                    (room_id, target_uid),
+                ).fetchone()
+                if not member:
+                    raise _error("只能提醒当前课堂里已加入的同学", 404)
+                name = member["name"]
+                row = conn.execute(
+                    "SELECT state FROM learning_room_attention WHERE room_id=? AND user_id=?",
+                    (room_id, target_uid),
+                ).fetchone()
+                if row:
+                    state = row["state"]
+            text = (content or "").strip()
+            if not text:
+                text = host_nudge_text(state, name) if target_uid else broadcast_nudge_text()
+            now = _now()
+            cursor = conn.execute(
+                "INSERT INTO learning_room_nudges(room_id,from_user_id,target_user_id,kind,content,created_at) "
+                "VALUES (?,?,?,'HOST',?,?)",
+                (room_id, host_id, target_uid, text, now),
+            )
+        return {
+            "id": cursor.lastrowid,
+            "from_uid": host_id,
+            "target_uid": target_uid,
+            "kind": "HOST",
+            "content": text,
+            "created_at": now,
+        }
 
     def leave(self, room_id: str, user_id: str):
         with self.db.transaction(immediate=True) as conn:

@@ -10,12 +10,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -24,8 +28,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.campusai.CampusAIApplication
 import com.example.campusai.data.classroom.ClassroomCall
 import com.example.campusai.data.classroom.ClassroomCallPhase
+import com.example.campusai.data.focus.voice.AndroidTextToSpeechSynthesizer
+import com.example.campusai.data.remote.LearningSupervision
+import com.example.campusai.data.remote.LearningTeacherNudge
 import com.example.campusai.ui.components.SpeechInputButton
 
 @Composable
@@ -60,7 +68,25 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         if (granted && cameraRequestRoom == state.room?.id && cameraRequestSession == model.call.sessionGeneration && owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) && model.call.state.value.phase == ClassroomCallPhase.CONNECTED) model.call.camera(true)
         else if (!granted) model.notice("未获得摄像头权限，仍可参加语音讨论")
     }
+    val attentionPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) model.setAttentionEnabled(true, true)
+        else model.notice("未获得摄像头权限，无法开启课堂专注观察")
+    }
+    val teacherSpeech = remember(context) { AndroidTextToSpeechSynthesizer(context) }
+    DisposableEffect(teacherSpeech) { onDispose { teacherSpeech.shutdown() } }
+    var lastSpokenNudgeId by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.teacherReminder?.id) {
+        val nudge = state.teacherReminder ?: return@LaunchedEffect
+        if (nudge.id == lastSpokenNudgeId) return@LaunchedEffect
+        lastSpokenNudgeId = nudge.id
+        // 课堂麦克风开着时不要朗读私人提醒，避免被 RTC 其他同学听到；文字卡片仍然可见。
+        if (!call.microphone) {
+            teacherSpeech.speak(nudge.content, onDone = {}, onError = {})
+        }
+    }
     DisposableEffect(owner, model) {
+        (context.applicationContext as? CampusAIApplication)?.repository?.expressionSessionManager
+            ?.attachLifecycle(owner)
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> model.foreground(true)
@@ -70,7 +96,13 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         }
         owner.lifecycle.addObserver(observer)
         if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) model.foreground(true)
-        onDispose { owner.lifecycle.removeObserver(observer); model.foreground(false) }
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+            model.foreground(false)
+            model.setAttentionEnabled(false, true)
+            (context.applicationContext as? CampusAIApplication)?.repository?.expressionSessionManager
+                ?.detachLifecycle()
+        }
     }
     LaunchedEffect(state.sentVersion) {
         // A send can finish after the user has started another message or changed rooms.
@@ -136,6 +168,25 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
                     Text("入会时麦克风、摄像头均关闭。后台保留通话声音并关闭摄像头。", style = MaterialTheme.typography.bodySmall)
                 } else TextButton(onClick = model::disconnect) { Text("断开通话，继续文字学习") }
                 call.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+            state.teacherReminder?.let { nudge ->
+                item { TeacherNudgeCard(nudge, onDismiss = model::dismissTeacherReminder) }
+            }
+            item {
+                ClassroomSupervisionCard(
+                    host = host,
+                    attentionEnabled = state.attentionEnabled,
+                    attentionState = state.attentionState,
+                    supervision = state.supervision,
+                    onToggle = {
+                        if (state.attentionEnabled) model.setAttentionEnabled(false, true)
+                        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            model.setAttentionEnabled(true, true)
+                        } else attentionPermission.launch(Manifest.permission.CAMERA)
+                    },
+                    onNudge = { uid -> model.sendNudge(uid) },
+                    onBroadcast = { model.sendNudge(null) },
+                )
             }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -216,6 +267,97 @@ fun LearningRoomScreen(onBack: () -> Unit, model: LearningRoomViewModel = viewMo
         confirmButton = { TextButton(onClick = { confirmDiscardMessage = false; model.discardPendingMessage() }) { Text("放弃重试") } },
         dismissButton = { TextButton(onClick = { confirmDiscardMessage = false }) { Text("取消") } },
     )
+}
+
+@Composable
+private fun TeacherNudgeCard(nudge: LearningTeacherNudge, onDismiss: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        tonalElevation = 4.dp,
+    ) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier.size(36.dp).background(MaterialTheme.colorScheme.tertiary.copy(alpha = .25f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("师", fontWeight = FontWeight.Bold) }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (nudge.kind == "TEACHER") "小伴老师提醒" else "老师提醒",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(nudge.content, style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = onDismiss, contentPadding = PaddingValues(0.dp)) { Text("知道了") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClassroomSupervisionCard(
+    host: Boolean,
+    attentionEnabled: Boolean,
+    attentionState: String,
+    supervision: LearningSupervision?,
+    onToggle: () -> Unit,
+    onNudge: (String) -> Unit,
+    onBroadcast: () -> Unit,
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("课堂专注监督", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "端侧只上报“专注/可能分心/明显分心/离开”这类粗粒度状态，不上传画面、人脸或音频。",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (attentionEnabled) {
+                Text("我的状态：${attentionLabel(attentionState)}，${if (attentionState == "UNKNOWN") "等待本机观察" else "约 15 秒更新一次"}")
+                OutlinedButton(onClick = onToggle) { Text("关闭专注观察") }
+            } else {
+                Text("我的状态：状态未知（仅同步在线）")
+                Button(onClick = onToggle) { Text("开启课堂专注观察") }
+                Text("进入课堂会同步在线状态；开启后才用摄像头做本机识别，画面不会上传。", style = MaterialTheme.typography.bodySmall)
+            }
+            if (host) {
+                supervision?.teacher_summary?.let { Text(it, fontWeight = FontWeight.Medium) }
+                supervision?.stats?.let { stats ->
+                    Text(
+                        "在线 ${stats.online}/${stats.total} · 专注 ${stats.focused} · 需提醒 ${stats.needs_attention}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                val others = supervision?.members.orEmpty().filterNot { it.is_host }
+                if (others.isEmpty()) {
+                    Text("等待同学进入课堂；未开启观察的同学会显示“状态未知”，但仍可看到在线。", style = MaterialTheme.typography.bodySmall)
+                } else {
+                    others.forEach { member ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text(member.name.ifBlank { member.uid }, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${attentionLabel(member.state)} · ${if (member.online) "在线" else "状态超时"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            TextButton(onClick = { onNudge(member.uid) }) { Text("提醒") }
+                        }
+                    }
+                    TextButton(onClick = onBroadcast) { Text("提醒全班") }
+                }
+            } else {
+                Text("发起人只能看到粗粒度状态；老师提醒只发送给被提醒的同学。", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+private fun attentionLabel(state: String): String = when (state) {
+    "FOCUSED" -> "专注听课"
+    "POSSIBLY_DISTRACTED" -> "可能分心"
+    "DISTRACTED" -> "明显分心"
+    "AWAY" -> "暂时离开"
+    else -> "状态未知"
 }
 
 @Composable

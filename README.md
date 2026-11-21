@@ -68,14 +68,14 @@ CampusMate AI 面向学生的学习与日常事务管理，围绕“通知整理
 
 仅开发后端和普通 Web 页面时可组合运行 `start_backend.bat` 与 `startreact.bat`。在线课堂受管服务未启动或未配置时，相关入口会显示不可用；不会生成假的课堂内容。
 
-手动启动与测试命令见各端 README。Android/JVM 命令必须使用项目约定放在 `android/.tools/jdk21-full/jdk-21.0.12+8` 的本地 JDK 21。`android/.tools/` 被 Git 忽略，不随源码分发；如果本地没有该 JDK，应停止 JVM 操作，不要回退到系统 Java：
+手动启动与测试命令见各端 README。Android/JVM 命令使用开发机已安装的 JDK 21。优先使用 `JAVA_HOME` 指向的 JDK；未设置时使用系统 `java`。执行前确认 `java -version` 为 21.x，并确保 `JAVA_HOME` 与 `PATH` 指向同一套 JDK：
 
 ```powershell
-$repoRoot = (git rev-parse --show-toplevel).Trim()
-$env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
-if (-not (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\java.exe'))) { throw '项目约定的本地 JDK 21 不存在，停止 JVM 操作' }
+if (-not $env:JAVA_HOME) { throw '未设置 JAVA_HOME，请指向本机 JDK 21' }
+$java = Join-Path $env:JAVA_HOME 'bin\java.exe'
+if (-not (Test-Path -LiteralPath $java)) { throw 'JAVA_HOME 下找不到 java.exe' }
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-& "$env:JAVA_HOME\bin\java.exe" -version
+& $java -version
 ```
 
 后端环境变量从 [`backend/.env.example`](backend/.env.example) 复制；默认 `LLM_PROVIDER=none`，通知可走规则抽取，聊天会走现有检索摘要降级。若要测试真实模型回答或课堂生成，须按对应服务配置模型提供方；不要提交 `.env` 或密钥。

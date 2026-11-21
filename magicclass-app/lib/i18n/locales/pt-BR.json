@@ -711,6 +711,24 @@
     "retry": "Tentar novamente"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "Perguntar",
+      "askSubmit": "Enviar",
+      "askPlaceholder": "Pergunte a este colega…",
+      "askLoading": "Respondendo…",
+      "askError": "O colega não conseguiu responder. Tente de novo.",
+      "quiet": "Desta vez eu só escuto",
+      "budget": "O orçamento de participação desta aula acabou",
+      "title": "Colegas",
+      "style": "Perspectiva do colega",
+      "speaking": "Falando",
+      "previous": "Colegas anteriores",
+      "next": "Próximos colegas",
+      "discussionPending": "Discussão pendente",
+      "loading": "Preparando uma reação…",
+      "idle": "Acompanhando esta aula",
+      "error": "Não foi possível carregar as reações"
+    },
     "teacher": "PROFESSOR",
     "you": "VOCÊ",
     "inputPlaceholder": "Digite sua mensagem...",

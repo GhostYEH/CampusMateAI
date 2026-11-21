@@ -5,11 +5,16 @@ from __future__ import annotations
 import re
 from urllib.parse import urlencode, urljoin, urlsplit
 
+import httpx
 from bs4 import BeautifulSoup
 
 from .ChaoxingClient import ChaoxingFetchError, _auth_error
 
 WORK_HOSTS = {"mooc1.chaoxing.com", "mooc1-api.chaoxing.com", "mooc2-ans.chaoxing.com"}
+
+
+def _is_work_path(path: str) -> bool:
+    return "/work/" in path or path == "/task" or path.startswith("/task/")
 
 
 def validate_work_url(url: str) -> str:
@@ -20,7 +25,7 @@ def validate_work_url(url: str) -> str:
         or parsed.username
         or parsed.password
         or parsed.port not in (None, 443)
-        or "/work/" not in parsed.path
+        or not _is_work_path(parsed.path)
     ):
         raise ChaoxingFetchError("assignment_url_not_allowed")
     return url
@@ -42,7 +47,7 @@ def _text(node) -> str:
     return fragment.get_text(" ", strip=True)
 
 
-def parse_assignment_questions(html: str) -> list[dict]:
+def parse_assignment_questions(html: str, *, include_results: bool = False) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
     blocks = soup.select(".questionLi, .TiMu, .question-list, .marBom60")
     # Keep the innermost containers that have a stem. A spacing wrapper can
@@ -69,13 +74,22 @@ def parse_assignment_questions(html: str) -> list[dict]:
         ]
         if not options:
             options = [_text(option) for option in block.select(".stem_answer")]
-        questions.append(
-            {
-                "number": len(questions) + 1,
-                "stem": stem,
-                "options": [option for option in options if option],
-            }
-        )
+        question = {
+            "number": len(questions) + 1,
+            "stem": stem,
+            "options": [option for option in options if option],
+        }
+        if include_results:
+            # On the graded report page `.cuo` marks the learner's wrong
+            # choice and `.dui` the correct one. A wrong choice can carry both,
+            # so the wrong marker must win. Absence means "not graded yet".
+            if block.select_one(".cuo"):
+                question["is_correct"] = False
+            elif block.select_one(".dui"):
+                question["is_correct"] = True
+            else:
+                question["is_correct"] = None
+        questions.append(question)
     return questions
 
 
@@ -100,7 +114,35 @@ def report_url(html: str) -> str | None:
     )
 
 
-async def fetch_assignment_questions(client, url: str) -> list[dict]:
+def _merge_report_results(
+    questions: list[dict], report_questions: list[dict]
+) -> list[dict]:
+    """Prefer the work page's stems/options and copy only graded flags from the report."""
+    if not questions:
+        return report_questions
+    report_by_number = {question["number"]: question for question in report_questions}
+    merged = []
+    for question in questions:
+        report = report_by_number.get(question["number"])
+        if report:
+            question = dict(question)
+            if "is_correct" in report:
+                question["is_correct"] = report["is_correct"]
+            if not question.get("stem") and report.get("stem"):
+                question["stem"] = report["stem"]
+            if not question.get("options") and report.get("options"):
+                question["options"] = report["options"]
+        merged.append(question)
+    known = {question["number"] for question in merged}
+    merged.extend(
+        question for question in report_questions if question["number"] not in known
+    )
+    return merged
+
+
+async def fetch_assignment_questions(
+    client, url: str, *, include_results: bool = False
+) -> list[dict]:
     async def fetch(target):
         for _ in range(6):
             validate_work_url(target)
@@ -124,11 +166,23 @@ async def fetch_assignment_questions(client, url: str) -> list[dict]:
         raise ChaoxingFetchError("assignment_redirect_limit")
 
     html = await fetch(url)
-    questions = parse_assignment_questions(html)
-    if not questions:
-        report = report_url(html)
-        if report:
-            questions = parse_assignment_questions(await fetch(report))
+    report = report_url(html)
+    detail_questions = parse_assignment_questions(html)
+    if include_results and report:
+        # The graded report page contains per-question correct/wrong markers
+        # that the work page does not expose. A report failure must not erase
+        # the usable question snapshot: fall back to the work page below.
+        try:
+            report_questions = parse_assignment_questions(
+                await fetch(report), include_results=True
+            )
+            if report_questions:
+                return _merge_report_results(detail_questions, report_questions)
+        except (ChaoxingFetchError, httpx.HTTPError, TimeoutError):
+            pass
+    questions = detail_questions
+    if not questions and report:
+        questions = parse_assignment_questions(await fetch(report))
     if not questions:
         raise ChaoxingFetchError("assignment_questions_unavailable")
     return questions

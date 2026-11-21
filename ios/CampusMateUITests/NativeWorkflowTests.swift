@@ -43,13 +43,35 @@ final class NativeWorkflowTests: XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             for owner in [springboard, app] {
+                // The sheet can surface as a sheet rather than a bare alert, and
+                // at accessibility text sizes its title may sit outside the
+                // static-text query. Check both containers.
                 let title = owner.staticTexts.matching(NSPredicate(
                     format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "保存密码", "Save Password"
                 )).firstMatch
-                guard title.exists else { continue }
+                let sheet = owner.sheets.matching(NSPredicate(
+                    format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "保存密码", "Save Password"
+                )).firstMatch
+                guard title.exists || sheet.exists else { continue }
+                // Prefer the sheet's own button; the app-level query can see a
+                // same-labelled button from an unrelated layer.
+                if sheet.exists {
+                    let sheetButton = sheet.buttons["以后"]
+                    if sheetButton.exists {
+                        sheetButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                        return
+                    }
+                }
                 for label in ["以后", "稍后", "Not Now", "Later"] {
                     let button = owner.buttons[label]
-                    if button.exists && button.isHittable { button.tap(); return }
+                    if button.exists {
+                        if button.isHittable {
+                            button.tap()
+                        } else {
+                            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                        }
+                        return
+                    }
                 }
             }
             usleep(150_000)
@@ -60,7 +82,8 @@ final class NativeWorkflowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-campus.serverURL", root.absoluteString,
                                "-campus.signOutOnLaunch", "-campus.resetLocalState", "-campus.theme", theme,
-                               "-campus.reduceMotion", "YES"]
+                               "-campus.reduceMotion", "YES",
+                               "-campus.disablePasswordAutofill"]
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
         return app
@@ -357,6 +380,10 @@ final class NativeWorkflowTests: XCTestCase {
         XCTAssertTrue(chatInput.waitForExistence(timeout: 6))
         XCTAssertTrue(app.buttons["room.mic"].exists, "共同课堂输入框应提供语音入口")
         chatInput.tap()
+        if !app.keyboards.element.waitForExistence(timeout: 3) {
+            chatInput.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "共同课堂输入框应获得键盘焦点")
         chatInput.typeText("这是一条原生验证消息")
         app.buttons["发送"].tap()
         XCTAssertTrue(app.staticTexts["这是一条原生验证消息"].waitForExistence(timeout: 10))
@@ -442,11 +469,11 @@ final class NativeWorkflowTests: XCTestCase {
     }
 
     private func openFromHome(_ app: XCUIApplication, _ label: String) {
-        dismissSavePasswordPrompt(app)
+        dismissSavePasswordPrompt(app, timeout: 4)
         let button = app.buttons[label]
         // Let the pop transition finish before scrolling; otherwise the first
         // swipe is swallowed by the navigation animation.
-        Thread.sleep(forTimeInterval: 0.5)
+        Thread.sleep(forTimeInterval: 1.0)
         // The scene is taller than the screen on iPad: the arch row sits below
         // the fold, so scroll towards the bottom first and only fall back to
         // scrolling up when the target is above the current position.
@@ -458,11 +485,28 @@ final class NativeWorkflowTests: XCTestCase {
             let frame = button.frame
             return button.isHittable && frame.minY >= viewport.minY && frame.maxY <= viewport.maxY && frame.intersects(viewport)
         }
-        for _ in 0..<6 where !isVisible() { app.swipeUp() }
-        for _ in 0..<6 where !isVisible() { app.swipeDown() }
+        let sceneScroll = app.scrollViews.firstMatch
+        for _ in 0..<6 where !isVisible() { sceneScroll.swipeUp() }
+        for _ in 0..<6 where !isVisible() { sceneScroll.swipeDown() }
+        // The system save-password sheet can arrive after the first dismissal
+        // attempt while scrolling settles; dismiss again before the hit test.
+        dismissSavePasswordPrompt(app, timeout: 3)
+        // The save-password sheet can arrive a beat after the scroll settles.
+        // Keep dismissing it until the hotspot is actually hittable.
+        let hitDeadline = Date().addingTimeInterval(5)
+        while !button.isHittable && Date() < hitDeadline {
+            dismissSavePasswordPrompt(app, timeout: 0.5)
+            usleep(200_000)
+        }
         if !button.isHittable { recordFailureDiagnostics(app, "home-entry-not-hittable") }
         XCTAssertTrue(button.isHittable, "首页入口 \(label) 应可点击")
         button.tap()
+        // Navigation push can be swallowed by the scene's scroll settling;
+        // retry once only if the home hotspot is still interactive.
+        usleep(500_000)
+        if button.isHittable {
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
     }
 
     func testLaterTaskPagesAndNestedFocusNavigation() async throws {
@@ -486,7 +530,15 @@ final class NativeWorkflowTests: XCTestCase {
         openFromHome(app, "打开待办")
         let search = app.textFields["搜索作业或课程"]
         XCTAssertTrue(search.waitForExistence(timeout: 10))
-        search.tap(); search.typeText("分页审查待办 0\n")
+        search.tap()
+        // A push transition can swallow the first tap; retry once before
+        // typing so the test distinguishes a real focus bug from animation.
+        if !app.keyboards.element.waitForExistence(timeout: 2) {
+            try await Task.sleep(for: .milliseconds(500))
+            search.tap()
+        }
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 5), "待办搜索框应能获得键盘焦点")
+        search.typeText("分页审查待办 0\n")
         let target = app.staticTexts["分页审查待办 0"]
         XCTAssertTrue(target.waitForExistence(timeout: 15), "第一页以外的待办应可搜索")
         tap(target, until: app.buttons["围绕这项任务专注"])

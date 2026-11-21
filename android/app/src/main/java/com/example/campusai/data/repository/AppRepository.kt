@@ -21,6 +21,25 @@ import com.example.campusai.data.remote.InteractiveClassroomGenerateResponse
 import com.example.campusai.data.remote.InteractiveClassroomGenerateRequest
 import com.example.campusai.data.remote.InteractiveClassroomCompositionDto
 import com.example.campusai.data.remote.UploadedClassroomMaterialDto
+import com.example.campusai.data.remote.ChaoxingAssignmentContentDto
+import com.example.campusai.data.remote.ChaoxingReviewRequest
+import com.example.campusai.data.remote.ChaoxingReviewResponseDto
+import com.example.campusai.data.remote.MagicClassGenerationJobDto
+import com.example.campusai.data.remote.MagicClassWorkspaceStageDto
+import com.example.campusai.data.remote.MagicClassWorkspaceStageSummaryDto
+import com.example.campusai.data.remote.MagicClassWorkspaceDto
+import com.example.campusai.data.remote.MagicClassStagePlaybackDto
+import com.example.campusai.data.remote.ClassroomPlaybackDto
+import com.example.campusai.data.remote.MagicClassQuizAttemptRequest
+import com.example.campusai.data.remote.MagicClassQuizAttemptResponseDto
+import com.example.campusai.data.remote.MagicClassNarrationDto
+import com.example.campusai.data.remote.MagicClassClassmateAskRequest
+import com.example.campusai.data.remote.MagicClassClassmateAnswerDto
+import com.example.campusai.data.remote.MagicClassClassmateDto
+import com.example.campusai.data.remote.MagicClassClassmateRespondDto
+import com.example.campusai.data.remote.MagicClassClassmateRespondRequest
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
 import com.example.campusai.data.remote.agent.CounselorFinalMetaDto
 import com.example.campusai.data.remote.LoginRequest
 import com.example.campusai.data.remote.RefreshRequest
@@ -91,6 +110,7 @@ class AppRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private companion object {
         const val HOME_BANNER_CACHE_KEY = "home_banners_v1"
+        const val MAX_CLASSROOM_ARTIFACT_BYTES = 32L * 1024L * 1024L
     }
     @Volatile
     private var autoLoginAttempted = false
@@ -371,6 +391,380 @@ class AppRepository(
             chaoxingStatus(resp)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /** 作业题干、选项与逐题批改状态；失败时保留可读错误，不伪造空结果。 */
+    suspend fun chaoxingAssignmentContent(taskId: String): Result<ChaoxingAssignmentContentDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取作业题目"))
+        return try {
+            val resp = ApiClient.chaoxingApi.getChaoxingAssignmentContent(taskId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("作业题目读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 全部题目或错题变式课堂；错题课由服务端保证不出现原题重做。 */
+    suspend fun generateChaoxingAssignmentReview(
+        taskId: String,
+        scope: String,
+    ): Result<ChaoxingReviewResponseDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法生成作业课堂"))
+        return try {
+            val resp = ApiClient.classroomApi.generateChaoxingAssignmentReview(
+                taskId,
+                ChaoxingReviewRequest(scope = scope),
+            )
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂生成请求被拒绝")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassGenerationJob(courseId: String, jobId: String): Result<MagicClassGenerationJobDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法查询进度"))
+        return try {
+            val resp = ApiClient.classroomApi.getMagicClassGenerationJob(courseId, jobId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂进度查询失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun retryMagicClassGenerationJob(courseId: String, jobId: String): Result<MagicClassGenerationJobDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法重试课堂"))
+        return try {
+            val resp = ApiClient.classroomApi.retryMagicClassGenerationJob(courseId, jobId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂重试失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassStages(
+        courseId: String,
+        workspaceId: String,
+    ): Result<List<MagicClassWorkspaceStageSummaryDto>> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取课堂"))
+        return try {
+            val resp = ApiClient.classroomApi.listMagicClassStages(courseId, workspaceId)
+            resp.body()?.takeIf { resp.isSuccessful }?.items?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂舞台读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassStage(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+    ): Result<MagicClassWorkspaceStageDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取课堂"))
+        return try {
+            val resp = ApiClient.classroomApi.getMagicClassStage(courseId, workspaceId, stageId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂内容读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassWorkspaces(courseId: String): Result<List<MagicClassWorkspaceDto>> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取工作台"))
+        return try {
+            val resp = ApiClient.classroomApi.listMagicClassWorkspaces(courseId)
+            resp.body()?.takeIf { resp.isSuccessful }?.items?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("工作台读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassStagePlayback(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+        sceneId: String? = null,
+    ): Result<MagicClassStagePlaybackDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取播放计划"))
+        return try {
+            val resp = ApiClient.classroomApi.getMagicClassStagePlayback(courseId, workspaceId, stageId, sceneId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("播放计划读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 经典课程课堂与自主选题课堂的只读播放数据；受管课堂仍走 stage/playback。 */
+    suspend fun classroomPlayback(
+        ref: NativeClassroomRef,
+        sceneId: String? = null,
+    ): Result<ClassroomPlaybackDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取播放计划"))
+        return try {
+            val resp = when (ref.source) {
+                NativeClassroomSource.COURSE_CLASSIC -> {
+                    val sessionId = ref.sessionId
+                        ?: return Result.failure(IllegalArgumentException("缺少经典课堂会话标识"))
+                    ApiClient.classroomApi.getCourseClassroomPlayback(ref.courseId, sessionId, sceneId)
+                }
+                NativeClassroomSource.SELF_CLASSIC -> {
+                    val sessionId = ref.sessionId
+                        ?: return Result.failure(IllegalArgumentException("缺少自主课堂会话标识"))
+                    ApiClient.classroomApi.getSelfClassroomPlayback(sessionId, sceneId)
+                }
+                NativeClassroomSource.MANAGED -> {
+                    return Result.failure(IllegalArgumentException("受管课堂不走经典播放接口"))
+                }
+            }
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("课堂播放计划读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassQuizAttempt(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+        sceneId: String,
+    ): Result<MagicClassQuizAttemptResponseDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取测验"))
+        return try {
+            val resp = ApiClient.classroomApi.getMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveMagicClassQuizAttempt(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+        sceneId: String,
+        request: MagicClassQuizAttemptRequest,
+    ): Result<MagicClassQuizAttemptResponseDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法保存测验"))
+        return try {
+            val resp = ApiClient.classroomApi.saveMagicClassQuizAttempt(courseId, workspaceId, stageId, sceneId, request)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验保存失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun classroomQuizAttempt(
+        ref: NativeClassroomRef,
+        sceneId: String,
+    ): Result<MagicClassQuizAttemptResponseDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取测验"))
+        return try {
+            val resp = when (ref.source) {
+                NativeClassroomSource.MANAGED -> ApiClient.classroomApi.getMagicClassQuizAttempt(
+                    ref.courseId, ref.workspaceId, ref.stageId, sceneId,
+                )
+                NativeClassroomSource.COURSE_CLASSIC -> ApiClient.classroomApi.getCourseClassroomQuizAttempt(
+                    ref.courseId, ref.sessionId.orEmpty(), sceneId,
+                )
+                NativeClassroomSource.SELF_CLASSIC -> ApiClient.classroomApi.getSelfClassroomQuizAttempt(
+                    ref.sessionId.orEmpty(), sceneId,
+                )
+            }
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveClassroomQuizAttempt(
+        ref: NativeClassroomRef,
+        sceneId: String,
+        request: MagicClassQuizAttemptRequest,
+    ): Result<MagicClassQuizAttemptResponseDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法保存测验"))
+        return try {
+            val resp = when (ref.source) {
+                NativeClassroomSource.MANAGED -> ApiClient.classroomApi.saveMagicClassQuizAttempt(
+                    ref.courseId, ref.workspaceId, ref.stageId, sceneId, request,
+                )
+                NativeClassroomSource.COURSE_CLASSIC -> ApiClient.classroomApi.saveCourseClassroomQuizAttempt(
+                    ref.courseId, ref.sessionId.orEmpty(), sceneId, request,
+                )
+                NativeClassroomSource.SELF_CLASSIC -> ApiClient.classroomApi.saveSelfClassroomQuizAttempt(
+                    ref.sessionId.orEmpty(), sceneId, request,
+                )
+            }
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("测验保存失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun magicClassNarration(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+        sceneId: String,
+    ): Result<MagicClassNarrationDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取讲解"))
+        return try {
+            val resp = ApiClient.classroomApi.getMagicClassSceneNarration(courseId, workspaceId, stageId, sceneId)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("讲解状态读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun synthesizeMagicClassNarration(
+        courseId: String,
+        workspaceId: String,
+        stageId: String,
+        sceneId: String,
+    ): Result<MagicClassNarrationDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法生成讲解"))
+        return try {
+            val resp = ApiClient.classroomApi.synthesizeMagicClassSceneNarration(
+                courseId = courseId,
+                workspaceId = workspaceId,
+                stageId = stageId,
+                sceneId = sceneId,
+                idempotencyKey = "android-narration-${java.util.UUID.randomUUID()}",
+                body = mapOf("scene_id" to sceneId, "stage_id" to stageId),
+            )
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("讲解生成请求被拒绝")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun downloadMagicClassArtifact(courseId: String, artifactId: String): Result<ByteArray> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法下载讲解"))
+        return try {
+            val resp = ApiClient.classroomApi.downloadMagicClassArtifact(courseId, artifactId)
+            val body = resp.body()
+            if (!resp.isSuccessful || body == null) {
+                Result.failure(IllegalStateException(resp.reviewErrorMessage("讲解音频下载失败")))
+            } else {
+                val length = body.contentLength()
+                if (length > MAX_CLASSROOM_ARTIFACT_BYTES) {
+                    body.close()
+                    Result.failure(IllegalArgumentException("讲解音频文件过大"))
+                } else {
+                    body.use { it.bytes() }.let { bytes ->
+                        if (bytes.size > MAX_CLASSROOM_ARTIFACT_BYTES) {
+                            Result.failure(IllegalArgumentException("讲解音频文件过大"))
+                        } else {
+                            Result.success(bytes)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun classmatesRoster(): Result<List<MagicClassClassmateDto>> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法读取同学名单"))
+        return try {
+            val resp = ApiClient.classroomApi.getClassmateRoster()
+            resp.body()?.takeIf { resp.isSuccessful }?.items?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("同学名单读取失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun classmatesRespond(request: MagicClassClassmateRespondRequest): Result<MagicClassClassmateRespondDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法请同学发言"))
+        return try {
+            val resp = ApiClient.classroomApi.classmatesRespond(request)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("同学发言请求失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun classmatesAsk(request: MagicClassClassmateAskRequest): Result<MagicClassClassmateAnswerDto> {
+        if (!_backendOnline.value || _mockMode.value) return Result.failure(IllegalStateException("离线状态下无法点名同学"))
+        return try {
+            val resp = ApiClient.classroomApi.classmatesAsk(request)
+            resp.body()?.takeIf { resp.isSuccessful }?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException(resp.reviewErrorMessage("点名同学请求失败")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** 课堂缓存与本地进度共用的账号作用域；匿名时不与其他账号共享。 */
+    fun classroomAccountScope(): String {
+        val service = MessageDigest.getInstance("SHA-256")
+            .digest(BuildConfig.API_BASE_URL.toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val account = _session.value?.let(::accountStorageKey) ?: "anonymous"
+        return "svc_${service}_$account"
+    }
+
+    fun classroomLocalKey(ref: NativeClassroomRef): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(ref.stableKey.toByteArray())
+            .take(12)
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "native_classroom_${classroomAccountScope()}_$digest"
+    }
+
+    suspend fun classroomPosition(ref: NativeClassroomRef): String? =
+        dataStore.readRaw("${classroomLocalKey(ref)}_position")
+
+    suspend fun saveClassroomPosition(ref: NativeClassroomRef, sceneId: String) {
+        dataStore.saveRaw("${classroomLocalKey(ref)}_position", sceneId)
+    }
+
+    suspend fun classroomRewardsRaw(ref: NativeClassroomRef): String? =
+        dataStore.readRaw("${classroomLocalKey(ref)}_rewards")
+
+    suspend fun saveClassroomRewardsRaw(ref: NativeClassroomRef, raw: String) {
+        dataStore.saveRaw("${classroomLocalKey(ref)}_rewards", raw)
+    }
+
+    private fun Response<*>.reviewErrorMessage(fallback: String): String {
+        val message = runCatching {
+            JSONObject(errorBody()?.string().orEmpty()).optString("message")
+        }.getOrNull().orEmpty()
+        return when (message) {
+            "assignment_results_unavailable" -> "还没有取得逐题批改结果，暂时无法单独整理错题"
+            "assignment_no_wrong_questions" -> "本次已批改题目中没有错题，不需要生成错题变式课"
+            "assignment_content_not_current" -> "还没有取得提交后的题目，请先同步作业"
+            "assignment_images_require_text" -> "题目包含尚未识别的图片，暂时无法生成完整讲解"
+            "assignment_content_too_large" -> "这份作业内容较长，超出了单次课堂可处理的范围"
+            "assignment_not_ended" -> "作业还没有截止，截止后开放复习"
+            "assignment_deadline_unknown" -> "作业截止时间未知，请先同步学习通"
+            "assignment_course_unavailable" -> "这项作业没有关联课程，暂时无法生成课堂"
+            else -> when (code()) {
+                401, 403 -> "登录状态已失效，请重新登录"
+                404 -> "这项作业或课堂不存在"
+                409 -> "当前状态不允许该操作，请刷新后重试"
+                422 -> "请求内容不合法"
+                503 -> "互动课堂服务暂不可用"
+                else -> fallback
+            }
         }
     }
 

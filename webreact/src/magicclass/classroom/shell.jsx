@@ -47,6 +47,7 @@ import { MagicClassClassroomHeader } from "./classroom-header.jsx";
  */
 export function MagicClassClassroomShell({
   title = "",
+  eyebrow,
   scenes,
   currentSceneId,
   onSelectScene,
@@ -82,7 +83,7 @@ export function MagicClassClassroomShell({
         className,
       )}
     >
-      <MagicClassSceneSidebar
+      {!isPresenting && <MagicClassSceneSidebar
         collapsed={sidebarCollapsed}
         onCollapseChange={(next) => {
           // 参考：onCollapseChange={setSidebarCollapsed}，侧栏只上报目标值。
@@ -92,13 +93,14 @@ export function MagicClassClassroomShell({
         currentSceneId={currentSceneId}
         onSceneSelect={onSelectScene}
         {...sidebarProps}
-      />
+      />}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {headerVisible && (
           <MagicClassClassroomHeader
             title={title || ""}
+            eyebrow={eyebrow}
             backControl={backControl}
             headerActions={headerActions}
             // 侧栏开关**不放在头栏**：参考项目的 `Header` 里没有这个控件，它属于

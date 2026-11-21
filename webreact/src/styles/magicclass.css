@@ -249,3 +249,13 @@
     opacity: 0.15;
   }
 }
+
+/* 真实 iPhone Safari 验收：WebKit 对未加载的 Inter / CampusSans 变量字体
+   不会回退到中文字形，页面上所有中文会显示为方块。手机宽度下强制使用
+   iOS 系统中文栈；桌面端仍使用原 Inter / CampusSans 字体。 */
+@media (max-width: 640px) {
+  .magicclass-root,
+  .magicclass-root *:not(pre):not(code) {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif !important;
+  }
+}

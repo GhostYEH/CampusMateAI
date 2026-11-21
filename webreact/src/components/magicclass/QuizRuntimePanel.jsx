@@ -33,7 +33,7 @@ export default function QuizRuntimePanel(props) {
   return <QuizAttemptPanel key={identity} {...props} />;
 }
 
-function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId, studentLed = false }) {
+function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspaceId, stageId, studentLed = false, onGraded }) {
   const questions = React.useMemo(() => normalizeQuizQuestions({ type: "quiz", questions: rawQuestions }), [rawQuestions]);
   const saved = React.useMemo(() => readSaved(sceneId), [sceneId]);
   const [phase, setPhase] = React.useState(saved?.phase === "review" ? "review" : "intro");
@@ -206,6 +206,9 @@ function QuizAttemptPanel({ questions: rawQuestions, sceneId, courseId, workspac
     setPhase("review");
     persist("review", answers, result);
     void persistRemote("review", answers, result);
+    // 只有显式交卷才结算游戏化进度：读回历史成绩不重复加分。
+    const correct = result.results.filter((item) => item.correct === true).length;
+    onGraded?.({ correct, total: questions.length, perfect: questions.length > 0 && correct === questions.length });
   }
 
   function retry() {

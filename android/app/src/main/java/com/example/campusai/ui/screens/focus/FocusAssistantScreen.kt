@@ -60,6 +60,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.data.behavior.LearningContinuityState
 import com.example.campusai.data.behavior.PresenceState
+import com.example.campusai.data.focus.TeacherReminder
+import com.example.campusai.data.focus.TeacherReminderTone
 import com.example.campusai.data.focus.scene.FocusScenePreferenceStore
 import com.example.campusai.data.focus.scene.FocusSceneSettings
 import com.example.campusai.data.focus.voice.AndroidSpeechRecognizerTranscriber
@@ -123,6 +125,7 @@ fun FocusSessionScreen(
     val continuityState by manager.learningContinuityState.collectAsStateWithLifecycle()
     val presence by manager.presence.collectAsStateWithLifecycle()
     val gentleReminder by manager.gentleReminder.collectAsStateWithLifecycle()
+    val teacherReminder by manager.teacherReminder.collectAsStateWithLifecycle()
     val hapticFeedback = LocalHapticFeedback.current
     val visibleReminder = presentFocusReminder(sessionMode, observationActive, gentleReminder)
     var lastReminderFeedbackKey by rememberSaveable { mutableStateOf("") }
@@ -151,6 +154,7 @@ fun FocusSessionScreen(
     var openingQuestionAsked by rememberSaveable { mutableStateOf(false) }
     var openingQuestionVisible by rememberSaveable { mutableStateOf(true) }
     var observationDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var teacherVoiceEnabled by rememberSaveable { mutableStateOf(true) }
     var showEndConfirmation by rememberSaveable { mutableStateOf(false) }
     var finishingSession by remember { mutableStateOf(false) }
     var timerExpired by rememberSaveable { mutableStateOf(false) }
@@ -200,6 +204,12 @@ fun FocusSessionScreen(
         if (sessionMode == FocusSessionMode.AI_COMPANION) AndroidTextToSpeechSynthesizer(context) else null
     }
     DisposableEffect(promptSpeech) { onDispose { promptSpeech?.shutdown() } }
+    LaunchedEffect(teacherReminder?.createdAtMs) {
+        val reminder = teacherReminder ?: return@LaunchedEffect
+        if (teacherVoiceEnabled && sessionMode == FocusSessionMode.SMART_GUARD) {
+            voiceController.speakTeacherReminder(reminder.spokenText)
+        }
+    }
     var realtimeStatus by remember(voiceController) { mutableStateOf(FocusVoicePhase.IDLE) }
     var voiceError by remember(voiceController) { mutableStateOf<String?>(null) }
     var currentUserText by remember(voiceController) { mutableStateOf("") }
@@ -452,6 +462,10 @@ fun FocusSessionScreen(
             expressionLabel = expressionResult?.label?.name,
             presence = presence.state,
             gentleReminder = visibleReminder,
+            teacherReminder = teacherReminder,
+            teacherVoiceEnabled = teacherVoiceEnabled,
+            onDismissTeacherReminder = manager::dismissTeacherReminder,
+            onToggleTeacherVoice = { teacherVoiceEnabled = !teacherVoiceEnabled },
             onToggleDetails = { observationDetailsExpanded = !observationDetailsExpanded },
             onAttachPreview = { preview -> manager.attachPreview(lifecycleOwner, preview) },
             onInterrupt = voiceController::interruptRealtime,
@@ -509,6 +523,10 @@ private fun FocusExecutionContent(
     expressionLabel: String?,
     presence: PresenceState,
     gentleReminder: String?,
+    teacherReminder: TeacherReminder?,
+    teacherVoiceEnabled: Boolean,
+    onDismissTeacherReminder: () -> Unit,
+    onToggleTeacherVoice: () -> Unit,
     onToggleDetails: () -> Unit,
     onAttachPreview: (PreviewView) -> Unit,
     onInterrupt: () -> Unit,
@@ -555,7 +573,20 @@ private fun FocusExecutionContent(
             )
         }
 
-        if (openingQuestionVisible) {
+        if (teacherReminder != null) {
+            TeacherReminderCard(
+                reminder = teacherReminder,
+                voiceEnabled = teacherVoiceEnabled,
+                onToggleVoice = onToggleTeacherVoice,
+                onDismiss = onDismissTeacherReminder,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp)
+                    .widthIn(max = 520.dp),
+            )
+        }
+
+        if (openingQuestionVisible && teacherReminder == null) {
             Surface(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp).widthIn(max = 520.dp),
                 shape = RoundedCornerShape(20.dp),
@@ -650,6 +681,74 @@ private fun FocusExecutionContent(
             openingQuestionAsked = sessionMode == FocusSessionMode.AI_COMPANION && openingQuestionAsked,
             onDismiss = onCloseConversation,
         )
+    }
+}
+
+@Composable
+private fun TeacherReminderCard(
+    reminder: TeacherReminder,
+    voiceEnabled: Boolean,
+    onToggleVoice: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = when (reminder.tone) {
+        TeacherReminderTone.GENTLE -> Color(0xFFFFD18A)
+        TeacherReminderTone.FIRM -> Color(0xFFFFA48F)
+        TeacherReminderTone.CARE -> Color(0xFF9FE8D0)
+        TeacherReminderTone.PRAISE -> Color(0xFFB8F0A4)
+    }
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = Color(0xF21B1712),
+        border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = .5f)),
+        shadowElevation = 10.dp,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 6.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier = Modifier.size(38.dp).background(accent.copy(alpha = .16f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("师", color = accent, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(reminder.title, color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("小伴老师", color = Color.White.copy(alpha = .5f), fontSize = 11.sp)
+                }
+                Text(
+                    reminder.message,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (voiceEnabled) "语音提醒已开" else "语音提醒已关",
+                        color = Color.White.copy(alpha = .55f),
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable(onClick = onToggleVoice).padding(vertical = 4.dp, horizontal = 2.dp),
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        "知道了",
+                        color = accent,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable(onClick = onDismiss).padding(vertical = 4.dp, horizontal = 2.dp),
+                    )
+                }
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Close, contentDescription = "收起老师提醒", tint = Color.White.copy(alpha = .65f))
+            }
+        }
     }
 }
 

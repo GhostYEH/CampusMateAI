@@ -198,6 +198,20 @@ class FocusVoiceController(
         if (_state.value.phase == FocusVoicePhase.SPEAKING) _state.value = _state.value.copy(phase = FocusVoicePhase.IDLE)
     }
 
+    /**
+     * 老师式提醒使用系统 TTS 打断式播报；播报期间暂停实时会话录音，
+     * 避免把老师的提醒再送进语音识别，播完自动恢复。
+     */
+    fun speakTeacherReminder(text: String) {
+        if (text.isBlank()) return
+        muteRealtime()
+        synthesizer.speak(
+            text = text,
+            onDone = { unmuteRealtime() },
+            onError = { unmuteRealtime() },
+        )
+    }
+
     fun cancel() {
         transcriber.cancel()
         synthesizer.stop()

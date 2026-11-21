@@ -1,5 +1,7 @@
 package com.example.campusai.data.remote
 
+import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -45,24 +47,31 @@ object ApiClient {
         return count
     }
 
-    private val authenticator = okhttp3.Authenticator { _, response ->
-        if (responseCount(response) >= 2) return@Authenticator null
-        val refresher = tokenRefresher ?: return@Authenticator null
+    /**
+     * 401 续期只构造一次新请求；由 API 客户端与课堂媒体客户端共享。
+     * 调用方负责先校验请求仍在可信服务域，避免把 token 发给外域。
+     */
+    private fun refreshedRequest(response: okhttp3.Response): Request? {
+        if (responseCount(response) >= 2) return null
+        val refresher = tokenRefresher ?: return null
         val requestToken = response.request.header("Authorization")?.removePrefix("Bearer ")
         synchronized(ApiClient) {
             val current = accessToken
             if (current != null && current != requestToken && current == lastRefreshedToken) {
-                return@Authenticator response.request.newBuilder()
+                return response.request.newBuilder()
                     .header("Authorization", "Bearer $current")
                     .build()
             }
-            val newToken = refresher()
-            if (newToken == null) return@Authenticator null
+            val newToken = refresher() ?: return null
             lastRefreshedToken = newToken
-            response.request.newBuilder()
+            return response.request.newBuilder()
                 .header("Authorization", "Bearer $newToken")
                 .build()
         }
+    }
+
+    private val authenticator = okhttp3.Authenticator { _, response ->
+        refreshedRequest(response)
     }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -99,6 +108,59 @@ object ApiClient {
     val agentSseStreamClient: OkHttpClient = okHttpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+
+    /**
+     * 课堂媒体（Coil / Media3）专用客户端。
+     *
+     * 只对当前课堂媒体接口下的 media|audio 资源添加 Bearer；课件里的外域绝对地址
+     * 不携带本站 token。network interceptor 在每次实际发请求前再校验服务域，
+     * 跨域重定向直接拒绝，避免凭证离开本站。
+     */
+    fun classroomMediaHttpClient(ref: NativeClassroomRef, followRedirects: Boolean = true): OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(followRedirects)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val authorization = ClassroomMediaPolicy.authorizationHeader(
+                    url = request.url.toString(),
+                    apiBaseUrl = BASE_URL,
+                    ref = ref,
+                    token = accessToken,
+                )
+                val builder = request.newBuilder()
+                if (authorization != null) {
+                    builder.header("Authorization", authorization)
+                } else {
+                    builder.removeHeader("Authorization")
+                }
+                chain.proceed(builder.build())
+            }
+            .addNetworkInterceptor { chain ->
+                val request = chain.request()
+                if (request.header("Authorization") != null &&
+                    !ClassroomMediaPolicy.isSameApiOrigin(request.url.toString(), BASE_URL)
+                ) {
+                    throw java.io.IOException("课堂媒体请求离开可信服务域，已拒绝携带凭证")
+                }
+                if (request.header("Authorization") != null &&
+                    !ClassroomMediaPolicy.isTrusted(request.url.toString(), BASE_URL, ref)
+                ) {
+                    // 同源重定向落到非课堂媒体路径时也要摘掉凭证。
+                    chain.proceed(request.newBuilder().removeHeader("Authorization").build())
+                } else {
+                    chain.proceed(request)
+                }
+            }
+            .authenticator(okhttp3.Authenticator { _, response ->
+                if (!ClassroomMediaPolicy.isSameApiOrigin(response.request.url.toString(), BASE_URL)) {
+                    null
+                } else {
+                    refreshedRequest(response)
+                }
+            })
+            .build()
 
     val agentSse: com.example.campusai.data.remote.agent.AgentSseClient =
         com.example.campusai.data.remote.agent.AgentSseClient(

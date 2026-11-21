@@ -158,6 +158,9 @@ export default function StudyRoomPanel({ open, onClose }) {
   }
   void tick;
 
+  // Modal 本身没有 open 参数；不在这里拦截时，onClose 只改 state，弹窗仍会留在页面上。
+  if (!open) return null;
+
   return (
     <Modal title="多人自习室" onClose={onClose} className="study-room-modal" actions={<Button variant="quiet" onClick={onClose}>关闭</Button>}>
       {notice && <p className="study-room-notice" role="status">{notice}</p>}

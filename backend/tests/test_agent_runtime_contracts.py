@@ -307,7 +307,9 @@ def test_every_emitted_event_type_is_in_the_contract_enum() -> None:
     allowed = {member.value for member in AgentEventType}
     offenders: list[str] = []
     for path in sorted(app_dir.rglob("*.py")):
-        if "__pycache__" in path.parts:
+        # macOS 在外部卷/网络盘写文件时会生成 AppleDouble 元数据
+        # (`._foo.py`)，它不是源码；扫描护栏不应因此崩溃。
+        if "__pycache__" in path.parts or path.name.startswith("._"):
             continue
         text = path.read_text(encoding="utf-8")
         for pattern in patterns:

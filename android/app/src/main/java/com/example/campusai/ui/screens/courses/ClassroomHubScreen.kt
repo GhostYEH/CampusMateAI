@@ -26,13 +26,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.BuildConfig
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
 import com.example.campusai.data.remote.ClassroomUrlPolicy
 import com.example.campusai.data.remote.InteractiveClassroomSessionDto
 import com.example.campusai.data.remote.InteractiveClassroomStatusDto
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.data.repository.ClassroomHistoryEntry
+import com.example.campusai.ui.screens.courses.nativeplayer.NativeClassroomPlayer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -65,6 +70,7 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
     var error by remember { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var viewerUrl by remember { mutableStateOf<String?>(null) }
+    var nativeRef by rememberSaveable { mutableStateOf<NativeClassroomRef?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val pickMaterial = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -135,8 +141,10 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
         }
         error = "生成时间较长，可稍后回到教室查看历史课堂。"
     }
-    fun trusted(url: String?): String? = ClassroomUrlPolicy.sanitize(
-        url, listOf(status?.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
+    fun trusted(url: String?): String? =
+        if (status?.browserEmbedAvailable != true) null
+        else ClassroomUrlPolicy.sanitize(
+            url, listOf(status?.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
     fun startClassroom() {
         if (topic.isBlank() && selectedMaterialId == null) {
             error = "请输入学习主题，或先上传一份资料"
@@ -188,11 +196,11 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     },
                     onRemoveMaterial = { selectedMaterialId = null; selectedMaterialName = null },
                 )
-                if (statusLoading || statusError != null || status?.enabled != true || status?.browserEmbedAvailable != true) {
+                if (statusLoading || statusError != null || status?.enabled != true) {
                     Text(when {
                         statusLoading -> "正在检查课堂服务…"
                         statusError != null -> statusError!!
-                        else -> status?.reason ?: status?.browserEmbedReason ?: "互动课堂服务暂不可用"
+                        else -> status?.reason ?: "互动课堂服务暂不可用"
                     },
                         color = Color(0xFFFFBBA1), fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
@@ -205,6 +213,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                                 }
                             }.padding(horizontal = 8.dp, vertical = 4.dp))
                     }
+                } else if (status?.browserEmbedAvailable != true) {
+                    Text("网页兼容课堂不可用；生成后仍可进入原生课堂。", color = Color(0xFFFFBBA1), fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp))
                 }
                 progress?.let { job ->
                     Text(if (job.terminal) job.message ?: job.status else "正在生成 · ${job.progress}% · ${job.message.orEmpty()}",
@@ -213,6 +224,21 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     trusted(job.url)?.let { safe ->
                         Text("打开已生成的课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clickable { viewerUrl = safe }.padding(horizontal = 8.dp, vertical = 8.dp))
+                    }
+                    val sessionId = job.sessionId
+                    if (!sessionId.isNullOrBlank() && job.status.equals("succeeded", ignoreCase = true)) {
+                        Text("进入原生课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                nativeRef = NativeClassroomRef(
+                                    courseId = "",
+                                    workspaceId = "",
+                                    stageId = sessionId,
+                                    title = "自主选题课堂",
+                                    webFallbackUrl = trusted(job.url),
+                                    sessionId = sessionId,
+                                    source = NativeClassroomSource.SELF_CLASSIC,
+                                )
+                            }.padding(horizontal = 8.dp, vertical = 8.dp))
                     }
                 }
                 error?.let { Text(it, color = Color(0xFFFFBBA1), fontSize = 12.sp,
@@ -248,6 +274,21 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                             Text("${if (recent.lastEnteredAt != null) "上次进入" else "创建于"} ${(recent.lastEnteredAt ?: recent.entry.classroom.createdAt).orEmpty().replace('T', ' ').take(16)}" +
                                 if (recent.totalSeconds > 0) " · 已学 ${formatClassroomStudyDuration(recent.totalSeconds)}" else "",
                                 color = Color(0xFFB9C7D0), fontSize = 12.sp)
+                            val nativeHistoryId = recent.entry.classroom.sessionId.orEmpty()
+                            if (recent.entry.courseName == "自主学习" && nativeHistoryId.isNotBlank()) {
+                                Text("进入原生课堂  →", color = ClassroomAmber, fontWeight = FontWeight.Bold, fontSize = 12.sp,
+                                    modifier = Modifier.clickable {
+                                        nativeRef = NativeClassroomRef(
+                                            courseId = "",
+                                            workspaceId = "",
+                                            stageId = nativeHistoryId,
+                                            title = "自主学习课堂",
+                                            webFallbackUrl = safe,
+                                            sessionId = nativeHistoryId,
+                                            source = NativeClassroomSource.SELF_CLASSIC,
+                                        )
+                                    }.padding(top = 6.dp, bottom = 2.dp))
+                            }
                         }
                         Spacer(Modifier.fillMaxWidth().height(1.dp).background(Color(0x335B7C8C)))
                     }
@@ -255,9 +296,25 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 Spacer(Modifier.height(30.dp))
             }
             if (sessionId == null) ClassroomStartDock(
-                enabled = !statusLoading && !submitting && !uploading && status?.enabled == true && status?.browserEmbedAvailable == true,
+                enabled = !statusLoading && !submitting && !uploading && status?.enabled == true,
                 submitting = submitting,
                 onStart = { startClassroom() },
+            )
+        }
+    }
+    nativeRef?.let { ref ->
+        Dialog(
+            onDismissRequest = { nativeRef = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            NativeClassroomPlayer(
+                ref = ref,
+                repository = repository,
+                onClose = { nativeRef = null; historyRefresh++ },
+                onOpenFallback = {
+                    ref.webFallbackUrl?.let { viewerUrl = it }
+                    nativeRef = null
+                },
             )
         }
     }

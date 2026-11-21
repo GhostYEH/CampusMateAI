@@ -69,6 +69,32 @@ struct CampusPalette: Equatable {
         alertInfoText: Color(hex: 0x1B473B)
     )
 
+    /// Classroom-only palette used by the classroom hub and the interactive
+    /// classroom form. Android's `ClassroomViewer` uses the same four tokens
+    /// (ink 153B34, paper F2F1E8, amber DAB27A, copper AD6845) instead of the
+    /// global moss palette; the Web learning space mirrors them too.
+    static let classroom: CampusPalette = {
+        var palette = light
+        palette.primary = Color(hex: 0x153B34)
+        palette.primaryHover = Color(hex: 0x1D4D43)
+        palette.primarySoft = Color(hex: 0xE7E2D3)
+        palette.accent = Color(hex: 0xDAB27A)
+        palette.textPrimary = Color(hex: 0x22332D)
+        palette.muted = Color(hex: 0x6C7A72)
+        palette.line = Color(hex: 0xE4DFCE)
+        palette.surface = Color(hex: 0xFFFBF2)
+        palette.background = Color(hex: 0xF2F1E8)
+        palette.sidebarActiveBackground = Color(hex: 0xE7E2D3)
+        palette.avatarBackground = Color(hex: 0xE7E2D3)
+        palette.chatAssistantBackground = Color(hex: 0xEAE5D7)
+        palette.chatUserBackground = Color(hex: 0xF4F0E5)
+        palette.robotAvatarBackground = Color(hex: 0xE7E2D3)
+        palette.inputFocusBorder = Color(hex: 0x153B34)
+        palette.alertInfoBackground = Color(hex: 0xE7E2D3)
+        palette.alertInfoText = Color(hex: 0x1D4D43)
+        return palette
+    }()
+
     /// Blue-teal night palette from `DarkCampusColors`.
     static let dark = CampusPalette(
         primary: Color(hex: 0x9CC7D0),

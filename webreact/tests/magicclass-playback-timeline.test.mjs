@@ -5,6 +5,7 @@ import {
   isPlaybackShortcutTarget,
   startActionTimeline,
   advanceActionTimeline,
+  keyTextElementId,
 } from "../src/features/magicclass/playbackTimeline.js";
 
 const plan = (steps = []) => ({ steps });
@@ -66,4 +67,23 @@ test("pausing, restarting and changing scene cannot carry an old effect forward"
   const nextScene = startActionTimeline(plan(), scene());
   assert.equal(nextScene.status, "completed");
   assert.equal(nextScene.clearEffects, true);
+});
+
+test("empty action plan still finds the largest top-half text element for title emphasis", () => {
+  const titled = {
+    content: {
+      type: "slide",
+      canvas: {
+        elements: [
+          { id: "tiny", type: "text", top: 30, width: 200, height: 40 },
+          { id: "title", type: "text", top: 60, width: 700, height: 120 },
+          { id: "bottom", type: "text", top: 430, width: 900, height: 90 },
+          { id: "shape", type: "shape", top: 40, width: 500, height: 500 },
+        ],
+      },
+    },
+  };
+  assert.equal(keyTextElementId(titled), "title");
+  assert.equal(keyTextElementId({ content: { type: "quiz" } }), "");
+  assert.equal(keyTextElementId({ content: { type: "slide", canvas: { elements: [] } } }), "");
 });

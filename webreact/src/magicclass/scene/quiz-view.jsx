@@ -644,7 +644,7 @@ function ScoreBanner({ score, total, results }) {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export function QuizView({ questions, sceneId, stageId }) {
+export function QuizView({ questions, sceneId, stageId, onGraded }) {
   const [phase, setPhase] = useState('not_started');
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState([]);
@@ -654,6 +654,8 @@ export function QuizView({ questions, sceneId, stageId }) {
   const viewLifetimeRef = useRef(null);
   viewLifetimeRef.current ??= createQuizViewLifetime();
   const viewLifetime = viewLifetimeRef.current;
+  const onGradedRef = useRef(onGraded);
+  onGradedRef.current = onGraded;
   const runtimeWriterRef = useRef(null);
   runtimeWriterRef.current ??= createQuizAttemptWriter({
     onError: (error) => log.warn('Failed to persist quiz runtime:', error),
@@ -780,6 +782,13 @@ export function QuizView({ questions, sceneId, stageId }) {
       if (cancelled) return;
       setResults(ordered);
       setPhase('reviewing');
+      // Native classroom rewards are settled once per scene by the caller.
+      // Only choice questions carry a definite correct/incorrect status;
+      // short-answer partial credit is deliberately not counted as a combo hit.
+      onGradedRef.current?.({
+        correct: ordered.filter((result) => result.status === 'correct').length,
+        total: ordered.length,
+      });
     })();
 
     return () => {

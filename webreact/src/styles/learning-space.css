@@ -71,6 +71,37 @@
 .learning-room-messages strong { font-size: 11px; color: #64748b; }
 .learning-room-messages p { white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.learning-room-supervision {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.learning-room-supervision-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.learning-room-supervision-hint, .learning-room-summary { color: #64748b; font-size: 12px; }
+.learning-room-nudge {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #fed7aa;
+  border-radius: 9px;
+  background: #fff7ed;
+}
+.learning-room-nudge strong { color: #9a3412; font-size: 12px; }
+.learning-room-nudge p { color: #432518; }
+.learning-room-roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed #e2e8f0;
+}
+.learning-room-roster-row span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.learning-room-roster-row em { font-style: normal; color: #64748b; font-size: 11px; }
+
 .learning-space-feedback {
   display: grid;
   min-height: 0;

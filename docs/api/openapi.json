@@ -23591,6 +23591,266 @@
         "description": "accepted 成员发送文字消息；content 1–2000，client_id 用于幂等去重。\n\n同一 client_id 与相同正文重试返回原消息；改变正文返回 409 LEARNING_ROOM_ERROR。"
       }
     },
+    "/api/v1/magicclass/learning-space/rooms/{room_id}/attention": {
+      "put": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "上报课堂专注状态",
+        "description": "accepted 成员上报自己的粗粒度课堂状态，约 15–20 秒一次。\n\n只接受状态枚举，不接收画面、人脸、音频或逐帧结果。持续分心/离席达到阈值\n后，服务端生成一条老师口吻的提醒（4 分钟冷却、每堂最多 4 次），并在响应中\n直接返回，客户端无需额外轮询。成员离开或课堂结束后拒绝写入。",
+        "operationId": "report_attention_api_v1_magicclass_learning_space_rooms__room_id__attention_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttentionIn"
+              },
+              "examples": {
+                "端侧识别": {
+                  "summary": "端侧识别到可能分心",
+                  "value": {
+                    "state": "POSSIBLY_DISTRACTED",
+                    "source": "ON_DEVICE"
+                  }
+                },
+                "页面可见性": {
+                  "summary": "浏览器页面暂时不可见",
+                  "value": {
+                    "state": "AWAY",
+                    "source": "PAGE_VISIBILITY"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "当前成员的粗粒度专注状态；持续异常时返回老师提醒",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttentionReportOut"
+                },
+                "examples": {
+                  "成功": {
+                    "value": {
+                      "state": "POSSIBLY_DISTRACTED",
+                      "updated_at": "2026-10-05T00:00:00+00:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LEARNING_ROOM_ERROR：课堂不存在或尚未接受邀请"
+          },
+          "410": {
+            "description": "LEARNING_ROOM_ERROR：共同课堂已结束"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/magicclass/learning-space/rooms/{room_id}/supervision": {
+      "get": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "读取课堂专注监督",
+        "description": "accepted 成员读取监督快照，`after` 为上次已读提醒 ID。\n\n- 每位成员都能看到自己的状态与发给自己的提醒。\n- 只有发起人能看到其他成员的状态、课堂统计和全部提醒。\n- 超过 45 秒没有新上报的成员标记为离线，不继续展示旧状态。",
+        "operationId": "supervision_api_v1_magicclass_learning_space_rooms__room_id__supervision_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 9223372036854775807,
+              "minimum": 0,
+              "default": 0,
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "本人状态、发起人可见的成员状态、课堂统计与增量老师提醒",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupervisionOut"
+                },
+                "examples": {
+                  "成功": {
+                    "value": {
+                      "me": {
+                        "uid": "usr_guest_example",
+                        "name": "同学乙",
+                        "is_host": false,
+                        "state": "FOCUSED",
+                        "source": "ON_DEVICE",
+                        "updated_at": "2026-10-05T00:00:00+00:00",
+                        "online": true,
+                        "attention_age_seconds": 8
+                      },
+                      "members": [],
+                      "teacher_name": "小伴老师",
+                      "nudges": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "LEARNING_ROOM_ERROR：课堂不存在或尚未接受邀请"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/magicclass/learning-space/rooms/{room_id}/nudges": {
+      "post": {
+        "tags": [
+          "学习空间"
+        ],
+        "summary": "发送课堂老师提醒",
+        "description": "发起人向一位同学或全班发送老师提醒。\n\n不传 content 时按目标状态生成默认话术；target_uid 为空表示全班广播。\n提醒通过监督接口增量返回，不需要音视频通道。",
+        "operationId": "nudge_api_v1_magicclass_learning_space_rooms__room_id__nudges_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "room_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NudgeIn"
+              },
+              "examples": {
+                "提醒一位同学": {
+                  "summary": "按默认老师话术提醒",
+                  "value": {
+                    "target_uid": "usr_guest_example"
+                  }
+                },
+                "全班提醒": {
+                  "summary": "不传 target_uid 即全班提醒",
+                  "value": {
+                    "content": "同学们，跟老师一起看这一页，专注听完再讨论。"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "提醒已创建，返回内容与目标",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NudgeOut"
+                },
+                "examples": {
+                  "成功": {
+                    "value": {
+                      "id": 12,
+                      "from_uid": "usr_host_example",
+                      "target_uid": "usr_guest_example",
+                      "kind": "HOST",
+                      "content": "同学乙，老师提醒你：把注意力回到课件上，跟着这一页继续听。",
+                      "created_at": "2026-10-05T00:00:00+00:00"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "LEARNING_ROOM_ERROR：只有发起人可以执行此操作"
+          },
+          "404": {
+            "description": "LEARNING_ROOM_ERROR：目标不是当前课堂成员"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/magicclass/learning-space/rooms/{room_id}/leave": {
       "post": {
         "tags": [
@@ -24436,7 +24696,7 @@
           "学习通"
         ],
         "summary": "生成已截止作业自主练习与按需讲解",
-        "description": "截止后允许复习（含未提交作业）；按题目快照幂等生成学生主导的练习。",
+        "description": "截止后允许复习（含未提交作业）；按题目快照幂等生成学生主导的练习。\n\n`scope=wrong` 只使用报告页明确标记为错误的题目，并生成不含原题重做的变式课。",
         "operationId": "generate_review_api_v1_chaoxing_assignments__task_id__classroom_post",
         "security": [
           {
@@ -24473,6 +24733,23 @@
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
                 }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ReviewRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
               }
             }
           }
@@ -25620,6 +25897,837 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/magicclass/classmates/roster": {
+      "get": {
+        "tags": [
+          "课堂 AI 同学"
+        ],
+        "summary": "读取课堂 AI 同学名单",
+        "description": "固定名单，不依赖浏览器传入。需要已登录。",
+        "operationId": "classmates_roster_api_v1_magicclass_classmates_roster_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassmateRosterOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/magicclass/classmates/budget": {
+      "get": {
+        "tags": [
+          "课堂 AI 同学"
+        ],
+        "summary": "读取课堂同学预算口径",
+        "description": "预算由客户端累计，服务端只给同一套口径，避免两端数值漂移。",
+        "operationId": "classmates_budget_api_v1_magicclass_classmates_budget_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassmateBudgetOut"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/magicclass/classmates/respond": {
+      "post": {
+        "tags": [
+          "课堂 AI 同学"
+        ],
+        "summary": "生成当前页的 AI 同学发言",
+        "description": "只为当前页生成同学发言；是否开口由上游路由决定，本网关不改写。",
+        "operationId": "classmates_respond_api_v1_magicclass_classmates_respond_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassmateRespondIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassmateRespondOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/magicclass/classmates/ask": {
+      "post": {
+        "tags": [
+          "课堂 AI 同学"
+        ],
+        "summary": "点名一位 AI 同学回答问题",
+        "description": "学生点名提问时必须真答：不返回沉默，也不替同学解测验题。",
+        "operationId": "classmates_ask_api_v1_magicclass_classmates_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassmateAskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassmateAnswerOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/courses/{course_id}/workspaces/{workspace_id}/stages/{stage_id}/whiteboard": {
+      "post": {
+        "tags": [
+          "课堂白板"
+        ],
+        "summary": "保存舞台白板",
+        "description": "Persist the complete board against the stage revision.\n\n- Course access is re-checked before the internal call.\n- A stale `If-Match` becomes a 409 through the shared fusion error mapping.\n- The response is the managed service's canonical board/revision, so the\n  browser can keep editing without guessing a new revision.",
+        "operationId": "save_stage_whiteboard_api_v1_courses__course_id__workspaces__workspace_id__stages__stage_id__whiteboard_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "name": "stage_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Stage Id"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhiteboardIn"
+              },
+              "examples": {
+                "添加一张文字卡": {
+                  "summary": "保存完整白板快照",
+                  "value": {
+                    "board": {
+                      "id": "whiteboard_1",
+                      "viewportSize": 1000,
+                      "viewportRatio": 0.5625,
+                      "elements": [
+                        {
+                          "id": "wb-text-1",
+                          "type": "text",
+                          "left": 80,
+                          "top": 80,
+                          "width": 360,
+                          "height": 80,
+                          "rotate": 0,
+                          "content": "极限存在的条件",
+                          "defaultFontName": "PingFang SC",
+                          "defaultColor": "#153B34"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "白板已按当前 revision 保存，返回最新 revision 与白板快照",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Save Stage Whiteboard Api V1 Courses  Course Id  Workspaces  Workspace Id  Stages  Stage Id  Whiteboard Post"
+                },
+                "example": {
+                  "revision": 8,
+                  "board": {
+                    "id": "whiteboard_1",
+                    "viewportSize": 1000,
+                    "viewportRatio": 0.5625,
+                    "elements": []
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "revision 已过期，客户端应重新读取舞台后再保存"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/interactive-classroom/{session_id}/playback": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取课程经典课堂原生播放数据",
+        "operationId": "get_course_classroom_playback_api_v1_courses__course_id__interactive_classroom__session_id__playback_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "续播场景 ID；不传从第一场开始",
+              "title": "Scene Id"
+            },
+            "description": "续播场景 ID；不传从第一场开始"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomPlaybackOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/interactive-classroom/{session_id}/media/{media_path}": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取课程经典课堂媒体",
+        "operationId": "get_course_classroom_media_api_v1_courses__course_id__interactive_classroom__session_id__media__media_path__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "media_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Media Path"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/interactive-classroom/{session_id}/scenes/{scene_id}/quiz-attempt": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取课程经典课堂测验作答",
+        "operationId": "get_course_classroom_quiz_attempt_api_v1_courses__course_id__interactive_classroom__session_id__scenes__scene_id__quiz_attempt_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAttemptStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "保存课程经典课堂测验作答",
+        "operationId": "save_course_classroom_quiz_attempt_api_v1_courses__course_id__interactive_classroom__session_id__scenes__scene_id__quiz_attempt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizAttemptIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAttemptStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-classroom/{session_id}/playback": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取自主选题课堂原生播放数据",
+        "operationId": "get_self_classroom_playback_api_v1_self_classroom__session_id__playback_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "续播场景 ID；不传从第一场开始",
+              "title": "Scene Id"
+            },
+            "description": "续播场景 ID；不传从第一场开始"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassroomPlaybackOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-classroom/{session_id}/media/{media_path}": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取自主选题课堂媒体",
+        "operationId": "get_self_classroom_media_api_v1_self_classroom__session_id__media__media_path__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "media_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Media Path"
+            }
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/self-classroom/{session_id}/scenes/{scene_id}/quiz-attempt": {
+      "get": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "读取自主选题课堂测验作答",
+        "operationId": "get_self_classroom_quiz_attempt_api_v1_self_classroom__session_id__scenes__scene_id__quiz_attempt_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAttemptStateOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "互动课堂"
+        ],
+        "summary": "保存自主选题课堂测验作答",
+        "operationId": "save_self_classroom_quiz_attempt_api_v1_self_classroom__session_id__scenes__scene_id__quiz_attempt_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Scene Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizAttemptIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizAttemptStateOut"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -48371,6 +49479,1248 @@
           "action"
         ],
         "title": "StudyRoomTimerIn"
+      },
+      "AttentionIn": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "FOCUSED",
+              "POSSIBLY_DISTRACTED",
+              "DISTRACTED",
+              "AWAY",
+              "UNKNOWN"
+            ],
+            "title": "State"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ON_DEVICE",
+              "PAGE_VISIBILITY",
+              "HEARTBEAT"
+            ],
+            "title": "Source",
+            "default": "ON_DEVICE"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "AttentionIn"
+      },
+      "AttentionReportOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "FOCUSED",
+              "POSSIBLY_DISTRACTED",
+              "DISTRACTED",
+              "AWAY",
+              "UNKNOWN"
+            ],
+            "title": "State"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "teacher_reminder": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NudgeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "updated_at"
+        ],
+        "title": "AttentionReportOut"
+      },
+      "NudgeIn": {
+        "properties": {
+          "target_uid": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Uid"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "title": "NudgeIn"
+      },
+      "NudgeOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "from_uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Uid"
+          },
+          "target_uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Uid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "TEACHER",
+              "HOST"
+            ],
+            "title": "Kind"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "content",
+          "created_at"
+        ],
+        "title": "NudgeOut"
+      },
+      "SupervisionMemberOut": {
+        "properties": {
+          "uid": {
+            "type": "string",
+            "title": "Uid"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "is_host": {
+            "type": "boolean",
+            "title": "Is Host",
+            "default": false
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "FOCUSED",
+              "POSSIBLY_DISTRACTED",
+              "DISTRACTED",
+              "AWAY",
+              "UNKNOWN"
+            ],
+            "title": "State"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ON_DEVICE",
+              "PAGE_VISIBILITY",
+              "HEARTBEAT"
+            ],
+            "title": "Source"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "online": {
+            "type": "boolean",
+            "title": "Online"
+          },
+          "attention_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attention Age Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uid",
+          "state",
+          "source",
+          "online"
+        ],
+        "title": "SupervisionMemberOut"
+      },
+      "SupervisionOut": {
+        "properties": {
+          "me": {
+            "$ref": "#/components/schemas/SupervisionMemberOut"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/SupervisionMemberOut"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupervisionStatsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teacher_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teacher Summary"
+          },
+          "teacher_name": {
+            "type": "string",
+            "title": "Teacher Name",
+            "default": "小伴老师"
+          },
+          "nudges": {
+            "items": {
+              "$ref": "#/components/schemas/NudgeOut"
+            },
+            "type": "array",
+            "title": "Nudges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "me",
+          "members",
+          "nudges"
+        ],
+        "title": "SupervisionOut"
+      },
+      "SupervisionStatsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "online": {
+            "type": "integer",
+            "title": "Online"
+          },
+          "focused": {
+            "type": "integer",
+            "title": "Focused"
+          },
+          "needs_attention": {
+            "type": "integer",
+            "title": "Needs Attention"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "online",
+          "focused",
+          "needs_attention"
+        ],
+        "title": "SupervisionStatsOut"
+      },
+      "ClassmateAnswerOut": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "message": {
+            "$ref": "#/components/schemas/ClassmateMessageOut"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ClassmateUsageOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ClassmateAnswerOut"
+      },
+      "ClassmateAskIn": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Course Id"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/ClassmateSceneIn"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassmateMemoryIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "agentId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agentid"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Question"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "course_id",
+          "scene",
+          "agentId",
+          "question"
+        ],
+        "title": "ClassmateAskIn"
+      },
+      "ClassmateBudgetOut": {
+        "properties": {
+          "token_budget": {
+            "type": "integer",
+            "title": "Token Budget"
+          },
+          "memory_pages": {
+            "type": "integer",
+            "title": "Memory Pages"
+          },
+          "memory_lines": {
+            "type": "integer",
+            "title": "Memory Lines"
+          },
+          "question_chars": {
+            "type": "integer",
+            "title": "Question Chars"
+          },
+          "answer_chars": {
+            "type": "integer",
+            "title": "Answer Chars"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token_budget",
+          "memory_pages",
+          "memory_lines",
+          "question_chars",
+          "answer_chars"
+        ],
+        "title": "ClassmateBudgetOut",
+        "description": "服务端不记账，只声明客户端应使用的预算口径，避免两端数值漂移。"
+      },
+      "ClassmateMemoryIn": {
+        "properties": {
+          "pages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Pages"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ClassmateMemoryLineIn"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Lines"
+          },
+          "recentAgentIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 7,
+            "title": "Recentagentids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ClassmateMemoryIn"
+      },
+      "ClassmateMemoryLineIn": {
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agentid"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "agentId",
+          "text"
+        ],
+        "title": "ClassmateMemoryLineIn"
+      },
+      "ClassmateMessageOut": {
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "title": "Agentid"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agentId",
+          "text"
+        ],
+        "title": "ClassmateMessageOut"
+      },
+      "ClassmatePersonaOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "persona": {
+            "type": "string",
+            "title": "Persona"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "role",
+          "persona"
+        ],
+        "title": "ClassmatePersonaOut"
+      },
+      "ClassmateRespondIn": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Course Id"
+          },
+          "scene": {
+            "$ref": "#/components/schemas/ClassmateSceneIn"
+          },
+          "memory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassmateMemoryIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "course_id",
+          "scene"
+        ],
+        "title": "ClassmateRespondIn"
+      },
+      "ClassmateRespondOut": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ClassmateMessageOut"
+            },
+            "type": "array",
+            "title": "Messages"
+          },
+          "routed": {
+            "type": "object",
+            "title": "Routed"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ClassmateUsageOut"
+          }
+        },
+        "type": "object",
+        "title": "ClassmateRespondOut"
+      },
+      "ClassmateRosterOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ClassmatePersonaOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ClassmateRosterOut"
+      },
+      "ClassmateSceneIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "slide",
+              "quiz",
+              "interactive",
+              "pbl"
+            ],
+            "title": "Type"
+          },
+          "content": {
+            "type": "object",
+            "title": "Content"
+          },
+          "actions": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Actions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "type",
+          "content"
+        ],
+        "title": "ClassmateSceneIn"
+      },
+      "ClassmateUsageOut": {
+        "properties": {
+          "tokens": {
+            "type": "integer",
+            "title": "Tokens",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ClassmateUsageOut"
+      },
+      "ReviewRequest": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "all",
+              "wrong"
+            ],
+            "title": "Scope",
+            "default": "all"
+          }
+        },
+        "type": "object",
+        "title": "ReviewRequest",
+        "description": "Review scope; `wrong` only uses questions marked incorrect on the report."
+      },
+      "WhiteboardIn": {
+        "properties": {
+          "board": {
+            "type": "object",
+            "title": "Board",
+            "description": "完整白板快照（id/viewport/elements）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "board"
+        ],
+        "title": "WhiteboardIn",
+        "description": "A complete board snapshot; partial element edits are not accepted.\n\nThe managed service validates the element schema. This gateway only rejects\nstructurally impossible snapshots early, so malformed input never reaches\nthe service and a stale revision cannot be hidden inside a large payload."
+      },
+      "ClassroomPlaybackActionOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "supported": {
+            "type": "boolean",
+            "title": "Supported"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "payload": {
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "mode",
+          "supported",
+          "payload"
+        ],
+        "title": "ClassroomPlaybackActionOut",
+        "description": "原动作 + 原生可执行性。`payload` 保留原动作其余字段。"
+      },
+      "ClassroomPlaybackCompatOut": {
+        "properties": {
+          "browser_embed_available": {
+            "type": "boolean",
+            "title": "Browser Embed Available"
+          },
+          "browser_embed_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser Embed Reason"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "url_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url Unavailable Reason"
+          },
+          "recommended": {
+            "type": "string",
+            "title": "Recommended"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "browser_embed_available",
+          "recommended"
+        ],
+        "title": "ClassroomPlaybackCompatOut"
+      },
+      "ClassroomPlaybackDegradedOut": {
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "title": "Scene Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene_id",
+          "reason"
+        ],
+        "title": "ClassroomPlaybackDegradedOut"
+      },
+      "ClassroomPlaybackDroppedActionOut": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action_id",
+          "type",
+          "reason"
+        ],
+        "title": "ClassroomPlaybackDroppedActionOut"
+      },
+      "ClassroomPlaybackMediaOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "element_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Id"
+          },
+          "content_type": {
+            "type": "string",
+            "title": "Content Type"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "role",
+          "content_type",
+          "available"
+        ],
+        "title": "ClassroomPlaybackMediaOut",
+        "description": "单个可播放媒体引用。\n\n`url` 是本站相对地址，客户端按自己的 API Base 拼接；`available=false`\n时客户端不得猜测上游地址，只能展示 `reason` 或走兼容入口。"
+      },
+      "ClassroomPlaybackNativeOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "supported_scene_count": {
+            "type": "integer",
+            "title": "Supported Scene Count"
+          },
+          "unsupported_scene_count": {
+            "type": "integer",
+            "title": "Unsupported Scene Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "supported_scene_count",
+          "unsupported_scene_count"
+        ],
+        "title": "ClassroomPlaybackNativeOut"
+      },
+      "ClassroomPlaybackOut": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "title": "Contract Version"
+          },
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "classroom_id": {
+            "type": "string",
+            "title": "Classroom Id"
+          },
+          "content_version": {
+            "type": "string",
+            "title": "Content Version"
+          },
+          "document_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Updated At"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "partial": {
+            "type": "boolean",
+            "title": "Partial"
+          },
+          "scenes_count": {
+            "type": "integer",
+            "title": "Scenes Count"
+          },
+          "source_scenes_count": {
+            "type": "integer",
+            "title": "Source Scenes Count"
+          },
+          "start_index": {
+            "type": "integer",
+            "title": "Start Index"
+          },
+          "scenes": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackSceneOut"
+            },
+            "type": "array",
+            "title": "Scenes"
+          },
+          "degraded": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackDegradedOut"
+            },
+            "type": "array",
+            "title": "Degraded"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackWarningOut"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "native": {
+            "$ref": "#/components/schemas/ClassroomPlaybackNativeOut"
+          },
+          "compat": {
+            "$ref": "#/components/schemas/ClassroomPlaybackCompatOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "contract_version",
+          "course_id",
+          "session_id",
+          "classroom_id",
+          "content_version",
+          "generated_at",
+          "title",
+          "mode",
+          "partial",
+          "scenes_count",
+          "source_scenes_count",
+          "start_index",
+          "scenes",
+          "degraded",
+          "warnings",
+          "native",
+          "compat"
+        ],
+        "title": "ClassroomPlaybackOut"
+      },
+      "ClassroomPlaybackRenderOut": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "widget_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widget Type"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "ClassroomPlaybackRenderOut",
+        "description": "场景渲染判据。`kind` 是客户端唯一需要分支的字段。"
+      },
+      "ClassroomPlaybackSceneOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "source_index": {
+            "type": "integer",
+            "title": "Source Index"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "render": {
+            "$ref": "#/components/schemas/ClassroomPlaybackRenderOut"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackActionOut"
+            },
+            "type": "array",
+            "title": "Actions"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackStepOut"
+            },
+            "type": "array",
+            "title": "Steps"
+          },
+          "dropped_actions": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackDroppedActionOut"
+            },
+            "type": "array",
+            "title": "Dropped Actions"
+          },
+          "media": {
+            "items": {
+              "$ref": "#/components/schemas/ClassroomPlaybackMediaOut"
+            },
+            "type": "array",
+            "title": "Media"
+          },
+          "whiteboards": {
+            "type": "integer",
+            "title": "Whiteboards"
+          },
+          "multi_agent": {
+            "type": "boolean",
+            "title": "Multi Agent"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "source_index",
+          "type",
+          "title",
+          "order",
+          "render",
+          "actions",
+          "steps",
+          "dropped_actions",
+          "media",
+          "whiteboards",
+          "multi_agent",
+          "warnings"
+        ],
+        "title": "ClassroomPlaybackSceneOut"
+      },
+      "ClassroomPlaybackStepOut": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action_id",
+          "type",
+          "mode"
+        ],
+        "title": "ClassroomPlaybackStepOut"
+      },
+      "ClassroomPlaybackWarningOut": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "scene_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ClassroomPlaybackWarningOut"
       }
     },
     "securitySchemes": {

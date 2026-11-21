@@ -1298,6 +1298,29 @@ Run 详情(§5.6)。
 | `size_bytes` | integer / null | 否 | — | — |
 | `created_at` | string | 是 | — | 创建时间 |
 
+<a id="schema-attentionin"></a>
+## AttentionIn
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+共同课堂专注状态上报；只接受粗粒度枚举，不接收画面、人脸或逐帧结果。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `state` | enum ["FOCUSED", "POSSIBLY_DISTRACTED", "DISTRACTED", "AWAY", "UNKNOWN"] | 是 | — | 当前粗粒度状态 |
+| `source` | enum ["ON_DEVICE", "PAGE_VISIBILITY", "HEARTBEAT"] | 否 | default="ON_DEVICE" | 状态来源；浏览器端用 PAGE_VISIBILITY，退到后台可用 HEARTBEAT |
+
+<a id="schema-attentionreportout"></a>
+## AttentionReportOut
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `state` | enum ["FOCUSED", "POSSIBLY_DISTRACTED", "DISTRACTED", "AWAY", "UNKNOWN"] | 是 | — | 服务端已保存的状态 |
+| `updated_at` | string | 是 | — | 本次上报时间 |
+| `teacher_reminder` | [NudgeOut](schemas.md#schema-nudgeout) / null | 否 | default=null | 持续异常时服务端生成的老师提醒，可直接展示 |
+
 <a id="schema-authmeresponse"></a>
 ## AuthMeResponse
 
@@ -5094,6 +5117,32 @@ Only identifiers: the script is derived server-side from the scene body.
 }
 ```
 
+<a id="schema-nudgein"></a>
+## NudgeIn
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+发起人发送课堂老师提醒；`target_uid` 为空表示全班广播，`content` 为空时按目标状态生成默认话术。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `target_uid` | string / null | 否 | maxLength=128 | 被提醒同学的 UID；null 表示全班 |
+| `content` | string / null | 否 | maxLength=200 | 自定义提醒；空字符串 trim 后按未提供处理 |
+
+<a id="schema-nudgeout"></a>
+## NudgeOut
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | integer | 是 | — | 提醒 ID，用于 `after` 增量读取 |
+| `from_uid` | string / null | 否 | — | 发起人 UID；自动老师提醒为 null |
+| `target_uid` | string / null | 否 | — | 目标同学；null 表示全班 |
+| `kind` | enum ["TEACHER", "HOST"] | 是 | — | TEACHER 为服务端自动规则，HOST 为发起人发送 |
+| `content` | string | 是 | — | 提醒正文 |
+| `created_at` | string | 是 | — | 创建时间 |
+
 <a id="schema-observedlearningactivityvalue"></a>
 ## ObservedLearningActivityValue
 
@@ -5241,7 +5290,7 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 `status` 取值: pending / completed / deleted。
 `materials` 解析为字符串数组返回(后端以 JSON 字符串存储)。
 
-学习通列表使用 `source="chaoxing"`，completed 是最近同步的平台已提交/完成观测；`id` 用于作业讲解路径，`external_id` 是远端编号，两者不可互换。`completed_at` 是本站记录的完成时间，`last_synced_at` 是最近同步时间；`remote_submitted_at` 是可空的远端提交时间，缺失时为 null；本响应不公开 score/score_max。题目快照的 `current/can_generate/fetched_at/questions` 属于[单独的内容接口](09-integrations.md#assignment-review-flow)，不在本模型中。
+学习通列表使用 `source="chaoxing"`，completed 是最近同步的平台已提交/完成观测；`id` 用于作业讲解路径，`external_id` 是远端编号，两者不可互换。`completed_at` 是本站记录的完成时间，`last_synced_at` 是最近同步时间；`remote_submitted_at` 是可空的远端提交时间，缺失时为 null；本响应不公开 score/score_max。题目快照的 `current/can_generate/can_generate_wrong/results_available/results_complete/graded_count/wrong_count/fetched_at/questions` 属于[单独的内容接口](09-integrations.md#assignment-review-flow)，不在本模型中；`questions[].is_correct` 为可空的批改布尔值，仅表示对错，不包含学生原始作答。
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -5711,6 +5760,16 @@ def validate_materials_integrity(cls, value: Optional[List[str]]) -> Optional[Li
 ```
 
 <a id="schema-risklevel"></a>
+## ReviewRequest
+
+模型定义：[backend/app/api/routes/chaoxing_assignments.py](../../backend/app/api/routes/chaoxing_assignments.py)。
+
+已截止作业自主复习的请求范围；请求体可省略或传空对象，等价于 `scope=all`。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `scope` | string | 否 | `all` | `all` 覆盖全部题目并保留原题重做；`wrong` 只覆盖报告页明确批改为错的题，只生成变式，不出现原题重做 |
+
 ## RiskLevel
 
 模型定义：[backend/app/schemas/agent_contract_enums.py](../../backend/app/schemas/agent_contract_enums.py)。
@@ -6655,6 +6714,48 @@ self_report/self_report_tags/expression_signal 任意状态可改。
 | `type` | string | 否 | default="none" | — |
 | `payload` | string / null | 否 | default=null | — |
 | `data` | object / null | 否 | default=null | — |
+
+<a id="schema-supervisionmemberout"></a>
+## SupervisionMemberOut
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `uid` | string | 是 | — | 成员 UID |
+| `name` | string | 否 | default="" | 显示名 |
+| `is_host` | boolean | 否 | default=false | 是否发起人 |
+| `state` | enum ["FOCUSED", "POSSIBLY_DISTRACTED", "DISTRACTED", "AWAY", "UNKNOWN"] | 是 | — | 最近上报的粗粒度状态 |
+| `source` | enum ["ON_DEVICE", "PAGE_VISIBILITY", "HEARTBEAT"] | 是 | — | 状态来源 |
+| `updated_at` | string / null | 否 | — | 最近上报时间；从未上报为 null |
+| `online` | boolean | 是 | — | 上报时间在 45 秒内 |
+| `attention_age_seconds` | integer / null | 否 | — | 距最近上报的秒数 |
+
+<a id="schema-supervisionout"></a>
+## SupervisionOut
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `me` | [SupervisionMemberOut](schemas.md#schema-supervisionmemberout) | 是 | — | 本人状态 |
+| `members` | array<[SupervisionMemberOut](schemas.md#schema-supervisionmemberout)> | 是 | — | 发起人可见全部成员；普通成员恒为空 |
+| `stats` | [SupervisionStatsOut](schemas.md#schema-supervisionstatsout) / null | 否 | — | 仅发起人有值 |
+| `teacher_summary` | string / null | 否 | — | 仅发起人有的中文摘要 |
+| `teacher_name` | string | 否 | default="小伴老师" | 老师展示名 |
+| `nudges` | array<[NudgeOut](schemas.md#schema-nudgeout)> | 是 | — | `after` 之后的新提醒；普通成员只含发给自己的或全班的 |
+
+<a id="schema-supervisionstatsout"></a>
+## SupervisionStatsOut
+
+模型定义：[backend/app/api/routes/learning_rooms.py](../../backend/app/api/routes/learning_rooms.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `total` | integer | 是 | — | 除发起人外的 accepted 成员数 |
+| `online` | integer | 是 | — | 45 秒内有上报的成员数 |
+| `focused` | integer | 是 | — | 在线且状态 FOCUSED |
+| `needs_attention` | integer | 是 | — | 在线且状态为三类异常 |
 
 <a id="schema-taskbreakdownrequest"></a>
 ## TaskBreakdownRequest
@@ -7716,3 +7817,288 @@ RTC 配置状态，不代表云服务和设备网络已验收。
 | `action` | string | 是 | minLength=1; maxLength=16 | — |
 | `focus_minutes` | integer / null | 否 | integer约束: minimum=1; maximum=180 | — |
 | `break_minutes` | integer / null | 否 | integer约束: minimum=1; maximum=60 | — |
+## ClassmateRosterOut
+
+课堂 AI 同学名单。服务端固定四位 `peer`，客户端不能自行增删。
+
+```json
+{"items":[{"id":"cm-xiaoyuan","name":"小圆","role":"peer","persona":"严谨的复习搭子"}]}
+```
+
+- `id`：`cm-xiaoyuan` / `cm-atuo` / `cm-xiaoman` / `cm-azhe`。
+- `role`：当前恒为 `peer`。
+
+## ClassmateBudgetOut
+
+课堂同学预算与输入上限；服务端只给口径，记账在客户端。
+
+```json
+{"token_budget":240000,"memory_pages":8,"memory_lines":12,"question_chars":600,"answer_chars":2000}
+```
+
+## ClassmateRespondIn
+
+`POST /magicclass/classmates/respond` 请求体。
+
+```json
+{"course_id":"course_db_2025","scene":{"id":"scene-3","title":"关系模型","type":"slide","content":{"type":"slide","text":"…"},"actions":[]},"memory":{"pages":["实体关系"],"lines":[{"agentId":"cm-xiaoyuan","text":"上次说过主键。"}],"recentAgentIds":["cm-xiaoyuan"]},"language":"zh-CN"}
+```
+
+- `scene.content.type` 必须等于 `scene.type`；`content` ≤ 40000 字节，`actions` ≤ 20 条。
+- `memory.pages` ≤ 8×200 字，`lines` ≤ 12×400 字，`recentAgentIds` ≤ 7；名单外的 `agentId` 会被丢弃。
+- `language` 默认 `zh-CN`。
+
+## ClassmateRespondOut
+
+成功响应；`messages` 为空表示这一页没有同学开口。
+
+```json
+{"success":true,"messages":[{"agentId":"cm-xiaoyuan","text":"这一页的关键是主键约束。"}],"routed":{"by":"llm","selected":["cm-xiaoyuan"]},"usage":{"tokens":120}}
+```
+
+## ClassmateAskIn
+
+`POST /magicclass/classmates/ask` 请求体，在 `ClassmateRespondIn` 基础上增加点名与问题。
+
+```json
+{"course_id":"course_db_2025","scene":{"id":"scene-3","type":"slide","content":{"type":"slide","text":"…"},"actions":[]},"agentId":"cm-xiaoman","question":"这里的第一个前提是什么？"}
+```
+
+- `agentId` 必须在名单内，否则 502 `MAGICCLASS_PROTOCOL_ERROR`。
+- `question` 去除首尾空白后 1–600 字。
+
+## ClassmateAnswerOut
+
+点名回答响应。
+
+```json
+{"success":true,"message":{"agentId":"cm-xiaoman","text":"前提是关系满足第一范式。"},"usage":{"tokens":88}}
+```
+
+## ClassmateMessageOut
+
+一条同学发言。
+
+```json
+{"agentId":"cm-xiaoyuan","text":"这一页的关键是主键约束。"}
+```
+
+## ClassmateUsageOut
+
+模型用量，客户端按课堂累计到 `token_budget`。
+
+```json
+{"tokens":120}
+```
+## ClassmateSceneIn
+
+当前页正文；`content.type` 必须与 `type` 一致，避免把测验页伪装成普通幻灯片。
+
+```json
+{"id":"scene-3","title":"关系模型","type":"slide","content":{"type":"slide","text":"…"},"actions":[]}
+```
+
+- `content` 序列化后 ≤ 40000 字节。
+- `actions` ≤ 20 条。
+- `type` 取值 `slide` / `quiz` / `interactive` / `pbl`。
+
+## ClassmateMemoryIn
+
+连续性记忆；只保存同学自己的发言与页标题。
+
+```json
+{"pages":["实体关系"],"lines":[{"agentId":"cm-xiaoyuan","text":"上次说过主键。"}],"recentAgentIds":["cm-xiaoyuan"]}
+```
+
+- `pages` ≤ 8 条且每条 ≤ 200 字。
+- `lines` ≤ 12 条。
+- `recentAgentIds` ≤ 7 个。
+
+## ClassmateMemoryLineIn
+
+一条历史发言。
+
+```json
+{"agentId":"cm-xiaoyuan","text":"上次说过主键。"}
+```
+
+`text` 上限 400 字；`agentId` 不在名单内时由服务端丢弃。
+
+## ClassmatePersonaOut
+
+服务端固定的同学人设；客户端只读。
+
+```json
+{"id":"cm-xiaoyuan","name":"小圆","role":"peer","persona":"严谨的复习搭子"}
+```
+
+`role` 当前恒为 `peer`。
+
+## WhiteboardIn
+
+保存舞台白板时的完整快照容器；元素结构由受管服务按 DSL 校验。
+
+```json
+{"board":{"id":"whiteboard_1","viewportSize":1000,"viewportRatio":0.5625,"elements":[]}}
+```
+
+`board.id` 非空且 ≤192 字；`viewportSize` / `viewportRatio` 为正数；`elements` 为数组且 ≤2000 项。
+
+<a id="schema-classroomplaybackactionout"></a>
+## ClassroomPlaybackActionOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | string | 是 | — | — |
+| `type` | string | 是 | — | — |
+| `mode` | string | 是 | — | — |
+| `supported` | boolean | 是 | — | — |
+| `reason` | string / null | 否 | — | — |
+| `payload` | object | 是 | — | — |
+
+<a id="schema-classroomplaybackcompatout"></a>
+## ClassroomPlaybackCompatOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `browser_embed_available` | boolean | 是 | — | — |
+| `browser_embed_reason` | string / null | 否 | — | — |
+| `url` | string / null | 否 | — | — |
+| `url_unavailable_reason` | string / null | 否 | — | — |
+| `recommended` | string | 是 | — | — |
+| `reason` | string / null | 否 | — | — |
+
+<a id="schema-classroomplaybackdegradedout"></a>
+## ClassroomPlaybackDegradedOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `scene_id` | string | 是 | — | — |
+| `reason` | string | 是 | — | — |
+
+<a id="schema-classroomplaybackdroppedactionout"></a>
+## ClassroomPlaybackDroppedActionOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `action_id` | string | 是 | — | — |
+| `type` | string | 是 | — | — |
+| `reason` | string | 是 | — | — |
+
+<a id="schema-classroomplaybackmediaout"></a>
+## ClassroomPlaybackMediaOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | string | 是 | — | — |
+| `kind` | string | 是 | — | — |
+| `role` | string | 是 | — | — |
+| `element_id` | string / null | 否 | — | — |
+| `content_type` | string | 是 | — | — |
+| `url` | string / null | 否 | — | — |
+| `available` | boolean | 是 | — | — |
+| `reason` | string / null | 否 | — | — |
+
+<a id="schema-classroomplaybacknativeout"></a>
+## ClassroomPlaybackNativeOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `available` | boolean | 是 | — | — |
+| `reason` | string / null | 否 | — | — |
+| `supported_scene_count` | integer | 是 | — | — |
+| `unsupported_scene_count` | integer | 是 | — | — |
+
+<a id="schema-classroomplaybackout"></a>
+## ClassroomPlaybackOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `contract_version` | string | 是 | — | — |
+| `course_id` | string | 是 | — | — |
+| `session_id` | string | 是 | — | — |
+| `classroom_id` | string | 是 | — | — |
+| `content_version` | string | 是 | — | — |
+| `document_updated_at` | string / null | 否 | — | — |
+| `generated_at` | string | 是 | — | — |
+| `title` | string | 是 | — | — |
+| `mode` | string | 是 | — | — |
+| `partial` | boolean | 是 | — | — |
+| `scenes_count` | integer | 是 | — | — |
+| `source_scenes_count` | integer | 是 | — | — |
+| `start_index` | integer | 是 | — | — |
+| `scenes` | array<[ClassroomPlaybackSceneOut](schemas.md#schema-classroomplaybacksceneout)> | 是 | — | — |
+| `degraded` | array<[ClassroomPlaybackDegradedOut](schemas.md#schema-classroomplaybackdegradedout)> | 是 | — | — |
+| `warnings` | array<[ClassroomPlaybackWarningOut](schemas.md#schema-classroomplaybackwarningout)> | 是 | — | — |
+| `native` | [ClassroomPlaybackNativeOut](schemas.md#schema-classroomplaybacknativeout) | 是 | — | — |
+| `compat` | [ClassroomPlaybackCompatOut](schemas.md#schema-classroomplaybackcompatout) | 是 | — | — |
+
+<a id="schema-classroomplaybackrenderout"></a>
+## ClassroomPlaybackRenderOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `kind` | string | 是 | — | — |
+| `sandbox` | string / null | 否 | — | — |
+| `widget_type` | string / null | 否 | — | — |
+| `reason` | string / null | 否 | — | — |
+
+<a id="schema-classroomplaybacksceneout"></a>
+## ClassroomPlaybackSceneOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `id` | string | 是 | — | — |
+| `source_index` | integer | 是 | — | — |
+| `type` | string | 是 | — | — |
+| `title` | string | 是 | — | — |
+| `order` | integer | 是 | — | — |
+| `content` | object / null | 否 | — | — |
+| `render` | [ClassroomPlaybackRenderOut](schemas.md#schema-classroomplaybackrenderout) | 是 | — | — |
+| `actions` | array<[ClassroomPlaybackActionOut](schemas.md#schema-classroomplaybackactionout)> | 是 | — | — |
+| `steps` | array<[ClassroomPlaybackStepOut](schemas.md#schema-classroomplaybackstepout)> | 是 | — | — |
+| `dropped_actions` | array<[ClassroomPlaybackDroppedActionOut](schemas.md#schema-classroomplaybackdroppedactionout)> | 是 | — | — |
+| `media` | array<[ClassroomPlaybackMediaOut](schemas.md#schema-classroomplaybackmediaout)> | 是 | — | — |
+| `whiteboards` | integer | 是 | — | — |
+| `multi_agent` | boolean | 是 | — | — |
+| `warnings` | array<string> | 是 | — | — |
+
+<a id="schema-classroomplaybackstepout"></a>
+## ClassroomPlaybackStepOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `action_id` | string | 是 | — | — |
+| `type` | string | 是 | — | — |
+| `mode` | string | 是 | — | — |
+
+<a id="schema-classroomplaybackwarningout"></a>
+## ClassroomPlaybackWarningOut
+
+模型定义：[backend/app/schemas/magicclass.py](../../backend/app/schemas/magicclass.py)。
+
+| 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
+| --- | --- | --- | --- | --- |
+| `code` | string | 是 | — | — |
+| `message` | string | 是 | — | — |
+| `scene_id` | string / null | 否 | — | — |

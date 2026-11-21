@@ -4,9 +4,11 @@ import android.app.Application
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.campusai.CampusAIApplication
 import com.example.campusai.data.classroom.ClassroomCall
 import com.example.campusai.data.classroom.ClassroomCallPhase
 import com.example.campusai.data.classroom.ClassroomCallService
+import com.example.campusai.data.focus.ClassroomAttentionState
 import com.example.campusai.data.remote.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -34,10 +36,16 @@ data class LearningRoomUiState(
     val sentRoomId: String? = null,
     val sentDraft: String? = null,
     val pendingMessage: PendingRoomMessage? = null,
+    val supervision: LearningSupervision? = null,
+    val attentionEnabled: Boolean = false,
+    val attentionState: String = "UNKNOWN",
+    val teacherReminder: LearningTeacherNudge? = null,
 )
 
 class LearningRoomViewModel(application: Application) : AndroidViewModel(application) {
     private val api = ApiClient.learningRooms
+    private val appRepository = (application as? CampusAIApplication)?.repository
+    private val expressionManager = appRepository?.expressionSessionManager
     private val mutableState = MutableStateFlow(LearningRoomUiState())
     val state = mutableState.asStateFlow()
     val call = ClassroomCall(application) { renewToken() }
@@ -48,9 +56,12 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private var renewalJob: Job? = null
     private var microphoneJob: Job? = null
     private var expiryJob: Job? = null
+    private var attentionJob: Job? = null
     private val serviceOwner = Any()
     private var epoch = 0
     private var cursor = 0L
+    private var lastNudgeId = 0L
+    private var nudgesInitialized = false
     private var tokenDeadlineMs = 0L
     private val messageOutbox = MessageOutbox()
     private var sessionToken = ApiClient.currentAccessToken()
@@ -70,15 +81,26 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     fun foreground(visible: Boolean) {
         uiVisible = visible
         pollJob?.cancel()
+        viewModelScope.launch {
+            expressionManager?.updateClassroomEligibility(
+                enabled = mutableState.value.attentionEnabled,
+                visible = visible,
+                foreground = visible,
+            )
+        }
         if (!visible) {
             microphoneJob?.cancel()
             call.camera(false)
+            if (mutableState.value.room != null) {
+                reportAttention("AWAY", "HEARTBEAT")
+            }
             if (call.state.value.phase !in listOf(ClassroomCallPhase.CONNECTED, ClassroomCallPhase.RECONNECTING)) {
                 stopInBackground()
                 return
             }
         }
         foreground = true
+        if (visible && mutableState.value.room != null) startAttentionReporting()
         pollJob = viewModelScope.launch {
             while (true) {
                 if (!checkSession()) {
@@ -114,6 +136,25 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
                             if (messages.size < 100) break
                             delay(100)
                         }
+                        if (epoch == requestEpoch) {
+                            val supervision = api.supervision(selected, lastNudgeId)
+                            if (epoch != requestEpoch) break
+                            val newestId = supervision.nudges.maxOfOrNull { it.id } ?: 0L
+                            val fresh = if (nudgesInitialized) supervision.nudges.filter { it.id > lastNudgeId } else emptyList()
+                            if (newestId > lastNudgeId) lastNudgeId = newestId
+                            nudgesInitialized = true
+                            val meUid = mutableState.value.identity?.uid
+                            val addressed = fresh.lastOrNull {
+                                (it.target_uid == null || it.target_uid == meUid) && it.from_uid != meUid
+                            }
+                            mutableState.update {
+                                it.copy(
+                                    supervision = supervision,
+                                    attentionState = supervision.me.state,
+                                    teacherReminder = addressed ?: it.teacherReminder,
+                                )
+                            }
+                        }
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -143,8 +184,113 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private fun select(room: LearningRoom?) {
         epoch++
         disconnect()
+        stopAttention()
         cursor = 0
-        mutableState.update { it.copy(room = room, messages = emptyList(), pendingMessage = room?.id?.let(messageOutbox::get)) }
+        lastNudgeId = 0
+        nudgesInitialized = false
+        mutableState.update {
+            it.copy(
+                room = room,
+                messages = emptyList(),
+                pendingMessage = room?.id?.let(messageOutbox::get),
+                supervision = null,
+                attentionState = "UNKNOWN",
+                teacherReminder = null,
+            )
+        }
+        if (room != null && uiVisible) startAttentionReporting()
+    }
+
+    fun setAttentionEnabled(enabled: Boolean, cameraGranted: Boolean) {
+        if (!enabled) {
+            stopAttention()
+            if (mutableState.value.room != null && uiVisible) startAttentionReporting()
+            return
+        }
+        if (!cameraGranted) {
+            notice("需要摄像头权限才能开启课堂专注观察；画面只在本机处理，不会上传")
+            return
+        }
+        val manager = expressionManager ?: run {
+            notice("当前设备暂不支持端侧课堂观察")
+            return
+        }
+        if (mutableState.value.attentionEnabled) return
+        mutableState.update { it.copy(attentionEnabled = true, attentionState = "UNKNOWN", notice = null) }
+        viewModelScope.launch {
+            manager.beginClassroomSupervision()
+            manager.updateClassroomEligibility(
+                enabled = true,
+                permissionGranted = true,
+                visible = uiVisible,
+                foreground = uiVisible,
+            )
+            startAttentionReporting()
+        }
+    }
+
+    private fun stopAttention() {
+        attentionJob?.cancel()
+        attentionJob = null
+        val wasEnabled = mutableState.value.attentionEnabled
+        mutableState.update { it.copy(attentionEnabled = false, attentionState = "UNKNOWN") }
+        if (wasEnabled) {
+            viewModelScope.launch { expressionManager?.endClassroomSupervision() }
+        }
+    }
+
+    private fun startAttentionReporting() {
+        attentionJob?.cancel()
+        attentionJob = viewModelScope.launch {
+            while (true) {
+                val roomId = mutableState.value.room?.id ?: break
+                val (attentionState, source) = currentAttention()
+                reportAttentionOnce(roomId, attentionState, source)
+                delay(15_000)
+            }
+        }
+    }
+
+    private fun currentAttention(): Pair<String, String> {
+        if (!uiVisible) return "AWAY" to "HEARTBEAT"
+        if (!mutableState.value.attentionEnabled) {
+            // 不打开摄像头时只同步在线心跳，让发起人知道同学还在课堂，但不猜测专注度。
+            return "UNKNOWN" to "HEARTBEAT"
+        }
+        val state = expressionManager?.classroomAttention?.value?.state ?: ClassroomAttentionState.UNKNOWN
+        return state.name to "ON_DEVICE"
+    }
+
+    private fun reportAttention(state: String, source: String) {
+        val roomId = mutableState.value.room?.id ?: return
+        viewModelScope.launch { reportAttentionOnce(roomId, state, source) }
+    }
+
+    private suspend fun reportAttentionOnce(roomId: String, state: String, source: String) {
+        try {
+            val report = api.reportAttention(roomId, LearningAttentionRequest(state, source))
+            if (mutableState.value.room?.id != roomId) return
+            mutableState.update {
+                it.copy(
+                    attentionState = report.state,
+                    teacherReminder = report.teacher_reminder ?: it.teacherReminder,
+                )
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            // 监督上报失败不改变本地学习状态，也不打断课堂；下一轮自动重试。
+        }
+    }
+
+    fun dismissTeacherReminder() {
+        mutableState.update { it.copy(teacherReminder = null) }
+    }
+
+    fun sendNudge(targetUid: String?, content: String? = null) = action {
+        val room = mutableState.value.room ?: return@action
+        api.nudge(room.id, LearningNudgeRequest(targetUid, content?.trim()?.takeIf { it.isNotEmpty() }))
+        mutableState.update { it.copy(notice = "老师提醒已发送") }
     }
 
     private fun checkSession(): Boolean {
@@ -376,5 +522,10 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         }
         else -> "网络连接失败，请检查网络后重试"
     }
-    override fun onCleared() { disconnect(); super.onCleared() }
+    override fun onCleared() {
+        attentionJob?.cancel()
+        expressionManager?.let { manager -> viewModelScope.launch { manager.endClassroomSupervision() } }
+        disconnect()
+        super.onCleared()
+    }
 }

@@ -132,17 +132,17 @@ categories 返回 `{items:[{key,label,description,icon,color},...]}`；当前分
 <a id="sync"></a>
 ## 学习通与课程局部同步
 
-作业题目快照与截止后自主练习课堂的动态响应见 [作业复习接口](09-integrations.md)。题目快照返回 `task_id/course_id/status/available/current/can_generate/fetched_at/questions`，每题为 `{number,stem,options:string[]}`，无可读题目时 questions 为空且 fetched_at 为 null；生成响应包含 `workspace_id/course_id/task_id/question_count` 和既有 `source/job`。can_generate 表示数据前置条件，不代表外部服务已经就绪。服务端每日同步也更新题目；抓取失败或有待补批次时 assignments 分区为 partial，warnings 含 `assignment_content:<reason>`，保留已有快照。
+作业题目快照与截止后自主练习课堂的动态响应见 [作业复习接口](09-integrations.md)。题目快照返回 `task_id/course_id/status/available/current/can_generate/can_generate_wrong/results_available/results_complete/graded_count/wrong_count/fetched_at/questions`，每题为 `{number,stem,options:string[],is_correct?:boolean|null}`，无可读题目时 questions 为空且 fetched_at 为 null；生成响应包含 `workspace_id/course_id/task_id/question_count` 和既有 `source/job`。can_generate 表示数据前置条件，不代表外部服务已经就绪。`graded_count` 为已批改题数；`results_available` 只表示至少一题已批改，`results_complete` 表示全部题目已批改；部分批改时不能把未批题当成做对。服务端每日同步也更新题目和已完成作业的逐题对错；抓取失败或有待补批次时 assignments 分区为 partial，warnings 含 `assignment_content:<reason>`，保留已有快照。
 
-题目快照的 `available` 表示存在已采集题目；`current` 仅表示快照保存的提交状态与待办一致；`can_generate` 还要求有效截止时间已到期和非空 course_id（pending/completed 均可），不包含图片/长度检查、课程权限或模型可用性检测。fetched_at 是成功采集时的同步轮次时间，失败重试不会把旧题目伪装为本次采集。示例（没有题目时）：
+题目快照的 `available` 表示存在已采集题目；`current` 仅表示快照保存的提交状态与待办一致；`can_generate` 还要求有效截止时间已到期和非空 course_id（pending/completed 均可），不包含图片/长度检查、课程权限或模型可用性检测；`can_generate_wrong` 额外要求 `wrong_count>0`。fetched_at 是成功采集时的同步轮次时间，失败重试不会把旧题目伪装为本次采集。示例（没有题目时）：
 
 ```json
-{"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":false,"current":false,"can_generate":false,"fetched_at":null,"questions":[]}
+{"task_id":"ptask_demo","course_id":"course_demo","status":"completed","available":false,"current":false,"can_generate":false,"can_generate_wrong":false,"results_available":false,"results_complete":false,"graded_count":0,"wrong_count":0,"fetched_at":null,"questions":[]}
 ```
 
 已截止作业列表沿用 `GET /tasks` 的 `Page<PersonalTaskOut>`，不传 status 分页，客户端筛选 source=chaoxing、未删除且有效 deadline 已到期的 pending/completed 条目；它没有专用的学习通列表响应。completed_at 是本站完成记录时间，`remote_submitted_at` 返回远端明确提供的提交时间，未获取时为 null；成绩字段仍不公开。不得将 completed_at 作为真实提交时间。
 
-课堂 POST 的 queued/running job 需要继续用课程 job GET 查询，重试接口成功返回的是 job 本身，不能误取 `response.job`；只有 completed 才表示课件可以进入。页面停止查看不会取消服务端任务，重复课堂 POST 会按同份需求恢复任务，失败/取消仍需显式调用 retry。请求示例和恢复状态表见[一键讲解流程](09-integrations.md#assignment-review-flow)。
+课堂 POST 的请求体可选 `{"scope":"all"|"wrong"}`，缺省 all；wrong 只使用明确批改为错的题并只出变式。queued/running job 需要继续用课程 job GET 查询，重试接口成功返回的是 job 本身，不能误取 `response.job`；只有 completed 才表示课件可以进入。页面停止查看不会取消服务端任务，相同 scope 和同份需求重复课堂 POST 会恢复任务；all 与 wrong 使用不同工作台/任务，失败/取消仍需显式调用 retry。请求示例和恢复状态表见[一键讲解流程](09-integrations.md#assignment-review-flow)。
 
 学习通 login 返回 `{status:"success"}`；disconnect 返回 `{status:"disconnected"}`；sync 返回 `{status:"sync completed",notice_sync,source:"chaoxing_live",complete,stats,warnings,sections}`。HTTP 200 仍可能含分区失败，须检查 complete、sections 和 warnings。
 
@@ -274,7 +274,94 @@ multiAgent 为 `{enabled:boolean,agentIds:string[],directorPrompt?:string}`。Ac
 
 playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html / sandbox-url 时 sandbox 当前为 allow-scripts，不添加 allow-same-origin。steps 为 `{action_id,type,mode:"sync"|"fire_and_forget"}[]`；dropped_actions 为 `{action_id,type,reason}[]`；degraded 为 `{scene_id,reason}[]`。先读取 scene 正文，再按服务端播放计划决定本地渲染、沙箱及动作次序，不凭 html 字段自行判断可播放。
 
+## 经典课堂原生播放与媒体
+
+经典课堂（`session_id` / `classroom_id`）与受管工作台（`workspace_id` / `stage_id` / `scene_id`）是两套 ID 体系，不能互换。`GET /api/v1/courses/{course_id}/interactive-classroom/{session_id}/playback` 与 `GET /api/v1/self-classroom/{session_id}/playback` 返回同一个 `ClassroomPlaybackOut`，`contract_version` 固定为 `classroom-playback/1`。字段定义以 [schemas.md](schemas.md#schema-classroomplaybackout) 为准；本文件补充实际语义。
+
+- `content_version` 是上游课堂 JSON 正文的稳定哈希。正文变化时可据此刷新本地课件。该值的覆盖范围是 JSON，媒体缓存可使用媒体响应中提供的 `ETag` 或 `Last-Modified` 重新验证。
+- `document_updated_at` 来自上游 `stage.updatedAt` 或 `stage.createdAt`，可能为 `null`；`generated_at` 是本会话创建时间。
+- `scenes[]` 按 `order`（缺失时按源数组顺序）排序；`id` 是上游原场景 ID，缺 ID 的旧课件使用 `sc_<type>_<source_index+1>` 稳定回退 ID，`source_index` 是原数组下标。
+- `render.kind=native` 只表示服务端判断该场景可原生渲染（当前为 slide/quiz）；`sandbox-html`/`sandbox-url` 由客户端在受限 WebView 中运行；`unsupported` 必须按 `reason` 降级，不能猜测。
+- `actions[].mode=sync` 的动作按顺序进入 `steps`；`spotlight`/`laser` 为 `fire_and_forget`，不进入 `steps`。不支持的动作为 `supported=false` 并带 `reason`，同时进入 `dropped_actions`。
+- `type=speech` 的动作有可读取的成品音频时，`payload.audioUrl` 为本站相对媒体路径。用同场景中 `kind=audio`、`role=narration` 和相同 `url` 的条目核对 `available`。`media[].element_id` 可辅助关联动作，旧动作缺 ID 或多个动作共用媒体时按 URL 匹配。读取媒体需带 Bearer token。
+- `media[]` 的 `url` 是本站相对地址；`available=false` 时 `reason` 说明外部资源不代理、属于其他课堂、引用无法解析或源缺失，客户端不得自行拼接上游地址。
+- `compat.browser_embed_available` 只描述旧网页入口是否可嵌入；`compat.url` 是可信公开地址，`url_unavailable_reason` / `browser_embed_reason` 说明不可用原因。原生播放不依赖这两个字段。
+- `degraded[]` 与 `warnings[]` 是服务端可解释的降级信息，不是错误；`native.available` 只表示至少存在一个可原生播放计划（slide/quiz 或受限 sandbox），不代表全部互动能力原生可用；`native.available=false` 时按 `compat.recommended` 选择网页兼容或提示不可用。
+
+示例（脱敏，字段有删节）：
+
+```json
+{
+  "contract_version": "classroom-playback/1",
+  "course_id": "crs_demo",
+  "session_id": "om_demo",
+  "classroom_id": "cls_demo",
+  "content_version": "sha256:demo",
+  "document_updated_at": "2026-11-02T09:30:00+00:00",
+  "generated_at": "2026-11-19T07:00:00+00:00",
+  "title": "函数的单调性",
+  "mode": "explain",
+  "partial": false,
+  "scenes_count": 2,
+  "source_scenes_count": 2,
+  "start_index": 0,
+  "scenes": [
+    {
+      "id": "sc_slide",
+      "source_index": 0,
+      "type": "slide",
+      "title": "开场",
+      "order": 1,
+      "content": {"canvas": {"width": 1280, "height": 720, "elements": []}},
+      "render": {"kind": "native", "sandbox": null, "widget_type": null, "reason": null},
+      "actions": [{
+        "id": "a1",
+        "type": "speech",
+        "mode": "sync",
+        "supported": true,
+        "reason": null,
+        "payload": {
+          "text": "请先观察图像。",
+          "audioUrl": "/api/v1/courses/crs_demo/interactive-classroom/om_demo/media/audio/tts_s1_a1.wav"
+        }
+      }],
+      "steps": [{"action_id": "a1", "type": "speech", "mode": "sync"}],
+      "dropped_actions": [],
+      "media": [
+        {"id": "media/img_1.png", "kind": "image", "role": "slide_element", "element_id": "img_1", "content_type": "image/png", "url": "/api/v1/courses/crs_demo/interactive-classroom/om_demo/media/media/img_1.png", "available": true, "reason": null},
+        {
+          "id": "audio/tts_s1_a1.wav",
+          "kind": "audio",
+          "role": "narration",
+          "element_id": "a1",
+          "content_type": "audio/wav",
+          "url": "/api/v1/courses/crs_demo/interactive-classroom/om_demo/media/audio/tts_s1_a1.wav",
+          "available": true,
+          "reason": null
+        }
+      ],
+      "whiteboards": 0,
+      "multi_agent": false,
+      "warnings": []
+    }
+  ],
+  "degraded": [],
+  "warnings": [],
+  "native": {"available": true, "reason": null, "supported_scene_count": 1, "unsupported_scene_count": 0},
+  "compat": {"browser_embed_available": true, "browser_embed_reason": null, "url": "https://classroom.example.com/classroom/cls_demo", "url_unavailable_reason": null, "recommended": "native", "reason": null}
+}
+```
+
+媒体接口是二进制流，不返回统一 JSON 信封（错误时仍返回统一错误结构）：
+
+- 成功 `200` 完整资源，`206` 单段 Range，`416` 越界；`Content-Type` 透传上游，`Accept-Ranges: bytes`，`Cache-Control: private, no-cache`，`X-Content-Type-Options: nosniff`，有则透传 `ETag` / `Last-Modified` / `Content-Length` / `Content-Range`。
+- 只支持单段 `Range: bytes=start-end`；多段 Range 按上游行为忽略并返回 `200`。手机播放器拖动音视频时使用单段 Range。
+- 媒体请求每次都重新校验账号、课程、会话归属；不使用匿名签名直链，缓存命中也不能绕过授权。
+- `media_path` 只接受 `(media|audio)/文件名`；拒绝 `..`、绝对路径、编码绕过和跨课堂路径。媒体 URL 形如 `.../media/media/img.png` 或 `.../media/audio/tts.mp3`，第一段 `media` 是路由前缀，后一段是资源相对路径；客户端原样拼接，不要删除重复段。
+- 上游 `404/410` → `MEDIA_NOT_FOUND`；上游 `5xx/401/403` → `MEDIA_UPSTREAM_ERROR`；上游不可达 → `MAGICCLASS_UNAVAILABLE`。媒体 URL 失效时重新请求播放接口，不要缓存旧的上游内部地址。
+
 <a id="learning-rooms"></a>
+
 ## 共同课堂的动态响应
 
 以下类型名用于说明实际返回对象，来自 [LearningRoomRepository](../../backend/app/repositories/learning_room_repository.py)，不是额外的 OpenAPI 模型。接口与完整流程见[共同课堂契约](14-magicclass.md#learning-rooms)。
@@ -319,6 +406,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 
 原生创建讨论课堂也返回上述 RoomRecord，包含单场景占位归档、stage_id="native-discussion"。音视频配置与凭证分别使用 [ClassroomRtcStatusOut](schemas.md#schema-classroomrtcstatusout)、[ClassroomRtcTokenOut](schemas.md#schema-classroomrtctokenout)；凭证响应 200 带 Cache-Control:no-store，expires_at 为 Unix 秒，有效期 120 秒、60 秒续期。RTC 房间/UID 固定为服务端给定值，leave 后不能续期，但已有 Token 不即时撤销。新错误 503 CLASSROOM_RTC_UNAVAILABLE 表示配置缺失/无效。完整流程及各端适配状态见[音视频协议](14-magicclass.md#classroom-rtc)。
 
+专注监督使用 [AttentionReportOut](schemas.md#schema-attentionreportout)、[SupervisionOut](schemas.md#schema-supervisionout)、[NudgeOut](schemas.md#schema-nudgeout)，字段与枚举以上述 schema 为准。状态记录包含 `state`、`source`、`updated_at`、`online`、`attention_age_seconds`；不包含画面、人脸、音频或逐帧结果。`online` 由服务端按 45 秒窗口计算，不是客户端布尔值。自动 TEACHER 提醒的 `from_uid` 为 null，HOST 提醒的 `from_uid` 为发起人；广播提醒 `target_uid` 为 null。普通成员的 `members` 恒为空数组、`stats`/`teacher_summary` 为 null，避免用一条响应区分“没有成员”和“没有权限”。`nudges` 按 id 升序且只返回 id > after；首次同步应先记录最大 id，不能把历史提醒当作新打断。完整规则、冷却/上限与客户端覆盖见[共同课堂专注监督](14-magicclass.md#classroom-supervision)。
+
 ## 错误码字典
 
 以下为当前加载的后端 AppException 子类的稳定默认错误码；具体接口可能覆盖 message 或 code，HTTPException、透传错误、流内错误另见模块说明。不是每个接口都会返回所有错误。
@@ -334,7 +423,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 400 | `MAGICCLASS_INVALID_REQUEST` | 请求参数不合法 |
 | 400 | `NOTICE_EMPTY` | 通知文本为空，无法提取。 |
 | 400 | `NOTICE_TOO_LONG` | 通知文本过长，请控制在 5000 字以内。 |
-| 400 | `QR_INVALID` | 二维码无效。 |
+| 400 | QR_INVALID | 二维码无效。 |
+| 400 | `SCENE_NOT_QUIZ` | 该场景不是测验场景 |
 | 401 | `INVALID_CREDENTIALS` | 用户名或密码错误。 |
 | 401 | `DEVICE_BINDING_INVALID` | 设备绑定凭据无效或已过期。 |
 | 401 | `QR_BROWSER_TOKEN_INVALID` | 浏览器凭据无效。 |
@@ -361,10 +451,12 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 404 | `INVALID_INVITE_CODE` | 邀请码无效或班级不存在。 |
 | 404 | `LEARNER_CORRECTION_NOT_FOUND` | 状态纠正记录不存在。 |
 | 404 | `LEARNER_MODEL_DATA_NOT_FOUND` | 学生模型数据不存在。 |
-| 404 | `MAGICCLASS_WORKSPACE_NOT_FOUND` | 未找到该学习工作台 |
+| 404 | MAGICCLASS_WORKSPACE_NOT_FOUND | 未找到该学习工作台 |
+| 404 | `MEDIA_NOT_FOUND` | 课堂媒体不存在 |
 | 404 | `NOT_FOUND` | 资源不存在。 |
 | 404 | `PERSONAL_TASK_NOT_FOUND` | 个人待办不存在。 |
-| 404 | `STUDENT_GOAL_NOT_FOUND` | 学生目标不存在。 |
+| 404 | STUDENT_GOAL_NOT_FOUND | 学生目标不存在。 |
+| 404 | `SCENE_NOT_FOUND` | 课堂场景不存在 |
 | 404 | `STUDY_BREAK_NOT_FOUND` | 休息记录不存在。 |
 | 404 | `STUDY_SESSION_NOT_FOUND` | 学习会话不存在。 |
 | 404 | `SUBMISSION_NOT_FOUND` | 提交不存在。 |
@@ -384,6 +476,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 409 | `ALREADY_ENROLLED` | 该学生已加入此班级。 |
 | 409 | `ASSIGNMENT_CLOSED` | 任务已截止提交。 |
 | 409 | `CLASS_GROUP_FULL` | 班级已满员。 |
+| 409 | `CLASSROOM_GENERATION_FAILED` | 课堂生成失败，不能播放 |
+| 409 | `CLASSROOM_NOT_READY` | 课堂仍在生成中，尚不能播放 |
 | 409 | `DOCUMENT_ALREADY_EXISTS` | 相同内容哈希的文档已存在。 |
 | 409 | `INVALID_TRANSITION` | 状态转换不被允许。 |
 | 409 | `DEVICE_COMMAND_ID_CONFLICT` | 幂等键已用于不同设备会话操作。 |
@@ -419,6 +513,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 409 | `USERNAME_EXISTS` | 用户名已被占用。 |
 | 409 | `WORKFLOW_STATE_CONFLICT` | 工作流当前状态不允许该操作。 |
 | 410 | `QR_EXPIRED` | 二维码已过期。 |
+| 410 | `CLASSROOM_CONTENT_MISSING` | 课堂正文已不存在 |
 | 413 | `ATTACHMENT_TOO_LARGE` | 附件过大。 |
 | 413 | `FILE_TOO_LARGE` | 文件过大。 |
 | 415 | `ATTACHMENT_TYPE_NOT_ALLOWED` | 附件类型不被允许。 |
@@ -430,6 +525,8 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 | 429 | `MAGICCLASS_RATE_LIMITED` | 互动课堂服务请求过于频繁，请稍后重试 |
 | 429 | `QR_RATE_LIMITED` | 创建二维码过于频繁，请稍后再试。 |
 | 502 | `MAGICCLASS_AUTH_ERROR` | 互动课堂服务鉴权失败，请稍后重试 |
+| 502 | `CLASSROOM_CONTENT_INVALID` | 课堂正文结构异常，无法播放 |
+| 502 | `MEDIA_UPSTREAM_ERROR` | 课堂媒体读取失败，请稍后重试 |
 | 502 | `MAGICCLASS_INVALID_ORIGIN` | 互动课堂返回地址校验失败 |
 | 502 | `MAGICCLASS_PROTOCOL_ERROR` | 互动课堂服务响应异常，请稍后重试 |
 | 502 | `MAGICCLASS_SERVER_ERROR` | 互动课堂服务内部错误，请稍后重试 |

@@ -159,7 +159,7 @@ function saveBlob(blob, filename) {
 }
 
 /** 导出入口。只在服务端上报 export 能力时出现，绝不渲染一个必然失败的死按钮。 */
-function ExportMenu({ courseId, workspaceId, stage, canExportPptx, canExportMarkdown, canExportDocx }) {
+function ExportMenu({ courseId, workspaceId, stage, canExportPptx, canExportMarkdown, canExportDocx, canExportVideo }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -177,6 +177,39 @@ function ExportMenu({ courseId, workspaceId, stage, canExportPptx, canExportMark
     } finally { setBusy(false); }
   }
 
+  /**
+   * MP4 是任务式导出，不是同步文件：先入队，再轮询终态，最后取产物。
+   * 这条链路在新工作台里原本只存在于旧 WorkspacePanel，导致「开始学习」的主
+   * 路径上服务端明明声明 export-video 能力，用户却看不到 MP4 入口。
+   */
+  async function runVideo() {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      const queued = await api.enqueueMagicClassStageVideo(courseId, workspaceId, stage.id, {
+        idempotencyKey: api.newIdempotencyKey(),
+      });
+      let job = queued?.job || null;
+      const jobId = queued?.job_id || job?.id;
+      if (!jobId) throw new Error("受管服务未返回视频导出任务");
+      const deadline = Date.now() + 120_000;
+      // 服务端通常同时回 job 快照；只回 job_id 时也必须继续拉取，而不是直接当成失败。
+      while (!job || ["queued", "running"].includes(job.status)) {
+        if (Date.now() >= deadline) throw new Error("视频导出超时");
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        job = await api.getMagicClassJob(courseId, jobId);
+      }
+      if (!job || job.status !== "completed" || !job.artifact_id) {
+        throw new Error(job?.error_code || "视频导出失败");
+      }
+      const artifact = await api.getMagicClassArtifact(courseId, job.artifact_id);
+      saveBlob(artifact.blob, filenameFromContentDisposition(artifact.disposition) || `${stage.title}.mp4`);
+      setOpen(false);
+    } catch (failure) {
+      setError(errorText(failure, "视频导出失败，请稍后重试"));
+    } finally { setBusy(false); }
+  }
+
   return <div className="ow-export">
     <Button variant="secondary" icon="PhDownloadSimple" aria-haspopup="true" aria-expanded={open} disabled={busy} onClick={() => setOpen((value) => !value)}>
       {busy ? "导出中…" : "导出"}
@@ -185,7 +218,8 @@ function ExportMenu({ courseId, workspaceId, stage, canExportPptx, canExportMark
       {canExportPptx ? <button type="button" role="menuitem" disabled={busy} onClick={() => run("pptx", "pptx")}>导出 PPTX</button> : null}
       {canExportMarkdown ? <button type="button" role="menuitem" disabled={busy} onClick={() => run("markdown", "md")}>导出 Markdown</button> : null}
       {canExportDocx ? <button type="button" role="menuitem" disabled={busy} onClick={() => run("docx", "docx")}>导出 DOCX</button> : null}
-      {!canExportPptx && !canExportMarkdown && !canExportDocx ? <span className="ow-export__empty">本部署未启用导出</span> : null}
+      {canExportVideo ? <button type="button" role="menuitem" disabled={busy} onClick={() => void runVideo()}>导出 MP4</button> : null}
+      {!canExportPptx && !canExportMarkdown && !canExportDocx && !canExportVideo ? <span className="ow-export__empty">本部署未启用导出</span> : null}
     </div> : null}
     {error ? <span className="ow-hint ow-hint--error" role="alert">{error}</span> : null}
   </div>;
@@ -548,6 +582,7 @@ export default function MagicClassWorkbenchPage() {
           canExportPptx={fusion.canExportPptx}
           canExportMarkdown={fusion.canExportMarkdown}
           canExportDocx={fusion.canExportDocx}
+          canExportVideo={fusion.canExportVideo}
         />
         {/* 「开始学习」是进入播放的唯一门。 */}
         <button

@@ -1,6 +1,6 @@
 import "../../styles/magicclass.css";
 import React from "react";
-import { ChevronLeft, ChevronRight, LayoutList, Pause, Play } from "lucide-react";
+import { ChevronLeft, ChevronRight, Compass, LayoutList, Pause, PenLine, Play } from "lucide-react";
 import { Button } from "../Primitives.jsx";
 import { Icon } from "../Icon.jsx";
 import * as api from "../../data/api.js";
@@ -27,13 +27,20 @@ import {
 import { SCENE_TYPE_LABELS } from "../../features/magicclass/editorModel.js";
 import { useNarrowViewport } from "../../features/magicclass/workbenchLayoutModel.js";
 import { useSceneNarration } from "../../features/magicclass/useSceneNarration.js";
+import { useClassroomRewards } from "../../features/magicclass/useClassroomRewards.js";
+import ClassroomGameHud, { ClassroomQuestMap } from "./ClassroomGameHud.jsx";
+import NativeClassmates from "./NativeClassmates.jsx";
+import NativeWhiteboard from "./NativeWhiteboard.jsx";
+import { useNativeClassmates } from "../../features/magicclass/useNativeClassmates.js";
 import { canGenerateNarration } from "../../features/magicclass/narrationModel.js";
 import {
   advanceActionTimeline,
   isPlaybackShortcutTarget,
+  keyTextElementId,
   startActionTimeline,
 } from "../../features/magicclass/playbackTimeline.js";
 import { useCanvasStore } from "../../magicclass/slide/index.js";
+import { whiteboardFromStageDocument } from "../../features/magicclass/whiteboardModel.js";
 
 /**
  * 学习态课堂：把参考项目（清华大学学习平台 / magic class）的播放态界面接到
@@ -66,6 +73,9 @@ export default function MagicClassClassroomStage({
   // document.scenes），因此侧栏缩略图与主画布**共用同一次读取**——逐场景拉正文
   // 会让 8 个场景变成 8 次请求，而且侧栏缩略图根本拿不到内容，只能显示灰框。
   const [contentByScene, setContentByScene] = React.useState({});
+  const [whiteboard, setWhiteboard] = React.useState(() => whiteboardFromStageDocument(null));
+  const [stageRevision, setStageRevision] = React.useState(null);
+  const [whiteboardOpen, setWhiteboardOpen] = React.useState(false);
   const [index, setIndex] = React.useState(0);
   // 侧栏默认宽度 220px。320px 视口下它会把主列压到 100px：头栏的返回按钮与右侧
   // 控制簇互相重叠，「返回编辑」点不到。所以窄屏（≤1023px）一进来就收起侧栏，
@@ -110,10 +120,15 @@ export default function MagicClassClassroomStage({
       setPlan(normalized);
       setIndex(normalized.startIndex);
       setContentByScene(indexScenesById(stageDocument));
+      setWhiteboard(whiteboardFromStageDocument(stageDocument));
+      setStageRevision(Number.isFinite(Number(stageDocument?.revision)) ? Number(stageDocument.revision) : null);
     } catch (failure) {
       if (mine !== epoch.current) return;
       setPlan(null);
       setContentByScene({});
+      setWhiteboard(whiteboardFromStageDocument(null));
+      setStageRevision(null);
+      setWhiteboardOpen(false);
       setError(describePlaybackError(failure).message);
     } finally {
       if (mine === epoch.current) setLoading(false);
@@ -147,6 +162,32 @@ export default function MagicClassClassroomStage({
     [scenes, contentByScene],
   );
 
+  // ── 游戏化进度 ───────────────────────────────────────────────────────────
+  // 只认本地真实发生过的访问与交卷：首次进入某页才给 XP，重复翻页不再结算。
+  const rewards = useClassroomRewards({
+    courseId,
+    workspaceId,
+    stageId,
+    totalScenes: scenes.length,
+    scenes,
+    index,
+  });
+  const { visit: recordVisit } = rewards;
+  React.useEffect(() => {
+    if (currentId) recordVisit(currentId);
+  }, [currentId, recordVisit]);
+
+  // ── AI 同学 ─────────────────────────────────────────────────────────────
+  // 人设由服务端固定；这里只维护记忆与预算，并在换页时请求一次发言。
+  const classmates = useNativeClassmates({
+    courseId,
+    stageId,
+    scene,
+    outline: current,
+    sceneId: currentId,
+    ready: Boolean(scene),
+  });
+
   const go = React.useCallback((next) => {
     setIndex((currentIndex) => (next < 0 || next > scenes.length - 1 ? currentIndex : next));
   }, [scenes.length]);
@@ -155,6 +196,7 @@ export default function MagicClassClassroomStage({
   // 两者分开后，播放器不会为了猜一个 `elementId` 而把效果施加到错误的画布上。
   const [actionSession, setActionSession] = React.useState(null);
   const actionSessionRef = React.useRef(actionSession);
+  const emphasisTimerRef = React.useRef(0);
   actionSessionRef.current = actionSession;
   const [playbackNotice, setPlaybackNotice] = React.useState("");
   const resetActionTimeline = React.useCallback(() => {
@@ -163,11 +205,13 @@ export default function MagicClassClassroomStage({
     actionSessionRef.current = null;
     setActionSession(null);
     setPlaybackNotice("");
+    if (emphasisTimerRef.current) window.clearTimeout(emphasisTimerRef.current);
   }, []);
 
   React.useEffect(() => {
     resetActionTimeline();
     return () => {
+      if (emphasisTimerRef.current) window.clearTimeout(emphasisTimerRef.current);
       useCanvasStore.resetEffects();
       useCanvasStore.pauseVideo();
     };
@@ -182,7 +226,34 @@ export default function MagicClassClassroomStage({
       next = startActionTimeline(current, scene);
       useCanvasStore.resetEffects();
       useCanvasStore.pauseVideo();
-      setPlaybackNotice(next.status === "completed" ? "这一页没有可执行的播放动作。" : "正在播放本页动作…");
+      if (next.status === "completed") {
+        const keyId = keyTextElementId(scene);
+        if (keyId) {
+          useCanvasStore.setSpotlight(keyId, { dimness: 0.55 });
+          if (emphasisTimerRef.current) window.clearTimeout(emphasisTimerRef.current);
+          emphasisTimerRef.current = window.setTimeout(() => {
+            useCanvasStore.resetEffects();
+          }, 2400);
+          setPlaybackNotice("本页没有预设动作，已聚焦标题 2.4 秒。");
+        } else {
+          const fallbackTitle = document.getElementById("campus-fallback-title");
+          if (fallbackTitle) {
+            fallbackTitle.classList.remove("cm-slide-focus");
+            void fallbackTitle.offsetWidth;
+            fallbackTitle.classList.add("cm-slide-focus");
+            if (emphasisTimerRef.current) window.clearTimeout(emphasisTimerRef.current);
+            emphasisTimerRef.current = window.setTimeout(() => {
+              fallbackTitle.classList.remove("cm-slide-focus");
+              useCanvasStore.resetEffects();
+            }, 2400);
+            setPlaybackNotice("本页没有预设动作，已强调标题 2.4 秒。");
+          } else {
+            setPlaybackNotice("这一页没有可执行的播放动作。");
+          }
+        }
+      } else {
+        setPlaybackNotice("正在播放本页动作…");
+      }
     }
     actionSessionRef.current = next;
     setActionSession(next);
@@ -298,11 +369,76 @@ export default function MagicClassClassroomStage({
   const onNextScene = React.useMemo(() => index < scenes.length - 1 ? () => go(index + 1) : undefined, [go, index, scenes.length]);
   const onToggleSidebar = React.useCallback(() => setCollapsed((value) => !value), []);
   const onTogglePresentation = React.useCallback(() => setIsPresenting((value) => !value), []);
+  const saveWhiteboard = React.useCallback(async (nextBoard) => {
+    if (!Number.isFinite(Number(stageRevision))) throw new Error("当前舞台没有 revision，无法保存白板");
+    const result = await api.addMagicClassWhiteboard(courseId, workspaceId, stageId, {
+      board: nextBoard,
+      revision: Number(stageRevision),
+      idempotencyKey: api.newIdempotencyKey(),
+    });
+    const savedBoard = result?.board && Array.isArray(result.board.elements) ? result.board : nextBoard;
+    setWhiteboard(savedBoard);
+    if (Number.isFinite(Number(result?.revision))) setStageRevision(Number(result.revision));
+    return { ...result, board: savedBoard };
+  }, [courseId, stageId, stageRevision, workspaceId]);
+
   const renderSlideThumbnail = React.useCallback(({ slide, sceneId }) => (
-    <SlideThumbnail canvas={slide} sceneId={sceneId} />
-  ), []);
-  const sidebarHeader = React.useMemo(() => <span className="text-[15px] font-black tracking-tight text-gray-900 dark:text-gray-100">{"magic class"}</span>, []);
-  const sidebarProps = React.useMemo(() => ({ headerSlot: sidebarHeader, renderSlideThumbnail }), [renderSlideThumbnail, sidebarHeader]);
+    <SlideThumbnail canvas={slide} sceneId={sceneId} title={contentByScene[sceneId]?.title || ""} />
+  ), [contentByScene]);
+  const sidebarHeader = React.useMemo(() => <div className="flex items-center gap-2">
+    <span className="grid h-6 w-6 place-items-center rounded-lg bg-[#153B34] text-[#F2F1E8]">
+      <Compass className="h-3.5 w-3.5" />
+    </span>
+    <span className="leading-tight">
+      <strong className="block text-[10px] font-black tracking-[0.16em] text-[#153B34] dark:text-[#F2F1E8]">CAMPUSMATE</strong>
+      <small className="block text-[9px] font-semibold text-[#AD6845] dark:text-[#DAB27A]">学习冒险</small>
+    </span>
+  </div>, []);
+
+  // 游戏化状态条：桌面端放进头栏，窄屏仍作为画布角上的紧凑 HUD。
+  const gameHud = React.useMemo(() => <ClassroomGameHud
+    level={rewards.level}
+    combo={rewards.combo}
+    bestCombo={rewards.bestCombo}
+    achievements={rewards.achievements}
+    map={rewards.map}
+    total={rewards.map.length}
+    unlocked={rewards.unlocked}
+    variant={narrow ? "overlay" : "header"}
+    onJump={onSelectScene}
+    onDismiss={rewards.dismissUnlock}
+  />, [narrow, onSelectScene, rewards]);
+
+  const questMap = React.useMemo(() => <ClassroomQuestMap
+    map={rewards.map}
+    total={rewards.map.length}
+    level={rewards.level}
+    achievements={rewards.achievements}
+    chapterTitle={plan?.title || fallbackTitle || "课堂冒险"}
+    onJump={onSelectScene}
+  />, [fallbackTitle, onSelectScene, plan?.title, rewards]);
+
+  const whiteboardButton = React.useMemo(() => <button
+    type="button"
+    className="relative flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[10px] font-bold text-[#153B34] transition hover:bg-[#153B34]/[0.08] dark:text-[#F2F1E8] dark:hover:bg-white/10"
+    onClick={() => setWhiteboardOpen(true)}
+    aria-label="打开课堂白板"
+    data-testid="magicclass-open-whiteboard"
+  >
+    <PenLine className="h-3.5 w-3.5" />
+    白板
+    {whiteboard.elements.length ? <span className="rounded-full bg-[#AD6845] px-1.5 py-0.5 text-[9px] font-black text-[#FFF8EC]">{whiteboard.elements.length}</span> : null}
+  </button>, [whiteboard.elements.length]);
+
+  const classroomActions = React.useMemo(
+    () => <div className="flex min-w-0 items-center gap-2">{whiteboardButton}{gameHud}</div>,
+    [gameHud, whiteboardButton],
+  );
+
+  const sidebarProps = React.useMemo(
+    () => ({ headerSlot: sidebarHeader, gameSlot: questMap, renderSlideThumbnail }),
+    [questMap, renderSlideThumbnail, sidebarHeader],
+  );
 
   if (loading) {
     return <div className="magicclass-root flex-1 flex items-center justify-center bg-gray-50" aria-busy="true">
@@ -343,10 +479,14 @@ export default function MagicClassClassroomStage({
     data-presentation-mode={isPresenting ? "true" : "false"}
   >
     <MagicClassClassroomShell
-      title={plan?.title || fallbackTitle}
+      // 头栏的标签是「当前场景」，所以这里必须是当前页标题而不是整个舞台标题；
+      // 用 plan.title 会让翻页后正文先变、标题仍停在第一节（真实复现）。
+      title={current?.title || plan?.title || fallbackTitle}
+      eyebrow={`CHAPTER 01 · ${index + 1} / ${scenes.length}`}
       scenes={sidebarScenes}
       currentSceneId={currentId}
       onSelectScene={onSelectScene}
+      headerActions={narrow ? undefined : classroomActions}
       onPrevScene={onPrevScene}
       onNextScene={onNextScene}
       sidebarCollapsed={collapsed}
@@ -362,6 +502,7 @@ export default function MagicClassClassroomStage({
         type="button"
         variant="secondary"
         size="sm"
+        className="whitespace-nowrap shrink-0"
         data-testid="ow-classroom-back"
         onClick={onExit}
       >
@@ -395,8 +536,28 @@ export default function MagicClassClassroomStage({
         actionSession={actionSession}
         playbackNotice={playbackNotice}
         onToggleActionTimeline={toggleActionTimeline}
+        onOpenWhiteboard={narrow ? () => setWhiteboardOpen(true) : undefined}
+        rewards={rewards}
+        gameHud={narrow ? gameHud : null}
+        onSelectScene={onSelectScene}
+        classmates={classmates}
       />
     </MagicClassClassroomShell>
+    {isPresenting ? <button
+      type="button"
+      onClick={onTogglePresentation}
+      className="fixed right-4 top-4 z-[200] rounded-full border border-white/40 bg-[#153B34]/75 px-3 py-1.5 text-xs font-semibold text-[#FFF8EC] backdrop-blur transition-colors hover:bg-[#153B34] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#AD6845]"
+      aria-label="退出演示"
+    >
+      退出演示
+    </button> : null}
+    {whiteboardOpen ? <NativeWhiteboard
+      board={whiteboard}
+      revision={stageRevision}
+      title={current?.title || plan?.title || fallbackTitle}
+      onSave={saveWhiteboard}
+      onClose={() => setWhiteboardOpen(false)}
+    /> : null}
   </div>;
 }
 
@@ -428,6 +589,11 @@ function SceneStage({
   actionSession,
   playbackNotice,
   onToggleActionTimeline,
+  onOpenWhiteboard,
+  rewards,
+  gameHud,
+  onSelectScene,
+  classmates,
 }) {
   const title = outline?.title || "";
   const type = outline?.type || "unknown";
@@ -445,7 +611,15 @@ function SceneStage({
       <p>正在读取场景内容…</p>
     </div>;
   } else if (scene?.content?.type === "quiz" && scene.content.learningProfile === "assignment_review") {
-    body = <div className="assignment-practice-stage"><QuizRuntimePanel studentLed questions={scene.content.questions} sceneId={scene.id} courseId={courseId} workspaceId={workspaceId} stageId={stageId} /></div>;
+    body = <div className="assignment-practice-stage"><QuizRuntimePanel
+      studentLed
+      questions={scene.content.questions}
+      sceneId={scene.id}
+      courseId={courseId}
+      workspaceId={workspaceId}
+      stageId={stageId}
+      onGraded={(result) => rewards?.grade({ sceneId: scene.id, ...result })}
+    /></div>;
   } else if (isNativeSimulation) {
     body = <SimulationRuntimePanel content={scene.content} sceneId={scene.id} />;
   } else if (policy.allowIframe && (sandboxHtml || sandboxUrl)) {
@@ -461,20 +635,43 @@ function SceneStage({
   } else if (outline?.render?.kind === "unsupported") {
     body = <Fallback title={title} type={type} text={degradeNotice(outline)} />;
   } else if (scene) {
-    body = <MagicClassSceneRenderer scene={scene} mode="playback" />;
+    body = <MagicClassSceneRenderer
+      scene={scene}
+      mode="playback"
+      onQuizGraded={(payload) => rewards?.grade({ sceneId: scene.id, ...payload })}
+    />;
   } else {
     body = <Fallback title={title} type={type} text="只显示标题，不用占位内容冒充正文。" />;
   }
 
+  const currentProgress = rewards?.map?.find((item) => item.current);
   return <div className={cn(
     "relative w-full h-full flex flex-col",
-    // 逐字对齐参考 `canvas-area.tsx` 的根节点：浅色模式是 **gray-50**，不是深色。
-    // 写死深色会把 16:9 幻灯片包进一圈"影厅黑边"，与参考项目完全是两种观感。
-    "bg-gray-50 dark:bg-gray-900",
+    // 舞台底板：课堂不是一台“PPT 播放器”，画布外面也应该有场景感。
+    // 深色模式沿用原来的 gray-900，浅色模式换成 CampusMate 的暖纸色底板。
+    "campus-stage bg-[#E9E4D6] dark:bg-gray-900",
   )}>
+    {isPresenting ? null : <div className="campus-mission">
+      <div className="campus-mission__stage">
+        <span className="campus-mission__step">STAGE {String(index + 1).padStart(2, "0")}</span>
+        <strong>{title || "当前关卡"}</strong>
+      </div>
+      <p className="campus-mission__objective">
+        <span className="campus-mission__label">本关目标</span>
+        读懂本页重点，完成一次讲解或研讨
+      </p>
+      <div className="campus-mission__meta">
+        <span className={cn("campus-mission__state", currentProgress?.visited && "is-done")}>
+          {currentProgress?.visited ? "已探索" : "进行中"}
+        </span>
+        <span className="campus-mission__xp">+12 XP</span>
+      </div>
+    </div>}
     <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center">
       {body}
     </div>
+    {isPresenting || !classmates ? null : <NativeClassmates classmates={classmates} />}
+    {isPresenting || !gameHud ? null : gameHud}
     {isPresenting ? null : <MagicClassRoundtable
       toolbar={<SceneToolbar
         index={index}
@@ -487,6 +684,7 @@ function SceneStage({
         actionSession={actionSession}
         playbackNotice={playbackNotice}
         onToggleActionTimeline={onToggleActionTimeline}
+        onOpenWhiteboard={onOpenWhiteboard}
       />}
       messages={messages}
       busy={discussing}
@@ -522,10 +720,10 @@ function SceneStage({
  * 原因并可重试。参考项目的那个静音按钮依赖 TTS 播放计划，本仓库没有该运行时，
  * 所以这里用真实的 `<audio>` 元素而不是复刻一个假按钮。
  */
-function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext, narration, actionSession, playbackNotice, onToggleActionTimeline }) {
+function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev, onNext, narration, actionSession, playbackNotice, onToggleActionTimeline, onOpenWhiteboard }) {
   const empty = total === 0;
   return <div className={cn(
-    "shrink-0 h-9 px-2 flex items-center gap-2",
+    "shrink-0 h-9 px-2 flex items-center gap-2 max-sm:px-1 max-sm:gap-1",
     "bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl",
     "border-t border-gray-200/40 dark:border-gray-700/40",
   )}>
@@ -549,6 +747,15 @@ function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev,
       </span>
     </div>
 
+    {onOpenWhiteboard ? <button
+      type="button"
+      onClick={onOpenWhiteboard}
+      className={cn(ctrlBtn, "w-auto h-6 gap-1 px-1.5 max-sm:w-6 max-sm:px-0 whitespace-nowrap shrink-0 text-[10px] font-bold text-[#AD6845] dark:text-[#DAB27A]")}
+      aria-label="打开课堂白板"
+    >
+      <PenLine className="w-3.5 h-3.5" /><span className="max-sm:hidden">白板</span>
+    </button> : null}
+
     <NarrationControl narration={narration} />
 
     {onToggleActionTimeline ? <div className="flex items-center gap-1 min-w-0 shrink-0">
@@ -562,7 +769,7 @@ function SceneToolbar({ index, total, sidebarCollapsed, onToggleSidebar, onPrev,
       >
         {actionSession?.status === "playing" ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
       </button>
-      {playbackNotice ? <output className="text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-40" data-testid="magicclass-action-playback-status">
+      {playbackNotice ? <output className="max-sm:sr-only text-[10px] text-gray-400 dark:text-gray-500 truncate max-w-40 sm:max-w-96" data-testid="magicclass-action-playback-status">
         {playbackNotice}
       </output> : null}
     </div> : null}
@@ -613,7 +820,7 @@ function NarrationControl({ narration }) {
     {state === "checking" ? <span className="text-[11px] text-gray-400 dark:text-gray-500 select-none">正在检查讲解…</span> : null}
 
     {narration.ready && audioUrl ? <audio
-      className="h-7 max-w-[240px]"
+      className="h-7 w-[168px] max-w-[168px] sm:w-auto sm:max-w-[240px]"
       controls
       preload="none"
       src={audioUrl}
@@ -629,7 +836,7 @@ function NarrationControl({ narration }) {
     {canGenerateNarration({ state }) ? <button
       type="button"
       onClick={() => void generate()}
-      className={cn(ctrlBtn, "h-6 px-2 gap-1 text-[11px] text-gray-600 dark:text-gray-300")}
+      className={cn(ctrlBtn, "w-auto min-w-6 h-6 px-2 gap-1 whitespace-nowrap text-[11px] text-gray-600 dark:text-gray-300")}
       data-testid="narration-generate"
       title={state === "error" ? error || "重新生成这一页的讲解" : "为这一页生成讲解音频"}
     >
@@ -710,13 +917,25 @@ function indexScenesById(stageDocument) {
  * `SlideThumbnail`，本仓库没有该组件；画布盒由侧栏给出（aspect-video +
  * overflow-hidden），这里的 `h-full w-full` 让画布自行 contain 缩放并居中。
  *
- * 没有 `elements` 的历史画布返回 `null`：让移植层的占位分支接管，而不是画一块
- * 空白色矩形冒充缩略图。
+ * 没有 `elements` 的历史画布不能只画空白色矩形：这里用 CampusMate 迷你讲义
+ * 保留品牌与场景标题，让学生仍能辨认这一页。
  */
-const SlideThumbnail = React.memo(function SlideThumbnail({ canvas }) {
+const SlideThumbnail = React.memo(function SlideThumbnail({ canvas, sceneId, title }) {
   const elements = canvas && Array.isArray(canvas.elements) ? canvas.elements : null;
-  if (!elements || elements.length === 0) return null;
+  if (!elements || elements.length === 0) {
+    // 没有真实画布的历史讲义也必须给出可辨认的缩略图：空白灰块会让侧栏看起来
+    // 像没加载出来，和学生实际点击后看到的讲义对不上。
+    return <div className="flex h-full w-full flex-col justify-between overflow-hidden bg-[#F2F1E8] px-2 py-1.5" data-thumbnail-scene={sceneId || undefined}>
+      <span className="text-[7px] font-semibold tracking-[0.18em] text-[#AD6845]">CAMPUSMATE</span>
+      <strong className="line-clamp-2 text-[11px] font-bold leading-[1.3] text-[#153B34]">{title || "课堂讲义"}</strong>
+      <span className="h-[2px] w-5 rounded-full bg-[#DAB27A]" />
+    </div>;
+  }
   return <div className="h-full w-full">
-    <MagicClassSlideSurface canvas={canvas} effectsEnabled={false} />
+    <MagicClassSlideSurface
+      canvas={canvas}
+      effectsEnabled={false}
+      elementIdPrefix={`thumb-${sceneId || "scene"}-`}
+    />
   </div>;
 });

@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -54,7 +55,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.campusai.data.classroom.ClassroomCompositionText
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
+import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
+import com.example.campusai.ui.screens.courses.nativeplayer.NativeClassroomPlayer
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.ClassroomPhase
 import com.example.campusai.data.classroom.ClassroomProgressReducer
@@ -414,6 +420,18 @@ fun InteractiveClassroomSection(
     var uploadBusy by remember(course.id) { mutableStateOf(false) }
     var uploadMessage by remember(course.id) { mutableStateOf<String?>(null) }
     var viewerUrl by remember(course.id) { mutableStateOf<String?>(null) }
+    var classicRef by rememberSaveable(course.id) { mutableStateOf<NativeClassroomRef?>(null) }
+    fun openClassic(sessionId: String, fallback: String?) {
+        classicRef = NativeClassroomRef(
+            courseId = course.id,
+            workspaceId = "",
+            stageId = sessionId,
+            title = "互动课堂",
+            webFallbackUrl = fallback,
+            sessionId = sessionId,
+            source = NativeClassroomSource.COURSE_CLASSIC,
+        )
+    }
     DisposableEffect(viewModel) {
         viewModel.resumeObservationIfNeeded()
         onDispose { viewModel.stopObservation() }
@@ -484,13 +502,16 @@ fun InteractiveClassroomSection(
             }
         }
         if (canCreateClassroom) state.error?.let { Text(it, color = ColorError, fontSize = 11.sp) }
-        ProgressCard(state.progress, state.status, canRetry = canCreateClassroom, onRetry = viewModel::retry, onOpen = { viewerUrl = it })
+        ProgressCard(state.progress, state.status, canRetry = canCreateClassroom, onRetry = viewModel::retry, onOpen = { viewerUrl = it }, onOpenNative = { sessionId, fallback -> openClassic(sessionId, fallback) })
         if (state.progress.phase == ClassroomPhase.FAILED && state.progress.sessionId == null) {
             Text("返回设置并刷新历史课堂 ›", modifier = Modifier.clickable { viewModel.returnToSettings() }.padding(vertical = 8.dp),
                 color = ClassroomCopper, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
         state.composition?.let { CompositionCard(it) }
-        HistoryCard(state.history, state.status, onOpen = { viewerUrl = it })
+        HistoryCard(state.history, state.status, onOpen = { viewerUrl = it }, onOpenNative = { item, fallback ->
+            item.sessionId?.takeIf { it.isNotBlank() }?.let { openClassic(it, fallback) }
+        })
+        ManagedClassroomSection(course = course, repository = repository)
     }
     if (showMaterials) state.plan?.let { plan ->
         ClassroomMaterialLibrary(
@@ -546,6 +567,22 @@ fun InteractiveClassroomSection(
             },
             onDone = { showMaterials = false },
         )
+    }
+    classicRef?.let { ref ->
+        Dialog(
+            onDismissRequest = { classicRef = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+        ) {
+            NativeClassroomPlayer(
+                ref = ref,
+                repository = repository,
+                onClose = { classicRef = null },
+                onOpenFallback = {
+                    ref.webFallbackUrl?.let { viewerUrl = it }
+                    classicRef = null
+                },
+            )
+        }
     }
     viewerUrl?.let { ClassroomViewer(it, { viewerUrl = null }, repository) }
 }
@@ -617,6 +654,7 @@ private fun ProgressCard(
     canRetry: Boolean,
     onRetry: () -> Unit,
     onOpen: (String) -> Unit,
+    onOpenNative: (String, String?) -> Unit,
 ) {
     if (progress.phase == ClassroomPhase.IDLE) return
     Column(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -642,7 +680,20 @@ private fun ProgressCard(
             ClassroomUrlPolicy.sanitize(progress.openableUrl(), listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
         } else null
         if (progress.phase == ClassroomPhase.SUCCEEDED) {
-            if (safe != null) {
+            val sessionId = progress.sessionId
+            if (sessionId != null) {
+                androidx.compose.material3.Button(
+                    onClick = { onOpenNative(sessionId, safe) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = ClassroomCopper),
+                ) { Text("进入原生课堂", fontWeight = FontWeight.Bold) }
+                if (safe != null) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { onOpen(safe) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("网页兼容", fontSize = 11.sp) }
+                }
+            } else if (safe != null) {
                 androidx.compose.material3.Button(onClick = { onOpen(safe) }, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = ClassroomCopper)) { Text("进入课堂", fontWeight = FontWeight.Bold) }
             } else {
@@ -663,7 +714,12 @@ private fun CompositionCard(description: ClassroomCompositionText.Description) {
 }
 
 @Composable
-private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: InteractiveClassroomStatusDto?, onOpen: (String) -> Unit) {
+private fun HistoryCard(
+    items: List<InteractiveClassroomItemDto>,
+    status: InteractiveClassroomStatusDto?,
+    onOpen: (String) -> Unit,
+    onOpenNative: (InteractiveClassroomItemDto, String?) -> Unit,
+) {
     if (items.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         androidx.compose.material3.HorizontalDivider(color = ClassroomLine)
@@ -684,9 +740,17 @@ private fun HistoryCard(items: List<InteractiveClassroomItemDto>, status: Intera
                 val safe = if (status?.browserEmbedAvailable == true) {
                     ClassroomUrlPolicy.sanitize(item.url, listOf(status.embedOrigin), allowEmulatorDebug = BuildConfig.DEBUG)
                 } else null
-                if (safe != null) {
-                    Text("打开 ›", modifier = Modifier.clickable { onOpen(safe) }.padding(8.dp),
-                        color = ClassroomCopper, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                if (safe != null || !item.sessionId.isNullOrBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (!item.sessionId.isNullOrBlank()) {
+                            Text("原生 ›", modifier = Modifier.clickable { onOpenNative(item, safe) }.padding(8.dp),
+                                color = ClassroomCopper, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                        if (safe != null) {
+                            Text("网页 ›", modifier = Modifier.clickable { onOpen(safe) }.padding(8.dp),
+                                color = ClassroomCopper, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
                 } else {
                     Text(item.urlUnavailableReason ?: status?.browserEmbedReason ?: "当前无法打开", color = Muted, fontSize = 10.sp)
                 }

@@ -57,15 +57,19 @@ app/src/main/java/com/example/campusai/
 
 ## 互动课堂接入
 
-Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选择自定义主题、上传个人资料并生成课堂。课程接口保留状态、计划、生成、进度、历史、重试和内容组成；自主选题使用新增的五个 `/self-classroom` 接口，详见 [API 契约](../docs/api/14-magicclass.md#self-classroom)。课程已提取的个人上传资料可用于生成上下文，自定义资料按当前学生隔离，不混用其他课程资料。
+Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选择自定义主题、上传个人资料并生成课堂。课程接口保留状态、计划、生成、进度、历史、重试和内容组成。自主选题的资料、生成、进度和历史使用 [`/self-classroom` 接口](../docs/api/14-magicclass.md#self-classroom)。课程已提取的个人上传资料可用于生成上下文，自定义资料按当前学生隔离，不混用其他课程资料。
 
-课堂通过应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) WebView 展示，地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验：正式构建要求公开 HTTPS 与可信 Origin 精确匹配；调试例外仅限代码规定的模拟器本地课堂入口。WebView 展示不等于原生实现受管工作台编辑器；不能混用经典 session_id/classroom_id 与 workspace_id/stage_id/scene_id，也不能假定本站 JWT 自动成为独立应用的身份。共同课堂的课件共享与通话能力另见下文。
+课程经典、自主选题和受管工作台已接入原生播放入口，设备验证见[原生课堂审计](../docs/android-native-classroom-audit.md)。调试可使用[脱敏课堂联调服务器](../docs/api/integration.md#脱敏联调服务器真实上游不可用时)验证媒体和作答。
+
+仍需网页的课堂操作可从应用内 [ClassroomViewer](app/src/main/java/com/example/campusai/ui/screens/courses/ClassroomViewer.kt) 打开。地址和跳转须通过 [ClassroomUrlPolicy](app/src/main/java/com/example/campusai/data/remote/ClassroomUrlPolicy.kt) 校验。正式构建要求公开 HTTPS 与可信 Origin 精确匹配，调试例外限代码规定的本地课堂入口。经典播放使用 `session_id` 与 `classroom_id`，受管工作台通过 `workspace_id`、`stage_id` 和 `scene_id` 读取场景。编辑在有权限的工作台完成，独立课堂应用使用自身的认证。共同课堂的课件共享与通话能力另见下文。
+
+课堂内的 AI 同学沿用上游 `ClassmatePanes`（小圆/阿拓/小满/阿哲的换页发言、沉默、点名与预算）；`ClassroomViewer` 另注入 `campusmate:classroom-rewards:v1` 进度 HUD，按翻页累计 XP、等级、连击与成就，不依赖本站 JWT。该 HUD 与 Web 原生课堂同一套规则，但 Android 原生编译尚未在本机验证，不能据此宣称真机通过。
 
 ### 多人共同课堂
 
 “课程 → 同学一起学”进入原生课堂列表，支持创建讨论课堂、显示/复制本人 UID、发起人邀请、接受/拒绝邀请、课堂文字讨论和最多 8 人的 RTC 音视频。可加入已有 Web 课件课堂的通话；Android 目前显示共享页码与发起人翻页按钮，完整课件内容仍需 Web 学习空间。实现见 `data/remote/LearningRoomApi.kt`、`data/classroom/ClassroomCall.kt` 和 `ui/screens/classroom/`。
 
-自习室也提供进入共同课堂的入口，但共同课堂尚无多人同步计时或共同专注记录。消息发送结果不确定时，页面保留原消息及幂等 ID，允许重试或确认放弃；这份待重试状态目前只保存在页面 ViewModel 内存中，应用进程结束后不能恢复。返回课堂列表后重新进入同一课堂仍可重试；登录凭证变化（包括自动刷新）会断开通话并清除待重试状态，应先检查消息记录再重发。客户端只显示最近 300 条已拉取消息，服务端增量分页不受该本地展示上限影响。
+课堂内提供专注监督：进入课堂后每 15 秒同步一次粗粒度在线心跳；用户可选开启摄像头端侧观察，只上报“专注/可能分心/明显分心/离开”，不上传画面、人脸或音频；发起人可查看成员状态并发送老师提醒，学生端在麦克风关闭时用系统 TTS 朗读私人提醒，避免经 RTC 传给其他同学。共同课堂仍无多人同步计时或历史专注记录。消息发送结果不确定时，页面保留原消息及幂等 ID，允许重试或确认放弃；这份待重试状态目前只保存在页面 ViewModel 内存中，应用进程结束后不能恢复。返回课堂列表后重新进入同一课堂仍可重试；登录凭证变化（包括自动刷新）会断开通话并清除待重试状态，应先检查消息记录再重发。客户端只显示最近 300 条已拉取消息，服务端增量分页不受该本地展示上限影响。
 
 后端必须配置 `VOLC_RTC_APP_ID`、`VOLC_RTC_APP_KEY` 并开通火山 RTC；客户端仅领取短期 Token，不包含 AppKey。按[音视频协议](../docs/api/14-magicclass.md#classroom-rtc)接入。默认入会关闭麦克风/摄像头，分别授权后开启；拒绝一项权限仍可使用另一项。后台通过可见通知的前台服务保持语音、停止摄像头，返回前台需手动重新开摄像头；通知可直接断开通话。Token 每 60 秒续期，到期前提醒也会触发续期，网络失败有界退避，到期停止通话。
 
@@ -91,7 +95,7 @@ CPM 与共同课堂文字输入框复用 `SpeechInputButton`，将单声道 16kH
 
 | 配置 | 值 |
 |------|-----|
-| compileSdk | 34 |
+| compileSdk | 35 |
 | minSdk | 28 |
 | targetSdk | 34 |
 | JVM Target | 17 |
@@ -100,14 +104,14 @@ CPM 与共同课堂文字输入框复用 `SpeechInputButton`，将单声道 16kH
 
 ### 构建命令
 
-从仓库根目录设置项目约定的本地 JDK 21 后再执行任何 Gradle/JVM 命令。`android/.tools/` 被 Git 忽略，不随源码分发；若本地不存在该 JDK，应停止 JVM 操作：
+Gradle/JVM 命令使用开发机已安装的 JDK 21。优先使用 `JAVA_HOME` 指向的 JDK；未设置时使用系统 `java`。执行前确认 `java -version` 为 21.x，并确保 `JAVA_HOME` 与 `PATH` 指向同一套 JDK：
 
 ```powershell
-$repoRoot = (git rev-parse --show-toplevel).Trim()
-$env:JAVA_HOME = Join-Path $repoRoot 'android\.tools\jdk21-full\jdk-21.0.12+8'
-if (-not (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME 'bin\java.exe'))) { throw '项目约定的本地 JDK 21 不存在，停止 JVM 操作' }
+if (-not $env:JAVA_HOME) { throw '未设置 JAVA_HOME，请指向本机 JDK 21' }
+$java = Join-Path $env:JAVA_HOME 'bin\java.exe'
+if (-not (Test-Path -LiteralPath $java)) { throw 'JAVA_HOME 下找不到 java.exe' }
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
-& "$env:JAVA_HOME\bin\java.exe" -version
+& $java -version
 ```
 
 ```powershell
@@ -136,7 +140,9 @@ Set-Location (Join-Path $repoRoot 'android')
 
 ## Focus 架构与生命周期
 
-`ExpressionSessionManager` 是 Activity-owned 的专注会话协调器。表情识别与行为识别共用一条 `FocusCameraPipeline`，不为行为识别启动第二个摄像头。CameraX 只有在“辅助开启 + 摄像头权限 + 计时运行 + 页面可见 + App 在前台”且模式为 `FOCUS` 时运行；暂停、离开页面或生命周期结束时会解绑/暂停 camera use case。
+`ExpressionSessionManager` 是 Activity-owned 的专注会话协调器。表情识别与行为识别共用一条 `FocusCameraPipeline`，不为行为识别启动第二个摄像头。CameraX 只有在“辅助开启 + 摄像头权限 + 计时运行 + 页面可见 + App 在前台”且模式为 `FOCUS` 时运行；暂停、离开页面或生命周期结束时会解绑/暂停 camera use case。共同课堂复用同一条相机与模型链路，但使用独立的课堂门槛，且不会与专注页同时运行。
+
+专注页会把端侧已有行为/在席/表情观察翻译成“小伴老师”提醒：异常需持续数秒才出现，同类 3 分钟冷却、全局 45 秒冷却、每堂最多 8 次；恢复学习后给一次表扬。`SMART_GUARD` 模式下默认用系统 TTS 朗读，提醒卡也可关闭语音。该提醒只描述可观察行为，不作为专注度评分、心理判断或学习效果结论。
 
 `attachLifecycle` / `detachLifecycle` 与 `attachPreview` / `detachPreview` 分别管理生命周期和预览；`release()` 会取消结果、状态和行为 collector jobs，解绑并释放 CameraX pipeline、行为 analyzer、表情服务和模型资源。
 
@@ -230,7 +236,7 @@ Debug 构建可在专注页的开发者工具中采集 `idle` 与 `visible_study
 ## 运行要求
 
 - Android Studio Hedgehog (2023.1.1) 或更高版本
-- JDK 21（项目使用 `android/.tools/jdk21-full/jdk-21.0.12+8`；JVM target 仍为 17）
+- JDK 21（使用开发机 JDK；JVM target 仍为 17）
 - Android SDK 34
 - 模拟器或 Android 8.0+ 真机
 

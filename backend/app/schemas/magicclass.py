@@ -1,7 +1,7 @@
 """互动课堂(magic class 适配层)API schema。"""
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -297,6 +297,123 @@ class MagicClassClassroomsOut(BaseModel):
     items: List[MagicClassClassroomOut] = Field(default_factory=list)
 
 
+
+# ===== 经典课堂原生播放契约（Android / iOS 共用）=====
+
+
+class ClassroomPlaybackMediaOut(BaseModel):
+    """单个可播放媒体引用。
+
+    `url` 是本站相对地址，客户端按自己的 API Base 拼接；`available=false`
+    时客户端不得猜测上游地址，只能展示 `reason` 或走兼容入口。
+    """
+
+    id: str
+    kind: str
+    role: str
+    element_id: Optional[str] = None
+    content_type: str
+    url: Optional[str] = None
+    available: bool
+    reason: Optional[str] = None
+
+
+class ClassroomPlaybackRenderOut(BaseModel):
+    """场景渲染判据。`kind` 是客户端唯一需要分支的字段。"""
+
+    kind: str
+    sandbox: Optional[str] = None
+    widget_type: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class ClassroomPlaybackActionOut(BaseModel):
+    """原动作 + 原生可执行性。`payload` 保留原动作其余字段。"""
+
+    id: str
+    type: str
+    mode: str
+    supported: bool
+    reason: Optional[str] = None
+    payload: Dict[str, Any]
+
+
+class ClassroomPlaybackStepOut(BaseModel):
+    action_id: str
+    type: str
+    mode: str
+
+
+class ClassroomPlaybackDroppedActionOut(BaseModel):
+    action_id: str
+    type: str
+    reason: str
+
+
+class ClassroomPlaybackSceneOut(BaseModel):
+    id: str
+    source_index: int
+    type: str
+    title: str
+    order: int
+    content: Optional[Dict[str, Any]] = None
+    render: ClassroomPlaybackRenderOut
+    actions: List[ClassroomPlaybackActionOut]
+    steps: List[ClassroomPlaybackStepOut]
+    dropped_actions: List[ClassroomPlaybackDroppedActionOut]
+    media: List[ClassroomPlaybackMediaOut]
+    whiteboards: int
+    multi_agent: bool
+    warnings: List[str]
+
+
+class ClassroomPlaybackWarningOut(BaseModel):
+    code: str
+    message: str
+    scene_id: Optional[str] = None
+
+
+class ClassroomPlaybackDegradedOut(BaseModel):
+    scene_id: str
+    reason: str
+
+
+class ClassroomPlaybackNativeOut(BaseModel):
+    available: bool
+    reason: Optional[str] = None
+    supported_scene_count: int
+    unsupported_scene_count: int
+
+
+class ClassroomPlaybackCompatOut(BaseModel):
+    browser_embed_available: bool
+    browser_embed_reason: Optional[str] = None
+    url: Optional[str] = None
+    url_unavailable_reason: Optional[str] = None
+    recommended: str
+    reason: Optional[str] = None
+
+
+class ClassroomPlaybackOut(BaseModel):
+    contract_version: str
+    course_id: str
+    session_id: str
+    classroom_id: str
+    content_version: str
+    document_updated_at: Optional[str] = None
+    generated_at: str
+    title: str
+    mode: str
+    partial: bool
+    scenes_count: int
+    source_scenes_count: int
+    start_index: int
+    scenes: List[ClassroomPlaybackSceneOut]
+    degraded: List[ClassroomPlaybackDegradedOut]
+    warnings: List[ClassroomPlaybackWarningOut]
+    native: ClassroomPlaybackNativeOut
+    compat: ClassroomPlaybackCompatOut
+
 __all__ = [
     "MagicClassGenerateRequest",
     "MagicClassStatusOut",
@@ -309,6 +426,17 @@ __all__ = [
     "MagicClassCompositionOut",
     "MagicClassSceneCountOut",
     "MagicClassWidgetCountOut",
+    "ClassroomPlaybackMediaOut",
+    "ClassroomPlaybackRenderOut",
+    "ClassroomPlaybackActionOut",
+    "ClassroomPlaybackStepOut",
+    "ClassroomPlaybackDroppedActionOut",
+    "ClassroomPlaybackSceneOut",
+    "ClassroomPlaybackWarningOut",
+    "ClassroomPlaybackDegradedOut",
+    "ClassroomPlaybackNativeOut",
+    "ClassroomPlaybackCompatOut",
+    "ClassroomPlaybackOut",
     "MODE_INTENT_LABELS",
     "VALID_MODES",
     "VALID_DIFFICULTY_LEVELS",

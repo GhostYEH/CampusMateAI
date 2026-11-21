@@ -711,6 +711,24 @@
     "retry": "やり直す"
   },
   "roundtable": {
+    "classmates": {
+      "ask": "質問する",
+      "askSubmit": "送信",
+      "askPlaceholder": "このクラスメートに質問…",
+      "askLoading": "回答中…",
+      "askError": "クラスメートが答えられませんでした。もう一度お試しください。",
+      "quiet": "今回は聞いておくね",
+      "budget": "この授業のクラスメート発言枠を使い切ました",
+      "title": "クラスメート",
+      "style": "クラスメートの視点",
+      "speaking": "発言中",
+      "previous": "前のクラスメート",
+      "next": "次のクラスメート",
+      "discussionPending": "ディスカッション待ち",
+      "loading": "発言を準備中…",
+      "idle": "この授業を聞いています",
+      "error": "クラスメートのコメントを読み込めませんでした"
+    },
     "teacher": "教師",
     "you": "あなた",
     "inputPlaceholder": "メッセージを入力...",

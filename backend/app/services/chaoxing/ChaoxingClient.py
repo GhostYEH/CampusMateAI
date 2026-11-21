@@ -1248,12 +1248,23 @@ class ChaoxingClient:
             if not items:
                 items = soup.select(".work-item, li, tr")
             for item in items:
-                work_url = str(item.get("data") or "")
+                work_url = str(
+                    item.get("data")
+                    or item.get("data-url")
+                    or item.get("href")
+                    or ""
+                )
                 link_elem = item.select_one("a[href]")
                 if not work_url and link_elem:
-                    work_url = urllib.parse.urljoin(
-                        "https://mooc2-ans.chaoxing.com", str(link_elem.get("href") or "")
-                    )
+                    work_url = str(link_elem.get("href") or "")
+                if work_url:
+                    # Feed entries can use a site-relative /task or /work URL.
+                    # Normalize once against the actual feed page so the content
+                    # fetcher sees an absolute URL that can pass validate_work_url.
+                    feed_base = str(getattr(response, "url", "") or feed_url)
+                    if not feed_base.startswith("http"):
+                        feed_base = feed_url
+                    work_url = urllib.parse.urljoin(feed_base, work_url)
                 query = urllib.parse.parse_qs(urllib.parse.urlparse(work_url).query)
                 item_course_id = _identifier(
                     *(query.get("courseId") or query.get("courseid") or []), course_id

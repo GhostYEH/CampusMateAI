@@ -629,6 +629,274 @@ data class CourseContentSyncResponseDto(
 
 data class CourseResourceOpenDto(val url: String? = null, val mode: String? = null)
 
+// ── 学习通作业复习（题干快照、逐题批改、全部/错题课堂）──
+data class ChaoxingAssignmentQuestionDto(
+    @Json(name = "number") val number: Int,
+    @Json(name = "stem") val stem: String,
+    @Json(name = "options") val options: List<String> = emptyList(),
+    /** true=答对，false=答错，null=尚未取得该题批改结果；不含学生原始作答。 */
+    @Json(name = "is_correct") val isCorrect: Boolean? = null,
+)
+
+data class ChaoxingAssignmentContentDto(
+    @Json(name = "task_id") val taskId: String,
+    @Json(name = "course_id") val courseId: String? = null,
+    @Json(name = "status") val status: String = "",
+    @Json(name = "available") val available: Boolean = false,
+    @Json(name = "current") val current: Boolean = false,
+    @Json(name = "can_generate") val canGenerate: Boolean = false,
+    @Json(name = "can_generate_wrong") val canGenerateWrong: Boolean = false,
+    @Json(name = "results_available") val resultsAvailable: Boolean = false,
+    @Json(name = "results_complete") val resultsComplete: Boolean = false,
+    @Json(name = "graded_count") val gradedCount: Int = 0,
+    @Json(name = "wrong_count") val wrongCount: Int = 0,
+    @Json(name = "fetched_at") val fetchedAt: String? = null,
+    @Json(name = "questions") val questions: List<ChaoxingAssignmentQuestionDto> = emptyList(),
+)
+
+data class ChaoxingReviewRequest(
+    @Json(name = "scope") val scope: String = "all",
+)
+
+data class MagicClassGenerationJobDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "status") val status: String = "queued",
+    @Json(name = "progress") val progress: Int = 0,
+    @Json(name = "artifact_id") val artifactId: String? = null,
+    @Json(name = "mode") val mode: String? = null,
+    @Json(name = "error_code") val errorCode: String? = null,
+)
+
+data class MagicClassWorkspaceStageSummaryDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "workspace_id") val workspaceId: String? = null,
+    @Json(name = "course_id") val courseId: String? = null,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "revision") val revision: Int = 0,
+    @Json(name = "dsl_version") val dslVersion: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+)
+
+data class MagicClassWorkspaceStageListDto(
+    @Json(name = "items") val items: List<MagicClassWorkspaceStageSummaryDto> = emptyList(),
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+)
+
+data class MagicClassWorkspaceStageDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "workspace_id") val workspaceId: String? = null,
+    @Json(name = "course_id") val courseId: String? = null,
+    @Json(name = "title") val title: String? = null,
+    @Json(name = "revision") val revision: Int = 0,
+    @Json(name = "dsl_version") val dslVersion: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+    @Json(name = "document") val document: Map<String, Any?>? = null,
+)
+
+data class MagicClassWorkspaceDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "course_id") val courseId: String = "",
+    @Json(name = "name") val name: String = "",
+    @Json(name = "description") val description: String = "",
+    @Json(name = "folder_id") val folderId: String? = null,
+    @Json(name = "revision") val revision: Int = 0,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+)
+
+data class MagicClassWorkspaceListDto(
+    @Json(name = "items") val items: List<MagicClassWorkspaceDto> = emptyList(),
+    @Json(name = "next_cursor") val nextCursor: String? = null,
+)
+
+data class MagicClassScenePlaybackDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "type") val type: String = "unknown",
+    @Json(name = "title") val title: String = "",
+    @Json(name = "order") val order: Int = 0,
+    @Json(name = "render") val render: Map<String, Any?> = emptyMap(),
+    @Json(name = "steps") val steps: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "dropped_actions") val droppedActions: List<Any?> = emptyList(),
+    @Json(name = "whiteboards") val whiteboards: Int = 0,
+    @Json(name = "multi_agent") val multiAgent: Boolean = false,
+)
+
+data class MagicClassStagePlaybackDto(
+    @Json(name = "stage_id") val stageId: String,
+    @Json(name = "workspace_id") val workspaceId: String,
+    @Json(name = "title") val title: String = "",
+    @Json(name = "revision") val revision: Int = 0,
+    @Json(name = "dsl_version") val dslVersion: String? = null,
+    @Json(name = "start_index") val startIndex: Int = 0,
+    @Json(name = "scenes") val scenes: List<MagicClassScenePlaybackDto> = emptyList(),
+    @Json(name = "degraded") val degraded: List<Map<String, Any?>> = emptyList(),
+)
+
+/** 经典课堂（course session）与自主选题课堂共用的只读播放契约。 */
+data class ClassroomPlaybackDto(
+    @Json(name = "contract_version") val contractVersion: String = "",
+    @Json(name = "course_id") val courseId: String = "",
+    @Json(name = "session_id") val sessionId: String = "",
+    @Json(name = "classroom_id") val classroomId: String = "",
+    @Json(name = "content_version") val contentVersion: String = "",
+    @Json(name = "document_updated_at") val documentUpdatedAt: String? = null,
+    @Json(name = "generated_at") val generatedAt: String = "",
+    @Json(name = "title") val title: String = "",
+    @Json(name = "mode") val mode: String = "",
+    @Json(name = "partial") val partial: Boolean = false,
+    @Json(name = "scenes_count") val scenesCount: Int = 0,
+    @Json(name = "source_scenes_count") val sourceScenesCount: Int = 0,
+    @Json(name = "start_index") val startIndex: Int = 0,
+    @Json(name = "scenes") val scenes: List<ClassroomPlaybackSceneDto> = emptyList(),
+    @Json(name = "degraded") val degraded: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "warnings") val warnings: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "native") val native: ClassroomPlaybackNativeDto? = null,
+    @Json(name = "compat") val compat: ClassroomPlaybackCompatDto? = null,
+)
+
+data class ClassroomPlaybackSceneDto(
+    @Json(name = "id") val id: String = "",
+    @Json(name = "source_index") val sourceIndex: Int = 0,
+    @Json(name = "type") val type: String = "unknown",
+    @Json(name = "title") val title: String = "",
+    @Json(name = "order") val order: Int = 0,
+    @Json(name = "content") val content: Map<String, Any?>? = null,
+    @Json(name = "render") val render: Map<String, Any?> = emptyMap(),
+    @Json(name = "actions") val actions: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "steps") val steps: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "dropped_actions") val droppedActions: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "media") val media: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "whiteboards") val whiteboards: Int = 0,
+    @Json(name = "multi_agent") val multiAgent: Boolean = false,
+    @Json(name = "warnings") val warnings: List<String> = emptyList(),
+)
+
+data class ClassroomPlaybackNativeDto(
+    @Json(name = "available") val available: Boolean = false,
+    @Json(name = "reason") val reason: String? = null,
+    @Json(name = "supported_scene_count") val supportedSceneCount: Int = 0,
+    @Json(name = "unsupported_scene_count") val unsupportedSceneCount: Int = 0,
+)
+
+data class ClassroomPlaybackCompatDto(
+    @Json(name = "browser_embed_available") val browserEmbedAvailable: Boolean = false,
+    @Json(name = "browser_embed_reason") val browserEmbedReason: String? = null,
+    @Json(name = "url") val url: String? = null,
+    @Json(name = "url_unavailable_reason") val urlUnavailableReason: String? = null,
+    @Json(name = "recommended") val recommended: String = "",
+    @Json(name = "reason") val reason: String? = null,
+)
+
+data class MagicClassQuizAttemptStateDto(
+    @Json(name = "session_id") val sessionId: String? = null,
+    @Json(name = "phase") val phase: String = "draft",
+    @Json(name = "answers") val answers: Map<String, Any?> = emptyMap(),
+    @Json(name = "results") val results: List<Map<String, Any?>> = emptyList(),
+)
+
+data class MagicClassQuizAttemptResponseDto(
+    @Json(name = "attempt_id") val attemptId: String? = null,
+    @Json(name = "state") val state: MagicClassQuizAttemptStateDto? = null,
+)
+
+data class MagicClassQuizAttemptRequest(
+    @Json(name = "attempt_id") val attemptId: String? = null,
+    @Json(name = "phase") val phase: String,
+    @Json(name = "answers") val answers: Map<String, Any?> = emptyMap(),
+    @Json(name = "results") val results: List<Map<String, Any?>> = emptyList(),
+    @Json(name = "start_new_attempt") val startNewAttempt: Boolean = false,
+)
+
+data class MagicClassNarrationDto(
+    @Json(name = "scene_id") val sceneId: String? = null,
+    @Json(name = "stage_id") val stageId: String? = null,
+    @Json(name = "available") val available: Boolean = false,
+    @Json(name = "has_script") val hasScript: Boolean = false,
+    @Json(name = "script_chars") val scriptChars: Int = 0,
+    @Json(name = "truncated") val truncated: Boolean = false,
+    @Json(name = "stale") val stale: Boolean = false,
+    @Json(name = "reuse") val reuse: Boolean = false,
+    @Json(name = "job") val job: MagicClassGenerationJobDto? = null,
+    @Json(name = "message") val message: String? = null,
+)
+
+data class MagicClassClassmateDto(
+    @Json(name = "id") val id: String,
+    @Json(name = "name") val name: String,
+    @Json(name = "role") val role: String = "peer",
+    @Json(name = "persona") val persona: String = "",
+)
+
+data class MagicClassClassmateRosterDto(
+    @Json(name = "items") val items: List<MagicClassClassmateDto> = emptyList(),
+)
+
+data class MagicClassClassmateMessageDto(
+    @Json(name = "agentId") val agentId: String = "",
+    @Json(name = "text") val text: String = "",
+)
+
+data class MagicClassClassmateRespondDto(
+    val success: Boolean = true,
+    val messages: List<MagicClassClassmateMessageDto> = emptyList(),
+)
+
+data class MagicClassClassmateAnswerDto(
+    val success: Boolean = true,
+    val message: MagicClassClassmateMessageDto? = null,
+)
+
+data class MagicClassClassmateLineDto(
+    @Json(name = "agentId") val agentId: String,
+    val text: String,
+)
+
+data class MagicClassClassmateMemoryDto(
+    val pages: List<String> = emptyList(),
+    val lines: List<MagicClassClassmateLineDto> = emptyList(),
+    @Json(name = "recentAgentIds") val recentAgentIds: List<String> = emptyList(),
+)
+
+data class MagicClassClassmateSceneDto(
+    val id: String,
+    val title: String,
+    val type: String,
+    val content: Map<String, Any?> = emptyMap(),
+    val actions: List<Map<String, Any?>> = emptyList(),
+)
+
+data class MagicClassClassmateRespondRequest(
+    @Json(name = "course_id") val courseId: String,
+    val scene: MagicClassClassmateSceneDto,
+    val memory: MagicClassClassmateMemoryDto? = null,
+    val language: String? = null,
+)
+
+data class MagicClassClassmateAskRequest(
+    @Json(name = "course_id") val courseId: String,
+    val scene: MagicClassClassmateSceneDto,
+    val memory: MagicClassClassmateMemoryDto? = null,
+    val language: String? = null,
+    @Json(name = "agentId") val agentId: String,
+    val question: String,
+)
+
+
+data class ChaoxingReviewResponseDto(
+    @Json(name = "task_id") val taskId: String,
+    @Json(name = "course_id") val courseId: String,
+    @Json(name = "workspace_id") val workspaceId: String,
+    @Json(name = "scope") val scope: String = "all",
+    @Json(name = "question_count") val questionCount: Int = 0,
+    @Json(name = "source") val source: String? = null,
+    @Json(name = "job_id") val jobId: String? = null,
+    @Json(name = "job") val job: MagicClassGenerationJobDto,
+    @Json(name = "stage_id") val stageId: String? = null,
+    @Json(name = "stage") val stage: MagicClassWorkspaceStageDto? = null,
+)
+
 // ── 交互课堂（生成与运行都经 CampusMate 后端；客户端绝不持有 magic class 凭据）──
 //
 // 注意：DTO 里**永远**不出现 ACCESS_CODE / Cookie / Token / Provider Key。
@@ -1220,6 +1488,160 @@ interface ApiService {
 
     @GET("chaoxing/status")
     suspend fun getChaoxingStatus(): Response<ChaoxingSyncStatusResponse>
+
+    /** 作业题干、选项与逐题批改结果；只读，不触发外部抓取。 */
+    @GET("chaoxing/assignments/{taskId}/content")
+    suspend fun getChaoxingAssignmentContent(
+        @Path("taskId") taskId: String,
+    ): Response<ChaoxingAssignmentContentDto>
+
+    /** `scope=wrong` 只覆盖明确批错的题，课堂只出变式；`all` 覆盖全部题目。 */
+    @POST("chaoxing/assignments/{taskId}/classroom")
+    suspend fun generateChaoxingAssignmentReview(
+        @Path("taskId") taskId: String,
+        @Body body: ChaoxingReviewRequest,
+    ): Response<ChaoxingReviewResponseDto>
+
+    @GET("courses/{courseId}/jobs/{jobId}")
+    suspend fun getMagicClassGenerationJob(
+        @Path("courseId") courseId: String,
+        @Path("jobId") jobId: String,
+    ): Response<MagicClassGenerationJobDto>
+
+    @POST("courses/{courseId}/jobs/{jobId}/retry")
+    suspend fun retryMagicClassGenerationJob(
+        @Path("courseId") courseId: String,
+        @Path("jobId") jobId: String,
+    ): Response<MagicClassGenerationJobDto>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages")
+    suspend fun listMagicClassStages(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Query("limit") limit: Int = 50,
+    ): Response<MagicClassWorkspaceStageListDto>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}")
+    suspend fun getMagicClassStage(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+    ): Response<MagicClassWorkspaceStageDto>
+
+    @GET("courses/{courseId}/workspaces")
+    suspend fun listMagicClassWorkspaces(
+        @Path("courseId") courseId: String,
+        @Query("limit") limit: Int = 20,
+        @Query("cursor") cursor: String? = null,
+    ): Response<MagicClassWorkspaceListDto>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/playback")
+    suspend fun getMagicClassStagePlayback(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Query("scene_id") sceneId: String? = null,
+    ): Response<MagicClassStagePlaybackDto>
+
+    @GET("courses/{courseId}/interactive-classroom/{sessionId}/playback")
+    suspend fun getCourseClassroomPlayback(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+        @Query("scene_id") sceneId: String? = null,
+    ): Response<ClassroomPlaybackDto>
+
+    @GET("self-classroom/{sessionId}/playback")
+    suspend fun getSelfClassroomPlayback(
+        @Path("sessionId") sessionId: String,
+        @Query("scene_id") sceneId: String? = null,
+    ): Response<ClassroomPlaybackDto>
+
+    @GET("courses/{courseId}/interactive-classroom/{sessionId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun getCourseClassroomQuizAttempt(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+        @Path("sceneId") sceneId: String,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @POST("courses/{courseId}/interactive-classroom/{sessionId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun saveCourseClassroomQuizAttempt(
+        @Path("courseId") courseId: String,
+        @Path("sessionId") sessionId: String,
+        @Path("sceneId") sceneId: String,
+        @Body body: MagicClassQuizAttemptRequest,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @GET("self-classroom/{sessionId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun getSelfClassroomQuizAttempt(
+        @Path("sessionId") sessionId: String,
+        @Path("sceneId") sceneId: String,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @POST("self-classroom/{sessionId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun saveSelfClassroomQuizAttempt(
+        @Path("sessionId") sessionId: String,
+        @Path("sceneId") sceneId: String,
+        @Body body: MagicClassQuizAttemptRequest,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}")
+    suspend fun getMagicClassScene(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Path("sceneId") sceneId: String,
+    ): Response<Map<String, Any?>>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration")
+    suspend fun getMagicClassSceneNarration(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Path("sceneId") sceneId: String,
+    ): Response<MagicClassNarrationDto>
+
+    @POST("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/narration")
+    suspend fun synthesizeMagicClassSceneNarration(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Path("sceneId") sceneId: String,
+        @Header("Idempotency-Key") idempotencyKey: String,
+        @Body body: Map<String, String>,
+    ): Response<MagicClassNarrationDto>
+
+    @GET("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun getMagicClassQuizAttempt(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Path("sceneId") sceneId: String,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @POST("courses/{courseId}/workspaces/{workspaceId}/stages/{stageId}/scenes/{sceneId}/quiz-attempt")
+    suspend fun saveMagicClassQuizAttempt(
+        @Path("courseId") courseId: String,
+        @Path("workspaceId") workspaceId: String,
+        @Path("stageId") stageId: String,
+        @Path("sceneId") sceneId: String,
+        @Body body: MagicClassQuizAttemptRequest,
+    ): Response<MagicClassQuizAttemptResponseDto>
+
+    @Streaming
+    @GET("courses/{courseId}/artifacts/{artifactId}")
+    suspend fun downloadMagicClassArtifact(
+        @Path("courseId") courseId: String,
+        @Path("artifactId") artifactId: String,
+    ): Response<ResponseBody>
+
+    @GET("magicclass/classmates/roster")
+    suspend fun getClassmateRoster(): Response<MagicClassClassmateRosterDto>
+
+    @POST("magicclass/classmates/respond")
+    suspend fun classmatesRespond(@Body body: MagicClassClassmateRespondRequest): Response<MagicClassClassmateRespondDto>
+
+    @POST("magicclass/classmates/ask")
+    suspend fun classmatesAsk(@Body body: MagicClassClassmateAskRequest): Response<MagicClassClassmateAnswerDto>
 
     // 校园通知列表（聚合学生可见班级的已发布通知）
     @GET("notices")

@@ -261,7 +261,9 @@ export default function WorkspacePanel({
       let job = queued.job || null;
       const jobId = queued.job_id || job?.id;
       if (!jobId) throw new Error("受管服务未返回视频导出任务");
-      while (job && ["queued", "running"].includes(job.status)) {
+      // `202 Accepted` 只保证有 job_id，不保证同一个响应里带 job 快照。
+      // 旧实现遇到 `{job_id}` 会跳过轮询并直接报“视频导出失败”，但任务其实已经入队。
+      while (!job || ["queued", "running"].includes(job.status)) {
         if (Date.now() >= deadline) throw new Error("视频导出超时");
         await new Promise((resolve) => {
           videoWaitResolve.current = resolve;

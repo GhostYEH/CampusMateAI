@@ -38,4 +38,4 @@ The gamified screen is a keyed `LazyColumn` with Player Header, Daily Adventure,
 
 ## Verification
 
-Pure JVM tests cover `DashboardStyle`, level boundaries, XP event identity and reconciliation, daily rewards, streaks, achievements, and UI-state mapping for empty/exam/data states. Build verification uses the repository-bundled JDK 21.0.12 and `:app:testDebugUnitTest` plus `:app:assembleDebug`. Two unrelated baseline test failures are recorded before implementation and are not part of this change.
+Pure JVM tests cover `DashboardStyle`, level boundaries, XP event identity and reconciliation, daily rewards, streaks, achievements, and UI-state mapping for empty/exam/data states. Build verification uses the developer machine JDK 21 and `:app:testDebugUnitTest` plus `:app:assembleDebug`. Two unrelated baseline test failures are recorded before implementation and are not part of this change.
