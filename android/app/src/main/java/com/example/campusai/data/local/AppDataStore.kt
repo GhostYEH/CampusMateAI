@@ -248,6 +248,17 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
         context.dataStore.edit { prefs -> prefs[prefKey] = value }
     }
 
+    /**
+     * 进入 DataStore 串行事务后再做最终代次校验；校验通过后立即赋值，中间没有挂起点。
+     * 这样旧协程即使已经通过调度检查，也无法在新快照落盘后覆盖它。
+     */
+    override suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean) {
+        val prefKey = stringPreferencesKey("campus_module_v1_$key")
+        context.dataStore.edit { prefs ->
+            if (shouldWrite()) prefs[prefKey] = value
+        }
+    }
+
     override fun observePersonalHub(accountKey: String): Flow<PersonalHubSnapshot?> {
         val key = stringPreferencesKey("campus_personal_hub_v1_$accountKey")
         return context.dataStore.data.map { prefs ->

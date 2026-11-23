@@ -508,28 +508,36 @@ class NativeClassroomViewModel(
         val saveRewards = rewardsWritable && (rewards.visited.isNotEmpty() || rewards.xp > 0)
         val writes = buildList {
             if (position != null) {
+                val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
                 add(
                     ClassroomStateWrite(
                         key = positionWriteKey,
                         label = "position",
-                        grant = ClassroomLocalWriteGate.grant(positionWriteKey),
+                        grant = grant,
                         save = {
-                            repository.saveClassroomPosition(ref, position, initialAccountScope)
+                            repository.saveClassroomPosition(
+                                ref,
+                                position,
+                                initialAccountScope,
+                                shouldWrite = { ClassroomLocalWriteGate.isCurrent(positionWriteKey, grant) },
+                            )
                         },
                     ),
                 )
             }
             if (saveRewards) {
+                val grant = ClassroomLocalWriteGate.grant(rewardsWriteKey)
                 add(
                     ClassroomStateWrite(
                         key = rewardsWriteKey,
                         label = "rewards",
-                        grant = ClassroomLocalWriteGate.grant(rewardsWriteKey),
+                        grant = grant,
                         save = {
                             repository.saveClassroomRewardsRaw(
                                 ref,
                                 ClassroomRewardsCodec.encode(rewards),
                                 initialAccountScope,
+                                shouldWrite = { ClassroomLocalWriteGate.isCurrent(rewardsWriteKey, grant) },
                             )
                         },
                     ),
@@ -613,6 +621,13 @@ class NativeClassroomViewModel(
         firstPaintRecorded = false
 
         loadJob = viewModelScope.launch {
+            // 快速关闭再重开时，先让上一次退出落盘结束，避免用旧账本和旧位置起步。
+            withContext(Dispatchers.IO) {
+                withTimeoutOrNull(2_500L) {
+                    ClassroomLocalWriteGate.awaitIdle(positionWriteKey)
+                    ClassroomLocalWriteGate.awaitIdle(rewardsWriteKey)
+                }
+            }
             val rewardsRead = withContext(Dispatchers.IO) {
                 readClassroomLocal { repository.classroomRewardsRaw(ref) }
             }
@@ -1127,13 +1142,19 @@ class NativeClassroomViewModel(
         positionJob?.cancel()
         if (positionAccountScope == initialAccountScope) {
             // 翻页落盘失败只影响下一次续播的起点，不打断本节课堂。
+            val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
             val write = ClassroomStateWrite(
                 key = positionWriteKey,
                 label = "position",
-                grant = ClassroomLocalWriteGate.grant(positionWriteKey),
+                grant = grant,
                 save = {
                     if (repository.classroomAccountScope() == positionAccountScope) {
-                        repository.saveClassroomPosition(ref, sceneId, positionAccountScope)
+                        repository.saveClassroomPosition(
+                            ref,
+                            sceneId,
+                            positionAccountScope,
+                            shouldWrite = { ClassroomLocalWriteGate.isCurrent(positionWriteKey, grant) },
+                        )
                     }
                 },
             )
@@ -1202,15 +1223,17 @@ class NativeClassroomViewModel(
         val accountScope = repository.classroomAccountScope()
         if (accountScope != initialAccountScope) return
         rewardsJob?.cancel()
+        val grant = ClassroomLocalWriteGate.grant(rewardsWriteKey)
         val write = ClassroomStateWrite(
             key = rewardsWriteKey,
             label = "rewards",
-            grant = ClassroomLocalWriteGate.grant(rewardsWriteKey),
+            grant = grant,
             save = {
                 repository.saveClassroomRewardsRaw(
                     ref,
                     ClassroomRewardsCodec.encode(rewards),
                     accountScope,
+                    shouldWrite = { ClassroomLocalWriteGate.isCurrent(rewardsWriteKey, grant) },
                 )
             },
         )

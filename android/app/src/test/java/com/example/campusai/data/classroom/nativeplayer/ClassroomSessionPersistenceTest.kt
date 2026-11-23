@@ -1,12 +1,14 @@
 package com.example.campusai.data.classroom.nativeplayer
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import com.example.campusai.data.local.InMemoryKeyValueStorage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -168,6 +170,59 @@ class ClassroomSessionPersistenceTest {
 
         assertTrue(job.isCancelled)
         assertFalse(saved)
+    }
+
+    @Test
+    fun `stale write cannot overwrite a newer commit that landed mid-flight`() = runTest {
+        val key = "classroom:rewards"
+        val storage = InMemoryKeyValueStorage()
+        val oldGrant = ClassroomLocalWriteGate.grant(key)
+        val oldStarted = CompletableDeferred<Unit>()
+        val releaseOld = CompletableDeferred<Unit>()
+        val flusher = ClassroomSessionFlusher(
+            budgetMs = 10_000L,
+            itemBudgetMs = 10_000L,
+            maxAttempts = 1,
+            retryDelayMs = 0L,
+        )
+
+        // 旧写入先通过调度检查并停在真正提交之前。
+        val oldWrite = ClassroomStateWrite(key, "rewards", oldGrant) {
+            oldStarted.complete(Unit)
+            releaseOld.await()
+            storage.saveRawIf(key, "old", shouldWrite = {
+                ClassroomLocalWriteGate.isCurrent(key, oldGrant)
+            })
+        }
+        val oldJob = launch { flusher.run(listOf(oldWrite)) }
+        oldStarted.await()
+
+        // 新快照完成落盘后，旧写入才恢复。
+        val newGrant = ClassroomLocalWriteGate.grant(key)
+        storage.saveRawIf(key, "new", shouldWrite = {
+            ClassroomLocalWriteGate.isCurrent(key, newGrant)
+        })
+        releaseOld.complete(Unit)
+        oldJob.join()
+
+        assertEquals("new", storage.readRaw(key))
+    }
+
+    @Test
+    fun `new session waits for an exit flush before reading the same classroom`() = runTest {
+        val key = "classroom:rewards"
+        ClassroomLocalWriteGate.beginPending(key)
+        var read = false
+        val reader = launch {
+            ClassroomLocalWriteGate.awaitIdle(key)
+            read = true
+        }
+        runCurrent()
+        assertFalse("退出落盘完成前不能读取旧账本", read)
+
+        ClassroomLocalWriteGate.finishPending(key)
+        reader.join()
+        assertTrue(read)
     }
 
     @Test

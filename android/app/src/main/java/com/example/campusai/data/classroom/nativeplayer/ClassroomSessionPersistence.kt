@@ -1,6 +1,7 @@
 package com.example.campusai.data.classroom.nativeplayer
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -52,6 +53,8 @@ suspend fun <T : Any> readClassroomLocal(reader: suspend () -> T?): ClassroomLoc
  */
 object ClassroomLocalWriteGate {
     private val latestGrants = mutableMapOf<String, Long>()
+    private val pending = mutableMapOf<String, Int>()
+    private val idleSignals = mutableMapOf<String, CompletableDeferred<Unit>>()
     private var nextGrant = 0L
 
     @Synchronized
@@ -64,9 +67,38 @@ object ClassroomLocalWriteGate {
     @Synchronized
     fun isCurrent(key: String, grant: Long): Boolean = latestGrants[key] == grant
 
+    /** 退出落盘已排队但尚未结束时，新会话读取同一课堂前应等待，避免以旧账本起步。 */
+    @Synchronized
+    fun beginPending(key: String) {
+        val count = pending[key] ?: 0
+        pending[key] = count + 1
+        if (count == 0) idleSignals[key] = CompletableDeferred()
+    }
+
+    @Synchronized
+    fun finishPending(key: String) {
+        val count = (pending[key] ?: 0) - 1
+        if (count <= 0) {
+            pending.remove(key)
+            idleSignals.remove(key)?.complete(Unit)
+        } else {
+            pending[key] = count
+        }
+    }
+
+    suspend fun awaitIdle(key: String) {
+        val signal = synchronized(this) {
+            if ((pending[key] ?: 0) > 0) idleSignals[key] else null
+        }
+        signal?.await()
+    }
+
     @Synchronized
     fun reset() {
         latestGrants.clear()
+        pending.clear()
+        idleSignals.values.forEach { it.complete(Unit) }
+        idleSignals.clear()
         nextGrant = 0L
     }
 }
@@ -106,39 +138,54 @@ class ClassroomSessionFlusher(
     /** 在独立作用域落盘，退出页面或 ViewModel 清理后仍能完成。 */
     fun flush(writes: List<ClassroomStateWrite>): Job? {
         if (writes.isEmpty()) return null
+        // 同步登记待写状态，保证紧接着重开的会话读取前能看到这次退出落盘。
+        writes.forEach { ClassroomLocalWriteGate.beginPending(it.key) }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        return scope.launch {
+        val job = scope.launch {
             try {
-                run(writes)
+                run(writes, trackPending = false)
             } finally {
                 scope.cancel()
             }
         }
+        // 完成回调对「尚未启动就被取消」同样生效，避免待写标记永久悬挂。
+        job.invokeOnCompletion {
+            writes.forEach { ClassroomLocalWriteGate.finishPending(it.key) }
+        }
+        return job
     }
 
     /** 供调用方等待结果（测试与需要确认落盘的场景使用）。 */
-    suspend fun run(writes: List<ClassroomStateWrite>): List<ClassroomWriteResult> {
+    suspend fun run(
+        writes: List<ClassroomStateWrite>,
+        trackPending: Boolean = true,
+    ): List<ClassroomWriteResult> {
         if (writes.isEmpty()) return emptyList()
-        val results = Collections.synchronizedMap(mutableMapOf<String, ClassroomWriteResult>())
-        val completed = withTimeoutOrNull(budgetMs) {
-            supervisorScope {
-                writes.map { write ->
-                    async {
-                        runWrite(write).also { results[write.key] = it }
-                    }
-                }.awaitAll()
+        if (trackPending) writes.forEach { ClassroomLocalWriteGate.beginPending(it.key) }
+        try {
+            val results = Collections.synchronizedMap(mutableMapOf<String, ClassroomWriteResult>())
+            val completed = withTimeoutOrNull(budgetMs) {
+                supervisorScope {
+                    writes.map { write ->
+                        async {
+                            runWrite(write).also { results[write.key] = it }
+                        }
+                    }.awaitAll()
+                }
             }
+            val finalResults = completed ?: writes.map { write ->
+                results[write.key] ?: ClassroomWriteResult(
+                    key = write.key,
+                    label = write.label,
+                    status = ClassroomWriteStatus.TIMED_OUT,
+                    attempts = 0,
+                )
+            }
+            finalResults.forEach(onResult)
+            return finalResults
+        } finally {
+            if (trackPending) writes.forEach { ClassroomLocalWriteGate.finishPending(it.key) }
         }
-        val finalResults = completed ?: writes.map { write ->
-            results[write.key] ?: ClassroomWriteResult(
-                key = write.key,
-                label = write.label,
-                status = ClassroomWriteStatus.TIMED_OUT,
-                attempts = 0,
-            )
-        }
-        finalResults.forEach(onResult)
-        return finalResults
     }
 
     private suspend fun runWrite(write: ClassroomStateWrite): ClassroomWriteResult {
