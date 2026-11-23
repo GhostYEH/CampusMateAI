@@ -9,12 +9,14 @@ import android.graphics.Bitmap
 import android.speech.RecognizerIntent
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.net.http.SslError
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,7 +62,9 @@ import androidx.compose.material3.TextButton
 import java.time.Instant
 import org.json.JSONTokener
 import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Some Android WebViews report a zero CSS viewport for `100vh` inside a Compose dialog. */
 private val classroomViewportFix = """
@@ -266,6 +270,31 @@ private fun classroomRewardsScript(context: Context, key: String, label: String,
     return "window.__campusRewardsConfig = " + config + ";\n" + asset
 }
 
+internal fun classroomMainFrameErrorMessage(errorCode: Int): String = when (errorCode) {
+    WebViewClient.ERROR_HOST_LOOKUP -> "找不到课堂服务器。请检查手机网络或稍后重试。"
+    WebViewClient.ERROR_CONNECT -> "无法连接课堂服务器。请检查网络、代理或课堂服务状态后重试。"
+    WebViewClient.ERROR_TIMEOUT -> "课堂服务器响应超时。请检查网络后重新加载。"
+    WebViewClient.ERROR_FAILED_SSL_HANDSHAKE -> "课堂服务器证书校验失败，已停止连接。请确认网络未被代理篡改。"
+    WebViewClient.ERROR_IO -> "课堂网页读取失败。请稍后重新加载。"
+    WebViewClient.ERROR_UNKNOWN -> "课堂网页加载失败。请稍后重新加载。"
+    else -> "课堂网页加载失败（错误码 $errorCode）。请检查网络后重试。"
+}
+
+internal fun classroomHttpErrorMessage(statusCode: Int): String = when (statusCode) {
+    401, 403 -> "登录状态或课堂权限已失效。请返回重新登录，或联系课堂发起人确认权限。"
+    404 -> "课堂页面不存在或已下线。请返回课程列表确认入口。"
+    429 -> "课堂请求过于频繁，请稍后再试。"
+    in 500..599 -> "课堂服务暂时不可用。请稍后重新加载。"
+    else -> "课堂网页返回 HTTP $statusCode。请稍后重试。"
+}
+
+internal fun isFatalClassroomScriptSignal(detail: String): Boolean =
+    detail.contains("Uncaught") || detail.contains("ChunkLoadError")
+
+/** 已成功打开的页面出现局部脚本错误时只提示，不遮住仍可操作的课件。 */
+internal fun classroomPartialScriptWarning(): String =
+    "课堂页面的部分脚本未能更新，当前可用内容仍可继续操作。若功能异常，请重新加载课堂。"
+
 /** Keep generated decks in the same campus palette on the managed classroom WebView. */
 private val classroomSlideThemeFix = """
     (function () {
@@ -447,22 +476,28 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val origin = remember(url) { ClassroomUrlPolicy.originOf(url) }
-    val rewardsScript = remember(url, repository) {
-        val account = repository?.classroomAccountScope() ?: "anonymous"
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("$account|$url".toByteArray())
-            .take(12)
-            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        classroomRewardsScript(
-            context,
-            key = "campusmate:classroom-rewards:v2:$digest",
-            label = "网页兼容课堂",
-        )
+    val rewardsScript by produceState(initialValue = "", url, repository) {
+        value = withContext(Dispatchers.IO) {
+            val account = repository?.classroomAccountScope() ?: "anonymous"
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("$account|$url".toByteArray())
+                .take(12)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            classroomRewardsScript(
+                context,
+                key = "campusmate:classroom-rewards:v2:$digest",
+                label = "网页兼容课堂",
+            )
+        }
     }
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var loading by remember(url) { mutableStateOf(true) }
     var pageFinished by remember(url) { mutableStateOf(false) }
     var loadError by remember(url) { mutableStateOf<String?>(null) }
+    var pageWarning by remember(url) { mutableStateOf<String?>(null) }
+    var hostActive by remember(url) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
     var speaking by remember(url) { mutableStateOf(false) }
     var speechError by remember(url) { mutableStateOf<String?>(null) }
     var transcript by remember(url) { mutableStateOf("") }
@@ -484,6 +519,17 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
         if (speechError != null) {
             kotlinx.coroutines.delay(8000)
             speechError = null
+        }
+    }
+    LaunchedEffect(pageWarning) {
+        if (pageWarning != null) {
+            kotlinx.coroutines.delay(10_000)
+            pageWarning = null
+        }
+    }
+    LaunchedEffect(pageFinished, loadError, rewardsScript) {
+        if (pageFinished && loadError == null && rewardsScript.isNotBlank()) {
+            webView?.evaluateJavascript(rewardsScript, null)
         }
     }
     val nativeSpeechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -531,12 +577,21 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
         val lifecycle = lifecycleOwner.lifecycle
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> if (activeSince != 0L) {
-                    accumulatedMs += SystemClock.elapsedRealtime() - activeSince
-                    activeSince = 0L
+                Lifecycle.Event.ON_STOP -> {
+                    hostActive = false
+                    if (activeSince != 0L) {
+                        accumulatedMs += SystemClock.elapsedRealtime() - activeSince
+                        activeSince = 0L
+                    }
+                    speaker.stop()
+                    speaking = false
+                    autoSpeaking = false
                 }
-                Lifecycle.Event.ON_START -> if (enteredAt != null && activeSince == 0L) {
-                    activeSince = SystemClock.elapsedRealtime()
+                Lifecycle.Event.ON_START -> {
+                    hostActive = true
+                    if (enteredAt != null && activeSince == 0L) {
+                        activeSince = SystemClock.elapsedRealtime()
+                    }
                 }
                 else -> Unit
             }
@@ -559,8 +614,8 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
         pendingAudioRequest = null
         speaker.shutdown(); webView?.stopLoading(); webView?.destroy()
     } }
-    LaunchedEffect(pageFinished, loadError) {
-        if (pageFinished && loadError == null) {
+    LaunchedEffect(pageFinished, loadError, hostActive) {
+        if (pageFinished && loadError == null && hostActive) {
             kotlinx.coroutines.delay(10000)
             webView?.evaluateJavascript(
                 "!(document.body?.innerText||'').trim() || document.body?.querySelector(':scope > .h-screen')?.getBoundingClientRect().height === 0",
@@ -571,8 +626,8 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
             }
         }
     }
-    LaunchedEffect(pageFinished, loadError) {
-        while (pageFinished && loadError == null) {
+    LaunchedEffect(pageFinished, loadError, hostActive) {
+        while (pageFinished && loadError == null && hostActive) {
             webView?.evaluateJavascript(classroomNarrationSnapshot) { raw ->
                 val snapshot = runCatching {
                     JSONObject(JSONTokener(raw).nextValue() as String)
@@ -722,26 +777,29 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
 
                                 override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                                     val detail = message.message()
-                                    if (detail.contains("Speech recognition error") ||
-                                        detail.contains("speech recognition", ignoreCase = true) && detail.contains("network")) {
-                                        speechError = "网页语音识别连接失败。可点顶部麦克风使用手机语音输入，或直接打字。"
+                                    when {
+                                        detail.contains("Speech recognition error") ||
+                                            detail.contains("speech recognition", ignoreCase = true) &&
+                                            detail.contains("network") ->
+                                            speechError = "网页语音识别连接失败。可点顶部麦克风使用手机语音输入，或直接打字。"
+                                        detail.contains("streamInterrupted", ignoreCase = true) ||
+                                            detail.contains("totalAgents: 0") ->
+                                            speechError = "老师没有生成回复。请稍后重试提问，并检查课堂模型服务额度。"
+                                        detail.contains("CAMPUS_QA_TEACHER_FALLBACK") ->
+                                            speechError = "当前课堂老师配置未加载，已改用通用老师回答。"
+                                        detail.contains("CAMPUS_QA_TEACHER_ROUTING_FAILED") ->
+                                            speechError = "提问未能指定老师，请重新打开课堂再试。"
+                                        message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
+                                            isFatalClassroomScriptSignal(detail) -> {
+                                            if (!pageFinished && loadError == null) {
+                                                loadError = "课堂网页初始化失败，已停止加载。请重新加载；若仍失败，请检查课堂服务。"
+                                            } else {
+                                                pageWarning = classroomPartialScriptWarning()
+                                            }
+                                        }
                                     }
-                                    if (detail.contains("streamInterrupted", ignoreCase = true) ||
-                                        detail.contains("totalAgents: 0")) {
-                                        speechError = "老师没有生成回复。请稍后重试提问，并检查课堂模型服务额度。"
-                                    }
-                                    if (detail.contains("CAMPUS_QA_TEACHER_FALLBACK")) {
-                                        speechError = "当前课堂老师配置未加载，已改用通用老师回答。"
-                                    }
-                                    if (detail.contains("CAMPUS_QA_TEACHER_ROUTING_FAILED")) {
-                                        speechError = "提问未能指定老师，请重新打开课堂再试。"
-                                    }
-                                    if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR &&
-                                        (detail.contains("Uncaught") || detail.contains("ChunkLoadError"))
-                                    ) {
-                                        loadError = "课堂网页脚本运行失败，请重新加载；若仍失败，请检查课堂服务。"
-                                    }
-                                    return super.onConsoleMessage(message)
+                                    // 页面控制台消息由应用消费，避免原始内容进入系统日志。
+                                    return true
                                 }
                             }
                             webViewClient = object : WebViewClient() {
@@ -766,7 +824,6 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
                                     view.evaluateJavascript(classroomViewportFix, null)
                                     view.evaluateJavascript(classroomMobileFix, null)
                                     view.evaluateJavascript(classroomTeacherQuestionFix, null)
-                                    view.evaluateJavascript(rewardsScript, null)
                                     view.evaluateJavascript(classroomSlideThemeFix, null)
                                     if (loadError == null && ClassroomUrlPolicy.originOf(pageUrl) == origin) {
                                         if (enteredAt == null) {
@@ -784,14 +841,29 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
                                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                                     if (request.isForMainFrame) {
                                         loading = false
-                                        loadError = "课堂网页连接失败（错误码 ${error.errorCode}）。请检查课堂服务和手机网络。"
+                                        loadError = classroomMainFrameErrorMessage(error.errorCode)
                                     }
                                 }
 
                                 override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
                                     if (request.isForMainFrame) {
                                         loading = false
-                                        loadError = "课堂网页返回 HTTP ${errorResponse.statusCode}。请稍后重试。"
+                                        loadError = classroomHttpErrorMessage(errorResponse.statusCode)
+                                    }
+                                }
+
+                                override fun onReceivedSslError(
+                                    view: WebView,
+                                    handler: SslErrorHandler,
+                                    error: SslError,
+                                ) {
+                                    // 证书错误一律取消加载，绝不继续使用被代理或篡改的连接。
+                                    handler.cancel()
+                                    if (!pageFinished && loadError == null) {
+                                        loading = false
+                                        loadError = "课堂服务器证书校验失败，已停止加载。请确认网络未被代理篡改，或联系管理员更新证书。"
+                                    } else {
+                                        pageWarning = "页面中的资源证书校验失败，已阻止该资源加载。"
                                     }
                                 }
                             }
@@ -803,6 +875,15 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
                 if (loading) Text("课堂正在打开…", modifier = Modifier.align(Alignment.Center).background(Color(0xFFF2F1E8)).padding(12.dp), color = Muted)
                 speechError?.let { Text(it, modifier = Modifier.align(Alignment.TopCenter)
                     .background(Color(0xFFF2F1E8)).padding(8.dp), color = Color(0xFF153B34)) }
+                pageWarning?.let { message ->
+                    Text(
+                        message,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp)
+                            .background(Color(0xFFFFF8E8)).padding(8.dp),
+                        color = Color(0xFF153B34),
+                        fontSize = 12.sp,
+                    )
+                }
                 loadError?.let { message ->
                     Column(
                         Modifier.align(Alignment.Center).padding(24.dp).background(Color(0xFFF2F1E8)).padding(20.dp),
