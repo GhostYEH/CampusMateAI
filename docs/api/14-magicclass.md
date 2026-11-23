@@ -14,7 +14,13 @@ Web 的「学习空间」、课程页主题输入和课程工作台默认显式�
 
 综合课有 4–8 页。前两页分别讲概念和具体例子，中间安排 1–2 个不同类型的可操作场景，最后一页测验至少两道不同的题并附解析。动手场景按主题选择三维模型、参数模拟或可点击图示，适合项目实践的课可在测验前包含项目任务。服务端校验后生成可在既有沙箱运行的内嵌页面。空间主题可用三维，参数关系可用滑块与曲线，因果、比较或流程可用可点击的图示。
 
-提交返回 201 和异步任务，例如 `{"workspace_id":"ws_example","source":"provider","job":{"id":"job_example","mode":"adaptive","status":"queued","artifact_id":null}}`（首页的裁剪示例）。按课程 job 接口轮询。任务 `completed` 后，读取既有 JSON artifact，其中 `stage.id` 是该工作台里实际保存的舞台 ID。Web 使用该 ID 打开刚生成或重进的课堂。若模型草稿缺少有效场景，服务会带结构反馈重试一次，仍不完整时任务状态为 `failed`，`error_code="provider_invalid_response"`。可显式调用 job retry，同 ID 重试。生成模型未配置返回 503 `MAGICCLASS_UNAVAILABLE`。复用现有错误和鉴权契约。
+提交返回 201 和异步任务，例如 `{"workspace_id":"ws_example","source":"provider","job":{"id":"job_example","mode":"adaptive","status":"queued","artifact_id":null}}`（首页的裁剪示例）。按课程 job 接口轮询。任务 `completed` 后，读取既有 JSON artifact，其中 `stage.id` 是该工作台里实际保存的舞台 ID。Web 使用该 ID 打开刚生成或重进的课堂。若模型草稿缺少有效场景，服务会带结构反馈重试一次，仍不完整时任务状态为 `failed`，`error_code="provider_invalid_response"`。可显式调用 job retry，同 ID 重试。生成模型未配置返回 503 `MAGICCLASS_FUSION_UNAVAILABLE`。
+
+首页综合课使用同一 `Idempotency-Key` 和主题重提，返回原任务的当前状态及原 `workspace_id`，课程资料刷新或更新了其他工作台的排序也可恢复。主题比较时忽略首尾及连续空白。一个键用于不同主题或课程，返回 409 `MAGICCLASS_IDEMPOTENCY_CONFLICT`。空白主题返回 400 `MAGICCLASS_INVALID_REQUEST`。客户端使用响应里的工作台 ID 与完成产物里的 `stage.id` 配对打开课件。
+
+Web 综合课沉浸式播放的选择题按答案键评分。简答批阅未配置或不可用时，提交后展示参考解析供自评。答案及作答进度保存在当前浏览器，自评题记为 `correct=null` 和 `earned=0`，复习页的分数只统计已评分题。
+
+本次首页提交联调覆盖 Web。iOS 受管客户端沿用同一响应中的 `workspace_id`，原生运行尚未验证。Android、HarmonyOS 和微信小程序当前未调用 `home-generate`。
 
 经典课程和个人自主选题的现有生成接口在 `mode="adaptive"` 且提供非空 `learning_objective` 时，同样请求先讲解、再动手、最后练习。原 `mode`、`requested_mode` 和推荐理由仍描述学习重点。大纲缺少这三类场景时上游重编一次，成品缺少环节时任务失败，以 `composition` 或实际播放场景回读结果。Android 和 iOS 沿用现有生成和播放接口，真机兼容性需单独验收。HarmonyOS 与微信小程序当前没有接入这条主题生成流程。
 
@@ -2177,6 +2183,8 @@ Resolve one course homepage submission into one workspace/job pair.
 | 503 | MAGICCLASS_FUSION_UNAVAILABLE | '受管服务未返回工作台标识' |
 | 503 | MAGICCLASS_FUSION_UNAVAILABLE | '受管 magic class 服务未启用' |
 | 400 | MAGICCLASS_INVALID_REQUEST | '生成请求必须携带有效的 Idempotency-Key' |
+| 400 | MAGICCLASS_INVALID_REQUEST | '请输入学习主题' |
+| 409 | MAGICCLASS_IDEMPOTENCY_CONFLICT | 同一幂等键已用于其他主题或课程 |
 
 ### `GET /api/v1/courses/{course_id}/jobs/{job_id}`
 

@@ -79,3 +79,13 @@ export function gradeChoiceQuestions(questions, answers) {
       };
     });
 }
+
+export function summarizeQuizReview(questions, results) {
+  const pointsByQuestion = new Map(questions.map((question) => [question.id, question.points ?? 1]));
+  const graded = results.filter((result) => typeof result.correct === 'boolean' && pointsByQuestion.has(result.questionId));
+  return {
+    graded,
+    score: graded.reduce((total, result) => total + result.earned, 0),
+    total: graded.reduce((total, result) => total + pointsByQuestion.get(result.questionId), 0),
+  };
+}

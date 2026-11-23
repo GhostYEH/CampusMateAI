@@ -154,6 +154,38 @@ def test_home_generation_replays_same_submission_key_without_changing_job():
     assert [call["headers"]["Idempotency-Key"] for call in generation_calls] == ["same-home:generation", "same-home:generation"]
 
 
+def test_home_generation_rejects_whitespace_only_topic():
+    _, _, http, headers, course_id = _setup()
+    response = http.post(
+        f"/api/v1/courses/{course_id}/home-generate",
+        json={"mode": "adaptive", "prompt": " \t\n "},
+        headers={**headers, "Idempotency-Key": "blank-home-topic"},
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "MAGICCLASS_INVALID_REQUEST"
+    assert response.json()["message"] == "请输入学习主题"
+
+
+def test_adaptive_home_keeps_the_replayed_jobs_workspace_instead_of_the_latest_workspace():
+    container, transport, http, headers, course_id = _setup([
+        (200, {"llm": True}),
+        (200, {"items": [{"id": "ws_latest"}]}),
+        (201, {"workspace_id": "ws_original", "source": "provider", "job": {"id": "job_original", "status": "completed"}}),
+    ])
+    client = MagicClassFusionClient(base_url=container.settings.magicclass_service_url, secret=container.settings.magicclass_internal_secret, transport=transport)
+    http.app.dependency_overrides[magicclass_generation._client] = lambda: client
+    response = http.post(
+        f"/api/v1/courses/{course_id}/home-generate",
+        json={"mode": "adaptive", "prompt": "  圆锥和圆柱  "},
+        headers={**headers, "Idempotency-Key": "adaptive-home-replay"},
+    )
+    assert response.status_code == 201
+    assert response.json()["workspace_id"] == "ws_original"
+    assert response.json()["job"]["id"] == "job_original"
+    assert transport.calls[-1]["json"]["home_topic"] == "圆锥和圆柱"
+    assert "[课程]" in transport.calls[-1]["json"]["prompt"]
+
+
 def test_home_generation_keeps_distinct_prompts_as_distinct_provider_jobs():
     container, transport, http, headers, course_id = _setup([
         (200, {"llm": True}),

@@ -15,6 +15,9 @@ import type { ServiceDatabase } from './database.ts';
 import { WorkspaceError } from '../workspace/errors.ts';
 
 interface IdempotencyRecord {
+  course_id: string;
+  method: string;
+  path: string;
   request_hash: string;
   status: number;
   response_body: string;
@@ -25,6 +28,11 @@ export interface ReplayedResponse {
   body: Record<string, unknown>;
 }
 
+interface StoredResponse extends ReplayedResponse {
+  scope: { courseId: string; method: string; path: string };
+  requestHash: string;
+}
+
 export class IdempotencyStore {
   readonly #database: ServiceDatabase;
 
@@ -32,15 +40,24 @@ export class IdempotencyStore {
     this.#database = database;
   }
 
-  lookup(userId: string, key: string, requestHash: string): ReplayedResponse | null {
+  get(userId: string, key: string): StoredResponse | null {
     const row = this.#database.raw
-      .prepare('SELECT request_hash, status, response_body FROM idempotency_keys WHERE user_id = ? AND key = ?')
+      .prepare('SELECT course_id, method, path, request_hash, status, response_body FROM idempotency_keys WHERE user_id = ? AND key = ?')
       .get(userId, key) as IdempotencyRecord | undefined;
     if (!row) return null;
-    if (row.request_hash !== requestHash) {
-      throw new WorkspaceError('idempotency_conflict');
-    }
-    return { status: Number(row.status), body: JSON.parse(row.response_body) as Record<string, unknown> };
+    return {
+      scope: { courseId: row.course_id, method: row.method, path: row.path },
+      requestHash: row.request_hash,
+      status: Number(row.status),
+      body: JSON.parse(row.response_body) as Record<string, unknown>,
+    };
+  }
+
+  lookup(userId: string, key: string, requestHash: string): ReplayedResponse | null {
+    const stored = this.get(userId, key);
+    if (!stored) return null;
+    if (stored.requestHash !== requestHash) throw new WorkspaceError('idempotency_conflict');
+    return { status: stored.status, body: stored.body };
   }
 
   record(

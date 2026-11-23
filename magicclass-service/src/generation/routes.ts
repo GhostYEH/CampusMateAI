@@ -14,6 +14,7 @@ import { isAssignmentReviewSpec } from './assignment-review.ts';
 
 export const GENERATION_SCOPE = 'generation:write';
 export const GENERATION_CAPABILITY: Capability = 'generation';
+const COURSE_CONTEXT_SEPARATOR = '\n\n请结合以下已授权课程上下文生成内容：\n';
 
 function parseBody(request: RouteRequest): Record<string, unknown> {
   if (!request.body) throw new WorkspaceError('invalid_request', 'request body is required');
@@ -45,6 +46,17 @@ function jobBody(job: JobRow): Record<string, unknown> {
   return { id: job.id, status: job.status, progress: job.progress, artifact_id: job.artifact_id, mode: job.mode, error_code: job.error_code };
 }
 
+function normalizedTopic(topic: string): string {
+  return topic.trim().replace(/\s+/g, ' ');
+}
+
+function legacyHomeTopic(input: Record<string, unknown>): string | null {
+  if (input.home_topic !== undefined || input.mode !== 'adaptive' || typeof input.prompt !== 'string' ||
+      input.role_mode !== 'preset' || !Array.isArray(input.selected_role_ids) || input.selected_role_ids.length) return null;
+  const boundary = input.prompt.indexOf(COURSE_CONTEXT_SEPARATOR);
+  return boundary < 0 ? null : normalizedTopic(input.prompt.slice(0, boundary));
+}
+
 export function createGenerationRoutes(options: { database: ServiceDatabase; provider?: ProviderConfig; now?: () => string }): RouteDefinition[] {
   const workspaceRepository = new WorkspaceRepository(options.database);
   const jobs = new JobRepository(options.database);
@@ -61,6 +73,10 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       const body = parseBody(request);
       const mode = body.mode;
       if (!isGenerationMode(mode)) throw new WorkspaceError('invalid_request', `mode must be one of ${GENERATION_MODES.join(', ')}`);
+      const homeTopic = typeof body.home_topic === 'string' ? normalizedTopic(body.home_topic) : '';
+      if (body.home_topic !== undefined && (mode !== 'adaptive' || !homeTopic || homeTopic.length > 1500)) {
+        throw new WorkspaceError('invalid_request', 'home_topic requires adaptive mode and a valid learner topic');
+      }
       if (body.assignment_review !== undefined && (!isAssignmentReviewSpec(body.assignment_review) || mode !== 'quiz')) throw new WorkspaceError('invalid_request', 'assignment_review requires quiz mode, a positive question_count, and valid source numbers/stems');
       if (body.assignment_review && !options.provider) throw new WorkspaceError('invalid_request', 'assignment review requires a real generation provider');
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
@@ -73,18 +89,36 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       const userId = request.claims.sub;
       const courseId = request.params.courseId ?? '';
       const workspaceId = request.params.workspaceId ?? '';
-      const requestHash = hashRequest(body);
-      const replay = idempotency.lookup(userId, key, requestHash);
+      const scope = { courseId, method: request.method, path: request.url.pathname };
+      // A home replay identifies the learner's original request. The course
+      // snapshot and the latest workspace can both change after submission.
+      const requestHash = hashRequest(homeTopic ? { mode, home_topic: homeTopic } : body);
+      const replay = idempotency.get(userId, key);
       if (replay) {
+        if (replay.scope.courseId !== courseId || replay.scope.method !== scope.method ||
+            (!homeTopic && (replay.scope.path !== scope.path || replay.requestHash !== requestHash))) {
+          throw new WorkspaceError('idempotency_conflict');
+        }
         // A provider job keeps moving after the first response was recorded;
         // the replay must reflect the live state, not the moment of enqueue.
         const jobId = typeof replay.body.job_id === 'string' ? replay.body.job_id : null;
+        if (homeTopic) {
+          if (!jobId) throw new WorkspaceError('idempotency_conflict');
+          const job = jobs.get({ userId, courseId, jobId });
+          const input = JSON.parse(job.input_json ?? '{}') as Record<string, unknown>;
+          const original = typeof input.workspace_id === 'string' ? input.workspace_id : '';
+          const matchesLegacy = key.endsWith(':generation') && legacyHomeTopic(input) === homeTopic;
+          if (job.kind !== 'generation' || !original || !replay.scope.path.endsWith(`/workspaces/${original}/generate`) ||
+              (replay.requestHash !== requestHash && !matchesLegacy)) throw new WorkspaceError('idempotency_conflict');
+          workspaceRepository.getWorkspace({ userId, courseId, workspaceId: original });
+          return { status: replay.status, body: { ...replay.body, job: jobBody(job), workspace_id: original } };
+        }
         if (jobId) {
           try {
             replay.body = { ...replay.body, job: jobBody(jobs.get({ userId, courseId, jobId })) };
           } catch { /* the job is gone; hand back the recorded response as-is */ }
         }
-        return replay;
+        return { status: replay.status, body: replay.body };
       }
 
       workspaceRepository.getWorkspace({ userId, courseId, workspaceId });
@@ -98,9 +132,9 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
         const job = jobs.create({ userId, courseId, kind: 'generation', mode, request: { ...body, workspace_id: workspaceId }, now: now() });
         const response: RouteResponse = {
           status: 201,
-          body: { job_id: job.id, job: jobBody(job), source: 'provider', mode },
+          body: { job_id: job.id, job: jobBody(job), source: 'provider', mode, ...(homeTopic && { workspace_id: workspaceId }) },
         };
-        idempotency.record(userId, key, { courseId, method: request.method, path: request.url.pathname }, requestHash, response);
+        idempotency.record(userId, key, scope, requestHash, response);
         return response;
       }
       const job = jobs.create({ userId, courseId, kind: 'generation', mode, request: body, now: now() });
@@ -124,7 +158,7 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
           source: 'local-template',
         },
       };
-      idempotency.record(userId, key, { courseId, method: request.method, path: request.url.pathname }, requestHash, response);
+      idempotency.record(userId, key, scope, requestHash, response);
       return response;
     }),
   }];

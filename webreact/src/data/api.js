@@ -372,7 +372,7 @@ export async function generateMagicClassHome(courseId, { mode = "slide", prompt,
   return dataOf(await client.post(
     `/courses/${courseId}/home-generate`,
     { mode, prompt },
-    { headers: { "Idempotency-Key": idempotencyKey } },
+    { timeout: 30_000, headers: { "Idempotency-Key": idempotencyKey } },
   ));
 }
 

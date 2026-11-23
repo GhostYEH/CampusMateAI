@@ -19,6 +19,7 @@ import {
   answerIncludesOption,
   gradeChoiceQuestions,
   isShortAnswer,
+  summarizeQuizReview,
 } from './lib/quiz-grading.js';
 import { renderQuizMathText } from './lib/quiz-math-text.js';
 import { writeDraftRecovery } from './lib/quiz-persistence.js';
@@ -49,8 +50,7 @@ import {
  *      localStorage（见 lib/quiz-runtime.js 的说明）。
  *   4. `SpeechButton` 换成目标项目可用的近似实现（无 ASR 运行时，恒定禁用）。
  *   5. `getCurrentModelConfig()` 从「设置 store」改为可注入的模块级配置
- *      （`setQuizGradeModelConfig`）；未注入时不带任何模型请求头，`/api/quiz-grade`
- *      不可用时走与上游一致的兜底逻辑（给一半分 + 中文兜底评语）。
+ *      （`setQuizGradeModelConfig`）；简答在批改未配置或不可用时使用参考解析自评。
  *   6. 未使用 katex：`renderQuizMathText` 缺渲染器时降级为纯文本，与上游解析失败
  *      路径一致。
  */
@@ -105,16 +105,18 @@ const QuizMathText = memo(function QuizMathText({ text, className, allowDisplayM
   );
 });
 
-/** Call /api/quiz-grade for a single short-answer question. */
+/** Use the configured grader for a short answer, with reference review as the fallback. */
 async function gradeShortAnswerQuestion(q, userAnswer, language) {
   const pts = q.points ?? 1;
+  const selfReview = { questionId: q.id, correct: null, status: 'ungraded', earned: 0 };
+  const modelConfig = getCurrentModelConfig();
+  if (!modelConfig.modelString || typeof userAnswer !== 'string' || !userAnswer.trim()) return selfReview;
   try {
-    const modelConfig = getCurrentModelConfig();
     const headers = {
       'Content-Type': 'application/json',
       'x-model': modelConfig.modelString,
-      'x-api-key': modelConfig.apiKey,
     };
+    if (modelConfig.apiKey) headers['x-api-key'] = modelConfig.apiKey;
     if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
     if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
 
@@ -132,6 +134,7 @@ async function gradeShortAnswerQuestion(q, userAnswer, language) {
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+    if (!Number.isFinite(data?.score)) return selfReview;
     const earned = Math.max(0, Math.min(pts, data.score));
     return {
       questionId: q.id,
@@ -142,14 +145,7 @@ async function gradeShortAnswerQuestion(q, userAnswer, language) {
     };
   } catch (err) {
     log.error('[quiz-view] AI grading failed for', q.id, err);
-    // Fallback: give half credit. // zh-CN: 评分服务暂时不可用，已给予基础分。
-    return {
-      questionId: q.id,
-      correct: null,
-      status: 'incorrect',
-      earned: Math.round(pts * 0.5),
-      aiComment: '评分服务暂时不可用，已给予基础分。',
-    };
+    return selfReview;
   }
 }
 
@@ -207,7 +203,7 @@ function QuizCover({ questionCount, totalPoints, onStart }) {
           </div>
           <span>
             {/* quiz.totalPrefix + 分值 + quiz.pointsSuffix */}
-            共 {totalPoints} 分
+            {totalPoints > 0 ? `自动评分题共 ${totalPoints} 分` : '简答题自评'}
           </span>
         </div>
       </motion.div>
@@ -442,7 +438,10 @@ function ShortAnswerQuestion({ question, index, value, onChange, disabled, resul
               <span className="text-gray-400 dark:text-gray-500 italic">未作答</span>
             )}
           </div>
-          {result.aiComment && (
+          {result.correct === null && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">请对照参考解析自行核对。</p>
+          )}
+          {typeof result.correct === 'boolean' && result.aiComment && (
             <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-violet-50 dark:bg-violet-900/30 border border-violet-100 dark:border-violet-800">
               <Sparkles className="w-4 h-4 text-violet-500 shrink-0 mt-0.5" />
               <div>
@@ -470,6 +469,7 @@ function ShortAnswerQuestion({ question, index, value, onChange, disabled, resul
 function QuestionCard({ question, index, result, children }) {
   const isReview = !!result;
   const pts = question.points ?? 1;
+  const reviewStatus = result?.correct === null ? 'ungraded' : result?.status;
 
   return (
     <motion.div
@@ -478,12 +478,12 @@ function QuestionCard({ question, index, result, children }) {
       transition={{ delay: index * 0.05 }}
       className={cn(
         'bg-white dark:bg-gray-800 rounded-2xl border p-5 relative overflow-hidden',
-        !isReview && 'border-gray-150 dark:border-gray-700 shadow-sm',
+        (!isReview || reviewStatus === 'ungraded') && 'border-gray-150 dark:border-gray-700 shadow-sm',
         isReview &&
-          result.status === 'correct' &&
+          reviewStatus === 'correct' &&
           'border-emerald-200 dark:border-emerald-800 shadow-sm shadow-emerald-50 dark:shadow-emerald-900/20',
         isReview &&
-          result.status === 'incorrect' &&
+          reviewStatus === 'incorrect' &&
           'border-red-200 dark:border-red-800 shadow-sm shadow-red-50 dark:shadow-red-900/20',
       )}
     >
@@ -492,8 +492,8 @@ function QuestionCard({ question, index, result, children }) {
         className={cn(
           'absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl',
           !isReview && 'bg-violet-400',
-          isReview && result.status === 'correct' && 'bg-emerald-400',
-          isReview && result.status === 'incorrect' && 'bg-red-400',
+          isReview && reviewStatus === 'correct' && 'bg-emerald-400',
+          isReview && reviewStatus === 'incorrect' && 'bg-red-400',
         )}
       />
 
@@ -506,10 +506,10 @@ function QuestionCard({ question, index, result, children }) {
               !isReview &&
                 'bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400',
               isReview &&
-                result.status === 'correct' &&
+                reviewStatus === 'correct' &&
                 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400',
               isReview &&
-                result.status === 'incorrect' &&
+                reviewStatus === 'incorrect' &&
                 'bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400',
             )}
           >
@@ -527,14 +527,16 @@ function QuestionCard({ question, index, result, children }) {
                   ? '多选'
                   : '简答'}
               {' · '}
-              {pts} 分
+              {isShortAnswer(question) && (reviewStatus === 'ungraded' || (!isReview && !getCurrentModelConfig().modelString))
+                ? '按解析自评'
+                : `${pts} 分`}
             </p>
           </div>
         </div>
         {isReview && (
           <div className="shrink-0 ml-2">
-            {result.status === 'correct' && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
-            {result.status === 'incorrect' && <XCircle className="w-6 h-6 text-red-400" />}
+            {reviewStatus === 'correct' && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+            {reviewStatus === 'incorrect' && <XCircle className="w-6 h-6 text-red-400" />}
           </div>
         )}
       </div>
@@ -695,7 +697,7 @@ export function QuizView({ questions, sceneId, stageId, onGraded }) {
   const attemptId = isQuizRuntimeReady(runtimeGate) ? runtimeGate.attemptId : null;
 
   const totalPoints = useMemo(
-    () => questions.reduce((sum, q) => sum + (q.points ?? 1), 0),
+    () => questions.reduce((sum, q) => sum + (isShortAnswer(q) && !getCurrentModelConfig().modelString ? 0 : (q.points ?? 1)), 0),
     [questions],
   );
 
@@ -782,13 +784,13 @@ export function QuizView({ questions, sceneId, stageId, onGraded }) {
       if (cancelled) return;
       setResults(ordered);
       setPhase('reviewing');
-      // Native classroom rewards are settled once per scene by the caller.
-      // Only choice questions carry a definite correct/incorrect status;
-      // short-answer partial credit is deliberately not counted as a combo hit.
-      onGradedRef.current?.({
-        correct: ordered.filter((result) => result.status === 'correct').length,
-        total: ordered.length,
-      });
+      const { graded } = summarizeQuizReview(questions, ordered);
+      if (graded.length) {
+        onGradedRef.current?.({
+          correct: graded.filter((result) => result.correct).length,
+          total: graded.length,
+        });
+      }
     })();
 
     return () => {
@@ -821,7 +823,7 @@ export function QuizView({ questions, sceneId, stageId, onGraded }) {
     );
   }, [attemptId, retrying, runtimeWriter, sceneId, stageId, viewLifetime]);
 
-  const earnedScore = useMemo(() => results.reduce((sum, r) => sum + r.earned, 0), [results]);
+  const reviewScore = useMemo(() => summarizeQuizReview(questions, results), [questions, results]);
 
   const resultMap = useMemo(() => {
     const map = {};
@@ -1024,7 +1026,8 @@ export function QuizView({ questions, sceneId, stageId, onGraded }) {
 
             {/* Results */}
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              <ScoreBanner score={earnedScore} total={totalPoints} results={results} />
+              {reviewScore.total > 0 ? <ScoreBanner score={reviewScore.score} total={reviewScore.total} results={reviewScore.graded} />
+                : <p className="text-sm text-gray-600 dark:text-gray-300">已提交，简答题按参考解析自评。</p>}
 
               {questions.map((q, i) => {
                 const r = resultMap[q.id];
