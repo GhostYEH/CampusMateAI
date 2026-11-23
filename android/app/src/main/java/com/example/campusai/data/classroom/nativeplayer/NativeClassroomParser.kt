@@ -276,7 +276,9 @@ object NativeClassroomParser {
             .mapNotNull { item -> item.asText().takeIf { it.isNotBlank() } }
         val background = NativeSlideBackground(
             color = backgroundMap["color"].asText().ifBlank { theme["backgroundColor"].asText() }.ifBlank { null },
-            imageUrl = backgroundMap["image"].asMap()?.get("src").asText().ifBlank { null },
+            imageUrl = backgroundMap["image"].asMap()?.get("src").asText()
+                .ifBlank { backgroundMap["src"].asText() }
+                .ifBlank { null },
             gradientColors = gradientColors,
         )
         val elements = raw["elements"].asList().orEmpty().mapIndexedNotNull { index, item ->
@@ -293,6 +295,40 @@ object NativeClassroomParser {
             ),
             background = background,
             elements = elements,
+        )
+    }
+
+    /** 形状内文字沿用普通文本的读取规则，保留原形状 ID 和独立文字样式。 */
+    private fun parseShapeText(raw: Any?): NativeCanvasElement.NativeShapeText? {
+        if (raw == null) return null
+        val map = raw.asMap()
+        val html = map?.get("content").asText().ifBlank { raw.asText() }
+        if (html.isBlank()) return null
+        val textType = map?.get("type").asText().orEmpty()
+        val fallbackSize = when (textType) {
+            "title" -> 36.0
+            "subtitle" -> 26.0
+            "notes" -> 12.0
+            else -> 18.0
+        }
+        val parsed = NativeClassroomText.parse(
+            html = html,
+            fallbackColor = map?.get("defaultColor").asText().ifBlank { null },
+            fallbackFontSize = fallbackSize,
+            fallbackBold = textType == "title",
+            fallbackAlign = "center",
+        )
+        return NativeCanvasElement.NativeShapeText(
+            html = html,
+            plainText = parsed.plainText,
+            fontColor = parsed.color,
+            fontSize = parsed.fontSize,
+            bold = parsed.bold,
+            italic = parsed.italic,
+            underline = parsed.underline,
+            align = parsed.align,
+            verticalAlign = map?.get("align").asText().ifBlank { "middle" },
+            lineHeight = map?.get("lineHeight").asDouble()?.takeIf { it > 0 } ?: 1.5,
         )
     }
 
@@ -359,6 +395,7 @@ object NativeClassroomParser {
                     stroke = outline["color"].asText().ifBlank { null },
                     strokeWidth = outline["width"].asDouble() ?: 0.0,
                     radius = map["radius"].asDouble() ?: 0.0,
+                    text = parseShapeText(map["text"]),
                 )
             }
             "line" -> {
@@ -509,9 +546,19 @@ object NativeClassroomParser {
     private fun parseQuiz(content: Map<String, Any?>): NativeQuiz? {
         val items = content["questions"].asList().orEmpty()
         if (items.isEmpty()) return null
+        val usedIds = mutableSetOf<String>()
+        var duplicateIds = false
         val questions = items.mapIndexedNotNull { index, raw ->
             val map = raw.asMap() ?: return@mapIndexedNotNull null
-            val id = map["id"].asText().ifBlank { "q${index + 1}" }
+            val fallbackId = "q${index + 1}"
+            val baseId = map["id"].asText().ifBlank { fallbackId }
+            val id = if (usedIds.add(baseId)) {
+                baseId
+            } else {
+                duplicateIds = true
+                // 保留首题的原始服务端 ID；冲突题只用于本地展示，提交会被阻止。
+                "$baseId#dup${index + 1}"
+            }
             val prompt = listOf("question", "prompt", "stem", "text")
                 .map { NativeClassroomText.stripSimple(map[it].asText()) }
                 .firstOrNull { it.isNotBlank() }
@@ -553,7 +600,14 @@ object NativeClassroomParser {
                 points = map["points"].asDouble()?.takeIf { it > 0 } ?: 1.0,
             )
         }
-        return NativeQuiz(questions)
+        return NativeQuiz(
+            questions,
+            issue = if (duplicateIds) {
+                "题目编号重复，无法唯一对应到服务端答案。请让老师重新生成这份测验后再提交。"
+            } else {
+                null
+            },
+        )
     }
 
     private fun quizOptionLabel(index: Int): String =

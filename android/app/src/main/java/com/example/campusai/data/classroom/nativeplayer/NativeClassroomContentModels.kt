@@ -48,6 +48,8 @@ data class NativeInteractive(
 
 data class NativeQuiz(
     val questions: List<NativeQuestion> = emptyList(),
+    /** 题目 ID 无法唯一映射到服务端答案槽位时阻止提交，并说明原因。 */
+    val issue: String? = null,
 ) {
     val totalPoints: Double
         get() = questions.sumOf { it.points }

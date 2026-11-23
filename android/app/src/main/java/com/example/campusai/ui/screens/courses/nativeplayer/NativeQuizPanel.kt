@@ -150,6 +150,19 @@ fun NativeQuizPanel(
                 }
             }
         }
+        quiz.issue?.let { issue ->
+            item {
+                Text(
+                    issue,
+                    color = DangerText,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFF3F0), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                )
+            }
+        }
         if (!report && submitState != NativeQuizSubmitState.Draft) {
             item {
                 Text(
@@ -213,7 +226,7 @@ fun NativeQuizPanel(
             when {
                 !report -> Button(
                     onClick = onSubmit,
-                    enabled = !quizState.saving,
+                    enabled = !quizState.saving && quiz.issue == null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     if (quizState.saving) {

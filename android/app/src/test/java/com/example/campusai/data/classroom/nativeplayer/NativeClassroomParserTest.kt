@@ -198,6 +198,101 @@ class NativeClassroomParserTest {
         assertEquals("看导数符号", question.analysis)
     }
 
+    @Test
+    fun `shape text and legacy background source survive native parsing`() {
+        val document = mapOf(
+            "scenes" to listOf(
+                mapOf(
+                    "id" to "slide",
+                    "type" to "slide",
+                    "order" to 0,
+                    "content" to mapOf(
+                        "canvas" to mapOf(
+                            "background" to mapOf("color" to "#ffffff", "src" to "/media/bg.png"),
+                            "elements" to listOf(
+                                mapOf(
+                                    "id" to "badge",
+                                    "type" to "shape",
+                                    "left" to 10,
+                                    "top" to 10,
+                                    "width" to 200,
+                                    "height" to 80,
+                                    "fill" to "#722ed1",
+                                    "text" to mapOf(
+                                        "content" to "<p><b>重点</b></p>",
+                                        "defaultColor" to "#ffffff",
+                                        "align" to "middle",
+                                        "lineHeight" to 1.2,
+                                        "type" to "title",
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val parsed = NativeClassroomParser.parseDocument(document, "stage", "fallback", 1)
+        val slide = parsed.slideByScene.getValue("slide")
+        assertEquals("/media/bg.png", slide.background.imageUrl)
+        val shape = slide.elements.single() as NativeCanvasElement.Shape
+        assertEquals("badge", shape.id)
+        assertEquals("重点", shape.text?.plainText)
+        assertEquals("#ffffff", shape.text?.fontColor)
+        assertEquals("middle", shape.text?.verticalAlign)
+        assertEquals(1.2, shape.text?.lineHeight ?: 0.0, 0.001)
+    }
+
+    @Test
+    fun `duplicate question ids get a local key and block submission`() {
+        val document = mapOf(
+            "scenes" to listOf(
+                mapOf(
+                    "id" to "quiz",
+                    "type" to "quiz",
+                    "order" to 0,
+                    "content" to mapOf(
+                        "questions" to listOf(
+                            mapOf("id" to "q1", "question" to "first"),
+                            mapOf("id" to "q1", "question" to "second"),
+                            mapOf("id" to "", "question" to "third"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val parsed = NativeClassroomParser.parseDocument(document, "stage", "fallback", 1)
+        val quiz = parsed.quizByScene.getValue("quiz")
+        assertEquals("q1", quiz.questions[0].id)
+        assertEquals("q1#dup2", quiz.questions[1].id)
+        assertEquals("q3", quiz.questions[2].id)
+        assertTrue(quiz.issue?.contains("题目编号重复") == true)
+    }
+
+    @Test
+    fun `blank question id colliding with an explicit default id is blocked`() {
+        val document = mapOf(
+            "scenes" to listOf(
+                mapOf(
+                    "id" to "quiz",
+                    "type" to "quiz",
+                    "order" to 0,
+                    "content" to mapOf(
+                        "questions" to listOf(
+                            mapOf("question" to "blank first"),
+                            mapOf("id" to "q1", "question" to "explicit"),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val parsed = NativeClassroomParser.parseDocument(document, "stage", "fallback", 1)
+        val quiz = parsed.quizByScene.getValue("quiz")
+        assertEquals("q1", quiz.questions[0].id)
+        assertEquals("q1#dup2", quiz.questions[1].id)
+        assertTrue(quiz.issue != null)
+    }
+
     private fun scene(id: String, order: Int, kind: String, sandbox: String?): MagicClassScenePlaybackDto =
         MagicClassScenePlaybackDto(
             id = id,

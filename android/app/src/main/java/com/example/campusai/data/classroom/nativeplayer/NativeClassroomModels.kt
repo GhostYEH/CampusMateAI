@@ -173,7 +173,21 @@ sealed class NativeCanvasElement {
         val stroke: String?,
         val strokeWidth: Double,
         val radius: Double,
+        val text: NativeShapeText? = null,
     ) : NativeCanvasElement()
+
+    data class NativeShapeText(
+        val html: String,
+        val plainText: String,
+        val fontColor: String?,
+        val fontSize: Double?,
+        val bold: Boolean,
+        val italic: Boolean,
+        val underline: Boolean,
+        val align: String,
+        val verticalAlign: String,
+        val lineHeight: Double,
+    )
 
     data class Line(
         override val id: String,

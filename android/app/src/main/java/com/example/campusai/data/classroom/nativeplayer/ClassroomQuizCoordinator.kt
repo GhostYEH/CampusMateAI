@@ -213,6 +213,10 @@ class ClassroomQuizCoordinator(
     fun submit() {
         if (closed || state.saving || state.submitState == NativeQuizSubmitState.Submitting) return
         if (state.showReport || state.phase == "reviewed") return
+        quiz.issue?.let {
+            update { state -> state.copy(error = it) }
+            return
+        }
         val unanswered = quiz.questions.count { question -> !state.answers[question.id]?.hasValue.orFalse() }
         if (unanswered > 0) {
             update { it.copy(error = "还有 $unanswered 道题未作答") }

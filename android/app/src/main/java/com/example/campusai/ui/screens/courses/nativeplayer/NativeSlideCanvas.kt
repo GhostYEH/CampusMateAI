@@ -133,7 +133,7 @@ fun NativeSlideCanvas(
                     ) {
                         when (element) {
                             is NativeCanvasElement.Text -> CanvasText(element, unit)
-                            is NativeCanvasElement.Shape -> CanvasShape(element)
+                            is NativeCanvasElement.Shape -> CanvasShape(element, unit)
                             is NativeCanvasElement.Line -> CanvasLine(element)
                             is NativeCanvasElement.Image ->
                                 CanvasImage(element, imageLoader, assetKeyPrefix, mediaBase, isPreview)
@@ -212,38 +212,66 @@ private fun CanvasText(element: NativeCanvasElement.Text, unit: Float) {
 }
 
 @Composable
-private fun CanvasShape(element: NativeCanvasElement.Shape) {
-    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-        val fill = element.fill?.let(::parseCssColor)
-        val stroke = element.stroke?.let(::parseCssColor)
-        val strokeWidth = element.strokeWidth.toFloat().coerceAtLeast(0f)
-        val corner = element.radius.toFloat()
-        when (element.shapeType.lowercase(Locale.ROOT)) {
-            "ellipse", "circle" -> {
-                fill?.let { drawCircle(it, radius = size.minDimension / 2f) }
-                stroke?.let { drawCircle(it, radius = size.minDimension / 2f, style = Stroke(strokeWidth)) }
-            }
-            "triangle" -> {
-                val path = Path().apply {
-                    moveTo(size.width / 2f, 0f)
-                    lineTo(size.width, size.height)
-                    lineTo(0f, size.height)
-                    close()
+private fun CanvasShape(element: NativeCanvasElement.Shape, unit: Float) {
+    Box(Modifier.fillMaxSize()) {
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val fill = element.fill?.let(::parseCssColor)
+            val stroke = element.stroke?.let(::parseCssColor)
+            val strokeWidth = element.strokeWidth.toFloat().coerceAtLeast(0f)
+            val corner = element.radius.toFloat()
+            when (element.shapeType.lowercase(Locale.ROOT)) {
+                "ellipse", "circle" -> {
+                    fill?.let { drawCircle(it, radius = size.minDimension / 2f) }
+                    stroke?.let { drawCircle(it, radius = size.minDimension / 2f, style = Stroke(strokeWidth)) }
                 }
-                fill?.let { drawPath(path, it) }
-                stroke?.let { drawPath(path, it, style = Stroke(strokeWidth)) }
-            }
-            else -> {
-                fill?.let { drawRoundRect(it, Offset.Zero, Size(size.width, size.height), CornerRadius(corner)) }
-                stroke?.let {
-                    drawRoundRect(
-                        it,
-                        Offset.Zero,
-                        Size(size.width, size.height),
-                        CornerRadius(corner),
-                        style = Stroke(strokeWidth),
-                    )
+                "triangle" -> {
+                    val path = Path().apply {
+                        moveTo(size.width / 2f, 0f)
+                        lineTo(size.width, size.height)
+                        lineTo(0f, size.height)
+                        close()
+                    }
+                    fill?.let { drawPath(path, it) }
+                    stroke?.let { drawPath(path, it, style = Stroke(strokeWidth)) }
                 }
+                else -> {
+                    fill?.let { drawRoundRect(it, Offset.Zero, Size(size.width, size.height), CornerRadius(corner)) }
+                    stroke?.let {
+                        drawRoundRect(
+                            it,
+                            Offset.Zero,
+                            Size(size.width, size.height),
+                            CornerRadius(corner),
+                            style = Stroke(strokeWidth),
+                        )
+                    }
+                }
+            }
+        }
+        element.text?.let { shapeText ->
+            if (shapeText.plainText.isNotBlank()) {
+                val anchor = when (shapeText.verticalAlign.lowercase(Locale.ROOT)) {
+                    "top" -> Alignment.TopStart
+                    "bottom" -> Alignment.BottomStart
+                    else -> Alignment.CenterStart
+                }
+                val fontSize = ((shapeText.fontSize ?: 18.0).toFloat() * unit).coerceAtLeast(1f)
+                Text(
+                    text = shapeText.plainText,
+                    color = parseCssColor(shapeText.fontColor),
+                    fontSize = fontSize.sp,
+                    fontWeight = if (shapeText.bold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (shapeText.italic) FontStyle.Italic else FontStyle.Normal,
+                    textDecoration = if (shapeText.underline) TextDecoration.Underline else null,
+                    textAlign = when (shapeText.align.lowercase(Locale.ROOT)) {
+                        "center" -> TextAlign.Center
+                        "right" -> TextAlign.End
+                        "justify" -> TextAlign.Justify
+                        else -> TextAlign.Start
+                    },
+                    style = TextStyle(lineHeight = (fontSize * shapeText.lineHeight.toFloat()).sp),
+                    modifier = Modifier.align(anchor).fillMaxWidth().padding(4.dp),
+                )
             }
         }
     }
