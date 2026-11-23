@@ -184,6 +184,36 @@ describe('classroom scene generation retries', () => {
     );
   });
 
+  it('replans a mixed topic and publishes only a complete learning sequence', async () => {
+    const outlines = [outline,
+      { ...outline, id: 'outline-2', type: 'interactive', title: 'Activity', order: 2 },
+      { ...outline, id: 'outline-3', type: 'quiz', title: 'Practice', order: 3 },
+    ];
+    mocks.generateSceneOutlinesFromRequirements.mockResolvedValueOnce({ success: true, data: { outlines: [outline] } })
+      .mockResolvedValueOnce({ success: true, data: { outlines, languageDirective: 'Use English.' } });
+    mocks.generateSceneContent.mockImplementation((sceneOutline) => ({
+      slide: { type: 'slide', canvas: { id: 'slide-1', viewportSize: 1000, viewportRatio: 0.5625, elements: [] } },
+      interactive: { type: 'interactive', html: '<button>Observe</button>' },
+      quiz: { type: 'quiz', questions: [{ id: 'q-1', type: 'single', question: 'Which failures should you retry?',
+        options: [{ label: 'Transient', value: 'a' }, { label: 'Permanent', value: 'b' }], answer: ['a'], points: 1 }] },
+    })[sceneOutline.type as 'slide' | 'interactive' | 'quiz']);
+    mocks.createSceneWithActions.mockImplementation((sceneOutline, content, actions, api) => {
+      const result = api.scene.create({ type: sceneOutline.type, title: sceneOutline.title,
+        order: sceneOutline.order, content, actions });
+      return result.success ? result.data : null;
+    });
+    const { result } = await generateWithProgress({ requirement: 'CampusMate 综合课堂\nLearn retry behavior' });
+    expect(result.scenes.map((scene) => scene.type)).toEqual(['slide', 'interactive', 'quiz']);
+    expect(mocks.generateSceneOutlinesFromRequirements).toHaveBeenCalledTimes(2);
+    expect(mocks.persistClassroom).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an incomplete mixed topic out of the saved classroom list', async () => {
+    await expect(generateWithProgress({ requirement: 'CampusMate 综合课堂\nLearn retry behavior' })).rejects.toThrow('未能编排完整');
+    expect(mocks.generateSceneOutlinesFromRequirements).toHaveBeenCalledTimes(2);
+    expect(mocks.persistClassroom).not.toHaveBeenCalled();
+  });
+
   it('forwards classroom thinking config to scene retry LLM calls', async () => {
     const thinkingConfig = { enabled: true, effort: 'high' };
     mocks.resolveModel.mockResolvedValue({

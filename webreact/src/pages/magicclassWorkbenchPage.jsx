@@ -27,8 +27,10 @@ import {
   useResizableWidth,
 } from "../features/magicclass/workbenchLayoutModel.js";
 import { resolveGenerationPhase } from "../features/magicclass/enterClassroomModel.js";
+import { TOPIC_GENERATION_MODE } from "../features/magicclass/homeGenerationModel.js";
+import { getGeneratedStageId } from "../features/magicclass/useTopicClassroomGeneration.js";
 
-const MODES = [["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"]];
+const MODES = [[TOPIC_GENERATION_MODE, "综合课堂（自动编排）"], ["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"]];
 
 /**
  * 窄屏面板切换器的文案。
@@ -254,6 +256,7 @@ export default function MagicClassWorkbenchPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const launchPrompt = searchParams.get("prompt")?.trim() || "";
+  const launchStageId = searchParams.get("stage")?.match(/^stg_[a-f0-9]{32}$/)?.[0] || "";
 
   const [workspace, setWorkspace] = useState(null);
   const [stages, setStages] = useState([]);
@@ -263,7 +266,7 @@ export default function MagicClassWorkbenchPage() {
   const [notice, setNotice] = useState("");
   const [providerStatus, setProviderStatus] = useState(null);
   const [fusionStatus, setFusionStatus] = useState(null);
-  const [mode, setMode] = useState("slide");
+  const [mode, setMode] = useState(TOPIC_GENERATION_MODE);
   const [prompt, setPrompt] = useState("");
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -308,7 +311,7 @@ export default function MagicClassWorkbenchPage() {
     if (id === workspaceId) navigate(rest.length ? `/courses/${courseId}/workspaces/${rest[rest.length - 1].id}` : "/courses");
   }, [courseId, navigate, tabsOpen, workspaceId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (stageToSelect = "") => {
     const mine = ++epoch.current;
     setLoading(true); setError("");
     try {
@@ -319,16 +322,23 @@ export default function MagicClassWorkbenchPage() {
       if (mine !== epoch.current) return;
       const nextWorkspace = normalizeWorkspaceList({ items: [workspacePayload] })[0] || null;
       const nextStages = normalizeStageList(stagePayload);
+      const preferred = (typeof stageToSelect === "string" && stageToSelect) || launchStageId;
+      if (preferred && !nextStages.some((stage) => stage.id === preferred)) {
+        const target = await api.getMagicClassStage(courseId, workspaceId, preferred);
+        if (mine !== epoch.current) return;
+        nextStages.unshift(...normalizeStageList({ items: [target] }));
+      }
       setWorkspace(nextWorkspace);
       setStages(nextStages);
-      setSelectedStageId((current) => (nextStages.some((stage) => stage.id === current) ? current : nextStages[0]?.id || ""));
+      setSelectedStageId((current) => nextStages.find((stage) => stage.id === stageToSelect)?.id
+        || nextStages.find((stage) => stage.id === current)?.id || nextStages[0]?.id || "");
     } catch (failure) {
       if (mine !== epoch.current) return;
       setWorkspace(null); setStages([]); setError(errorText(failure));
     } finally {
       if (mine === epoch.current) setLoading(false);
     }
-  }, [courseId, workspaceId]);
+  }, [courseId, launchStageId, workspaceId]);
 
   useEffect(() => {
     routeEpoch.current += 1;
@@ -337,7 +347,7 @@ export default function MagicClassWorkbenchPage() {
     // 但收到的是**地址表达的意图**而不是写死的 `false`：直达入口的
     // `mode=playback` 必须活过这一次重置，否则初值等于白设。
     setJob(null); setBusy(false); setNotice(""); setLearning(wantsLearning);
-    void load();
+    void load(launchStageId);
     // 能力状态各自独立降级：取不到时只是入口关闭，不影响已有内容。
     api.getMagicClassProviderStatus().then(setProviderStatus).catch(() => setProviderStatus(null));
     api.getMagicClassFusionStatus().then(setFusionStatus).catch(() => setFusionStatus(null));
@@ -348,7 +358,7 @@ export default function MagicClassWorkbenchPage() {
       if (polling.current) window.clearTimeout(polling.current);
       polling.current = null;
     };
-  }, [load, wantsLearning]);
+  }, [launchStageId, load, wantsLearning]);
 
   useEffect(() => { launchStarted.current = false; }, [courseId]);
 
@@ -373,8 +383,10 @@ export default function MagicClassWorkbenchPage() {
           if (routeMine === routeEpoch.current && pollMine === pollEpoch.current) void pollJob(jobId, routeMine, pollMine);
         }, 800);
       } else if (current.status === "completed") {
+        const stageId = current.mode === TOPIC_GENERATION_MODE ? await getGeneratedStageId(courseId, current) : "";
+        if (mine !== epoch.current || routeMine !== routeEpoch.current || pollMine !== pollEpoch.current) return;
         setNotice("学习内容已生成，并已写入当前工作台。");
-        await load();
+        await load(stageId);
       }
     } catch (failure) {
       if (mine !== epoch.current || routeMine !== routeEpoch.current || pollMine !== pollEpoch.current) return;

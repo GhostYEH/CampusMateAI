@@ -694,6 +694,7 @@ class MagicClassClassroomService:
                 course_context=context.text,
                 mode=resolved,
                 brief=brief,
+                mixed_topic=requested == "adaptive" and bool(brief and (brief.learning_objective or "").strip()),
                 enable_web_search=bool(capabilities.get("webSearch")),
                 enable_image=bool(capabilities.get("imageGeneration")),
                 enable_video=bool(capabilities.get("videoGeneration")),

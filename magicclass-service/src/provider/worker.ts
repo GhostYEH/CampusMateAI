@@ -87,7 +87,7 @@ export function createProviderJobWorker(options: {
     });
   }
 
-  async function runGeneration(identity: { userId: string; courseId: string; jobId: string }, input: Record<string, unknown>): Promise<void> {
+  async function runGeneration(identity: { userId: string; courseId: string; jobId: string }, input: Record<string, unknown>, attempt: number): Promise<void> {
     if (!options.provider) throw new ProviderError('provider_rejected', 'generation provider is not configured');
     const mode = typeof input.mode === 'string' ? input.mode : '';
     const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : '';
@@ -104,23 +104,31 @@ export function createProviderJobWorker(options: {
     const raw = await generateStageDocument(options.provider, { mode, prompt, assignmentReview });
     const prepared = prepareStage(materializeGeneratedStage(raw, { agentIds, mode, prompt, assignmentReview }));
     const title = String(prepared.document.stage?.name ?? prompt).slice(0, 200);
-    workspaces.createStage({
-      userId: identity.userId,
-      courseId: identity.courseId,
-      workspaceId,
-      title,
-      document: prepared.document,
-      dslVersion: prepared.document.dslVersion,
-      now: now(),
-    });
-    jobs.complete({
-      ...identity,
-      artifact: {
-        filename: `${safeFilename(title, '学习内容')}.stage.json`,
-        mediaType: 'application/json',
-        payload: Buffer.from(JSON.stringify(prepared.document), 'utf8'),
-      },
-      now: now(),
+    database.transaction(() => {
+      const current = jobs.get(identity);
+      if (current.status !== 'running' || current.attempts !== attempt) return;
+      const timestamp = now();
+      // The adaptive result's existing artifact identifies the saved stage,
+      // even when a newer stage exists in the same workspace.
+      workspaces.createStage({
+        ...(mode === 'adaptive' && { id: prepared.document.stage.id }),
+        userId: identity.userId,
+        courseId: identity.courseId,
+        workspaceId,
+        title,
+        document: prepared.document,
+        dslVersion: prepared.document.dslVersion,
+        now: timestamp,
+      });
+      jobs.complete({
+        ...identity,
+        artifact: {
+          filename: `${safeFilename(title, '学习内容')}.stage.json`,
+          mediaType: 'application/json',
+          payload: Buffer.from(JSON.stringify(prepared.document), 'utf8'),
+        },
+        now: timestamp,
+      });
     });
   }
 
@@ -183,22 +191,30 @@ export function createProviderJobWorker(options: {
 
   async function processJob(ref: QueuedJobRef): Promise<void> {
     const identity = { userId: ref.user_id, courseId: ref.course_id, jobId: ref.id };
+    let attempt: number | undefined;
     try {
       const job = jobs.get(identity);
+      if (job.status !== 'running') return;
+      attempt = job.attempts;
       let input: Record<string, unknown>;
       try {
         input = JSON.parse(job.input_json ?? '{}') as Record<string, unknown>;
       } catch {
         throw new ProviderError('internal_error', 'job input is not valid JSON');
       }
-      if (ref.kind === 'generation') await runGeneration(identity, input);
+      if (ref.kind === 'generation') await runGeneration(identity, input, attempt);
       else if (ref.kind === 'tts') await runTts(identity, input);
       else if (ref.kind === 'discussion') await runDiscussionJob(identity, input);
       else if (ref.kind === 'video') await runVideo(identity, input);
       else jobs.fail({ ...identity, errorCode: 'internal_error', now: now() });
     } catch (error) {
       try {
-        jobs.fail({ ...identity, errorCode: classify(error), now: now() });
+        database.transaction(() => {
+          const current = jobs.get(identity);
+          if (current.status === 'running' && current.attempts === attempt) {
+            jobs.fail({ ...identity, errorCode: classify(error), now: now() });
+          }
+        });
       } catch {
         // The job vanished (e.g. hard delete); nothing left to mark.
       }

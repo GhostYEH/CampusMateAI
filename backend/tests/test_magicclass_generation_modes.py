@@ -150,6 +150,21 @@ def test_requirement_defaults_to_no_student_brief_without_crashing():
     assert "不保证包含某一种特定形式" in req
 
 
+def test_mixed_topic_guides_the_order_and_preserves_capability_limits():
+    requirement = build_requirement(
+        course_context="工科基础",
+        mode="quiz",
+        brief=StudentBrief(learning_objective="看懂圆锥的空间结构"),
+        mixed_topic=True,
+        external_3d_available=False,
+    )
+    assert requirement.startswith("CampusMate 综合课堂\n")
+    assert "概念和具体例子 → 动手活动 → 随堂测验" in requirement
+    assert "看懂圆锥的空间结构" in requirement
+    assert "3D 可视化形式不可用" in requirement
+    assert "请把这节课做成一次自测" not in requirement
+
+
 def test_difficulty_level_values_are_mapped_to_readable_labels():
     for raw, label in (("beginner", "入门"), ("standard", "标准"), ("advanced", "进阶")):
         req = build_requirement(

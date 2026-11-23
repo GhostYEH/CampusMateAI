@@ -389,7 +389,7 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - `position` 和 `rotation` 可选，缺省为零向量。`position` 的各分量为 −40 至 40。`rotation` 为 Euler XYZ 弧度，各分量为 −360 至 360。`scale` 可用标量或 `{x,y,z}`，各分量为 0.03 至 12，缺省为 1。子物体的变换相对于父物体。
 - `material.color` 为 `#RRGGBB`。可选字段 `type` 支持 `standard`（默认）、`lambert`、`phong`、`basic`、`emissive`，后三者的外观由客户端灯光近似渲染。`wireframe` 与 `transparent` 为布尔值。`opacity` 为 0.15–1，低于 1 时要求 `transparent=true`。
 - `animation` 可选。`type` 支持 `rotate`、`orbit`、`bounce`、`pulse`。`axis` 为 `x`、`y`、`z`，默认为 `y`。`speed` 为每秒 0.05–6 弧度，默认为 1。旋转使用对象中心，公转使用父空间原点。弹跳沿轴移动 `0.25 * abs(sin(phase))`，脉动按 `1 + 0.12 * sin(phase)` 缩放。
-- `widget_highlight` 的 `target` 为 `#` 加上述对象 ID。Android 对完整验证通过的几何及动作本地渲染，可处理 `native`、`sandbox-html` 和仅因 `widget_requires_external_cdn` 降级的计划。未知版本、对象、控件或动作回到对应的兼容路径。Web 与 iOS 沿用已有的兼容内容，HarmonyOS 和小程序的三维原生渲染尚未接入。
+- `widget_highlight` 的 `target` 为 `#` 加上述对象 ID。Android 对完整验证通过的几何及动作本地渲染，可处理 `native`、`sandbox-html` 和仅因 `widget_requires_external_cdn` 降级的计划。受管工作台从有效的结构化配置生成 Canvas 兼容页面，支持拖动、缩放、选择高亮部件及播放对象动画，外部 CDN 未开启时也返回 `sandbox-html` 与 `sandbox="allow-scripts"`。经典课堂仍按部署的外部资源开关和既有客户端兼容策略播放。iOS 可通过现有沙箱加载受管页面，尚未做真机验收；HarmonyOS 和小程序的三维原生渲染尚未接入。
 
 ### 普通参数实验配置
 
@@ -417,6 +417,14 @@ playback.render 为 `{kind,sandbox?,widget_type?,reason?}`；kind= sandbox-html 
 - `chartParameter` 可选，值为已声明参数的 `id`。曲线固定其他滑块的值，沿该参数范围采样。`presets` 可选，默认空数组，最多 6 组，每组的 `label` 为 1–38 字符，`values` 为非空的参数 ID 到范围内数值的映射。预设在默认值基础上覆盖指定参数。
 - `widget_highlight.payload.target` 支持 `#parameter-<id>`、`#experiment-result`，声明曲线时还支持 `#experiment-curve`。`widget_setState.payload.state` 用参数 ID 到范围内数值的平面映射覆盖当前值。常规讲解、白板和翻页沿用播放计划。Android 对已验证的参数与动作使用原生交互。需要专用控件的场景走播放计划中的兼容运行时。
 - 经典课堂通过原有播放接口的场景正文读取。受管课从 stage document 读取。Web 在同一沙箱中播放兼容页面，iOS 可以继续消费下发的 HTML，iOS、HarmonyOS 与微信小程序原生参数实验在本轮未验证。
+
+### 可点击图示
+
+受管综合课堂可以在 `type="interactive"`、`widgetType="diagram"` 的场景交付 `widgetConfig`。`description` 是观察任务，最长 300 字符。`nodes` 包含 3–8 个 `{label,detail}` 对象，标签唯一，长度 1–48；解释长度 1–600。服务端生成无需外部资源的 `content.html`，学生通过点击节点查看解释。Web 及能够播放 `sandbox-html` 的客户端可读取，播放器不需要解析 `nodes` 才能显示。
+
+```json
+{"type":"diagram","description":"点击三个节点，比较它们对工业化的作用。","nodes":[{"label":"技术","detail":"蒸汽动力支持集中生产。"},{"label":"市场","detail":"需求增长有利于机械化投入。"},{"label":"运输","detail":"交通网络降低运输成本。"}]}
+```
 
 ## 共同课堂的动态响应
 

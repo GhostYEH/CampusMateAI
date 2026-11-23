@@ -265,6 +265,7 @@ export class WorkspaceRepository {
   // ===== stages =====
 
   createStage(input: {
+    id?: string;
     userId: string;
     courseId: string;
     workspaceId: string;
@@ -276,7 +277,7 @@ export class WorkspaceRepository {
     // The workspace must exist and belong to this caller before its child does.
     this.getWorkspace(input);
     const now = input.now ?? new Date().toISOString();
-    const id = `stg_${randomUUID().replaceAll('-', '')}`;
+    const id = input.id ?? `stg_${randomUUID().replaceAll('-', '')}`;
     this.#db
       .prepare(
         `INSERT INTO stages (id, workspace_id, user_id, course_id, title, document, dsl_version, revision, created_at, updated_at)

@@ -10,6 +10,7 @@ import { createGenerationRoutes } from '../src/generation/routes.ts';
 import { buildGeneratedStage } from '../src/generation/generator.ts';
 import { createJobRoutes } from '../src/jobs/routes.ts';
 import { JobRepository } from '../src/jobs/repository.ts';
+import { buildPlaybackPlan } from '../src/player/playback.ts';
 import { createProviderJobWorker } from '../src/provider/worker.ts';
 import { renderStageToMp4 } from '../src/provider/client.ts';
 import { createTtsRoutes } from '../src/tts/routes.ts';
@@ -88,6 +89,78 @@ async function startStub(handler) {
   const { port } = server.address();
   return { server, baseUrl: `http://127.0.0.1:${port}/v1` };
 }
+
+test('topic generation materializes three distinct activities, repairs incomplete drafts, and reopens the saved stage', async () => {
+  const themes = [
+    ['圆锥与圆柱', { type: 'visualization3d', description: '绕模型旋转，比较两者从顶部和侧面观察的形状。',
+      objects: [{ id: 'cone', name: '圆锥', type: 'cone', material: { color: '#DAB27A' } },
+        { id: 'cylinder', name: '圆柱', type: 'cylinder', position: { x: 2, y: 0, z: 0 }, material: { color: '#6BC7B1' } }] }],
+    ['欧姆定律', { type: 'simulation', description: '固定电阻，调整电压并观察电流。',
+      controls: [{ id: 'voltage', label: '电压', unit: 'V', min: 0, max: 12, step: 1, value: 6 }],
+      resultLabel: '电流', resultUnit: 'A', expression: ['voltage', 3, '/'], chartParameter: 'voltage' }],
+    ['工业革命', { type: 'diagram', description: '点击节点，比较各项条件对工业化的作用。',
+      nodes: [{ label: '技术', detail: '蒸汽机推动动力集中化。' }, { label: '市场', detail: '需求增长支持机械化投入。' },
+        { label: '运输', detail: '交通网络降低煤炭和产品运输成本。' }] }],
+  ];
+  const database = new ServiceDatabase(':memory:');
+  const jobs = new JobRepository(database);
+  const workspaces = new WorkspaceRepository(database);
+  const owner = { userId: 'user-1', courseId: 'course-1' };
+  const workspace = workspaces.createWorkspace({ ...owner, name: '主题课堂' });
+  const attempts = new Map();
+  const stub = await startStub((_request, response, raw) => {
+    const user = JSON.parse(raw).messages[1].content;
+    const [title, config] = themes.find(([name]) => user.includes(name));
+    const count = (attempts.get(title) ?? 0) + 1;
+    attempts.set(title, count);
+    const output = rawModelDoc('slide', title);
+    if (count > 1) {
+      output.scenes.push({ title: '动手观察', type: 'interactive', content: {
+        type: 'interactive', widgetType: config.type, widgetConfig: config, html: '<p>旧草稿占位</p>',
+      } });
+      const quiz = rawModelDoc('quiz', title).scenes[0];
+      quiz.content.questions.push({ ...quiz.content.questions[0], question: `如何在新情境中应用${title}？` });
+      output.scenes.push(quiz);
+    }
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(output) } }] }));
+  });
+  try {
+    const provider = stubConfig(stub.baseUrl);
+    const worker = createProviderJobWorker({ database, jobs, workspaces, provider });
+    const { server } = createHarness({ database, routes: [...createGenerationRoutes({ database, provider }), ...createJobRoutes({ database })] });
+    await withServer(server, async (base) => {
+      const path = `/internal/courses/course-1/workspaces/${workspace.id}/generate`;
+      for (const [index, [title, config]] of themes.entries()) {
+        const request = { body: { mode: 'adaptive', prompt: title }, scopes: ['generation:write', 'workspace:write', 'job:write'], key: `topic-${index}` };
+        const enqueued = await post(base, path, request);
+        assert.equal(enqueued.status, 201);
+        assert.equal(enqueued.body.job.status, 'queued');
+        assert.equal(await worker.tick(), true);
+        const replay = await post(base, path, request);
+        assert.equal(replay.body.job.id, enqueued.body.job.id);
+        assert.equal(replay.body.job.status, 'completed');
+        assert.equal(attempts.get(title), 2);
+        const artifact = await get(base, `/internal/courses/course-1/artifacts/${replay.body.job.artifact_id}`, ['job:read']);
+        const document = JSON.parse(Buffer.from(artifact.body.content_base64, 'base64'));
+        const row = workspaces.getStage({ ...owner, workspaceId: workspace.id, stageId: document.stage.id });
+        assert.equal(row.title, title);
+        assert.deepEqual(document.scenes.map((scene) => scene.type), ['slide', 'slide', 'interactive', 'quiz']);
+        const activity = document.scenes[2].content;
+        assert.equal(activity.widgetType, config.type);
+        assert.ok(activity.html.endsWith('</html>'));
+        assert.doesNotMatch(activity.html, /旧草稿占位/);
+        const plan = buildPlaybackPlan(document, { workspaceId: workspace.id, revision: 1, dslVersion: row.dsl_version }, { externalCdnAvailable: false });
+        assert.equal(plan.scenes[2].render.kind, 'sandbox-html');
+        assert.ok(JSON.parse(row.document).scenes[2].content.html.endsWith('</html>'));
+      }
+      assert.equal(workspaces.listStages({ ...owner, workspaceId: workspace.id }).items.length, 3);
+    });
+  } finally {
+    stub.server.close();
+    database.close();
+  }
+});
 
 // ===== configuration =====
 

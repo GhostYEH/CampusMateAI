@@ -1,22 +1,20 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Icon } from "../Icon.jsx";
-import * as api from "../../data/api.js";
 import { formatDateTime } from "../../utils/date.js";
-import { describeEntryFailure, enterClassroomHref, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../../features/magicclass/enterClassroomModel.js";
+import { enterClassroomHref } from "../../features/magicclass/enterClassroomModel.js";
 import { buildCourseRailItems, defaultMagicClassCourseId } from "../../features/magicclass/homeModel.js";
-import { inferHomeGenerationMode } from "../../features/magicclass/homeGenerationModel.js";
-import { createPollScope } from "../../data/pollScope.js";
+import { useTopicClassroomGeneration } from "../../features/magicclass/useTopicClassroomGeneration.js";
 import SubmittedAssignmentReviews from "../SubmittedAssignmentReviews.jsx";
 
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 
-function CoursePicker({ courses, selectedCourseId, onSelectCourse }) {
+function CoursePicker({ courses, selectedCourseId, onSelectCourse, disabled }) {
   const [open, setOpen] = React.useState(false);
   const selected = courses.find((course) => String(course.id) === String(selectedCourseId));
   return <div className="magicclass-reference-picker">
-    <button type="button" className="magicclass-reference-picker__trigger" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((value) => !value)}><Icon name="PhBookOpenText" size={16} aria-hidden="true" /><span>{selected?.name || selected?.title || "选择课程"}</span><Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" /></button>
-    {open ? <div className="magicclass-reference-picker__menu" role="listbox" aria-label="选择课程">{courses.map((course) => <button type="button" role="option" aria-selected={String(course.id) === String(selectedCourseId)} key={course.id} onClick={() => { onSelectCourse(String(course.id)); setOpen(false); }}><span>{course.name || course.title || "未命名课程"}</span>{String(course.id) === String(selectedCourseId) ? <Icon name="PhCheck" size={14} aria-hidden="true" /> : null}</button>)}</div> : null}
+    <button type="button" className="magicclass-reference-picker__trigger" disabled={disabled} aria-haspopup="listbox" aria-expanded={open && !disabled} onClick={() => setOpen((value) => !value)}><Icon name="PhBookOpenText" size={16} aria-hidden="true" /><span>{selected?.name || selected?.title || "选择课程"}</span><Icon name={open ? "PhCaretUp" : "PhCaretDown"} size={14} aria-hidden="true" /></button>
+    {open && !disabled ? <div className="magicclass-reference-picker__menu" role="listbox" aria-label="选择课程">{courses.map((course) => <button type="button" role="option" aria-selected={String(course.id) === String(selectedCourseId)} key={course.id} onClick={() => { onSelectCourse(String(course.id)); setOpen(false); }}><span>{course.name || course.title || "未命名课程"}</span>{String(course.id) === String(selectedCourseId) ? <Icon name="PhCheck" size={14} aria-hidden="true" /> : null}</button>)}</div> : null}
   </div>;
 }
 
@@ -30,69 +28,24 @@ function CourseLibrary({ courses, assignments }) {
 }
 
 export default function MagicClassHome({ courses = [], assignments = [], recentItems = [], fusion = null, providerStatus = null, recentError = "" }) {
-  const navigate = useNavigate();
   const [selectedCourseId, setSelectedCourseId] = React.useState(() => defaultMagicClassCourseId(courses));
   const [prompt, setPrompt] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [phase, setPhase] = React.useState(null);
-  const pollScopeRef = React.useRef(null);
-  if (!pollScopeRef.current) pollScopeRef.current = createPollScope();
-  const pollScope = pollScopeRef.current;
-  const cancelPollWaitRef = React.useRef(null);
+  const { busy, error, phase, generate } = useTopicClassroomGeneration(selectedCourseId);
   const selectedCourse = courses.find((course) => String(course.id) === String(selectedCourseId));
   const canGenerate = Boolean(selectedCourseId && fusion?.state === "ready" && fusion?.capabilities?.includes("workspace") && fusion?.capabilities?.includes("generation") && providerStatus?.providers?.llm);
   React.useEffect(() => { if (!courses.some((course) => String(course.id) === String(selectedCourseId))) setSelectedCourseId(defaultMagicClassCourseId(courses)); }, [courses, selectedCourseId]);
-  React.useEffect(() => () => {
-    cancelPollWaitRef.current?.();
-    cancelPollWaitRef.current = null;
-    pollScope.stop();
-  }, [pollScope]);
-
-  async function waitForJob(courseId, jobId, workspaceId, token) {
-    for (let attempt = 0; attempt < 180; attempt += 1) {
-      if (!pollScope.isCurrent(token)) return;
-      const job = await api.getMagicClassJob(courseId, jobId);
-      if (!pollScope.isCurrent(token)) return;
-      setPhase(resolveGenerationPhase(job));
-      if (job.status === "completed") { navigate(`/courses/${courseId}/workspaces/${workspaceId}?mode=playback`, { replace: true }); return; }
-      if (["failed", "cancelled"].includes(job.status)) throw { response: { status: 200, data: job } };
-      const shouldContinue = await new Promise((resolve) => {
-        const cancel = () => resolve(false);
-        cancelPollWaitRef.current = cancel;
-        pollScope.arm(() => {
-          cancelPollWaitRef.current = null;
-          pollScope.disarm();
-          resolve(true);
-        }, 800, token);
-      });
-      if (!shouldContinue || !pollScope.isCurrent(token)) return;
-    }
-    throw new Error("课堂生成等待超时，请稍后从最近课堂恢复。");
-  }
-
-  async function submit(event) {
-    event.preventDefault(); const topic = prompt.trim(); if (!topic || !selectedCourseId || busy) return;
-    cancelPollWaitRef.current?.();
-    cancelPollWaitRef.current = null;
-    pollScope.stop();
-    const token = pollScope.begin();
-    setBusy(true); setError(""); setPhase(null);
-    try {
-      const result = await api.generateMagicClassHome(selectedCourseId, { mode: inferHomeGenerationMode(topic), prompt: topic, idempotencyKey: stageGenerationIdempotencyKey(selectedCourseId, topic) });
-      if (!pollScope.isCurrent(token)) return;
-      const workspaceId = result?.workspace_id;
-      if (!workspaceId) throw new Error("网关未返回课程工作台");
-      if (result?.job?.status === "completed") navigate(`/courses/${selectedCourseId}/workspaces/${workspaceId}?mode=playback`, { replace: true });
-      else if (result?.job?.id) await waitForJob(selectedCourseId, result.job.id, workspaceId, token);
-      else throw new Error("受管服务未返回生成任务");
-    } catch (cause) { if (pollScope.isCurrent(token)) setError(describeEntryFailure(cause).message || cause?.message || "课堂生成失败，请重试。"); }
-    finally { if (pollScope.isCurrent(token)) setBusy(false); }
-  }
 
   const capabilityLabel = providerStatus?.providers?.llm ? "模型已连接" : "模型未配置";
   return <section className="magicclass-home magicclass-home--reference" aria-label="magic class 首页"><div className="magicclass-reference-glow magicclass-reference-glow--top" aria-hidden="true" /><div className="magicclass-reference-glow magicclass-reference-glow--bottom" aria-hidden="true" /><div className="magicclass-reference__brand"><span className="magicclass-reference__mark"><Icon name="PhCube" size={29} weight="duotone" /></span><span><strong>{"magic class"}</strong><small>Generative Learning in Multi-Agent Interactive Classroom</small></span></div>
-    <form className="magicclass-reference-composer" onSubmit={submit}><div className="magicclass-reference-composer__top"><CoursePicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={setSelectedCourseId} /><span className="magicclass-reference-composer__agents">嗨，同学 <Icon name="PhCaretDown" size={13} /></span></div><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={750} placeholder={'输入你想学习的任何内容，例如：\n「从零学习 Python，30 分钟写出第一个程序」\n「用矩阵乘法讲解傅里叶变换」\n「阿里跨库筛选怎么写」'} aria-label="学习主题" /><div className="magicclass-reference-composer__footer"><div className="magicclass-reference-tools" aria-label="课堂工具"><button type="button" aria-label="附件" disabled title="附件能力尚未接通"><Icon name="PhPaperclip" size={17} /></button><button type="button" aria-label="联网搜索" disabled title="联网搜索能力尚未接通"><Icon name="PhGlobe" size={17} /></button><button type="button" aria-label={capabilityLabel} className={providerStatus?.providers?.llm ? "is-ready" : ""} disabled title="模型选择由服务端课程配置管理"><Icon name="PhSlidersHorizontal" size={17} /></button></div><div className="magicclass-reference-actions"><button type="button" className="magicclass-reference-mode" disabled title="当前课程固定使用课堂生成模式">✦ 深度交互</button><button type="submit" aria-label="生成学习内容" className="magicclass-reference-submit" disabled={!canGenerate || !prompt.trim() || busy}>{busy ? (phase?.title || "生成中…") : "进入课堂"}<Icon name="PhArrowUp" size={15} /></button></div></div>{!canGenerate && !error ? <p className="magicclass-reference-hint" role="status">{providerStatus?.providers?.llm ? "课程生成能力正在准备，请稍后重试。" : "需要配置课程生成模型后才能创建真实课堂。"}</p> : null}{error ? <p className="magicclass-reference-error" role="alert">{error}</p> : null}</form>
+    <form className="magicclass-reference-composer" onSubmit={(event) => { event.preventDefault(); if (canGenerate) void generate(prompt); }}>
+      <div className="magicclass-reference-composer__top"><CoursePicker courses={courses} selectedCourseId={selectedCourseId} onSelectCourse={setSelectedCourseId} disabled={busy} /><span className="magicclass-reference-composer__agents">嗨，同学 <Icon name="PhCaretDown" size={13} /></span></div>
+      <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={750} placeholder={'输入学习主题，例如：\n「行星为什么绕太阳运动」\n「固定电阻，观察电流怎样随电压变化」\n「解释工业革命的成因」'} aria-label="学习主题" />
+      <div className="magicclass-reference-composer__footer">
+        <div className="magicclass-reference-tools" aria-label="课堂工具"><button type="button" aria-label="附件" disabled title="附件能力尚未接通"><Icon name="PhPaperclip" size={17} /></button><button type="button" aria-label="联网搜索" disabled title="联网搜索能力尚未接通"><Icon name="PhGlobe" size={17} /></button><button type="button" aria-label={capabilityLabel} className={providerStatus?.providers?.llm ? "is-ready" : ""} disabled title="模型选择由服务端课程配置管理"><Icon name="PhSlidersHorizontal" size={17} /></button></div>
+        <div className="magicclass-reference-actions"><button type="submit" aria-label="生成学习内容" className="magicclass-reference-submit" disabled={!canGenerate || !prompt.trim() || busy}>{busy ? (phase?.title || "生成中…") : "生成互动课堂"}<Icon name="PhArrowUp" size={15} /></button></div>
+      </div>
+      {error ? <p className="magicclass-reference-error" role="alert">{error}</p> : <p className="magicclass-reference-hint" role="status">{canGenerate ? "按主题自动安排讲解、动手活动和随堂测验。" : providerStatus?.providers?.llm ? "课程生成能力正在准备，请稍后重试。" : "需要配置课程生成模型后才能创建真实课堂。"}</p>}
+    </form>
     <div className="magicclass-classroom-entry">
       <span>已选课程：{selectedCourse?.name || selectedCourse?.title || "请选择课程"}</span>
       {selectedCourseId ? <Link className="button button-primary magicclass-classroom-entry__action" to={enterClassroomHref(selectedCourseId)} aria-label={`进入《${selectedCourse?.name || selectedCourse?.title || "当前课程"}》的课堂`}><Icon name="PhSparkle" size={17} />进入课堂</Link> : <button type="button" className="button button-primary magicclass-classroom-entry__action" disabled><Icon name="PhSparkle" size={17} />进入课堂</button>}

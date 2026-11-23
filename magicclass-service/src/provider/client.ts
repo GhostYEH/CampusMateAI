@@ -4,6 +4,7 @@ import type { GenerationMode } from '../generation/generator.ts';
 import { DSL_VERSION } from '../dsl/version.ts';
 import { assignmentReviewGuide, type AssignmentReviewSpec } from '../generation/assignment-review.ts';
 import { PARAMETER_EXPERIMENT_EXAMPLE, PARAMETER_EXPERIMENT_GUIDE, PARAMETER_EXPERIMENT_PROFILE } from '../generation/parameter-experiment.ts';
+import { ADAPTIVE_LESSON_GUIDE } from '../generation/adaptive-lesson.ts';
 
 /**
  * Redacted failure codes a job can end with. Messages never carry the API
@@ -94,11 +95,11 @@ const MODE_SCENE_GUIDE = [
   `Set "dslVersion" to exactly "${DSL_VERSION}". Do not invent scene or stage ids; the server assigns them.`,
   `Available generation modes: ${GENERATION_MODES.join(', ')}.`,
   'Scene objects: {"title": string, "order": number, "type": "slide"|"quiz"|"interactive"|"pbl", "content": ...}.',
-  'Mode mapping: slide→at least two teaching slides; quiz→quiz; pbl→pbl; other modes→"interactive" with a matching "widgetType". In simulation mode, choose visualization3d when the lesson centers on a spatial model and simulation for numeric experiments. If the user asks for 选择题/练习/测验/答题, include a real quiz scene after the teaching slides regardless of mode.',
+  'Mode mapping: adaptive→the combined lesson defined below; slide→at least two teaching slides; quiz→quiz; pbl→pbl; other modes→"interactive" with a matching "widgetType". In simulation mode, choose visualization3d when the lesson centers on a spatial model and simulation for numeric experiments. If the user asks for 选择题/练习/测验/答题, include a real quiz scene after the teaching slides regardless of mode.',
   'slide content: {"type": "slide", "slide": {"title": string, "subtitle": string, "sections": [{"heading": string, "bullets": [string]}]}} — 排版由服务端生成，不给坐标。第 1 页用“概念解释”小节以完整句说明定义、适用条件及意义；第 2 页用“推导步骤”或“具体例子”小节展开至少一个可核对的步骤或实例。不要只有关键词/提纲；正文会直接作为课堂讲解稿。每条小节正文应具体、有信息量，避免空泛教学指令。',
   'quiz content: {"type": "quiz", "questions": [{"type": "single"|"multiple"|"short_answer", "question": string, "options": [{"label": string, "value": string}], "answer": [string], "analysis": string, "points": number}]} — 选择题每题 3–6 个不同选项，answer 必须是正确选项的 value（single 恰好一个，multiple 至少两个）；简答题无选项，用 analysis 给参考答案。每题题干明确、analysis 非空、points > 0；quiz 场景真正让学生作答，不能把题目写成 slide。',
   'pbl content: {"type": "pbl", "project": {"title": string, "description": string, "milestones": [{"title": string, "description": string, "tasks": [{"title": string, "description": string}]}]}} — 项目结构与阶段状态由服务端生成，你只给内容，绝不要给 id、状态或角色。2 到 5 个阶段，每阶段 1 到 5 个任务；描述都用一句话讲清"这一步要产出什么"。',
-  'interactive content: {"type": "interactive", "html": string, "widgetType": string} — html is a self-contained inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',
+  'interactive content: {"type": "interactive", "widgetType": string, "widgetConfig": {...}}. In modes other than adaptive you may also include html: an inert fragment (headings, paragraphs, lists, inline SVG; no scripts) up to 20000 chars.',
   `数值实验用 widgetType="simulation"，widgetConfig 的 type="simulation"、nativeRenderer="${PARAMETER_EXPERIMENT_PROFILE}"。服务端从参数数据生成可操作的兼容页面，模型只写 JSON 与简短的 HTML 说明。`,
   PARAMETER_EXPERIMENT_GUIDE,
   '参数实验 widgetConfig 字段示例，按课程内容更换：' + PARAMETER_EXPERIMENT_EXAMPLE,
@@ -110,20 +111,29 @@ const MODE_SCENE_GUIDE = [
 /** Ask the provider for a full stage document; the caller still runs prepareStage. */
 export async function generateStageDocument(
   provider: ProviderConfig,
-  input: { mode: string; prompt: string; assignmentReview?: AssignmentReviewSpec },
+  input: { mode: GenerationMode; prompt: string; assignmentReview?: AssignmentReviewSpec },
 ): Promise<unknown> {
   const userRequest = `生成模式：${input.mode}\n内容要求：${input.prompt}`;
+  const guide = input.assignmentReview ? assignmentReviewGuide(input.assignmentReview)
+    : input.mode === 'adaptive' ? `${MODE_SCENE_GUIDE}\n${ADAPTIVE_LESSON_GUIDE}` : MODE_SCENE_GUIDE;
   let issues: string[] = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const payload = await chatCompletion(provider, {
       messages: [
-        { role: 'system', content: input.assignmentReview ? assignmentReviewGuide(input.assignmentReview) : MODE_SCENE_GUIDE },
+        { role: 'system', content: guide },
         { role: 'user', content: attempt === 0 ? userRequest : `${userRequest}\n上一稿未达到以下要求，请重新生成完整 JSON 文档并补全：${issues.join('；')}` },
       ],
       temperature: 0.4,
     });
-    const document = parseJsonContent(firstMessageContent(payload));
-    issues = reviewGeneratedStage(document, input.mode as GenerationMode, input.prompt, input.assignmentReview);
+    let document: unknown;
+    try {
+      document = parseJsonContent(firstMessageContent(payload));
+    } catch (error) {
+      if (input.mode !== 'adaptive' || attempt !== 0) throw error;
+      issues = ['返回符合文档契约的完整 JSON 对象'];
+      continue;
+    }
+    issues = reviewGeneratedStage(document, input.mode, input.prompt, input.assignmentReview);
     if (issues.length === 0) return document;
   }
   throw new ProviderError('provider_invalid_response', 'provider returned incomplete learning content');

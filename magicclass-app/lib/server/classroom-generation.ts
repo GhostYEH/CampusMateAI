@@ -51,6 +51,21 @@ export function containPBLGenerationError(error: unknown, sceneTitle: string): n
   return null;
 }
 
+function hasMixedLessonSequence(scenes: ReadonlyArray<{ type: string }>): boolean {
+  const explanation = scenes.findIndex((scene) => scene.type === 'slide');
+  const activity = scenes.findIndex((scene, index) => index > explanation && scene.type === 'interactive');
+  return explanation >= 0 && activity >= 0 && scenes.some((scene, index) => index > activity && scene.type === 'quiz');
+}
+
+function hasPlayableContent(scene: Scene): boolean {
+  const content = scene.content;
+  if (content.type === 'interactive') return Boolean(content.html?.trim() || content.url?.trim());
+  if (content.type === 'quiz') {
+    return content.questions.some((question) => typeof question.question === 'string' && question.question.trim());
+  }
+  return true;
+}
+
 export interface GenerateClassroomInput {
   requirement: string;
   pdfContent?: { text: string; images: string[] };
@@ -224,6 +239,7 @@ export async function generateClassroom(
   },
 ): Promise<GenerateClassroomResult> {
   const { requirement, pdfContent } = input;
+  const mixedLesson = requirement.startsWith('CampusMate 综合课堂\n');
 
   await options.onProgress?.({
     step: 'initializing',
@@ -514,18 +530,18 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
-  const outlinesResult = await generateSceneOutlinesFromRequirements(
-    requirements,
-    pdfText,
-    undefined,
-    aiCall,
-    {
-      imageGenerationEnabled: input.enableImageGeneration,
-      videoGenerationEnabled: input.enableVideoGeneration,
-      researchContext,
-      // NO teacherContext — agents haven't been generated yet
-    },
-  );
+  const outlineOptions = {
+    imageGenerationEnabled: input.enableImageGeneration,
+    videoGenerationEnabled: input.enableVideoGeneration,
+    researchContext,
+  };
+  let outlinesResult = await generateSceneOutlinesFromRequirements(requirements, pdfText, undefined, aiCall, outlineOptions);
+  if (mixedLesson && outlinesResult.data && !hasMixedLessonSequence(outlinesResult.data.outlines)) {
+    outlinesResult = await generateSceneOutlinesFromRequirements(
+      { ...requirements, requirement: `${requirement}\n请重新编排，确保 slide、interactive、quiz 依次出现。` },
+      pdfText, undefined, aiCall, outlineOptions,
+    );
+  }
 
   if (!outlinesResult.success || !outlinesResult.data) {
     log.error('Failed to generate outlines:', outlinesResult.error);
@@ -533,6 +549,9 @@ export async function generateClassroom(
   }
 
   const { languageDirective, courseTitle, outlines } = outlinesResult.data;
+  if (mixedLesson && !hasMixedLessonSequence(outlines)) {
+    throw new Error('未能编排完整的讲解、动手活动和随堂测验，请重试当前主题。');
+  }
   log.info(
     `Generated ${outlines.length} scene outlines (languageDirective: ${languageDirective}, courseTitle: ${courseTitle ?? 'n/a'})`,
   );
@@ -709,6 +728,9 @@ export async function generateClassroom(
 
     if (scenes.length === 0) {
       throw new Error('No scenes were generated');
+    }
+    if (mixedLesson && !hasMixedLessonSequence(scenes.filter(hasPlayableContent))) {
+      throw new Error('综合课堂缺少完整的讲解、动手活动或随堂测验，请重试当前主题。');
     }
 
     // Phase: Media generation (after all scenes generated)

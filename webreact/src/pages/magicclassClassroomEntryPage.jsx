@@ -9,6 +9,7 @@ import { describeFusionState } from "../features/magicclass/homeModel.js";
 import { CLASSROOM_GENERATION_STEPS, buildClassroomPrompt, classroomEntryIdempotencyKey, describeCourseReadiness, describeEntryFailure, resolveGenerationPhase, stageGenerationIdempotencyKey } from "../features/magicclass/enterClassroomModel.js";
 import { workspaceHref } from "../features/magicclass/quickAskModel.js";
 import { normalizeStageList, normalizeWorkspaceList } from "../features/magicclass/workspaceModel.js";
+import { TOPIC_GENERATION_MODE } from "../features/magicclass/homeGenerationModel.js";
 
 /**
  * 「进入课堂」直达页 —— 用户按下按钮之后发生的一切。
@@ -202,7 +203,7 @@ export default function MagicClassClassroomEntryPage() {
         // 5) 还没有内容：立即开始生成首个课堂内容。
         const key = stageGenerationIdempotencyKey(courseId, prompt);
         const result = await api.generateMagicClassStage(courseId, target.id, {
-          mode: "slide",
+          mode: TOPIC_GENERATION_MODE,
           prompt,
           idempotencyKey: key,
         });

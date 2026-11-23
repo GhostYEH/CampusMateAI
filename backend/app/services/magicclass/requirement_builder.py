@@ -419,6 +419,7 @@ def build_requirement(
     mode: str,
     learning_objective: Optional[str] = None,
     brief: Optional[StudentBrief] = None,
+    mixed_topic: bool = False,
     enable_web_search: bool = False,
     enable_image: bool = False,
     enable_video: bool = False,
@@ -431,12 +432,24 @@ def build_requirement(
     """
     resolved = normalize_mode(mode)
     lines: list = []
+    if mixed_topic:
+        lines.append("CampusMate 综合课堂")
     lines.append("这是一项面向学生本人的学习任务。你正在为一名学生生成一节可交互的学习课堂。")
     lines.append("课程上下文(仅作背景，不得把生成内容当作学校官方规定或考试事实)：")
     lines.append(course_context)
     lines.append("")
-    lines.append(f"这节课的形态意图: {_MODE_LABELS[resolved]}。")
-    lines.append(_MODE_TASKS[resolved])
+    if mixed_topic:
+        lines.append(f"综合课堂的学习重点: {_MODE_LABELS[resolved]}。")
+        lines.append(
+            "围绕学生自己填写的主题编排同一节课，按「概念和具体例子 → 动手活动 → 随堂测验」组织场景。"
+            "至少安排一个真正可操作的场景，再用答案和解析完整的题目检验学生能否应用。"
+            "空间构造和相对运动用可旋转、缩放的三维模型（能力可用时）；可计算的关系用滑块和实时结果；"
+            "流程、因果或概念关系用可点击的图示；编程主题可用已有的交互编程场景。"
+            "动手页写清学生要试什么、观察什么。题目、操作与讲解围绕同一个知识点。"
+        )
+    else:
+        lines.append(f"这节课的形态意图: {_MODE_LABELS[resolved]}。")
+        lines.append(_MODE_TASKS[resolved])
 
     objective = None
     if brief is not None and brief.learning_objective:
@@ -463,10 +476,11 @@ def build_requirement(
         "重点用琥珀或铜色强调；不要默认白底灰黑字，也不要紫蓝渐变。"
         "这是视觉模板，不是学科模板，正文仍按课程真实内容组织。"
     )
-    lines.append(
-        "请针对这门课的真实内容生成，不要套用固定学科模板；"
-        "根据课程内容自主决定讲解、测验、交互实验、项目式学习等形式的组合。"
-    )
+    if not mixed_topic:
+        lines.append(
+            "请针对这门课的真实内容生成，不要套用固定学科模板；"
+            "根据课程内容自主决定讲解、测验、交互实验、项目式学习等形式的组合。"
+        )
     lines.append(
         "最终内容组合由互动课堂生成器根据课程内容自行决定，不保证包含某一种特定形式。"
     )
