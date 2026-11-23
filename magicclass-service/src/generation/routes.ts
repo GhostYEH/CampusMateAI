@@ -88,6 +88,9 @@ export function createGenerationRoutes(options: { database: ServiceDatabase; pro
       }
 
       workspaceRepository.getWorkspace({ userId, courseId, workspaceId });
+      if (mode === 'adaptive' && !options.provider) {
+        return { status: 503, body: { error: 'provider_unavailable', message: '综合课堂需要可用的生成模型' } };
+      }
       const agentIds = roleMode(body) === 'preset' ? selectedRoleIds(body) : [];
       if (options.provider) {
         // Real generation is asynchronous: enqueue and let the worker run the

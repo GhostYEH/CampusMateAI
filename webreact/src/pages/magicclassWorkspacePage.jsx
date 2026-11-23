@@ -13,8 +13,9 @@ import { describeFusionState } from "../features/magicclass/homeModel.js";
 import { filenameFromContentDisposition } from "../features/magicclass/archiveModel.js";
 import { normalizeSelectedRoleIds, selectedRoles } from "../features/magicclass/roleModel.js";
 import { formatDateTime } from "../utils/date.js";
+import { TOPIC_GENERATION_MODE } from "../features/magicclass/homeGenerationModel.js";
 
-const MODES = [["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"], ["diagram", "图示"], ["code", "代码练习"], ["game", "游戏"], ["visualization3d", "3D 可视化"], ["procedural-skill", "程序技能"]];
+const MODES = [[TOPIC_GENERATION_MODE, "综合课堂（自动编排）"], ["slide", "幻灯片"], ["quiz", "测验"], ["interactive", "互动课堂"], ["pbl", "项目式学习"], ["simulation", "模拟"], ["diagram", "图示"], ["code", "代码练习"], ["game", "游戏"], ["visualization3d", "3D 可视化"], ["procedural-skill", "程序技能"]];
 const dateText = (value) => formatDateTime(value, { dateStyle: "medium", timeStyle: "short" }, "时间待定");
 const errorText = (error, fallback = "工作台加载失败，请重试") => userErrorMessage(error, fallback);
 
@@ -63,7 +64,7 @@ export default function MagicClassWorkspacePage() {
   const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   const [providerStatus, setProviderStatus] = useState(null);
   const [fusionStatus, setFusionStatus] = useState(null);
-  const [mode, setMode] = useState("slide"); const [prompt, setPrompt] = useState(""); const [job, setJob] = useState(null); const [busy, setBusy] = useState(false); const [playing, setPlaying] = useState(false);
+  const [mode, setMode] = useState(TOPIC_GENERATION_MODE); const [prompt, setPrompt] = useState(""); const [job, setJob] = useState(null); const [busy, setBusy] = useState(false); const [playing, setPlaying] = useState(false);
   const epoch = useRef(0); const pollEpoch = useRef(0); const polling = useRef(null);
   const launchStarted = useRef(false);
   const routeEpoch = useRef(0);

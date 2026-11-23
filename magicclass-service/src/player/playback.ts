@@ -31,6 +31,7 @@ import {
   type StageAggregate,
   type WidgetType,
 } from '../dsl/contract.ts';
+import { INLINE_SPATIAL_MARKER } from '../generation/spatial-experiment.ts';
 
 export type RenderKind = 'native' | 'sandbox-html' | 'sandbox-url' | 'unsupported';
 
@@ -124,9 +125,10 @@ function renderFor(scene: Scene, capabilities: RenderCapabilities): ScenePlaybac
   if (widgetType !== undefined && !isWidgetType(widgetType)) {
     return { kind: 'unsupported', reason: 'widget_type_unknown' };
   }
-  // `visualization3d` is the one widget family whose rendering depends on an
-  // external origin; without it the scene degrades instead of rendering blank.
-  if (widgetType === 'visualization3d' && !capabilities.externalCdnAvailable) {
+  // Older 3D widgets can depend on a CDN. The generated Canvas runtime is
+  // inline, so it uses the same sandbox even when external assets are off.
+  const hasInlineSpatialRuntime = typeof content?.html === 'string' && content.html.slice(0, 220).includes(INLINE_SPATIAL_MARKER);
+  if (widgetType === 'visualization3d' && !hasInlineSpatialRuntime && !capabilities.externalCdnAvailable) {
     return { kind: 'unsupported', widget_type: widgetType, reason: 'widget_requires_external_cdn' };
   }
 

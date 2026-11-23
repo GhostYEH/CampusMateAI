@@ -329,13 +329,18 @@ function sanitizeDocument(document: unknown): unknown {
   if (!isObject(document)) return document;
   const out = sanitizeStrings(document) as Record<string, unknown>;
 
-  if (!Array.isArray(out.scenes)) return out;
-  const scenes = (out.scenes as unknown[]).map((scene) => {
+  if (!Array.isArray(out.scenes) || !Array.isArray(document.scenes)) return out;
+  const sourceScenes = document.scenes;
+  const scenes = (out.scenes as unknown[]).map((scene, index) => {
     if (!isObject(scene)) return scene;
     const content = scene.content;
     if (!isObject(content) || content.type !== 'interactive') return scene;
-    if (typeof content.html !== 'string') return scene;
-    const html = sanitizeInteractiveHtml(content.html);
+    const source = sourceScenes[index];
+    const rawContent = isObject(source) && isObject(source.content) ? source.content : null;
+    if (typeof rawContent?.html !== 'string') return scene;
+    // Interactive documents have their own byte limit. The free-text limit
+    // must not cut an inline runtime or its config in the middle of a script.
+    const html = sanitizeInteractiveHtml(rawContent.html);
     if (html === null) return scene; // unreachable: bounded before sanitizing
     return { ...scene, content: { ...content, html } };
   });

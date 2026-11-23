@@ -4,6 +4,20 @@
 
 [文档导航](README.md) · [接入与流程](integration.md) · [字段字典](schemas.md) · [OpenAPI](openapi.json)
 
+## 按主题生成综合课堂
+
+Web 的「学习空间」、课程页主题输入和课程工作台默认显式发送 `mode="adaptive"`。生成接口是 `POST /api/v1/courses/{course_id}/home-generate` 或 `POST /api/v1/courses/{course_id}/workspaces/{workspace_id}/generate`，均需要 Bearer 登录、课程访问权限和 `Idempotency-Key`。首页工作台按学生和课程复用。`home-generate` 未传 `mode` 时仍使用既有默认值 `slide`，旧客户端可以继续显式请求单一形态。
+
+```json
+{"mode":"adaptive","prompt":"比较圆柱和圆锥的空间结构"}
+```
+
+综合课有 4–8 页。前两页分别讲概念和具体例子，中间安排 1–2 个不同类型的可操作场景，最后一页测验至少两道不同的题并附解析。动手场景按主题选择三维模型、参数模拟或可点击图示，适合项目实践的课可在测验前包含项目任务。服务端校验后生成可在既有沙箱运行的内嵌页面。空间主题可用三维，参数关系可用滑块与曲线，因果、比较或流程可用可点击的图示。
+
+提交返回 201 和异步任务，例如 `{"workspace_id":"ws_example","source":"provider","job":{"id":"job_example","mode":"adaptive","status":"queued","artifact_id":null}}`（首页的裁剪示例）。按课程 job 接口轮询。任务 `completed` 后，读取既有 JSON artifact，其中 `stage.id` 是该工作台里实际保存的舞台 ID。Web 使用该 ID 打开刚生成或重进的课堂。若模型草稿缺少有效场景，服务会带结构反馈重试一次，仍不完整时任务状态为 `failed`，`error_code="provider_invalid_response"`。可显式调用 job retry，同 ID 重试。生成模型未配置返回 503 `MAGICCLASS_UNAVAILABLE`。复用现有错误和鉴权契约。
+
+经典课程和个人自主选题的现有生成接口在 `mode="adaptive"` 且提供非空 `learning_objective` 时，同样请求先讲解、再动手、最后练习。原 `mode`、`requested_mode` 和推荐理由仍描述学习重点。大纲缺少这三类场景时上游重编一次，成品缺少环节时任务失败，以 `composition` 或实际播放场景回读结果。Android 和 iOS 沿用现有生成和播放接口，真机兼容性需单独验收。HarmonyOS 与微信小程序当前没有接入这条主题生成流程。
+
 <a id="assignment-practice-profile"></a>
 ## 从已截止作业进入自主练习
 
@@ -2085,7 +2099,7 @@ Web 封装：`generateMagicClassStage`（[webreact/src/data/api.js](../../webrea
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `mode` | string | 是 | minLength=1; maxLength=80 | — |
+| `mode` | string | 是 | minLength=1; maxLength=80 | `adaptive` 按主题生成综合课堂，其他支持的形态沿用既有规则 |
 | `prompt` | string | 是 | minLength=1; maxLength=2000 | — |
 | `role_mode` | string | 否 | default="preset"; pattern="^(preset\|auto)$" | — |
 | `selected_role_ids` | array<string> | 否 | maxItems=7 | — |
@@ -2137,7 +2151,7 @@ Resolve one course homepage submission into one workspace/job pair.
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `mode` | string | 否 | default="slide"; minLength=1; maxLength=80 | — |
+| `mode` | string | 否 | default="slide"; minLength=1; maxLength=80 | Web 主题入口显式发送 `adaptive` |
 | `prompt` | string | 是 | minLength=1; maxLength=750 | — |
 
 请求结构示例（占位符需替换；业务约束见字段字典与流程）：

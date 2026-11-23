@@ -169,7 +169,8 @@
   color: var(--lsn-text-soft);
 }
 
-.lsn-field select {
+.lsn-field select,
+.lsn-field textarea {
   appearance: none;
   width: 100%;
   padding: 11px 14px;
@@ -180,7 +181,14 @@
   font-size: 14px;
 }
 
-.lsn-field select:focus-visible {
+.lsn-field textarea {
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.lsn-field select:focus-visible,
+.lsn-field textarea:focus-visible {
   outline: 2px solid var(--lsn-amber);
   outline-offset: 2px;
 }
@@ -201,6 +209,24 @@
 
 .lsn-start .button:disabled {
   opacity: 0.55;
+  box-shadow: none;
+}
+
+.lsn-topic {
+  display: grid;
+  gap: 12px;
+}
+
+.lsn-topic__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lsn-topic__actions .button-secondary {
+  border: 1px solid var(--lsn-line);
+  background: var(--lsn-cream);
+  color: var(--lsn-ink);
   box-shadow: none;
 }
 

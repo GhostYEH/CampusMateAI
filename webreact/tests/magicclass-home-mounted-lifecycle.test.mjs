@@ -37,6 +37,8 @@ const apiModule = `
   const api = () => globalThis.__magicHomeLifecycleApi;
   export const generateMagicClassHome = (...args) => api().generateMagicClassHome(...args);
   export const getMagicClassJob = (...args) => api().getMagicClassJob(...args);
+  export const retryMagicClassJob = (...args) => api().retryMagicClassJob(...args);
+  export const getMagicClassArtifact = (...args) => api().getMagicClassArtifact(...args);
 `;
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)),
@@ -47,7 +49,7 @@ const vite = await createServer({
     name: "magicclass-home-lifecycle-test-doubles",
     enforce: "pre",
     resolveId(source, importer) {
-      if (source === "../../data/api.js" && importer?.endsWith("/components/magicclass/magicclassHome.jsx")) return "\0magic-home-lifecycle-api";
+      if (source === "../../data/api.js" && importer?.endsWith("/features/magicclass/useTopicClassroomGeneration.js")) return "\0magic-home-lifecycle-api";
       if (source === "../Icon.jsx" && importer?.endsWith("/components/magicclass/magicclassHome.jsx")) return "\0magic-home-lifecycle-icon";
     },
     load(id) {
@@ -111,6 +113,39 @@ async function submitTopic(host) {
   await act(async () => Simulate.change(textarea, { target: { value: "学习线性代数" } }));
   await act(async () => host.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })));
 }
+
+test("resubmitting a failed topic retries its job and opens the stage from its artifact", async () => {
+  const stageId = "stg_0123456789abcdef0123456789abcdef";
+  const failed = { id: "job-topic", mode: "adaptive", status: "failed" };
+  const completed = { ...failed, status: "completed", artifact_id: "artifact-topic" };
+  const retries = [];
+  globalThis.__magicHomeLifecycleApi = {
+    generateMagicClassHome: async (courseId, request) => {
+      assert.equal(courseId, "course-1");
+      assert.equal(request.prompt, "学习线性代数");
+      assert.equal(request.mode, "adaptive");
+      return { workspace_id: "ws-1", job: failed };
+    },
+    retryMagicClassJob: async (...args) => { retries.push(args); },
+    getMagicClassJob: async () => completed,
+    getMagicClassArtifact: async (courseId, artifactId) => {
+      assert.equal(courseId, "course-1");
+      assert.equal(artifactId, completed.artifact_id);
+      return { blob: new Blob([JSON.stringify({ stage: { id: stageId } })]) };
+    },
+  };
+  const { default: MagicClassHome } = await vite.ssrLoadModule("/src/components/magicclass/magicclassHome.jsx");
+  const view = await mount(MagicClassHome);
+  try {
+    await submitTopic(view.host);
+    assert.deepEqual(retries, [["course-1", "job-topic"]]);
+    assert.equal(globalThis.__magicHomeLocation, `/courses/course-1/workspaces/ws-1?mode=playback&stage=${stageId}`);
+  } finally {
+    await view.unmount();
+    delete globalThis.__magicHomeLifecycleApi;
+    delete globalThis.__magicHomeLocation;
+  }
+});
 
 test("unmount cancels the scheduled job poll under StrictMode", async () => {
   const poll = deferred();

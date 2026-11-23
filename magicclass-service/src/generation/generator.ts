@@ -10,9 +10,10 @@ import {
   PARAMETER_EXPERIMENT_PROFILE,
 } from './parameter-experiment.ts';
 import { composePblProject } from '../dsl/pbl-project.ts';
+import { materializeAdaptiveActivity, reviewAdaptiveLesson } from './adaptive-lesson.ts';
 
 export const GENERATION_MODES = [
-  'slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game',
+  'adaptive', 'slide', 'quiz', 'interactive', 'pbl', 'simulation', 'diagram', 'code', 'game',
   'visualization3d', 'procedural-skill',
 ] as const;
 
@@ -57,6 +58,13 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
   const scenes = isObject(raw) && Array.isArray(raw.scenes) ? raw.scenes : [];
   const issues: string[] = [];
   if (assignmentReview) issues.push(...reviewAssignmentPractice(scenes, assignmentReview));
+  if (mode === 'adaptive') {
+    const stage = isObject(raw) && isObject(raw.stage) ? raw.stage : {};
+    if (typeof stage.name !== 'string' || !stage.name.trim() || stage.name.trim().length > 200) {
+      issues.push('综合课堂须有与主题对应的课堂名称');
+    }
+    issues.push(...reviewAdaptiveLesson(scenes));
+  }
   for (const [index, scene] of scenes.entries()) {
     if (!isObject(scene) || scene.type !== 'interactive' || !isObject(scene.content) || scene.content.widgetType !== 'simulation') continue;
     const config = scene.content.widgetConfig;
@@ -64,7 +72,7 @@ export function reviewGeneratedStage(raw: unknown, mode: GenerationMode, prompt:
       issues.push('第 ' + (index + 1) + ' 页的参数实验配置无效，请修正参数范围、默认值和计算式');
     }
   }
-  if (mode === 'slide' && !assignmentReview) {
+  if ((mode === 'slide' || mode === 'adaptive') && !assignmentReview) {
     for (const [index, purpose] of ['概念', '推导或例子'].entries()) {
       const scene = scenes[index];
       const content = isObject(scene) && isObject(scene.content) ? scene.content : {};
@@ -287,7 +295,7 @@ function assignContentIds(scene: Record<string, unknown>): Record<string, unknow
  */
 export function materializeGeneratedStage(raw: unknown, options: { agentIds?: string[]; mode?: GenerationMode; prompt?: string; assignmentReview?: AssignmentReviewSpec } = {}): StageAggregate & { dslVersion: string } {
   const now = Date.now();
-  const stageId = id('stage');
+  const stageId = id(options.mode === 'adaptive' ? 'stg' : 'stage');
   const source = isObject(raw) ? raw : {};
   const stageInput = isObject(source.stage) ? source.stage : {};
   const scenesInput = Array.isArray(source.scenes) ? source.scenes : [];
@@ -308,7 +316,11 @@ export function materializeGeneratedStage(raw: unknown, options: { agentIds?: st
     } as Scene));
   }
   scenes = scenes.map((scene) => {
-    if (scene.type !== 'interactive' || scene.content?.type !== 'interactive' || scene.content.widgetType !== 'simulation') return scene;
+    if (scene.type !== 'interactive' || scene.content?.type !== 'interactive') return scene;
+    if (options.mode === 'adaptive' || scene.content.widgetType === 'visualization3d') {
+      return { ...scene, content: materializeAdaptiveActivity(scene.content) };
+    }
+    if (scene.content.widgetType !== 'simulation') return scene;
     const config = scene.content.widgetConfig;
     if (config?.nativeRenderer !== PARAMETER_EXPERIMENT_PROFILE) return scene;
     const experiment = materializeParameterExperiment(config);

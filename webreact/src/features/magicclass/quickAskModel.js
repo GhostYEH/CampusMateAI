@@ -22,10 +22,11 @@ import { describeWorkspaceError } from "./workspaceModel.js";
  */
 export function workspaceHref(courseId, workspaceId, prompt, options) {
   if (!courseId || !workspaceId) throw new Error("打开 magic class 工作台需要真实的课程和工作台");
-  const { mode, selectedRoleIds = [] } = options || {};
+  const { mode, stageId, selectedRoleIds = [] } = options || {};
   const parts = [];
   if (prompt) parts.push(`prompt=${encodeURIComponent(prompt)}`);
   if (mode) parts.push(`mode=${encodeURIComponent(mode)}`);
+  if (stageId) parts.push(`stage=${encodeURIComponent(stageId)}`);
   if (selectedRoleIds.length) parts.push(`roles=${encodeURIComponent(selectedRoleIds.join(","))}`);
   return `/courses/${encodeURIComponent(courseId)}/workspaces/${encodeURIComponent(workspaceId)}${parts.length ? `?${parts.join("&")}` : ""}`;
 }

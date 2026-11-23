@@ -3591,7 +3591,7 @@ def validate_value_for_type(self) -> 'ForecastOut':
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `mode` | string | 是 | minLength=1; maxLength=80 | — |
+| `mode` | string | 是 | minLength=1; maxLength=80 | `adaptive` 根据主题编排讲解、动手和测验 |
 | `prompt` | string | 是 | minLength=1; maxLength=2000 | — |
 | `role_mode` | string | 否 | default="preset"; pattern="^(preset\|auto)$" | — |
 | `selected_role_ids` | array<string> | 否 | maxItems=7 | — |
@@ -3757,7 +3757,7 @@ retry from racing two separate create calls.
 
 | 字段 | 类型 | 必须出现 | 默认值 / 约束 | 说明 |
 | --- | --- | --- | --- | --- |
-| `mode` | string | 否 | default="slide"; minLength=1; maxLength=80 | — |
+| `mode` | string | 否 | default="slide"; minLength=1; maxLength=80 | Web 主题生成显式使用 `adaptive` |
 | `prompt` | string | 是 | minLength=1; maxLength=750 | — |
 
 <a id="schema-importancerankitem"></a>

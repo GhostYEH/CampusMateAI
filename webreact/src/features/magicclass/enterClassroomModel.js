@@ -56,7 +56,8 @@ export function stageGenerationIdempotencyKey(courseId, topic) {
   const id = String(courseId ?? "").trim();
   if (!id) throw new Error("生成幂等键需要真实的课程");
   const normalized = String(topic ?? "").trim().replace(/\s+/g, " ");
-  return `magicclass-stage-${id}-${hashText(normalized)}`;
+  // The earlier slide-only request used a different idempotency identity.
+  return `magicclass-stage-v2-${id}-${hashText(normalized)}`;
 }
 
 /**
@@ -311,6 +312,8 @@ export function describeEntryFailure(error) {
       completed: false,
       message: cancelled
         ? "生成已中断，可重新开始或手动创建工作台。"
+        : error.response.data.mode === "adaptive" && raw === "provider_invalid_response"
+          ? "模型暂未生成完整的讲解、动手活动和测验。可重试当前主题。"
         : `生成失败：${raw || "受管服务未给出具体原因"}。可重试，或手动创建工作台。`,
     };
   }

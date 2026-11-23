@@ -123,7 +123,7 @@ test("courses route calls the aggregate endpoints instead of per-course history"
 });
 
 test("the primary course action enters the selected classroom directly", () => {
-  assert.match(homeSource, /api\.generateMagicClassHome/);
+  assert.match(homeSource, /useTopicClassroomGeneration/);
   assert.match(homeSource, /进入课堂/);
   assert.doesNotMatch(homeSource, /快速询问/);
   assert.doesNotMatch(homeSource, /AgentRolePicker/);
@@ -150,10 +150,9 @@ test("home uses the reference root composition and submits a real course-bound p
   assert.match(homeSource, /magicclass-home--reference/);
   assert.match(homeSource, /<textarea/);
   assert.match(homeSource, /生成学习内容/);
-  assert.match(homeSource, /api\.generateMagicClassHome/);
+  assert.match(homeSource, /useTopicClassroomGeneration/);
   assert.doesNotMatch(homeSource, /api\.createMagicClassWorkspace/);
   assert.doesNotMatch(homeSource, /api\.generateMagicClassStage/);
-  assert.match(homeSource, /stageGenerationIdempotencyKey/);
   assert.match(homeSource, /最近课堂/);
   assert.doesNotMatch(homeSource, /更多学习工具/);
   assert.match(homeSource, /<details className="magicclass-reference-library"/);

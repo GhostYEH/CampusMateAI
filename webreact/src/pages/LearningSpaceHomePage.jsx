@@ -8,6 +8,7 @@ import SubmittedAssignmentReviews from "../components/SubmittedAssignmentReviews
 import { itemsOf } from "../data/contracts.js";
 import { describeFusionState } from "../features/magicclass/homeModel.js";
 import { normalizeWorkspaceList } from "../features/magicclass/workspaceModel.js";
+import { useTopicClassroomGeneration } from "../features/magicclass/useTopicClassroomGeneration.js";
 
 /**
  * 学习空间首页（原生版）。
@@ -25,28 +26,33 @@ export default function LearningSpaceHomePage() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState("");
+  const [topic, setTopic] = useState("");
   const [workspaces, setWorkspaces] = useState([]);
   const [recent, setRecent] = useState([]);
   const [fusion, setFusion] = useState(null);
+  const [provider, setProvider] = useState(null);
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError] = useState(null);
   const [listError, setListError] = useState(null);
+  const generation = useTopicClassroomGeneration(courseId);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [coursePayload, recentPayload, fusionStatus] = await Promise.all([
+      const [coursePayload, recentPayload, fusionStatus, providerStatus] = await Promise.all([
         api.getCourses(),
         api.getMagicClassRecent(6).catch(() => []),
         api.getMagicClassFusionStatus().catch(() => null),
+        api.getMagicClassProviderStatus().catch(() => null),
       ]);
       const list = itemsOf(coursePayload).filter((course) => course && course.id != null);
       setCourses(list);
       setCourseId((current) => current || (list[0] ? String(list[0].id) : ""));
       setRecent(itemsOf(recentPayload).filter((item) => item && item.course_id));
       setFusion(fusionStatus);
+      setProvider(providerStatus);
     } catch (err) {
       setError(err);
     } finally {
@@ -70,6 +76,7 @@ export default function LearningSpaceHomePage() {
 
   const fusionView = useMemo(() => describeFusionState(fusion), [fusion]);
   const canEnter = !loading && fusionView.state === "ready" && fusionView.canCreateWorkspace;
+  const canGenerate = Boolean(courseId && canEnter && fusion?.capabilities?.includes("generation") && provider?.providers?.llm);
   const currentCourse = courses.find((course) => String(course.id) === courseId) || null;
 
   const enterClassroom = useCallback(() => {
@@ -130,7 +137,7 @@ export default function LearningSpaceHomePage() {
             </header>
             <p className="lsn-card__hint">
               {canEnter
-                ? "选一门课程，CampusMate 会复用已有课堂，没有就现场生成。"
+                ? "选一门课程，输入想学的主题，自动安排讲解、动手活动和测验。"
                 : fusionView.detail}
             </p>
 
@@ -139,7 +146,7 @@ export default function LearningSpaceHomePage() {
               <select
                 value={courseId}
                 onChange={(event) => setCourseId(event.target.value)}
-                disabled={!courses.length}
+                disabled={!courses.length || generation.busy}
               >
                 {!courses.length && <option value="">暂无可见课程</option>}
                 {courses.map((course) => (
@@ -157,9 +164,25 @@ export default function LearningSpaceHomePage() {
               </p>
             )}
 
-            <Button onClick={enterClassroom} disabled={!canEnter || !courseId}>
-              进入课堂 →
-            </Button>
+            <form className="lsn-topic" onSubmit={(event) => { event.preventDefault(); if (canGenerate) void generation.generate(topic); }}>
+              <label className="lsn-field">
+                <span>学习主题</span>
+                <textarea value={topic} onChange={(event) => setTopic(event.target.value)} rows={3} maxLength={750}
+                  placeholder="例如，比较圆柱和圆锥的空间结构" disabled={generation.busy} />
+              </label>
+              <div className="lsn-topic__actions">
+                <Button type="submit" disabled={!canGenerate || !topic.trim() || generation.busy}>
+                  {generation.busy ? generation.phase?.title || "正在生成…" : "生成互动课堂"}
+                </Button>
+                <Button type="button" variant="secondary" onClick={enterClassroom} disabled={!canEnter || !courseId || generation.busy}>
+                  进入课堂 →
+                </Button>
+              </div>
+              {generation.error && <p className="lsn-inline-error" role="alert">{generation.error}</p>}
+              {!generation.error && canEnter && !canGenerate && courseId && (
+                <p className="lsn-card__hint" role="status">课堂生成模型暂不可用，已有课堂仍可打开。</p>
+              )}
+            </form>
 
             {listError && (
               <p className="lsn-inline-error" role="status">

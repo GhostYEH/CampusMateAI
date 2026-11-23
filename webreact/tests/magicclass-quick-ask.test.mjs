@@ -183,7 +183,7 @@ test("submission is refused with a reason instead of a dead button", () => {
 test("the course surface uses direct classroom entry instead of the legacy quick-ask UI", () => {
   assert.doesNotMatch(pageSource, /onQuickAsk=/);
   assert.doesNotMatch(pageSource, /generationPreviewHref/);
-  assert.match(homeSource, /api\.generateMagicClassHome/);
+  assert.match(homeSource, /useTopicClassroomGeneration/);
   assert.match(homeSource, /进入课堂/);
 });
 

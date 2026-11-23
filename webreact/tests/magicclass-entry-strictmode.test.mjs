@@ -281,7 +281,7 @@ test("StrictMode's double mount still creates exactly one workspace per course",
   assert.equal(gens.length, 1, `生成只应触发一次；实际 ${gens.length} 次`);
   assert.match(
     String(gens[0].headers?.["Idempotency-Key"] || ""),
-    /^magicclass-stage-crs_x-[a-z0-9]+$/,
+    /^magicclass-stage-v2-crs_x-[a-z0-9]+$/,
     "生成幂等键必须由课程 + 主题派生",
   );
 

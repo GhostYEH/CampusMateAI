@@ -207,13 +207,15 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 <a id="magicclass"></a>
 ## 课程课堂、工作台、编辑与导出
 
-课程内经典课堂与受管工作台是两种契约：经典接口用 session_id/classroom_id，受管接口用 workspace_id/stage_id/scene_id。导航栏独立学习空间又是第三条链路。
+课程内经典课堂使用 session_id/classroom_id，Web 学习空间和课程工作台使用受管 workspace_id/stage_id/scene_id。独立学习空间保留为 Web 的兼容入口 `/learning-space/legacy`。
 
 经典课堂：status → 只读 plan → generate（202）→ jobs/{session_id} 轮询 → composition 回读实际内容 → 历史与 retry。意图 adaptive/explain/quiz/simulation/visualization/mindmap/coding/pbl/review 是生成需求，不能保证每种 widget 都出现，实际以 composition 为准。
 
 经典课堂从获取预占开始续租，并在发送上游请求前再次核验归属。提交取消、提交期间续租失效或遗留预占被接管时，尚无已知上游 job 的旧会话可能返回 `SUBMISSION_CANCELLED` / `SUBMISSION_OUTCOME_UNKNOWN` 失败码。提交活跃但尚无 job_id 的 queued 会话继续等待，已有上游 job 的任务继续轮询；请求取消时已完成提交中的有效 job_id 仍保存。结果未知时先提示用户确认再重试，避免上游重复课堂，详见 [经典课堂恢复说明](14-magicclass.md#经典课堂提交与恢复)。
 
 受管工作台：fusion/status 与 providers → course magicclass-context → 文件夹、workspaces → stages → 生成 job → 轮询 job/events → 获取 stage、outline、playback 和 scene → 播放、编辑、测验、讲解与圆桌。状态四态 disabled/unavailable/degraded/ready；仅 ready 时 capabilities 非空，缺配置不应显示空内容冒充成功。
+
+Web 学习空间和课程页可以直接提交主题，使用 `mode="adaptive"`。任务完成后从 `artifact_id` 读取 JSON，再以其中的 `stage.id` 打开该工作台下的对应课件。重新进入同一主题沿用任务幂等键，已失败任务使用现有 retry 接口。场景与错误约定见[按主题生成综合课堂](14-magicclass.md#按主题生成综合课堂)。
 
 | 动作 | 关键协议 |
 | --- | --- |

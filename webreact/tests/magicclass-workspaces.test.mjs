@@ -192,7 +192,7 @@ test("listing workspaces passes pagination through as query parameters", async (
 
 test("the workbench panel is gated on the real capability and the chosen course", () => {
   assert.match(homeSource, /selectedCourseId/);
-  assert.match(homeSource, /api\.generateMagicClassHome/);
+  assert.match(homeSource, /useTopicClassroomGeneration/);
   assert.doesNotMatch(homeSource, /<WorkspacePanel/);
 });
 
