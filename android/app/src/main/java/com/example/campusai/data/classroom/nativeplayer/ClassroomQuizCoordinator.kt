@@ -3,17 +3,29 @@ package com.example.campusai.data.classroom.nativeplayer
 import com.example.campusai.data.remote.ClassroomApiException
 import com.example.campusai.data.remote.MagicClassQuizAttemptRequest
 import com.example.campusai.data.remote.MagicClassQuizAttemptResponseDto
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+
+enum class NativeQuizSubmitState {
+    Draft,
+    Submitting,
+    Confirmed,
+    Failed,
+    Unknown,
+}
 
 data class NativeQuizUiState(
     val sceneId: String = "",
     val attemptId: String? = null,
     val phase: String = "draft",
+    val submitState: NativeQuizSubmitState = NativeQuizSubmitState.Draft,
     val answers: Map<String, NativeAnswer> = emptyMap(),
     val results: Map<String, NativeQuizResult> = emptyMap(),
     val selfChecks: Map<String, Boolean> = emptyMap(),
@@ -21,8 +33,10 @@ data class NativeQuizUiState(
     val saving: Boolean = false,
     val error: String? = null,
 ) {
+    /** 只有服务器已确认的提交才展示结果；提交中的本地判分不冒充最终报告。 */
     val showReport: Boolean
-        get() = phase == "submitted" || phase == "reviewed" || results.isNotEmpty()
+        get() = phase == "submitted" || phase == "reviewed" ||
+            submitState == NativeQuizSubmitState.Confirmed
     val reviewed: Boolean get() = phase == "reviewed"
 }
 
@@ -60,6 +74,24 @@ class ClassroomQuizCoordinator(
     private var loadJob: Job? = null
     private var writeJob: Job? = null
 
+    private enum class SubmitOutcome {
+        Confirmed,
+        Failed,
+        Unknown,
+        Cancelled,
+    }
+
+    private data class PendingSubmit(
+        val outcome: CompletableDeferred<SubmitOutcome>,
+        val answers: Map<String, NativeAnswer>,
+        val attemptId: String?,
+        val version: Int,
+        val round: Int,
+        val startNewAttempt: Boolean,
+    )
+
+    private var pendingSubmit: PendingSubmit? = null
+
     init {
         publish()
     }
@@ -80,6 +112,11 @@ class ClassroomQuizCoordinator(
                     it.copy(
                         attemptId = dto.attemptId ?: dto.state?.sessionId ?: it.attemptId,
                         phase = phase,
+                        submitState = if (phase == "submitted" || phase == "reviewed") {
+                            NativeQuizSubmitState.Confirmed
+                        } else {
+                            NativeQuizSubmitState.Draft
+                        },
                         answers = if (versionAtStart == editVersion) {
                             decodeAnswers(quiz, dto.state?.answers.orEmpty())
                         } else {
@@ -100,7 +137,10 @@ class ClassroomQuizCoordinator(
     }
 
     fun setAnswer(questionId: String, answer: NativeAnswer) {
-        if (closed || state.loading || state.saving || state.showReport || state.phase == "submitting") return
+        if (closed || state.loading || state.saving || state.showReport) return
+        if (state.submitState == NativeQuizSubmitState.Submitting ||
+            state.submitState == NativeQuizSubmitState.Unknown
+        ) return
         editVersion++
         draftDirty = true
         update { it.copy(answers = it.answers + (questionId to answer), error = null) }
@@ -109,6 +149,9 @@ class ClassroomQuizCoordinator(
 
     fun setShortAnswerSelfCheck(questionId: String, correct: Boolean) {
         if (closed || state.saving) return
+        if (state.submitState == NativeQuizSubmitState.Submitting ||
+            state.submitState == NativeQuizSubmitState.Unknown
+        ) return
         update { it.copy(selfChecks = it.selfChecks + (questionId to correct)) }
     }
 
@@ -127,7 +170,10 @@ class ClassroomQuizCoordinator(
         writeMutex.withLock {
             if (closed || !isAccountCurrent() || version != editVersion || writeRound != round) return
             val current = state
-            if (current.sceneId != sceneId || current.showReport || current.phase == "submitting") return
+            if (current.sceneId != sceneId || current.showReport) return
+            if (current.submitState == NativeQuizSubmitState.Submitting ||
+                current.submitState == NativeQuizSubmitState.Unknown
+            ) return
             val request = MagicClassQuizAttemptRequest(
                 attemptId = current.attemptId,
                 phase = "draft",
@@ -165,7 +211,8 @@ class ClassroomQuizCoordinator(
     }
 
     fun submit() {
-        if (closed || state.saving || state.phase == "submitting") return
+        if (closed || state.saving || state.submitState == NativeQuizSubmitState.Submitting) return
+        if (state.showReport || state.phase == "reviewed") return
         val unanswered = quiz.questions.count { question -> !state.answers[question.id]?.hasValue.orFalse() }
         if (unanswered > 0) {
             update { it.copy(error = "还有 $unanswered 道题未作答") }
@@ -176,65 +223,128 @@ class ClassroomQuizCoordinator(
         val hasShort = quiz.questions.any { it.isShortAnswer }
         val submitVersion = ++editVersion
         val submitRound = round
+        val attemptId = state.attemptId
+        val startNew = startNewOnNextSave
+        val outcome = CompletableDeferred<SubmitOutcome>()
+        pendingSubmit = PendingSubmit(
+            outcome = outcome,
+            answers = answers,
+            attemptId = attemptId,
+            version = submitVersion,
+            round = submitRound,
+            startNewAttempt = startNew,
+        )
         debounceJob?.cancel()
-        // 草稿标记保留到提交确认成功；提交失败/被取消时退出仍会落一份草稿。
-        update { it.copy(saving = true, phase = "submitting", results = results, error = null) }
+        // 草稿标记保留到提交确认成功；提交结果不确定时退出仍会尝试落一份草稿。
+        draftDirty = true
+        update {
+            it.copy(
+                saving = true,
+                phase = "draft",
+                submitState = NativeQuizSubmitState.Submitting,
+                results = results,
+                error = null,
+            )
+        }
         writeJob?.cancel()
         writeJob = scope.launch {
-            val phase = if (hasShort) "submitted" else "reviewed"
-            val response = writeMutex.withLock {
-                if (closed || !isAccountCurrent() || submitRound != round || submitVersion != editVersion) {
+            try {
+                val phase = if (hasShort) "submitted" else "reviewed"
+                val response = try {
+                    writeMutex.withLock {
+                        if (!isAccountCurrent() || submitRound != round || submitVersion != editVersion) {
+                            outcome.complete(SubmitOutcome.Cancelled)
+                            return@launch
+                        }
+                        saveAttempt(
+                            sceneId,
+                            MagicClassQuizAttemptRequest(
+                                attemptId = attemptId,
+                                phase = phase,
+                                answers = encodeAnswers(quiz, answers),
+                                results = if (phase == "reviewed") encodeResults(results.values) else emptyList(),
+                                startNewAttempt = startNew,
+                            ),
+                        )
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Result.failure(error)
+                }
+                if (!isAccountCurrent() || submitRound != round || submitVersion != editVersion) {
+                    if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Unknown)
                     return@launch
                 }
-                saveAttempt(
-                    sceneId,
-                    MagicClassQuizAttemptRequest(
-                        attemptId = state.attemptId,
-                        phase = phase,
-                        answers = encodeAnswers(quiz, answers),
-                        results = if (phase == "reviewed") encodeResults(results.values) else emptyList(),
-                        startNewAttempt = startNewOnNextSave,
-                    ),
-                )
-            }
-            if (closed || !isAccountCurrent() || submitRound != round) return@launch
-            response.onSuccess { dto ->
-                startNewOnNextSave = false
-                draftDirty = false
-                update {
-                    it.copy(
-                        saving = false,
-                        phase = phase,
-                        attemptId = dto.attemptId ?: it.attemptId,
-                        results = results,
-                        error = null,
-                    )
-                }
-                if (phase == "reviewed") {
-                    onSettled(results.values.count { it.correct == true }, results.size)
-                }
-            }.onFailure { error ->
-                if (isAttemptConflict(error)) {
+                response.onSuccess { dto ->
+                    startNewOnNextSave = false
                     draftDirty = false
-                    update { it.copy(saving = false, phase = "draft", error = "答题记录已变化，正在重新读取。") }
-                    load()
-                } else {
-                    draftDirty = true
+                    pendingSubmit = null
                     update {
                         it.copy(
                             saving = false,
-                            phase = "submitted",
+                            phase = phase,
+                            submitState = NativeQuizSubmitState.Confirmed,
+                            attemptId = dto.attemptId ?: it.attemptId,
                             results = results,
-                            error = error.message ?: "测验提交失败，答案仍保留在本机",
+                            error = null,
                         )
                     }
+                    if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Confirmed)
+                    if (phase == "reviewed") {
+                        onSettled(results.values.count { it.correct == true }, results.size)
+                    }
+                }.onFailure { error ->
+                    if (isAttemptConflict(error)) {
+                        draftDirty = false
+                        pendingSubmit = null
+                        update {
+                            it.copy(
+                                saving = false,
+                                phase = "draft",
+                                submitState = NativeQuizSubmitState.Unknown,
+                                error = "答题记录已变化，正在重新读取。",
+                            )
+                        }
+                        if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Unknown)
+                        load()
+                    } else if (isDefinitiveRejection(error)) {
+                        draftDirty = true
+                        update {
+                            it.copy(
+                                saving = false,
+                                phase = "draft",
+                                submitState = NativeQuizSubmitState.Failed,
+                                results = results,
+                                error = error.message ?: "测验提交失败，答案仍保留在本机",
+                            )
+                        }
+                        if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Failed)
+                    } else {
+                        draftDirty = true
+                        update {
+                            it.copy(
+                                saving = false,
+                                phase = "draft",
+                                submitState = NativeQuizSubmitState.Unknown,
+                                results = results,
+                                error = "提交结果未确认，重新进入课堂会核对服务器记录。",
+                            )
+                        }
+                        if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Unknown)
+                    }
                 }
+            } finally {
+                if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Cancelled)
             }
         }
     }
 
     fun finishReview() {
         if (closed || state.saving) return
+        if (state.submitState == NativeQuizSubmitState.Submitting ||
+            state.submitState == NativeQuizSubmitState.Unknown
+        ) return
         val shorts = quiz.questions.filter { it.isShortAnswer }
         if (shorts.any { state.selfChecks[it.id] == null }) {
             update { it.copy(error = "还有主观题没有完成核对") }
@@ -252,32 +362,43 @@ class ClassroomQuizCoordinator(
             )
         }
         val answers = state.answers
+        val attemptId = state.attemptId
         val reviewVersion = ++editVersion
         val reviewRound = round
-        update { it.copy(saving = true, phase = "reviewed", results = updated, error = null) }
+        val reviewPhase = state.phase
+        update {
+            it.copy(
+                saving = true,
+                phase = reviewPhase,
+                submitState = NativeQuizSubmitState.Submitting,
+                results = updated,
+                error = null,
+            )
+        }
         writeJob?.cancel()
         writeJob = scope.launch {
             val response = writeMutex.withLock {
-                if (closed || !isAccountCurrent() || reviewRound != round || reviewVersion != editVersion) {
+                if (!isAccountCurrent() || reviewRound != round || reviewVersion != editVersion) {
                     return@launch
                 }
                 saveAttempt(
                     sceneId,
                     MagicClassQuizAttemptRequest(
-                        attemptId = state.attemptId,
+                        attemptId = attemptId,
                         phase = "reviewed",
                         answers = encodeAnswers(quiz, answers),
                         results = encodeResults(updated.values),
                     ),
                 )
             }
-            if (closed || !isAccountCurrent() || reviewRound != round) return@launch
+            if (!isAccountCurrent() || reviewRound != round) return@launch
             response.onSuccess { dto ->
                 draftDirty = false
                 update {
                     it.copy(
                         saving = false,
                         phase = "reviewed",
+                        submitState = NativeQuizSubmitState.Confirmed,
                         attemptId = dto.attemptId ?: it.attemptId,
                         results = updated,
                         error = null,
@@ -286,10 +407,35 @@ class ClassroomQuizCoordinator(
                 onSettled(updated.values.count { it.correct == true }, updated.size)
             }.onFailure { error ->
                 if (isAttemptConflict(error)) {
-                    update { it.copy(saving = false, error = "答题记录已变化，正在重新读取。") }
+                    update {
+                        it.copy(
+                            saving = false,
+                            phase = "submitted",
+                            submitState = NativeQuizSubmitState.Unknown,
+                            error = "答题记录已变化，正在重新读取。",
+                        )
+                    }
                     load()
+                } else if (isDefinitiveRejection(error)) {
+                    update {
+                        it.copy(
+                            saving = false,
+                            phase = reviewPhase,
+                            submitState = NativeQuizSubmitState.Failed,
+                            results = updated,
+                            error = error.message ?: "测验报告保存失败",
+                        )
+                    }
                 } else {
-                    update { it.copy(saving = false, error = error.message ?: "测验报告保存失败") }
+                    update {
+                        it.copy(
+                            saving = false,
+                            phase = reviewPhase,
+                            submitState = NativeQuizSubmitState.Unknown,
+                            results = updated,
+                            error = "报告保存结果未确认，重新进入课堂会核对服务器记录。",
+                        )
+                    }
                 }
             }
         }
@@ -301,11 +447,13 @@ class ClassroomQuizCoordinator(
      */
     fun retry() {
         if (closed || state.saving) return
+        if (state.submitState == NativeQuizSubmitState.Submitting) return
         debounceJob?.cancel()
         editVersion++
         round++
         draftDirty = true
         startNewOnNextSave = true
+        pendingSubmit = null
         update {
             NativeQuizUiState(
                 sceneId = sceneId,
@@ -343,41 +491,54 @@ class ClassroomQuizCoordinator(
         }
     }
 
-    /** 会话结束时取一份可靠落盘任务；没有待保存草稿时返回 null。 */
+    /** 会话结束时取一份可靠落盘任务；没有待保存草稿或待确认提交时返回 null。 */
     fun takeDraftFlush(): (suspend () -> Unit)? {
-        if (closed || !draftDirty || state.loading || state.phase == "reviewed") return null
-        val version = editVersion
-        val flushRound = round
-        val attempt = state.attemptId
-        val answers = encodeAnswers(quiz, state.answers)
-        val newAttempt = startNewOnNextSave
+        if (closed || state.loading || state.phase == "reviewed") return null
+        val pending = pendingSubmit
+        if (!draftDirty && pending == null) return null
+        val version = pending?.version ?: editVersion
+        val flushRound = pending?.round ?: round
+        val attempt = pending?.attemptId ?: state.attemptId
+        val answers = pending?.answers ?: state.answers
+        val newAttempt = if (pending != null) false else startNewOnNextSave
         return {
-            writeMutex.withLock {
-                if (version == editVersion && flushRound == round) {
-                    saveAttempt(
-                        sceneId,
-                        MagicClassQuizAttemptRequest(
-                            attemptId = attempt,
-                            phase = "draft",
-                            answers = answers,
-                            startNewAttempt = newAttempt,
-                        ),
-                    )
+            // 先给在途提交一小段完成窗口；剩余时间留给补草稿，整体仍受退出落盘预算约束。
+            val outcome = pending?.let { inFlight ->
+                withTimeoutOrNull(1_000L) { inFlight.outcome.await() }
+            }
+            if (outcome == SubmitOutcome.Confirmed) {
+                Unit
+            } else {
+                writeMutex.withLock {
+                    if (version == editVersion && flushRound == round && state.phase != "reviewed") {
+                        // 服务器已确认提交时草稿回退会返回 409；保留服务端记录，不覆盖。
+                        saveAttempt(
+                            sceneId,
+                            MagicClassQuizAttemptRequest(
+                                attemptId = attempt,
+                                phase = "draft",
+                                answers = encodeAnswers(quiz, answers),
+                                startNewAttempt = newAttempt,
+                            ),
+                        )
+                    }
                     Unit
                 }
             }
         }
     }
 
-    fun close() {
+    fun close(cancelInFlight: Boolean = true) {
         if (closed) return
         closed = true
         debounceJob?.cancel()
         debounceJob = null
         loadJob?.cancel()
         loadJob = null
-        writeJob?.cancel()
-        writeJob = null
+        if (cancelInFlight) {
+            writeJob?.cancel()
+            writeJob = null
+        }
     }
 
     private fun publish() {
@@ -395,6 +556,12 @@ class ClassroomQuizCoordinator(
     private fun isAttemptConflict(error: Throwable): Boolean =
         error is ClassroomApiException &&
             (error.statusCode == 409 || error.code == "QUIZ_ATTEMPT_CONFLICT")
+
+    /** 明确的 4xx 拒绝说明请求未被受理；408/429/5xx/IO 失败仍属于结果不确定。 */
+    private fun isDefinitiveRejection(error: Throwable): Boolean =
+        error is ClassroomApiException &&
+            error.statusCode in 400..499 &&
+            error.statusCode !in setOf(408, 409, 429)
 }
 
 internal fun gradeQuiz(quiz: NativeQuiz, answers: Map<String, NativeAnswer>): Map<String, NativeQuizResult> {

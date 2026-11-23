@@ -315,4 +315,174 @@ class ClassroomQuizCoordinatorTest {
         assertEquals("换号后迟到响应不能发布", before, state)
         assertEquals("A", server.answers["q1"])
     }
+
+    @Test
+    fun `local results stay hidden until the server confirms submission`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        server.holdResponse = gate
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals(NativeQuizSubmitState.Submitting, state?.submitState)
+        assertFalse("服务器确认前不能把本地判分当成结果", state?.showReport == true)
+        assertEquals("draft", state?.phase)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(NativeQuizSubmitState.Confirmed, state?.submitState)
+        assertEquals("reviewed", state?.phase)
+        assertTrue(state?.showReport == true)
+    }
+
+    @Test
+    fun `unknown submit result remains pending and exit flush keeps answers`() = runTest {
+        val server = FakeServer()
+        server.failureAfterApply = IOException("connection reset")
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals("服务端可能已提交，客户端不能当成失败", NativeQuizSubmitState.Unknown, state?.submitState)
+        assertFalse(state?.showReport == true)
+        assertEquals("reviewed", server.phase)
+
+        val flush = writer.takeDraftFlush()
+        assertNotNull("结果不确定时必须保留退出落盘任务", flush)
+        server.failure = ClassroomApiException(409, "QUIZ_ATTEMPT_CONFLICT", "不能回退")
+        flush?.invoke()
+        assertEquals("草稿回退被拒绝后服务端仍保持已提交", "reviewed", server.phase)
+        assertEquals("A", server.answers["q1"])
+    }
+
+    @Test
+    fun `exit flush waits for submitted response and avoids a duplicate draft`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        server.holdResponse = gate
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        writer.submit()
+        advanceUntilIdle()
+        val requestsBeforeExit = server.requests.size
+
+        val flush = writer.takeDraftFlush()
+        assertNotNull(flush)
+        writer.close(cancelInFlight = false)
+        val flushJob = launch { flush?.invoke() }
+        advanceTimeBy(500)
+        assertTrue("提交仍在途时落盘任务应等待", flushJob.isActive)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        flushJob.join()
+        assertEquals("确认成功后不应再发草稿", requestsBeforeExit, server.requests.size)
+        assertEquals("reviewed", server.phase)
+    }
+
+    @Test
+    fun `submitted phase is not downgraded before the server accepts it`() = runTest {
+        val server = FakeServer()
+        server.phase = "submitted"
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        assertEquals("submitted", state?.phase)
+        assertTrue(state?.showReport == true)
+    }
+
+    @Test
+    fun `finish review keeps submitted report visible until confirmation`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        val quiz = quiz().copy(
+            questions = quiz().questions + NativeQuestion(
+                id = "q3", number = 3, type = "short", question = "说明理由",
+                answerKey = listOf("要点"), hasAnswer = true,
+            ),
+        )
+        var state: NativeQuizUiState? = null
+        val writer = ClassroomQuizCoordinator(
+            sceneId = "scene-a", quiz = quiz, writeMutex = Mutex(),
+            isAccountCurrent = { true }, loadAttempt = server::load, saveAttempt = server::save,
+            scope = this, onState = { state = it }, onSettled = { _, _ -> },
+        )
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        writer.setAnswer("q3", NativeAnswer(text = "因为相加"))
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals("submitted", state?.phase)
+        assertEquals(NativeQuizSubmitState.Confirmed, state?.submitState)
+        assertTrue(state?.showReport == true)
+
+        server.holdResponse = gate
+        writer.setShortAnswerSelfCheck("q3", true)
+        writer.finishReview()
+        advanceUntilIdle()
+        assertEquals("等待服务器确认时仍保留已提交报告", "submitted", state?.phase)
+        assertEquals(NativeQuizSubmitState.Submitting, state?.submitState)
+        assertTrue(state?.showReport == true)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("reviewed", state?.phase)
+        assertEquals(NativeQuizSubmitState.Confirmed, state?.submitState)
+    }
+
+    @Test
+    fun `submit conflict reloads the confirmed server attempt`() = runTest {
+        val server = FakeServer()
+        server.failureAfterApply = ClassroomApiException(409, "QUIZ_ATTEMPT_CONFLICT", "冲突")
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals("409 后应回读服务端并显示已确认结果", "reviewed", state?.phase)
+        assertEquals(NativeQuizSubmitState.Confirmed, state?.submitState)
+        assertTrue(state?.showReport == true)
+        assertFalse(server.requests.last().startNewAttempt)
+    }
+
+    @Test
+    fun `definitive rejection is marked failed and keeps editable draft`() = runTest {
+        val server = FakeServer()
+        server.failure = ClassroomApiException(422, "QUIZ_INVALID", "答案不完整")
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals(NativeQuizSubmitState.Failed, state?.submitState)
+        assertEquals("draft", state?.phase)
+        assertFalse(state?.showReport == true)
+        assertEquals("答案不完整", state?.error)
+    }
 }

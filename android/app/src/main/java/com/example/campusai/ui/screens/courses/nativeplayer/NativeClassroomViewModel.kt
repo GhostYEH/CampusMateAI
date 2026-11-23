@@ -445,7 +445,8 @@ class NativeClassroomViewModel(
         val rewards = _uiState.value.rewards
         val draftFlush = if (sameAccount) quizCoordinator?.takeDraftFlush() else null
         if (sameAccount) recordStudyVisit(false)
-        quizCoordinator?.close()
+        // 让在途提交获得有界完成机会；退出路径不立即取消写任务。
+        quizCoordinator?.close(cancelInFlight = false)
         quizCoordinator = null
         cancelSessionJobs()
         flushSessionState(sameAccount, position, rewards, draftFlush)
@@ -836,7 +837,7 @@ class NativeClassroomViewModel(
         resetSequenceRuntime(plan.scenes[target].id)
         // 翻页前把旧页草稿交给协调器串行落盘；不阻塞翻页，也不取消在途请求。
         val draftFlush = quizCoordinator?.takeDraftFlush()
-        quizCoordinator?.close()
+        quizCoordinator?.close(cancelInFlight = false)
         quizCoordinator = null
         if (draftFlush != null && repository.classroomAccountScope() == initialAccountScope) {
             // UNDISPATCHED：先把旧页草稿排进共享写锁，后续新页保存一定排在它之后。

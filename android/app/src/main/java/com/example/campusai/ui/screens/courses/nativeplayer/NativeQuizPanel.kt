@@ -52,6 +52,7 @@ import com.example.campusai.data.classroom.nativeplayer.NativeQuestion
 import com.example.campusai.data.classroom.nativeplayer.NativeQuiz
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizOption
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizResult
+import com.example.campusai.data.classroom.nativeplayer.NativeQuizSubmitState
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizUiState
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
@@ -90,6 +91,7 @@ fun NativeQuizPanel(
     val shortQuestions = quiz.questions.filter { it.isShortAnswer }
     val reviewed = quizState.reviewed
     val report = quizState.showReport
+    val submitState = quizState.submitState
     val title = sceneTitle.ifBlank { "课堂挑战" }
     val answeredCount = quiz.questions.count { quizState.answers[it.id]?.hasValue == true }
     val sheet = RoundedCornerShape(16.dp)
@@ -148,6 +150,24 @@ fun NativeQuizPanel(
                 }
             }
         }
+        if (!report && submitState != NativeQuizSubmitState.Draft) {
+            item {
+                Text(
+                    when (submitState) {
+                        NativeQuizSubmitState.Submitting -> "正在提交并等待服务器确认…"
+                        NativeQuizSubmitState.Unknown -> "提交结果未确认，退出后重新进入课堂会核对服务器记录。"
+                        NativeQuizSubmitState.Failed -> "提交未成功，答案仍保留在当前页面。"
+                        else -> ""
+                    },
+                    color = if (submitState == NativeQuizSubmitState.Failed) DangerText else Accent,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFF8E8), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                )
+            }
+        }
         if (quizState.error != null) {
             item {
                 Text(
@@ -200,7 +220,14 @@ fun NativeQuizPanel(
                         CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
                     }
-                    Text("提交答案")
+                    Text(
+                        when (submitState) {
+                            NativeQuizSubmitState.Submitting -> "提交确认中…"
+                            NativeQuizSubmitState.Failed,
+                            NativeQuizSubmitState.Unknown -> "重新提交"
+                            else -> "提交答案"
+                        },
+                    )
                 }
                 shortQuestions.isNotEmpty() && !reviewed -> {
                     val allChecked = shortQuestions.all { quizState.selfChecks[it.id] != null }
