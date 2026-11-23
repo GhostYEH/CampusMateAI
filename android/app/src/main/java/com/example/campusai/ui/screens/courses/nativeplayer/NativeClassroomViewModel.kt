@@ -23,6 +23,7 @@ import com.example.campusai.data.classroom.nativeplayer.ClassroomActionSequenceP
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLevel
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLocalRead
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLocalRestore
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLocalWriteGate
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSourceFactory
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceResult
@@ -413,7 +414,9 @@ class NativeClassroomViewModel(
     private val positionWriteKey = "$localStateKey:position"
     private val rewardsWriteKey = "$localStateKey:rewards"
     private val draftWriteKey = "$localStateKey:draft"
-    private var rewardsWritable = true
+    private var localWritesWritable = false
+    private var localRestoreState = ClassroomLocalRestore.UNKNOWN
+    private var rewardsWritable = false
     private var localReadNotice: String? = null
     private val sessionFlusher = ClassroomSessionFlusher(onResult = ::logWriteResult)
     private var quizCoordinator: ClassroomQuizCoordinator? = null
@@ -505,9 +508,10 @@ class NativeClassroomViewModel(
         rewards: ClassroomRewards,
         draftFlush: (suspend () -> Unit)?,
     ) {
-        val saveRewards = rewardsWritable && (rewards.visited.isNotEmpty() || rewards.xp > 0)
+        val saveRewards = localWritesWritable && rewardsWritable &&
+            (rewards.visited.isNotEmpty() || rewards.xp > 0)
         val writes = buildList {
-            if (position != null) {
+            if (localWritesWritable && position != null) {
                 val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
                 add(
                     ClassroomStateWrite(
@@ -598,7 +602,9 @@ class NativeClassroomViewModel(
         activeSince = now()
         activeAccumulatedMs = 0L
         enteredAtIso = Instant.now().toString()
-        rewardsWritable = true
+        localWritesWritable = false
+        localRestoreState = ClassroomLocalRestore.UNKNOWN
+        rewardsWritable = false
         localReadNotice = null
         _uiState.value = NativeClassroomUiState()
     }
@@ -629,6 +635,13 @@ class NativeClassroomViewModel(
                     true
                 } ?: false
             }
+            val localRestore = ClassroomLocalWriteGate.restoreState(
+                positionWriteKey,
+                rewardsWriteKey,
+                previousWritesIdle,
+            )
+            localRestoreState = localRestore
+            localWritesWritable = localRestore == ClassroomLocalRestore.SUCCESS
             val rewardsRead = withContext(Dispatchers.IO) {
                 readClassroomLocal { repository.classroomRewardsRaw(ref) }
             }
@@ -640,7 +653,7 @@ class NativeClassroomViewModel(
             val savedRewards = decoded?.rewards ?: ClassroomRewardsEngine.empty()
             val rewardsDamaged = decoded is ClassroomRewardsDecodeResult.Unreadable
             rewardsWritable = when {
-                !previousWritesIdle -> false
+                !localWritesWritable -> false
                 rewardsRead.failed -> false
                 decoded != null -> decoded.allowsWrite
                 else -> true
@@ -649,20 +662,31 @@ class NativeClassroomViewModel(
                 readClassroomLocal { repository.classroomPosition(ref) }
             }
             val savedScene = (positionRead as? ClassroomLocalRead.Value)?.value
-            val readNotice = when {
-                !previousWritesIdle ->
-                    "上一次课堂的退出记录尚未完成写入；本次保持只读，不会覆盖本地记录。"
-                rewardsDamaged && positionRead.failed ->
-                    "本地奖励记录已损坏、学习位置读取失败；本次不会自动结算或覆盖记录。"
-                rewardsDamaged ->
-                    "本地奖励记录已损坏，已保留原记录；本次不会自动结算奖励。"
-                rewardsRead.failed && positionRead.failed ->
-                    "本地学习进度读取失败，本次不会覆盖已有记录。"
-                rewardsRead.failed ->
-                    "本地奖励记录读取失败，本次不会覆盖已有记录。"
-                positionRead.failed ->
-                    "本地学习位置读取失败，本次从课堂起始页开始。"
-                else -> null
+            val readNotice = when (localRestoreState) {
+                ClassroomLocalRestore.FAILED ->
+                    "上一次课堂的本地记录保存失败；本次保持只读，不会按旧账本重新结算。"
+                ClassroomLocalRestore.UNKNOWN ->
+                    "上一次课堂的退出记录尚未确认；本次保持只读，不会按旧账本重新结算。"
+                ClassroomLocalRestore.SUCCESS -> when {
+                    rewardsDamaged && positionRead.failed ->
+                        "本地奖励记录已损坏、学习位置读取失败；本次不会自动结算或覆盖记录。"
+                    rewardsDamaged ->
+                        "本地奖励记录已损坏，已保留原记录；本次不会自动结算奖励。"
+                    rewardsRead.failed && positionRead.failed ->
+                        "本地学习进度读取失败，本次不会覆盖已有记录。"
+                    rewardsRead.failed ->
+                        "本地奖励记录读取失败，本次不会覆盖已有记录。"
+                    positionRead.failed ->
+                        "本地学习位置读取失败，本次从课堂起始页开始。"
+                    else -> null
+                }
+            }
+            if (localRestoreState != ClassroomLocalRestore.SUCCESS) {
+                ClassroomDiagnostics.warn(
+                    "classroom_local_state_restore_blocked",
+                    null,
+                    "restore" to localRestoreState.name.lowercase(),
+                )
             }
             if (rewardsRead.failed) {
                 ClassroomDiagnostics.warn("classroom_local_state_read_failed", null, "component" to "rewards", "status" to "failed")
@@ -768,7 +792,10 @@ class NativeClassroomViewModel(
                             refreshing = false,
                             offline = cached,
                             error = if (cached) null else (failure?.message ?: "课堂内容读取失败"),
-                            notice = if (cached) "网络不可用，正在使用本地缓存的课堂内容" else null,
+                            notice = if (cached) {
+                                if (localRestoreState != ClassroomLocalRestore.SUCCESS) it.notice
+                                else "网络不可用，正在使用本地缓存的课堂内容"
+                            } else null,
                         )
                     }
                 }
@@ -827,7 +854,10 @@ class NativeClassroomViewModel(
                         refreshing = false,
                         offline = cached,
                         error = if (cached) null else "课堂播放数据读取失败",
-                        notice = if (cached) "网络不可用，正在使用本地缓存的课堂内容" else null,
+                        notice = if (cached) {
+                            if (localRestoreState != ClassroomLocalRestore.SUCCESS) it.notice
+                            else "网络不可用，正在使用本地缓存的课堂内容"
+                        } else null,
                     )
                 }
             }
@@ -1144,7 +1174,7 @@ class NativeClassroomViewModel(
         settleVisit(sceneId)
         val positionAccountScope = repository.classroomAccountScope()
         positionJob?.cancel()
-        if (positionAccountScope == initialAccountScope) {
+        if (localWritesWritable && positionAccountScope == initialAccountScope) {
             // 翻页落盘失败只影响下一次续播的起点，不打断本节课堂。
             val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
             val write = ClassroomStateWrite(
@@ -1176,7 +1206,7 @@ class NativeClassroomViewModel(
 
     private fun settleVisit(sceneId: String) {
         // 去重依据不可靠时暂停自动结算，避免按首次到访重复发奖或覆盖原文。
-        if (!rewardsWritable) return
+        if (!localWritesWritable || !rewardsWritable) return
         val state = _uiState.value
         val total = state.plan?.scenes?.size ?: 0
         val result: ClassroomRewardResult = ClassroomRewardsEngine.visit(
@@ -1199,7 +1229,7 @@ class NativeClassroomViewModel(
 
     private fun settleQuiz(sceneId: String, correct: Int, total: Int) {
         // 账本损坏时不结算测验奖励，保留原有测验去重记录。
-        if (!rewardsWritable) return
+        if (!localWritesWritable || !rewardsWritable) return
         val state = _uiState.value
         val result = ClassroomRewardsEngine.grade(
             rewards = state.rewards,
@@ -1223,7 +1253,7 @@ class NativeClassroomViewModel(
 
     private fun persistRewards(rewards: ClassroomRewards) {
         // 账本读不出来时只保留本次内存中的展示，不覆盖已有记录。
-        if (!rewardsWritable) return
+        if (!localWritesWritable || !rewardsWritable) return
         val accountScope = repository.classroomAccountScope()
         if (accountScope != initialAccountScope) return
         rewardsJob?.cancel()

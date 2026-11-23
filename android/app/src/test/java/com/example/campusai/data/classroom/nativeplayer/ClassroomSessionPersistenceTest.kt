@@ -273,6 +273,34 @@ class ClassroomSessionPersistenceTest {
     }
 
     @Test
+    fun `restore state separates saved failed and pending writes`() {
+        val positionKey = "classroom:position"
+        val rewardsKey = "classroom:rewards"
+
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.recordResult(positionKey, ClassroomWriteStatus.SAVED)
+        ClassroomLocalWriteGate.recordResult(rewardsKey, ClassroomWriteStatus.SAVED)
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.recordResult(positionKey, ClassroomWriteStatus.FAILED)
+        assertEquals(
+            ClassroomLocalRestore.FAILED,
+            ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
+        )
+        assertEquals(
+            ClassroomLocalRestore.UNKNOWN,
+            ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = false),
+        )
+    }
+
+    @Test
     fun `local reads distinguish missing value and failure`() = runTest {
         assertTrue(readClassroomLocal<String> { null } is ClassroomLocalRead.Missing)
         assertEquals(

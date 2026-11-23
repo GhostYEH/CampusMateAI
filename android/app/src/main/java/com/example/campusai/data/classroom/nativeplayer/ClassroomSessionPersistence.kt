@@ -55,6 +55,7 @@ object ClassroomLocalWriteGate {
     private val latestGrants = mutableMapOf<String, Long>()
     private val pending = mutableMapOf<String, Int>()
     private val idleSignals = mutableMapOf<String, CompletableDeferred<Unit>>()
+    private val lastStatuses = mutableMapOf<String, ClassroomWriteStatus>()
     private var nextGrant = 0L
 
     @Synchronized
@@ -66,6 +67,30 @@ object ClassroomLocalWriteGate {
 
     @Synchronized
     fun isCurrent(key: String, grant: Long): Boolean = latestGrants[key] == grant
+
+    @Synchronized
+    fun recordResult(key: String, status: ClassroomWriteStatus) {
+        lastStatuses[key] = status
+    }
+
+    /**
+     * 读取屏障的三种结果：
+     * - [SUCCESS]：没有上一轮写入，或上一轮明确保存成功；
+     * - [FAILED]：上一轮已完成但失败、超时或被更新写入取代；
+     * - [UNKNOWN]：等待结束前仍有写入未完成。
+     */
+    @Synchronized
+    fun restoreState(positionKey: String, rewardsKey: String, idle: Boolean): ClassroomLocalRestore {
+        if (!idle) return ClassroomLocalRestore.UNKNOWN
+        return if (isSuccessful(lastStatuses[positionKey]) && isSuccessful(lastStatuses[rewardsKey])) {
+            ClassroomLocalRestore.SUCCESS
+        } else {
+            ClassroomLocalRestore.FAILED
+        }
+    }
+
+    private fun isSuccessful(status: ClassroomWriteStatus?): Boolean =
+        status == null || status == ClassroomWriteStatus.SAVED
 
     /** 退出落盘已排队但尚未结束时，新会话读取同一课堂前应等待，避免以旧账本起步。 */
     @Synchronized
@@ -102,9 +127,12 @@ object ClassroomLocalWriteGate {
         pending.clear()
         idleSignals.values.forEach { it.complete(Unit) }
         idleSignals.clear()
+        lastStatuses.clear()
         nextGrant = 0L
     }
 }
+
+enum class ClassroomLocalRestore { SUCCESS, FAILED, UNKNOWN }
 
 enum class ClassroomWriteStatus {
     SAVED,
@@ -201,7 +229,10 @@ class ClassroomSessionFlusher(
                     attempts = 0,
                 )
             }
-            finalResults.forEach(onResult)
+            finalResults.forEach {
+                ClassroomLocalWriteGate.recordResult(it.key, it.status)
+                onResult(it)
+            }
             return finalResults
         } finally {
             if (trackPending) writes.forEach { ClassroomLocalWriteGate.finishPending(it.key) }
