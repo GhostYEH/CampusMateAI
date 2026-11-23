@@ -41,8 +41,11 @@ fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel())
     val owner = LocalLifecycleOwner.current
     var title by remember { mutableStateOf("") }
     var inviteUid by remember(state.room?.id) { mutableStateOf("") }
-    var draft by remember(state.room?.id) { mutableStateOf("") }
+    val drafts = remember { mutableStateMapOf<String, String>() }
+    val roomKey = state.room?.id
+    val draft = roomKey?.let { drafts[it].orEmpty() } ?: ""
     var statusMsg by remember(state.room?.id) { mutableStateOf("") }
+    var confirmDiscardMessage by remember { mutableStateOf(false) }
     var nowTick by remember { mutableIntStateOf(0) }
 
     DisposableEffect(owner, model) {
@@ -60,6 +63,17 @@ fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel())
 
     LaunchedEffect(state.room?.timer?.phase, state.room?.timer?.paused) {
         while (true) { nowTick++; kotlinx.coroutines.delay(1000) }
+    }
+
+    LaunchedEffect(state.sentVersion) {
+        // 只清掉本次发送的原文本；用户继续输入或其他房间的草稿都保留。
+        val roomId = state.room?.id ?: return@LaunchedEffect
+        if (state.sentVersion > 0 &&
+            state.sentRoomId == roomId &&
+            state.sentDraft == drafts[roomId].orEmpty()
+        ) {
+            drafts[roomId] = ""
+        }
     }
 
     LazyColumn(
@@ -180,9 +194,22 @@ fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel())
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(value = draft, onValueChange = { draft = it.take(2000) }, label = { Text("说点什么鼓励大家…") }, modifier = Modifier.weight(1f))
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { value -> if (roomKey != null) drafts[roomKey] = value.take(2000) },
+                        label = { Text("说点什么鼓励大家…") },
+                        modifier = Modifier.weight(1f),
+                    )
                     Spacer(Modifier.width(8.dp))
-                    Button(onClick = { model.send(draft); draft = "" }, enabled = !state.busy && draft.isNotBlank()) { Text("发送") }
+                    Button(
+                        onClick = { model.send(draft) },
+                        enabled = !state.busy && draft.isNotBlank() && state.pendingMessage == null,
+                    ) { Text("发送") }
+                }
+                state.pendingMessage?.let { pending ->
+                    Text("上一条消息发送结果不确定，重试会使用原消息 ID：${pending.draft}")
+                    TextButton(onClick = model::retryMessage, enabled = !state.busy) { Text("重试上一条消息") }
+                    TextButton(onClick = { confirmDiscardMessage = true }, enabled = !state.busy) { Text("放弃重试") }
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = model::leave, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
@@ -191,6 +218,18 @@ fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel())
             }
         }
     }
+
+    if (confirmDiscardMessage) AlertDialog(
+        onDismissRequest = { confirmDiscardMessage = false },
+        title = { Text("放弃这条消息？") },
+        text = { Text("如果服务端其实已经收到，它仍会出现在房内记录里。放弃后可以用新的消息重新发送。") },
+        confirmButton = {
+            TextButton(onClick = { confirmDiscardMessage = false; model.discardPendingMessage() }) { Text("放弃重试") }
+        },
+        dismissButton = {
+            TextButton(onClick = { confirmDiscardMessage = false }) { Text("继续重试") }
+        },
+    )
 }
 
 @Composable
