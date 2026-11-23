@@ -241,6 +241,39 @@ class ClassroomQuizCoordinatorTest {
     }
 
     @Test
+    fun `reopening a playback session rejects the previous session reward`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        server.holdResponse = gate
+        var generation = 1
+        var state: NativeQuizUiState? = null
+        var settled: Pair<Int, Int>? = null
+        val writer = coordinator(
+            "scene-a",
+            server,
+            isSessionCurrent = { generation == 1 },
+            onState = { state = it },
+            onSettled = { c, t -> settled = c to t },
+        )
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.submit()
+        advanceUntilIdle()
+
+        // 旧协调器尚未释放回包，新播放会话已经开始。
+        generation = 2
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("reviewed", server.phase)
+        assertNull("重开后旧会话不能结算奖励", settled)
+    }
+
+    @Test
     fun `lost draft response keeps local answers and next save persists latest`() = runTest {
         val server = FakeServer()
         server.failureAfterApply = IOException("connection reset")
