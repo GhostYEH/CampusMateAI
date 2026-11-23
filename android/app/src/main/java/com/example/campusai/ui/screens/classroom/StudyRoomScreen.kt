@@ -34,6 +34,10 @@ private fun mmss(totalSeconds: Int): String {
     return "%02d:%02d".format(value / 60, value % 60)
 }
 
+/** 只有发送时的原始编辑文本仍与输入框完全一致时，才允许清除草稿。 */
+internal fun shouldClearSentDraft(sentDraft: String?, currentDraft: String): Boolean =
+    sentDraft != null && sentDraft == currentDraft
+
 /** 多人在线自习室（互相监督）：成员状态 + 共享番茄钟 + 房内鼓励，无音视频。 */
 @Composable
 fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel()) {
@@ -70,7 +74,7 @@ fun StudyRoomScreen(onBack: () -> Unit, model: StudyRoomViewModel = viewModel())
         val roomId = state.room?.id ?: return@LaunchedEffect
         if (state.sentVersion > 0 &&
             state.sentRoomId == roomId &&
-            state.sentDraft == drafts[roomId].orEmpty()
+            shouldClearSentDraft(state.sentDraft, drafts[roomId].orEmpty())
         ) {
             drafts[roomId] = ""
         }

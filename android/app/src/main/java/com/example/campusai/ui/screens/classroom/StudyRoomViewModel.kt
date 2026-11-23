@@ -52,7 +52,7 @@ data class StudyRoomUiState(
  * 迟到的房间详情、消息、游标与错误都不会写回当前页面。房内消息复用
  * [MessageOutbox] 的待确认语义，重试沿用首次发送的 client_id 与正文。
  */
-class StudyRoomViewModel(
+class StudyRoomViewModel @JvmOverloads constructor(
     application: Application,
     private val api: StudyRoomApi = ApiClient.studyRooms,
 ) : AndroidViewModel(application) {
@@ -252,7 +252,7 @@ class StudyRoomViewModel(
     fun send(content: String) = action {
         val room = mutableState.value.room ?: return@action
         if (content.isBlank()) return@action
-        val attempt = messageOutbox.begin(room.id, content.trim(), UUID.randomUUID().toString())
+        val attempt = messageOutbox.begin(room.id, content.trim(), UUID.randomUUID().toString(), content)
         if (attempt == null) {
             mutableState.update { it.copy(notice = "请先重试或放弃上一条发送结果不确定的消息") }
             return@action
@@ -302,7 +302,7 @@ class StudyRoomViewModel(
             it.copy(
                 sentVersion = it.sentVersion + 1,
                 sentRoomId = attempt.roomId,
-                sentDraft = attempt.draft,
+                sentDraft = attempt.rawDraft,
                 pendingMessage = if (it.room?.id == attempt.roomId) null else it.pendingMessage,
             )
         }

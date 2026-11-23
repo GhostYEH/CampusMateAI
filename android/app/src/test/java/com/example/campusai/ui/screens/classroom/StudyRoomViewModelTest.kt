@@ -1,6 +1,8 @@
 package com.example.campusai.ui.screens.classroom
 
 import android.app.Application
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.example.campusai.data.remote.StudyRoom
 import com.example.campusai.data.remote.StudyRoomApi
@@ -26,6 +28,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -113,6 +116,55 @@ class StudyRoomViewModelTest {
 
         model.foreground(false)
         runCurrent()
+    }
+
+    @Test
+    fun `production android view model factory constructs study room`() {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val provider = ViewModelProvider(
+            ViewModelStore(),
+            ViewModelProvider.AndroidViewModelFactory.getInstance(app),
+        )
+        val model = provider[StudyRoomViewModel::class.java]
+        assertEquals(0, model.state.value.sentVersion)
+    }
+
+    @Test
+    fun `spaced draft sends normalized content and keeps raw editor text for clearing`() = runTest(dispatcher) {
+        val api = FakeStudyRoomApi().apply { rooms["A"] = roomFixture("A") }
+        val model = create(api)
+        model.join("A")
+        runCurrent()
+
+        model.send("  一起加油  ")
+        runCurrent()
+
+        assertEquals("一起加油", api.sendRequests.single().content)
+        assertEquals(1, model.state.value.sentVersion)
+        assertEquals("  一起加油  ", model.state.value.sentDraft)
+        assertNull(model.state.value.pendingMessage)
+    }
+
+    @Test
+    fun `late send after editing still exposes the original editor text`() = runTest(dispatcher) {
+        val api = FakeStudyRoomApi().apply { rooms["A"] = roomFixture("A") }
+        val model = create(api)
+        model.join("A")
+        runCurrent()
+
+        api.sendGate = CompletableDeferred()
+        model.send("  原稿  ")
+        runCurrent()
+
+        // The user keeps typing while the POST is in flight.
+        api.sendGate?.complete(Unit)
+        runCurrent()
+
+        assertEquals("原稿", api.sendRequests.single().content)
+        assertEquals("  原稿  ", model.state.value.sentDraft)
+        assertEquals(1, model.state.value.sentVersion)
+        assertTrue(shouldClearSentDraft(model.state.value.sentDraft, "  原稿  "))
+        assertFalse(shouldClearSentDraft(model.state.value.sentDraft, "  原稿  续写"))
     }
 
     @Test
@@ -233,6 +285,7 @@ private class FakeStudyRoomApi : StudyRoomApi {
     var gatedRoomId: String? = null
     var failMessagePull = false
     var sendFailure: Exception? = null
+    var sendGate: CompletableDeferred<Unit>? = null
     val sendRequests = mutableListOf<StudyRoomMessageRequest>()
     val sentByClient = mutableMapOf<String, StudyRoomMessage>()
     private var nextMessageId = 501L
@@ -276,6 +329,7 @@ private class FakeStudyRoomApi : StudyRoomApi {
 
     override suspend fun send(id: String, body: StudyRoomMessageRequest): Map<String, Any> {
         sendRequests += body
+        sendGate?.await()
         sendFailure?.let { throw it }
         if (body.client_id !in sentByClient) {
             val message = StudyRoomMessage(
