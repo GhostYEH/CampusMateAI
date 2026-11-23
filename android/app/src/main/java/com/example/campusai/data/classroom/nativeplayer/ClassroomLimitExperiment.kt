@@ -32,6 +32,8 @@ data class ClassroomLimitExperiment(
 
     fun initialControls() = Controls(initialPresetId, initialEpsilon, initialSpeed)
 
+    data class CurvePoint(val x: Float, val y: Float)
+
     data class Preset(
         val function: Function,
         val label: String,
@@ -49,6 +51,29 @@ data class ClassroomLimitExperiment(
             Function.QUADRATIC -> 2.0 * epsilon / (abs(center) + sqrt(center * center + 2.0 * epsilon))
             Function.SQUARE_ROOT -> if (epsilon < limit) epsilon * (2.0 * limit - epsilon) else center
         })
+
+        /**
+         * 与画布尺寸无关的归一化曲线点，供 UI 按预设缓存后逐帧只做像素映射，
+         * 避免拖动 ε/δ 时重复求值整条函数曲线。
+         */
+        internal fun normalizedCurve(steps: Int = 128): List<CurvePoint> {
+            val count = steps.coerceAtLeast(1)
+            val width = xMax - xMin
+            val height = yMax - yMin
+            return buildList(count + 1) {
+                for (index in 0..count) {
+                    val x = xMin + width * index / count
+                    val y = function.evaluate(x)
+                    if (!y.isFinite()) continue
+                    add(
+                        CurvePoint(
+                            x = ((x - xMin) / width).toFloat(),
+                            y = ((yMax - y) / height).toFloat(),
+                        ),
+                    )
+                }
+            }
+        }
 
         internal fun approachX(time: Float): Double {
             val x = center + approachAmplitude * exp(-0.4 * time) * cos(4.0 * time)

@@ -95,6 +95,22 @@ class ClassroomLimitExperimentTest {
         }
     }
 
+    @Test
+    fun normalizedCurveIsSizeIndependentAndFinite() {
+        val experiment = requireNotNull(ClassroomLimitExperiment.fromWidgetConfig(config))
+        for (preset in experiment.presets) {
+            val points = preset.normalizedCurve()
+            assertEquals(129, points.size)
+            val first = points.first()
+            val last = points.last()
+            assertEquals(0f, first.x, 1e-5f)
+            assertEquals(1f, last.x, 1e-5f)
+            assertTrue(first.y.isFinite() && last.y.isFinite())
+            assertTrue(points.all { it.x in 0f..1f && it.y in 0f..1f })
+            assertEquals(points, preset.normalizedCurve())
+        }
+    }
+
     private fun render(kind: NativeRenderKind, hasExperiment: Boolean) = NativePlaybackPolicy.decide(
         renderKind = kind,
         sceneType = "interactive",

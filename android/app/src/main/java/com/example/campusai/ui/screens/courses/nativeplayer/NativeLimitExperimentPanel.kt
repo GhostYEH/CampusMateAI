@@ -88,7 +88,9 @@ internal fun NativeLimitExperimentPanel(
     var showTrajectory by remember(experiment) { mutableStateOf(initial.showTrajectory) }
     var viewAngle by remember(experiment) { mutableStateOf(initial.viewAngle) }
     var running by remember { mutableStateOf(false) }
-    val preset = experiment.presets.firstOrNull { it.id == presetId } ?: experiment.presets.first()
+    val preset = experiment.presets.firstOrNull { it.id == presetId }
+        ?: experiment.presets.firstOrNull()
+        ?: return
     val delta = remember(preset, epsilon) { preset.delta(epsilon.toDouble()) }
     val sampleX = preset.approachX(time)
     val sampleY = preset.function.evaluate(sampleX)
@@ -368,6 +370,7 @@ private fun LimitPlot(
     val gold = Primary
     val grid = Line
     val shape = RoundedCornerShape(10.dp)
+    val curvePoints = remember(preset) { preset.normalizedCurve() }
     Canvas(Modifier.fillMaxWidth().height(chartHeight).clip(shape).background(Background)
         .border(1.dp, grid, shape).padding(8.dp).semantics {
             contentDescription = "函数曲线、ε 带和 δ 区间"
@@ -399,12 +402,11 @@ private fun LimitPlot(
             drawLine(grid, Offset(0f, center.y), Offset(size.width, center.y))
             val curve = Path()
             var started = false
-            for (step in 0..128) {
-                val argument = preset.xMin + (preset.xMax - preset.xMin) * step / 128.0
-                val value = preset.function.evaluate(argument)
-                if (!value.isFinite()) continue
-                if (started) curve.lineTo(x(argument), y(value)) else {
-                    curve.moveTo(x(argument), y(value))
+            for (point in curvePoints) {
+                val px = point.x * size.width
+                val py = point.y * size.height
+                if (started) curve.lineTo(px, py) else {
+                    curve.moveTo(px, py)
                     started = true
                 }
             }

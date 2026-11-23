@@ -239,9 +239,14 @@ class NativeClassroomViewModel(
     private val experimentControls = mutableMapOf<Pair<String, Int>, ClassroomLimitExperiment.Controls>()
     private val parameterValuesByScene = mutableMapOf<Pair<String, Int>, Map<String, Double>>()
     private val spatialControlsByScene = mutableMapOf<Pair<String, Int>, NativeSpatialControls>()
+    private val fallbackSpatialControls = NativeSpatialControls(false)
 
-    internal fun spatialControls(sceneId: String, revision: Int, playAnimation: Boolean): NativeSpatialControls =
-        spatialControlsByScene.getOrPut(sceneId to revision) { NativeSpatialControls(playAnimation) }
+    /**
+     * 三维实验控件按场景和修订缓存：翻页与旋转保留用户视角，真正退出播放会话
+     * 时由 resetSessionState 清理；组合期只读取缓存，不在组合中写入 Map。
+     */
+    internal fun spatialControls(sceneId: String, revision: Int): NativeSpatialControls =
+        spatialControlsByScene[sceneId to revision] ?: fallbackSpatialControls
 
     internal fun updateExperimentValues(
         sceneId: String,
@@ -383,6 +388,7 @@ class NativeClassroomViewModel(
     private var sequenceVideoWaiter: CompletableDeferred<SequenceVideoSignal>? = null
     private var sequenceWhiteboardWaiter: CompletableDeferred<Unit>? = null
     private var prefetchJob: Job? = null
+    private var prefetchToken = 0
     private val prefetchDisposables = mutableListOf<coil.request.Disposable>()
     private var positionJob: Job? = null
     private var rewardsJob: Job? = null
@@ -467,13 +473,20 @@ class NativeClassroomViewModel(
         narrationJob?.cancel(); narrationJob = null
         classmateJob?.cancel(); classmateJob = null
         actionJob?.cancel(); actionJob = null
-        prefetchJob?.cancel(); prefetchJob = null
-        prefetchDisposables.forEach { runCatching { it.dispose() } }
-        prefetchDisposables.clear()
+        cancelPrefetch()
         positionJob?.cancel(); positionJob = null
         rewardsJob?.cancel(); rewardsJob = null
         metricsJob?.cancel(); metricsJob = null
         resetSequenceRuntime(_uiState.value.currentSceneId)
+    }
+
+    /** 取消调度之外，必须释放已经交给 Coil 的请求，暂停期间不再占用网络与缓存。 */
+    private fun cancelPrefetch() {
+        prefetchToken++
+        prefetchJob?.cancel()
+        prefetchJob = null
+        prefetchDisposables.forEach { runCatching { it.dispose() } }
+        prefetchDisposables.clear()
     }
 
     /**
@@ -929,7 +942,7 @@ class NativeClassroomViewModel(
             activeAccumulatedMs += (now() - activeSince).coerceAtLeast(0)
         }
         resetSequenceRuntime(_uiState.value.currentSceneId)
-        prefetchJob?.cancel()
+        cancelPrefetch()
         val narrationWasRunning = narrationJob?.isActive == true ||
             _uiState.value.narration.loading || _uiState.value.narration.generating
         narrationJob?.cancel()
@@ -1080,9 +1093,11 @@ class NativeClassroomViewModel(
 
     private fun onSceneChanged(sceneId: String) {
         resetSequenceRuntime(sceneId)
+        val sceneRevision = _uiState.value.revision
+        spatialControlsByScene.getOrPut(sceneId to sceneRevision) { NativeSpatialControls(true) }
         stopAudio()
         narrationJob?.cancel()
-        prefetchJob?.cancel()
+        cancelPrefetch()
         actionJob?.cancel()
         playback?.mediaSession?.invalidate()
         quizCoordinator?.close()
@@ -2540,13 +2555,13 @@ class NativeClassroomViewModel(
         if (index < 0) return
         val neighbours = listOfNotNull(plan.scenes.getOrNull(index + 1), plan.scenes.getOrNull(index - 1))
         val mediaGeneration = beginMediaRequest() ?: return
-        prefetchDisposables.forEach { runCatching { it.dispose() } }
-        prefetchDisposables.clear()
+        cancelPrefetch()
+        val token = prefetchToken
         prefetchJob = viewModelScope.launch {
             delay(220)
             if (!isMediaRequestCurrent(mediaGeneration)) return@launch
             for (neighbour in neighbours) {
-                if (!isMediaRequestCurrent(mediaGeneration)) return@launch
+                if (!isMediaRequestCurrent(mediaGeneration) || token != prefetchToken) return@launch
                 val slide = _uiState.value.document?.slideByScene?.get(neighbour.id) ?: continue
                 for (image in slide.elements.filterIsInstance<NativeCanvasElement.Image>()) {
                     val url = ClassroomMediaPolicy.resolve(
@@ -2564,7 +2579,13 @@ class NativeClassroomViewModel(
                                 .diskCacheKey(cacheKey)
                                 .build(),
                         )
-                    }.onSuccess { prefetchDisposables += it }
+                    }.onSuccess { disposable ->
+                        if (token == prefetchToken) {
+                            prefetchDisposables += disposable
+                        } else {
+                            runCatching { disposable.dispose() }
+                        }
+                    }
                 }
             }
         }

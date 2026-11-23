@@ -98,11 +98,15 @@ internal class NativeSpatialControls(playAnimation: Boolean) {
 internal fun NativeSpatialExperimentPanel(
     experiment: ClassroomSpatialExperiment,
     spatialControls: NativeSpatialControls,
+    playAnimation: Boolean,
     highlighted: String?,
     modifier: Modifier = Modifier,
 ) {
     val bounds = remember(experiment) { ClassroomSpatialGeometry.bounds(experiment) }
     val highlightId = experiment.highlightedObject(highlighted)
+    LaunchedEffect(spatialControls, playAnimation) {
+        spatialControls.playing = playAnimation
+    }
     LaunchedEffect(spatialControls, spatialControls.playing) {
         if (!spatialControls.playing) return@LaunchedEffect
         var previous = withFrameNanos { it }

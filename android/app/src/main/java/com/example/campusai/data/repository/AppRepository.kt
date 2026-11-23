@@ -124,6 +124,10 @@ class AppRepository(
 
     private val _session = MutableStateFlow<User?>(null)
     val session: StateFlow<User?> = _session.asStateFlow()
+    // 服务标识只取决于构建配置，账号摘要按当前账号身份缓存；身份变化时重新计算。
+    private val classroomServiceScope by lazy { digestHex(BuildConfig.API_BASE_URL, 8) }
+    private val classroomAccountScopeLock = Any()
+    private var classroomAccountScopeCache: Pair<String, String>? = null
 
     private val hitokotoRepository = HitokotoRepository()
     val hitokoto = hitokotoRepository.state
@@ -746,19 +750,21 @@ class AppRepository(
 
     /** 课堂缓存与本地进度共用的账号作用域；匿名时不与其他账号共享。 */
     fun classroomAccountScope(): String {
-        val service = MessageDigest.getInstance("SHA-256")
-            .digest(BuildConfig.API_BASE_URL.toByteArray())
-            .take(8)
-            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        val account = _session.value?.let(::accountStorageKey) ?: "anonymous"
-        return "svc_${service}_$account"
+        val user = _session.value
+        val identity = user?.let(::accountIdentity) ?: "anonymous"
+        synchronized(classroomAccountScopeLock) {
+            classroomAccountScopeCache?.let { (cachedIdentity, scope) ->
+                if (cachedIdentity == identity) return scope
+            }
+            val account = if (user == null) "anonymous" else digestHex(identity, 12)
+            val scope = "svc_${classroomServiceScope}_$account"
+            classroomAccountScopeCache = identity to scope
+            return scope
+        }
     }
 
     fun classroomLocalKey(ref: NativeClassroomRef, accountScope: String = classroomAccountScope()): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(ref.stableKey.toByteArray())
-            .take(12)
-            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        val digest = digestHex(ref.stableKey, 12)
         return "native_classroom_${accountScope}_$digest"
     }
 
@@ -2422,15 +2428,18 @@ class AppRepository(
         )
     }
 
-    private fun accountStorageKey(user: User): String {
-        val identity = user.accountId.ifBlank {
+    private fun accountIdentity(user: User): String =
+        user.accountId.ifBlank {
             user.studentId.ifBlank { user.email.ifBlank { "${user.role}:${user.name}" } }
         }
-        return MessageDigest.getInstance("SHA-256")
-            .digest(identity.toByteArray())
-            .take(12)
+
+    private fun accountStorageKey(user: User): String = digestHex(accountIdentity(user), 12)
+
+    private fun digestHex(value: String, prefixBytes: Int): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(value.toByteArray())
+            .take(prefixBytes)
             .joinToString("") { "%02x".format(it.toInt() and 0xff) }
-    }
 
     private fun defaultPersonalHub(): PersonalHubSnapshot {
         val files = listOf(

@@ -734,9 +734,8 @@ private fun NativeSceneContent(
                     )
                     spatial != null -> NativeSpatialExperimentPanel(
                         experiment = spatial,
-                        spatialControls = vm.spatialControls(
-                            sceneId, revision, spatial.animated && !LocalReduceMotion.current,
-                        ),
+                        spatialControls = vm.spatialControls(sceneId, revision),
+                        playAnimation = spatial.animated && !LocalReduceMotion.current,
                         highlighted = state.spotlightElementId,
                         modifier = modifier,
                     )
