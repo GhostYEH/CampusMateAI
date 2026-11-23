@@ -64,6 +64,8 @@ class ClassroomQuizCoordinator(
     private val scope: CoroutineScope,
     private val onState: (NativeQuizUiState) -> Unit,
     private val onSettled: (correct: Int, total: Int) -> Unit,
+    /** 学生主动点击交卷且通过本地校验后触发；用于课堂观察事件计数。 */
+    private val onSubmitted: () -> Unit = {},
 ) {
     private var state = NativeQuizUiState(sceneId = sceneId, loading = true)
     private var editVersion = 0
@@ -224,6 +226,7 @@ class ClassroomQuizCoordinator(
             update { it.copy(error = "还有 $unanswered 道题未作答") }
             return
         }
+        onSubmitted()
         val answers = state.answers
         val results = gradeQuiz(quiz, answers)
         val hasShort = quiz.questions.any { it.isShortAnswer }

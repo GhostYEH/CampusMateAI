@@ -1,10 +1,15 @@
 package com.example.campusai.ui.screens.courses.nativeplayer
 
+import android.Manifest
 import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -51,6 +56,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -72,6 +78,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -97,6 +104,8 @@ import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomText
 import com.example.campusai.data.classroom.nativeplayer.NativePlaybackPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
+import com.example.campusai.data.classroom.focus.ClassroomFocusObservationController
+import com.example.campusai.data.classroom.focus.ClassroomObservationExportFormat
 import com.example.campusai.data.repository.AppRepository
 import com.example.campusai.ui.screens.courses.ClassroomWood
 import com.example.campusai.ui.theme.Accent
@@ -109,6 +118,7 @@ import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
@@ -143,6 +153,61 @@ fun NativeClassroomPlayer(
     var panel by rememberSaveable(ref.stableKey) { mutableStateOf<String?>(null) }
     var closing by remember(ref.stableKey) { mutableStateOf(false) }
 
+    // 课堂观察默认关闭；Controller 持有本次播放会话自己的相机分析链。
+    // 权限对话框期间的旋转由 rememberSaveable 保留请求标记，迟到的授权结果
+    // 在取消后不会重新开启摄像头。
+    var focusPermissionPending by rememberSaveable(ref.stableKey) { mutableStateOf(false) }
+    val focusController = remember(ref.stableKey, lifecycleOwner) {
+        ClassroomFocusObservationController(application, lifecycleOwner)
+    }
+    val focusState by focusController.state.collectAsStateWithLifecycle()
+    val focusScope = rememberCoroutineScope()
+    var focusExportBusy by remember(ref.stableKey) { mutableStateOf(false) }
+    var focusExportNotice by remember(ref.stableKey) { mutableStateOf<String?>(null) }
+    val focusPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!focusPermissionPending) return@rememberLauncherForActivityResult
+        focusPermissionPending = false
+        if (granted) {
+            focusController.start()
+        } else {
+            focusController.permissionDenied()
+        }
+    }
+    val toggleFocusObservation: () -> Unit = {
+        when {
+            focusController.state.value.enabled -> {
+                focusPermissionPending = false
+                focusExportNotice = null
+                focusController.stop("课堂观察已关闭")
+            }
+            focusPermissionPending -> {
+                // 权限对话框还没返回时的“取消开启”：迟到的授权结果不再启动相机。
+                focusPermissionPending = false
+                focusController.stop("已取消开启课堂观察")
+            }
+            focusController.state.value.busy -> {
+                // 相机/检测器仍在启动，用户同样可以取消。
+                focusPermissionPending = false
+                focusController.stop("已取消开启课堂观察")
+            }
+            else -> {
+                focusExportNotice = null
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.CAMERA,
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    focusController.start()
+                } else {
+                    focusPermissionPending = true
+                    focusPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }
+        }
+    }
+
     SideEffect {
         (view.parent as? DialogWindowProvider)?.window?.let { window ->
             WindowCompat.getInsetsController(window, view).apply {
@@ -160,7 +225,15 @@ fun NativeClassroomPlayer(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> vm.onHostResume()
-                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> vm.onHostPause()
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    vm.onHostPause()
+                    if (event == Lifecycle.Event.ON_STOP) focusPermissionPending = false
+                    if (!focusPermissionPending &&
+                        (focusController.state.value.enabled || focusController.state.value.busy)
+                    ) {
+                        focusController.stop("课堂观察已在后台停止，返回后可重新开启")
+                    }
+                }
                 else -> Unit
             }
         }
@@ -176,9 +249,15 @@ fun NativeClassroomPlayer(
                 vm.onHostPause()
             } else {
                 // 关闭弹窗、离开页面或进程重建：可靠落盘后释放播放器、TTS 与图片缓存。
+                focusPermissionPending = false
+                focusController.stop()
                 vm.endSession()
             }
         }
+    }
+
+    DisposableEffect(focusController) {
+        onDispose { focusController.dispose() }
     }
 
     val total = state.plan?.scenes?.size ?: 0
@@ -195,6 +274,17 @@ fun NativeClassroomPlayer(
     }
     val lectureVisible = state.spotlightElementId != null || state.laserElementId != null || state.sequence.active
     val showCanvas = lessonText.isEmpty() || !state.readNotes || lectureVisible
+    // 只把播放器实际可得的课堂阶段作为窗口事实；不推断学生是否在听。
+    val observationStage = when {
+        state.sequence.active -> "lecture"
+        state.disposition.mode == NativeSceneMode.SANDBOX_HTML -> "sandbox_html"
+        state.disposition.mode == NativeSceneMode.SANDBOX_URL -> "sandbox_url"
+        state.disposition.mode != NativeSceneMode.NATIVE -> "unavailable"
+        else -> state.currentScenePlan?.type
+    }
+    LaunchedEffect(focusController, observationStage) {
+        focusController.updateStage(observationStage)
+    }
     val scene = state.currentScene
     val lectureScript = remember(slide, scene, sceneTitle) {
         if (slide == null) null else {
@@ -213,6 +303,14 @@ fun NativeClassroomPlayer(
 
     BackHandler {
         if (state.endSummary != null) vm.dismissEnd() else vm.requestEnd(completed)
+    }
+
+    // 结束页出现即停止观察；结束页本身不应继续占用相机。
+    LaunchedEffect(state.endSummary) {
+        if (state.endSummary != null) {
+            focusPermissionPending = false
+            focusController.stop("课堂观察已结束")
+        }
     }
 
     LaunchedEffect(state.currentSceneId, state.revision, state.loading) {
@@ -385,6 +483,42 @@ fun NativeClassroomPlayer(
                             }
                         }
                     }
+                }
+                if (state.plan != null) {
+                    ClassroomFocusObservationBar(
+                        state = focusState,
+                        busy = focusPermissionPending,
+                        onToggle = toggleFocusObservation,
+                        onExport = { format ->
+                            if (!focusExportBusy) {
+                                focusExportBusy = true
+                                focusExportNotice = null
+                                focusScope.launch {
+                                    val uri = runCatching { focusController.export(format) }
+                                        .getOrNull()
+                                    focusExportBusy = false
+                                    if (uri == null) {
+                                        focusExportNotice = "没有可导出的窗口，或导出失败"
+                                    } else {
+                                        val send = Intent(Intent.ACTION_SEND).apply {
+                                            type = format.mimeType
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent.createChooser(send, "导出课堂观察窗口"),
+                                            )
+                                        }.onFailure {
+                                            focusExportNotice = "无法打开系统分享面板"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        exportBusy = focusExportBusy,
+                        exportNotice = focusExportNotice,
+                    )
                 }
                 NativePagerBar(
                     page = state.page,

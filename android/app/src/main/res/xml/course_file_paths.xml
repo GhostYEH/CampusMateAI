@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="course_resources" path="chaoxing-resources/" />
+    <!-- 仅 Debug 构建的课堂观察窗口复盘导出；由代码内 BuildConfig.DEBUG 守门。 -->
+    <cache-path name="classroom_observation" path="classroom-observation/" />
 </paths>

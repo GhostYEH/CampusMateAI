@@ -19,6 +19,8 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.util.UnstableApi
 import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.ClassroomDiagnostics
+import com.example.campusai.data.classroom.focus.ClassroomFocusActivityBus
+import com.example.campusai.data.classroom.focus.ClassroomFocusEventType
 import com.example.campusai.data.classroom.nativeplayer.ClassroomActionSequencePlanner
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLevel
@@ -924,6 +926,9 @@ class NativeClassroomViewModel(
         if (plan.scenes.isEmpty()) return
         val target = index.coerceIn(0, plan.scenes.lastIndex)
         if (target == _uiState.value.index) return
+        // 只有学生主动触发的翻页入口会发布事件；自动翻页和重放不应复用 goTo，
+        // 即使误传，ClassroomFocusEventSource 也会在窗口聚合时丢弃。
+        ClassroomFocusActivityBus.publish(ClassroomFocusEventType.PAGE_TURN)
         resetSequenceRuntime(plan.scenes[target].id)
         // 翻页前把旧页草稿交给协调器串行落盘；不阻塞翻页，也不取消在途请求。
         val draftFlush = quizCoordinator?.takeDraftFlush()
@@ -2387,6 +2392,9 @@ class NativeClassroomViewModel(
                 }
             },
             onSettled = { correct, total -> settleQuiz(sceneId, correct, total) },
+            onSubmitted = {
+                ClassroomFocusActivityBus.publish(ClassroomFocusEventType.SUBMIT_ANSWER)
+            },
         )
         quizCoordinator = coordinator
         coordinator.load()
@@ -2468,6 +2476,9 @@ class NativeClassroomViewModel(
         if (scenePayload == null) {
             _uiState.update { it.copy(classmates = it.classmates.copy(error = "当前页没有可交给同学的内容")) }
             return
+        }
+        if (question != null) {
+            ClassroomFocusActivityBus.publish(ClassroomFocusEventType.ASK_QUESTION)
         }
         classmateJob?.cancel()
         _uiState.update { it.copy(classmates = it.classmates.copy(busy = true, error = null)) }
