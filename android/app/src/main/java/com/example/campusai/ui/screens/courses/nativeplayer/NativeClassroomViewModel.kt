@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import android.os.Debug
 import android.os.SystemClock
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -21,10 +22,18 @@ import com.example.campusai.BuildConfig
 import com.example.campusai.data.classroom.nativeplayer.ClassroomActionSequencePlanner
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLevel
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLocalRead
+import com.example.campusai.data.classroom.nativeplayer.ClassroomLocalWriteGate
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSourceFactory
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceResult
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStep
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStepResult
+import com.example.campusai.data.classroom.nativeplayer.ClassroomSessionFlusher
+import com.example.campusai.data.classroom.nativeplayer.ClassroomStateWrite
+import com.example.campusai.data.classroom.nativeplayer.ClassroomWriteResult
+import com.example.campusai.data.classroom.nativeplayer.ClassroomWriteStatus
+import com.example.campusai.data.classroom.nativeplayer.failed
+import com.example.campusai.data.classroom.nativeplayer.readClassroomLocal
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
 import com.example.campusai.data.classroom.nativeplayer.runClassroomSequence
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
@@ -71,12 +80,10 @@ import com.example.campusai.data.remote.MagicClassScenePlaybackDto
 import com.example.campusai.data.repository.AppRepository
 import coil.request.ImageRequest
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,6 +102,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.time.Instant
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class NativeNarrationUiState(
     val sceneId: String = "",
@@ -269,6 +277,7 @@ class NativeClassroomViewModel(
      */
     @androidx.annotation.OptIn(UnstableApi::class)
     private inner class PlaybackSession(val accountScope: String) {
+        private val released = AtomicBoolean(false)
         val cache = NativeClassroomCache(context, accountScope, ref)
         val mediaSession = ClassroomMediaSession(accountScope, ref)
         val tts = AndroidTextToSpeechSynthesizer(context)
@@ -324,6 +333,7 @@ class NativeClassroomViewModel(
         }
 
         fun release() {
+            if (!released.compareAndSet(false, true)) return
             runCatching {
                 player.stop()
                 player.release()
@@ -378,6 +388,13 @@ class NativeClassroomViewModel(
     private var recorded = false
     private var entryRecorded = false
     private var initialAccountScope = repository.classroomAccountScope()
+    private val localStateKey = repository.classroomLocalKey(ref, initialAccountScope)
+    private val positionWriteKey = "$localStateKey:position"
+    private val rewardsWriteKey = "$localStateKey:rewards"
+    private val draftWriteKey = "$localStateKey:draft"
+    private var rewardsReadable = true
+    private var localReadNotice: String? = null
+    private val sessionFlusher = ClassroomSessionFlusher(onResult = ::logWriteResult)
     private var quizCoordinator: ClassroomQuizCoordinator? = null
     private val quizWriteMutex = Mutex()
 
@@ -447,6 +464,9 @@ class NativeClassroomViewModel(
     /**
      * 使用独立作用域落盘：ViewModel.onCleared 取消 viewModelScope 后仍能完成。
      * 位置与奖励始终写回会话所属账号，即使账号已经切换。
+     *
+     * 三项写入互相隔离：位置失败不会跳过奖励与草稿；旧会话的迟到快照
+     * 会因写入票据过期而让位于新会话的更新；草稿发网前再核对一次账号。
      */
     private fun flushSessionState(
         sameAccount: Boolean,
@@ -454,26 +474,69 @@ class NativeClassroomViewModel(
         rewards: ClassroomRewards,
         draftFlush: (suspend () -> Unit)?,
     ) {
-        if (position == null && rewards.visited.isEmpty() && rewards.xp <= 0 && draftFlush == null) return
-        val flushScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        flushScope.launch {
-            try {
-                withTimeoutOrNull(6_000L) {
-                    if (position != null) {
-                        repository.saveClassroomPosition(ref, position, initialAccountScope)
-                    }
-                    if (rewards.visited.isNotEmpty() || rewards.xp > 0) {
-                        repository.saveClassroomRewardsRaw(
-                            ref,
-                            ClassroomRewardsCodec.encode(rewards),
-                            initialAccountScope,
-                        )
-                    }
-                    if (sameAccount) draftFlush?.invoke()
-                }
-            } finally {
-                flushScope.cancel()
+        val saveRewards = rewardsReadable && (rewards.visited.isNotEmpty() || rewards.xp > 0)
+        val writes = buildList {
+            if (position != null) {
+                add(
+                    ClassroomStateWrite(
+                        key = positionWriteKey,
+                        label = "position",
+                        grant = ClassroomLocalWriteGate.grant(positionWriteKey),
+                        save = {
+                            repository.saveClassroomPosition(ref, position, initialAccountScope)
+                        },
+                    ),
+                )
             }
+            if (saveRewards) {
+                add(
+                    ClassroomStateWrite(
+                        key = rewardsWriteKey,
+                        label = "rewards",
+                        grant = ClassroomLocalWriteGate.grant(rewardsWriteKey),
+                        save = {
+                            repository.saveClassroomRewardsRaw(
+                                ref,
+                                ClassroomRewardsCodec.encode(rewards),
+                                initialAccountScope,
+                            )
+                        },
+                    ),
+                )
+            }
+            if (sameAccount && draftFlush != null) {
+                add(
+                    ClassroomStateWrite(
+                        key = draftWriteKey,
+                        label = "draft",
+                        grant = ClassroomLocalWriteGate.grant(draftWriteKey),
+                        save = {
+                            // 发送前重新核对账号；换号后旧账号的草稿不能发出去。
+                            if (repository.classroomAccountScope() == initialAccountScope) draftFlush()
+                        },
+                    ),
+                )
+            }
+        }
+        sessionFlusher.flush(writes)
+    }
+
+    private fun logWriteResult(result: ClassroomWriteResult) {
+        if (result.status == ClassroomWriteStatus.SAVED) return
+        Log.w(
+            "NativeClassroom",
+            "classroom_state_write label=${result.label} status=${result.status} attempts=${result.attempts}",
+        )
+    }
+
+    /** 本地诊断/学习记录失败不应打断课堂；协程取消仍向上抛出。 */
+    private suspend fun ignoreStorageFailure(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // 课堂内容仍可继续使用，失败细节不写入日志。
         }
     }
 
@@ -492,6 +555,8 @@ class NativeClassroomViewModel(
         activeSince = now()
         activeAccumulatedMs = 0L
         enteredAtIso = Instant.now().toString()
+        rewardsReadable = true
+        localReadNotice = null
         _uiState.value = NativeClassroomUiState()
     }
 
@@ -509,19 +574,42 @@ class NativeClassroomViewModel(
         firstPaintRecorded = false
 
         loadJob = viewModelScope.launch {
-            val savedRewards = withContext(Dispatchers.IO) {
-                ClassroomRewardsCodec.decode(repository.classroomRewardsRaw(ref))
+            val rewardsRead = withContext(Dispatchers.IO) {
+                readClassroomLocal { repository.classroomRewardsRaw(ref) }
             }
+            val savedRewards = when (rewardsRead) {
+                is ClassroomLocalRead.Value -> ClassroomRewardsCodec.decode(rewardsRead.value)
+                ClassroomLocalRead.Missing -> ClassroomRewardsEngine.empty()
+                is ClassroomLocalRead.Failed -> ClassroomRewardsEngine.empty()
+            }
+            val positionRead = withContext(Dispatchers.IO) {
+                readClassroomLocal { repository.classroomPosition(ref) }
+            }
+            val savedScene = (positionRead as? ClassroomLocalRead.Value)?.value
+            val readNotice = when {
+                rewardsRead.failed && positionRead.failed ->
+                    "本地学习进度读取失败，本次不会覆盖已有记录。"
+                rewardsRead.failed ->
+                    "本地奖励记录读取失败，本次不会覆盖已有记录。"
+                positionRead.failed ->
+                    "本地学习位置读取失败，本次从课堂起始页开始。"
+                else -> null
+            }
+            if (rewardsRead.failed) rewardsReadable = false
+            if (rewardsRead is ClassroomLocalRead.Value || rewardsRead is ClassroomLocalRead.Missing) {
+                rewardsReadable = true
+            }
+            localReadNotice = readNotice
             withContext(Dispatchers.Main) {
                 _uiState.update {
                     it.copy(
                         rewards = savedRewards,
                         level = ClassroomRewardsEngine.levelOf(savedRewards.xp),
                         unlocked = savedRewards.achievements.toList(),
+                        notice = readNotice ?: it.notice,
                     )
                 }
             }
-            val savedScene = withContext(Dispatchers.IO) { repository.classroomPosition(ref) }
             if (generation != loadGeneration) return@launch
             if (ref.source != NativeClassroomSource.MANAGED) {
                 loadClassic(savedScene, generation, forceNetwork, sessionCache)
@@ -682,13 +770,15 @@ class NativeClassroomViewModel(
         val target = plan.scenes.indexOfFirst { it.id == preferSceneId }
             .takeIf { it >= 0 } ?: plan.startIndex.coerceIn(0, (plan.scenes.size - 1).coerceAtLeast(0))
         val sceneId = plan.scenes.getOrNull(target)?.id
+        val readWarning = localReadNotice
+        localReadNotice = null
         _uiState.update {
             it.copy(
                 loading = false,
                 refreshing = false,
                 offline = fromCache,
                 error = null,
-                notice = if (fromCache) "正在使用本地缓存，后台继续刷新" else null,
+                notice = readWarning ?: if (fromCache) "正在使用本地缓存，后台继续刷新" else null,
                 plan = plan,
                 document = document,
                 revision = plan.revision,
@@ -703,7 +793,9 @@ class NativeClassroomViewModel(
         }
         if (!entryRecorded) {
             entryRecorded = true
-            viewModelScope.launch(Dispatchers.IO) { repository.recordClassroomEntry(ref.identityUrl) }
+            viewModelScope.launch(Dispatchers.IO) {
+                ignoreStorageFailure { repository.recordClassroomEntry(ref.identityUrl) }
+            }
         }
     }
 
@@ -736,7 +828,9 @@ class NativeClassroomViewModel(
         if (draftFlush != null && repository.classroomAccountScope() == initialAccountScope) {
             // UNDISPATCHED：先把旧页草稿排进共享写锁，后续新页保存一定排在它之后。
             viewModelScope.launch(Dispatchers.IO, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
-                withTimeoutOrNull(6_000L) { draftFlush() }
+                withTimeoutOrNull(6_000L) {
+                    ignoreStorageFailure { draftFlush() }
+                }
             }
         }
         pageRequestedAt = now()
@@ -960,9 +1054,21 @@ class NativeClassroomViewModel(
         settleVisit(sceneId)
         val positionAccountScope = repository.classroomAccountScope()
         positionJob?.cancel()
-        positionJob = viewModelScope.launch(Dispatchers.IO) {
-            if (positionAccountScope == repository.classroomAccountScope()) {
-                repository.saveClassroomPosition(ref, sceneId)
+        if (positionAccountScope == initialAccountScope) {
+            // 翻页落盘失败只影响下一次续播的起点，不打断本节课堂。
+            val write = ClassroomStateWrite(
+                key = positionWriteKey,
+                label = "position",
+                grant = ClassroomLocalWriteGate.grant(positionWriteKey),
+                save = {
+                    if (repository.classroomAccountScope() == positionAccountScope) {
+                        repository.saveClassroomPosition(ref, sceneId, positionAccountScope)
+                    }
+                },
+            )
+            positionJob = viewModelScope.launch(Dispatchers.IO) {
+                ClassroomSessionFlusher(budgetMs = 3_000L, itemBudgetMs = 1_500L)
+                    .run(listOf(write))
             }
         }
         if (planScene?.type == "quiz") {
@@ -1016,11 +1122,26 @@ class NativeClassroomViewModel(
     }
 
     private fun persistRewards(rewards: ClassroomRewards) {
+        // 账本读不出来时只保留本次内存中的展示，不覆盖已有记录。
+        if (!rewardsReadable) return
         val accountScope = repository.classroomAccountScope()
+        if (accountScope != initialAccountScope) return
         rewardsJob?.cancel()
+        val write = ClassroomStateWrite(
+            key = rewardsWriteKey,
+            label = "rewards",
+            grant = ClassroomLocalWriteGate.grant(rewardsWriteKey),
+            save = {
+                repository.saveClassroomRewardsRaw(
+                    ref,
+                    ClassroomRewardsCodec.encode(rewards),
+                    accountScope,
+                )
+            },
+        )
         rewardsJob = viewModelScope.launch(Dispatchers.IO) {
-            if (accountScope != repository.classroomAccountScope()) return@launch
-            repository.saveClassroomRewardsRaw(ref, ClassroomRewardsCodec.encode(rewards))
+            ClassroomSessionFlusher(budgetMs = 3_000L, itemBudgetMs = 1_500L)
+                .run(listOf(write))
         }
     }
 

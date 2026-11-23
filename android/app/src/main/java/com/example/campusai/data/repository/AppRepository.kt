@@ -2090,21 +2090,27 @@ class AppRepository(
         val user = _session.value ?: return
         if (enteredAt.isBlank()) return
         pendingClassroomVisitWrite = scope.launch {
-            classroomVisitMutex.withLock {
-                val key = "classroom_visits_${accountStorageKey(user)}"
-                val entries = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
-                val next = JSONArray()
-                val start = (entries.length() - 499).coerceAtLeast(0)
-                for (index in start until entries.length()) next.put(entries.get(index))
-                next.put(JSONObject().apply {
-                    put("id", java.util.UUID.randomUUID().toString())
-                    put("classroomFingerprint", classroomVisitFingerprint(url))
-                    put("enteredAt", enteredAt)
-                    put("endedAt", java.time.Instant.now().toString())
-                    put("activeSeconds", activeSeconds.coerceAtLeast(0))
-                    put("completed", completed)
-                })
-                dataStore.saveRaw(key, next.toString())
+            try {
+                classroomVisitMutex.withLock {
+                    val key = "classroom_visits_${accountStorageKey(user)}"
+                    val entries = runCatching { JSONArray(dataStore.readRaw(key) ?: "[]") }.getOrDefault(JSONArray())
+                    val next = JSONArray()
+                    val start = (entries.length() - 499).coerceAtLeast(0)
+                    for (index in start until entries.length()) next.put(entries.get(index))
+                    next.put(JSONObject().apply {
+                        put("id", java.util.UUID.randomUUID().toString())
+                        put("classroomFingerprint", classroomVisitFingerprint(url))
+                        put("enteredAt", enteredAt)
+                        put("endedAt", java.time.Instant.now().toString())
+                        put("activeSeconds", activeSeconds.coerceAtLeast(0))
+                        put("completed", completed)
+                    })
+                    dataStore.saveRaw(key, next.toString())
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // 学习足迹是尽力而为的本地记录，落盘失败不打断课堂退出。
             }
         }
     }
