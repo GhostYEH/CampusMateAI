@@ -57,6 +57,8 @@ class ClassroomQuizCoordinator(
     /** 整个播放会话共享一把写锁，保证跨场景/跨轮次的草稿也按发送顺序落库。 */
     private val writeMutex: Mutex,
     private val isAccountCurrent: () -> Boolean,
+    /** 仅当发起本次提交的播放会话仍然有效时才回调奖励结算。 */
+    private val isSessionCurrent: () -> Boolean = { true },
     private val loadAttempt: suspend (sceneId: String) -> Result<MagicClassQuizAttemptResponseDto>,
     private val saveAttempt: suspend (sceneId: String, request: MagicClassQuizAttemptRequest) -> Result<MagicClassQuizAttemptResponseDto>,
     private val scope: CoroutineScope,
@@ -127,7 +129,7 @@ class ClassroomQuizCoordinator(
                         error = null,
                     )
                 }
-                if (phase == "reviewed" && results.isNotEmpty()) {
+                if (phase == "reviewed" && results.isNotEmpty() && isSessionCurrent()) {
                     onSettled(results.values.count { it.correct == true }, results.size)
                 }
             }.onFailure { error ->
@@ -295,7 +297,7 @@ class ClassroomQuizCoordinator(
                         )
                     }
                     if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Confirmed)
-                    if (phase == "reviewed") {
+                    if (phase == "reviewed" && isSessionCurrent()) {
                         onSettled(results.values.count { it.correct == true }, results.size)
                     }
                 }.onFailure { error ->
@@ -408,7 +410,9 @@ class ClassroomQuizCoordinator(
                         error = null,
                     )
                 }
-                onSettled(updated.values.count { it.correct == true }, updated.size)
+                if (isSessionCurrent()) {
+                    onSettled(updated.values.count { it.correct == true }, updated.size)
+                }
             }.onFailure { error ->
                 if (isAttemptConflict(error)) {
                     update {

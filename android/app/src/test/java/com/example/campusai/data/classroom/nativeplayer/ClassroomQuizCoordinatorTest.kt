@@ -91,6 +91,7 @@ class ClassroomQuizCoordinatorTest {
         server: FakeServer,
         mutex: Mutex = Mutex(),
         isCurrent: () -> Boolean = { true },
+        isSessionCurrent: () -> Boolean = { true },
         onSettled: (Int, Int) -> Unit = { _, _ -> },
         onState: (NativeQuizUiState) -> Unit = {},
     ) = ClassroomQuizCoordinator(
@@ -98,6 +99,7 @@ class ClassroomQuizCoordinatorTest {
         quiz = quiz(),
         writeMutex = mutex,
         isAccountCurrent = isCurrent,
+        isSessionCurrent = isSessionCurrent,
         loadAttempt = server::load,
         saveAttempt = server::save,
         scope = this,
@@ -201,6 +203,41 @@ class ClassroomQuizCoordinatorTest {
         assertEquals("reviewed", server.phase)
         assertEquals("reviewed", state?.phase)
         assertEquals(2 to 2, settled)
+    }
+
+    @Test
+    fun `closing the playback session discards a delayed confirmed reward callback`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        server.holdResponse = gate
+        var sessionActive = true
+        var state: NativeQuizUiState? = null
+        var settled: Pair<Int, Int>? = null
+        val writer = coordinator(
+            "scene-a",
+            server,
+            isSessionCurrent = { sessionActive },
+            onState = { state = it },
+            onSettled = { c, t -> settled = c to t },
+        )
+        writer.load()
+        advanceUntilIdle()
+
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.submit()
+        advanceUntilIdle()
+
+        // The player closes while the reviewed response is still in flight.
+        sessionActive = false
+        writer.close(cancelInFlight = false)
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("reviewed", server.phase)
+        assertNull("已退出的会话不能结算奖励", settled)
     }
 
     @Test

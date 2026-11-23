@@ -363,6 +363,7 @@ class NativeClassroomViewModel(
     }
 
     private var playback: PlaybackSession? = null
+    private var sessionGeneration = 0
     private var sessionBlocked = false
 
     /** 当前播放会话的图片缓存；会话未启动或已释放时为 null。 */
@@ -437,6 +438,7 @@ class NativeClassroomViewModel(
             return
         }
         playback = PlaybackSession(initialAccountScope)
+        sessionGeneration++
         load()
     }
 
@@ -448,6 +450,7 @@ class NativeClassroomViewModel(
      * 4. 重置会话状态。重复调用是幂等的。
      */
     fun endSession() {
+        sessionGeneration++
         val session = playback
         if (session == null) {
             resetSessionState()
@@ -596,6 +599,10 @@ class NativeClassroomViewModel(
 
     private fun isMediaRequestCurrent(generation: Int): Boolean =
         playback?.mediaSession?.isCurrent(generation, repository.classroomAccountScope(), ref) == true
+
+    /** 奖励回调必须仍属于发起提交的那次播放会话，退出或重开后的旧回包不能结算。 */
+    private fun isRewardSessionCurrent(token: Int): Boolean =
+        playback != null && !sessionBlocked && token == sessionGeneration
 
     fun load(forceNetwork: Boolean = false) {
         val sessionCache = playback?.cache ?: return
@@ -2293,12 +2300,14 @@ class NativeClassroomViewModel(
     private fun loadQuiz(sceneId: String) {
         val quiz = _uiState.value.currentQuiz ?: return
         quizCoordinator?.close()
+        val rewardSession = sessionGeneration
         var lastDiagnosticState: NativeQuizSubmitState? = null
         val coordinator = ClassroomQuizCoordinator(
             sceneId = sceneId,
             quiz = quiz,
             writeMutex = quizWriteMutex,
             isAccountCurrent = { repository.classroomAccountScope() == initialAccountScope },
+            isSessionCurrent = { isRewardSessionCurrent(rewardSession) },
             loadAttempt = { id -> repository.classroomQuizAttempt(ref, id) },
             saveAttempt = { id, request -> repository.saveClassroomQuizAttempt(ref, id, request) },
             scope = viewModelScope,
