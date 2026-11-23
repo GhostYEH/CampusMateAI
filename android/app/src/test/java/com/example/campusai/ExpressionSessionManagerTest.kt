@@ -153,6 +153,38 @@ class ExpressionSessionManagerTest {
         manager.release()
     }
 
+    @Test fun staleClassroomCleanupDoesNotStopNewOwner() = runBlocking {
+        val fake = FakeService()
+        val application = Mockito.mock(Application::class.java)
+        val manager = ExpressionSessionManager(
+            application = application,
+            createService = { fake },
+            initialUseMock = false,
+            createBehaviorEngine = { NoOpBehaviorRecognitionEngine() },
+        )
+        val oldPage = Any()
+        val newPage = Any()
+
+        manager.beginClassroomSupervision(oldPage)
+        manager.endClassroomSupervision(oldPage)
+        manager.beginClassroomSupervision(newPage)
+        manager.updateClassroomEligibility(
+            enabled = true,
+            permissionGranted = true,
+            visible = true,
+            foreground = true,
+        )
+        assertEquals(1, fake.starts)
+
+        // The old page's late cleanup must not disable the new page's supervision.
+        manager.endClassroomSupervision(oldPage)
+        assertEquals(0, fake.pauses)
+
+        manager.endClassroomSupervision(newPage)
+        assertEquals(1, fake.pauses)
+        manager.release()
+    }
+
     private class FakeService : ExpressionRecognitionService {
         private val stream = MutableStateFlow(ExpressionResult(ExpressionLabel.NEUTRAL, .9, emptyMap(), 1, true, "fake", facePresent = true))
         var starts = 0

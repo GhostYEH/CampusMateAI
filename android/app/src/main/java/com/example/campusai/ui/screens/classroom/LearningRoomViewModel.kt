@@ -5,6 +5,7 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.campusai.CampusAIApplication
+import com.example.campusai.data.classroom.ClassroomDiagnostics
 import com.example.campusai.data.classroom.ClassroomCall
 import com.example.campusai.data.classroom.ClassroomCallPhase
 import com.example.campusai.data.classroom.ClassroomCallService
@@ -58,6 +59,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     private var expiryJob: Job? = null
     private var attentionJob: Job? = null
     private val serviceOwner = Any()
+    private val supervisionOwner = Any()
     private var epoch = 0
     private var cursor = 0L
     private var lastNudgeId = 0L
@@ -218,7 +220,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         if (mutableState.value.attentionEnabled) return
         mutableState.update { it.copy(attentionEnabled = true, attentionState = "UNKNOWN", notice = null) }
         viewModelScope.launch {
-            manager.beginClassroomSupervision()
+            manager.beginClassroomSupervision(supervisionOwner)
             manager.updateClassroomEligibility(
                 enabled = true,
                 permissionGranted = true,
@@ -235,7 +237,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
         val wasEnabled = mutableState.value.attentionEnabled
         mutableState.update { it.copy(attentionEnabled = false, attentionState = "UNKNOWN") }
         if (wasEnabled) {
-            viewModelScope.launch { expressionManager?.endClassroomSupervision() }
+            viewModelScope.launch { expressionManager?.endClassroomSupervision(supervisionOwner) }
         }
     }
 
@@ -503,7 +505,13 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
                 if (uiVisible && session == call.sessionGeneration) call.microphone(true)
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                ClassroomDiagnostics.warn(
+                    "classroom_call_service_failed",
+                    error,
+                    "service" to "foreground",
+                    "status" to "not_ready",
+                )
                 call.microphone(false)
                 notice("无法启动麦克风通话服务，请检查系统权限")
             }
@@ -524,7 +532,7 @@ class LearningRoomViewModel(application: Application) : AndroidViewModel(applica
     }
     override fun onCleared() {
         attentionJob?.cancel()
-        expressionManager?.let { manager -> viewModelScope.launch { manager.endClassroomSupervision() } }
+        expressionManager?.endClassroomSupervisionAsync(supervisionOwner)
         disconnect()
         super.onCleared()
     }

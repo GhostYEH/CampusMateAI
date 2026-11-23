@@ -57,7 +57,13 @@ class ClassroomCallService : Service() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
             lease.ready(requestedEpoch)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            ClassroomDiagnostics.warn(
+                "classroom_call_service_failed",
+                error,
+                "service" to "foreground",
+                "status" to "start_failed",
+            )
             lease.stop(requestedEpoch)
             if (!lease.hasOwner) stopSelf()
         }
@@ -83,6 +89,12 @@ class ClassroomCallService : Service() {
             try {
                 ContextCompat.startForegroundService(context, Intent(context, ClassroomCallService::class.java).putExtra(MIC, microphone).putExtra(EPOCH, generation))
             } catch (error: Exception) {
+                ClassroomDiagnostics.warn(
+                    "classroom_call_service_failed",
+                    error,
+                    "service" to "foreground",
+                    "status" to "start_rejected",
+                )
                 lease.stop(generation)
                 throw error
             }

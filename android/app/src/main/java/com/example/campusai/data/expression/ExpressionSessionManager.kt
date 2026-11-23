@@ -112,6 +112,7 @@ class ExpressionSessionManager(
     private val presenceLock = Any()
     private var latestResult = initialResult()
     private var releaseJob: kotlinx.coroutines.Job? = null
+    private var classroomSupervisionOwner: Any? = null
     private var serviceInitialized = false
 
     private var behaviorCollectorJob: Job? = null
@@ -289,9 +290,10 @@ class ExpressionSessionManager(
         }
     }
 
-    suspend fun beginClassroomSupervision() {
+    suspend fun beginClassroomSupervision(owner: Any? = null) {
         releaseJob?.cancel()
         mutex.withLock {
+            classroomSupervisionOwner = owner
             resetObservationLocked()
             classroomAttentionTracker.reset()
             _classroomAttention.value = ClassroomAttention()
@@ -299,9 +301,15 @@ class ExpressionSessionManager(
         }
     }
 
-    suspend fun endClassroomSupervision() {
+    /**
+     * 停止共同课堂观察。传入 owner 时只有当前持有者可以清理，避免旧页面在
+     * 新页面已经建立观察后晚到调用，把新页面的摄像头一起关掉。
+     */
+    suspend fun endClassroomSupervision(owner: Any? = null) {
         releaseJob?.cancel()
         mutex.withLock {
+            if (owner != null && classroomSupervisionOwner != owner) return@withLock
+            classroomSupervisionOwner = null
             classroomSupervisionEnabled = false
             classroomAnalysisActive = false
             classroomAttentionTracker.reset()
@@ -309,6 +317,14 @@ class ExpressionSessionManager(
             lastClassroomObservationMs = Long.MIN_VALUE
             syncLocked()
         }
+    }
+
+    /**
+     * 供 ViewModel 的 onCleared 使用：此时 viewModelScope 已关闭，清理必须在
+     * 管理器自己的作用域内完成。owner 校验保证旧页面不会误停新页面。
+     */
+    fun endClassroomSupervisionAsync(owner: Any) {
+        scope.launch { endClassroomSupervision(owner) }
     }
 
     suspend fun beginFocusSession() {

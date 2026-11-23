@@ -2,6 +2,7 @@ package com.example.campusai.data.remote
 
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
@@ -17,6 +18,11 @@ import com.example.campusai.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+
+private val HTTP_QUERY = Regex("\\?[^\\s]+")
+
+/** BASIC 日志里只保留方法和路径，查询参数整体移除，避免课堂/资源标识落盘。 */
+internal fun redactBasicHttpLog(message: String): String = message.replace(HTTP_QUERY, "")
 
 object ApiClient {
     private val BASE_URL = BuildConfig.API_BASE_URL
@@ -78,7 +84,10 @@ object ApiClient {
         refreshedRequest(response)
     }
 
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
+    private val loggingInterceptor = HttpLoggingInterceptor { message ->
+        // BASIC 日志包含完整 URL；查询参数可能携带课堂/资源标识，统一移除后再输出。
+        Log.d("CampusHttp", redactBasicHttpLog(message))
+    }.apply {
         level = if (BuildConfig.DEBUG) {
             // Request/response bodies can contain chat text, passwords and tokens.
             HttpLoggingInterceptor.Level.BASIC

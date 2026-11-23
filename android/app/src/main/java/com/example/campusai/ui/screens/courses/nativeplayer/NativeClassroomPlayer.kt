@@ -88,6 +88,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import coil.ImageLoader
 import com.example.campusai.BuildConfig
+import com.example.campusai.data.classroom.ClassroomDiagnostics
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeCanvasElement
@@ -891,6 +892,13 @@ private fun VideoDialog(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    ClassroomDiagnostics.warn(
+                        "classroom_media_failed",
+                        error,
+                        "component" to "video",
+                        "stage" to "playback",
+                        "code" to error.errorCodeName,
+                    )
                     failed = true
                     if (!failureReported) {
                         failureReported = true

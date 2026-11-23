@@ -4,7 +4,6 @@ import android.app.Application
 import android.net.Uri
 import android.os.Debug
 import android.os.SystemClock
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -19,6 +18,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.common.util.UnstableApi
 import com.example.campusai.BuildConfig
+import com.example.campusai.data.classroom.ClassroomDiagnostics
 import com.example.campusai.data.classroom.nativeplayer.ClassroomActionSequencePlanner
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLimitExperiment
 import com.example.campusai.data.classroom.nativeplayer.ClassroomLevel
@@ -65,6 +65,7 @@ import com.example.campusai.data.classroom.nativeplayer.NativeQuestion
 import com.example.campusai.data.classroom.nativeplayer.NativeQuiz
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizResult
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizUiState
+import com.example.campusai.data.classroom.nativeplayer.NativeQuizSubmitState
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneDisposition
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
 import com.example.campusai.data.classroom.nativeplayer.NativeScenePlan
@@ -322,6 +323,13 @@ class NativeClassroomViewModel(
                 }
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    ClassroomDiagnostics.warn(
+                        "classroom_media_failed",
+                        error,
+                        "component" to "narration",
+                        "stage" to "playback",
+                        "code" to error.errorCodeName,
+                    )
                     val waiter = sequenceAudioWaiter
                     if (waiter != null &&
                         sequenceAudioToken == sequenceToken &&
@@ -530,9 +538,12 @@ class NativeClassroomViewModel(
 
     private fun logWriteResult(result: ClassroomWriteResult) {
         if (result.status == ClassroomWriteStatus.SAVED) return
-        Log.w(
-            "NativeClassroom",
-            "classroom_state_write label=${result.label} status=${result.status} attempts=${result.attempts}",
+        ClassroomDiagnostics.warn(
+            "classroom_state_write_failed",
+            null,
+            "label" to result.label,
+            "status" to result.status,
+            "attempts" to result.attempts,
         )
     }
 
@@ -542,8 +553,9 @@ class NativeClassroomViewModel(
             block()
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            // 课堂内容仍可继续使用，失败细节不写入日志。
+        } catch (error: Exception) {
+            // 课堂内容仍可继续使用；只记录固定事件和异常类型。
+            ClassroomDiagnostics.warn("classroom_aux_storage_failed", error, "status" to "failed")
         }
     }
 
@@ -612,6 +624,15 @@ class NativeClassroomViewModel(
                 positionRead.failed ->
                     "本地学习位置读取失败，本次从课堂起始页开始。"
                 else -> null
+            }
+            if (rewardsRead.failed) {
+                ClassroomDiagnostics.warn("classroom_local_state_read_failed", null, "component" to "rewards", "status" to "failed")
+            }
+            if (positionRead.failed) {
+                ClassroomDiagnostics.warn("classroom_local_state_read_failed", null, "component" to "position", "status" to "failed")
+            }
+            if (rewardsDamaged) {
+                ClassroomDiagnostics.warn("classroom_local_state_read_failed", null, "component" to "rewards", "status" to "unreadable")
             }
             localReadNotice = readNotice
             withContext(Dispatchers.Main) {
@@ -2257,6 +2278,7 @@ class NativeClassroomViewModel(
     private fun loadQuiz(sceneId: String) {
         val quiz = _uiState.value.currentQuiz ?: return
         quizCoordinator?.close()
+        var lastDiagnosticState: NativeQuizSubmitState? = null
         val coordinator = ClassroomQuizCoordinator(
             sceneId = sceneId,
             quiz = quiz,
@@ -2266,6 +2288,19 @@ class NativeClassroomViewModel(
             saveAttempt = { id, request -> repository.saveClassroomQuizAttempt(ref, id, request) },
             scope = viewModelScope,
             onState = { state ->
+                if (state.submitState != lastDiagnosticState) {
+                    lastDiagnosticState = state.submitState
+                    if (state.submitState == NativeQuizSubmitState.Unknown ||
+                        state.submitState == NativeQuizSubmitState.Failed
+                    ) {
+                        ClassroomDiagnostics.warn(
+                            "classroom_quiz_submit_unconfirmed",
+                            null,
+                            "stage" to "submit",
+                            "status" to state.submitState,
+                        )
+                    }
+                }
                 if (_uiState.value.currentSceneId == sceneId) {
                     _uiState.update { current -> current.copy(quiz = state) }
                 }

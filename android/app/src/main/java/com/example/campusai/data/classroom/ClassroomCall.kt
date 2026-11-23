@@ -73,7 +73,15 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                 context = this@ClassroomCall.context.applicationContext
                 appID = token.app_id
             }, object : IRTCEngineEventHandler() {
-                override fun onError(code: Int) = dispatch(epoch) { fail("音视频引擎异常（$code），请重新连接") }
+                override fun onError(code: Int) = dispatch(epoch) {
+                    ClassroomDiagnostics.warn(
+                        "classroom_rtc_engine_failed",
+                        null,
+                        "stage" to "engine",
+                        "code" to code,
+                    )
+                    fail("音视频引擎异常（$code），请重新连接")
+                }
                 override fun onConnectionStateChanged(state: Int, reason: Int) = dispatch(epoch) {
                     val transport = ConnectionState.fromId(state)
                     if (transport in listOf(ConnectionState.CONNECTION_STATE_RECONNECTING, ConnectionState.CONNECTION_STATE_LOST)) {
@@ -83,16 +91,31 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                     if (transport in listOf(ConnectionState.CONNECTION_STATE_CONNECTED, ConnectionState.CONNECTION_STATE_RECONNECTED)) {
                         connection.transportChanged(true)
                     }
-                    if (transport == ConnectionState.CONNECTION_STATE_FAILED) fail("网络连接失败，请重新连接课堂")
+                    if (transport == ConnectionState.CONNECTION_STATE_FAILED) {
+                        ClassroomDiagnostics.warn("classroom_rtc_failed", null, "stage" to "transport")
+                        fail("网络连接失败，请重新连接课堂")
+                    }
                 }
                 override fun onLocalAudioStateChanged(source: com.ss.bytertc.engine.IAudioSource, state: com.ss.bytertc.engine.data.LocalAudioStreamState, error: com.ss.bytertc.engine.data.LocalAudioStreamError) = dispatch(epoch) {
                     if (state == com.ss.bytertc.engine.data.LocalAudioStreamState.LOCAL_AUDIO_STREAM_STATE_FAILED && mutableState.value.microphone) {
+                        ClassroomDiagnostics.warn(
+                            "classroom_rtc_capture_failed",
+                            null,
+                            "component" to "microphone",
+                            "status" to "failed",
+                        )
                         microphone(false)
                         mutableState.update { it.copy(error = "麦克风采集失败，请检查权限或是否被其他应用占用") }
                     }
                 }
                 override fun onLocalVideoStateChanged(source: com.ss.bytertc.engine.IVideoSource, state: com.ss.bytertc.engine.type.LocalVideoStreamState, error: com.ss.bytertc.engine.type.LocalVideoStreamError) = dispatch(epoch) {
                     if (state == com.ss.bytertc.engine.type.LocalVideoStreamState.LOCAL_VIDEO_STREAM_STATE_FAILED && mutableState.value.camera) {
+                        ClassroomDiagnostics.warn(
+                            "classroom_rtc_capture_failed",
+                            null,
+                            "component" to "camera",
+                            "status" to "failed",
+                        )
                         camera(false)
                         mutableState.update { it.copy(error = "摄像头采集失败，请检查权限或是否被其他功能占用") }
                     }
@@ -116,15 +139,22 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                             connection.roomJoined()
                             mutableState.update { it.copy(phase = connection.phase, error = null) }
                         }
-                        RoomState.JOIN_FAILED, RoomState.LEFT -> fail(when (reason) {
-                            RoomStateChangeReason.DUPLICATE_LOGIN -> "此账号已在其他设备加入通话，请选择一台设备使用"
-                            RoomStateChangeReason.INVALID_TOKEN, RoomStateChangeReason.TOKEN_EXPIRED,
-                            RoomStateChangeReason.UPDATE_TOKEN_WITH_INVALID_TOKEN -> "通话认证已失效，请重新连接课堂"
-                            RoomStateChangeReason.ROOM_FORBIDDEN, RoomStateChangeReason.USER_FORBIDDEN,
-                            RoomStateChangeReason.KICKED_OUT, RoomStateChangeReason.ROOM_DISMISS -> "课堂已关闭或已无法加入，请返回列表"
-                            else -> "通话已断开，请检查网络后重新连接"
-                        })
-                        else -> Unit
+                        RoomState.JOIN_FAILED, RoomState.LEFT -> {
+                            ClassroomDiagnostics.warn(
+                                "classroom_rtc_failed",
+                                null,
+                                "stage" to "room",
+                                "status" to reason.name,
+                            )
+                            fail(when (reason) {
+                                RoomStateChangeReason.DUPLICATE_LOGIN -> "此账号已在其他设备加入通话，请选择一台设备使用"
+                                RoomStateChangeReason.INVALID_TOKEN, RoomStateChangeReason.TOKEN_EXPIRED,
+                                RoomStateChangeReason.UPDATE_TOKEN_WITH_INVALID_TOKEN -> "通话认证已失效，请重新连接课堂"
+                                RoomStateChangeReason.ROOM_FORBIDDEN, RoomStateChangeReason.USER_FORBIDDEN,
+                                RoomStateChangeReason.KICKED_OUT, RoomStateChangeReason.ROOM_DISMISS -> "课堂已关闭或已无法加入，请返回列表"
+                                else -> "通话已断开，请检查网络后重新连接"
+                            })
+                        }
                     }
                 }
                 override fun onUserJoined(info: UserInfo) = dispatch(epoch) {
@@ -164,7 +194,10 @@ class ClassroomCall(private val context: Context, private val renew: () -> Unit)
                     fail("连接课堂超时，请检查网络后重试")
                 }
             }, 20_000)
-        } catch (_: Exception) { fail("无法连接课堂音视频，请检查服务配置和设备权限") }
+        } catch (error: Exception) {
+            ClassroomDiagnostics.warn("classroom_rtc_join_failed", error, "stage" to "join")
+            fail("无法连接课堂音视频，请检查服务配置和设备权限")
+        }
     }
 
     private fun peer(uid: String, stream: String, audio: Boolean? = null, video: Boolean? = null) {
