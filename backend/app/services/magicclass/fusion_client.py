@@ -14,6 +14,8 @@ Two rules shape this module:
 
 from __future__ import annotations
 
+from functools import cache
+from ssl import SSLContext
 from typing import Any, Optional
 
 import httpx
@@ -106,6 +108,13 @@ def _status(
     )
 
 
+@cache
+def _service_ssl_context() -> SSLContext:
+    # Reuse HTTPX's default trust store across requests and proxy transports.
+    # Loading it synchronously for every client blocks concurrent page loads.
+    return httpx.create_ssl_context()
+
+
 class MagicClassFusionClient:
     def __init__(
         self,
@@ -185,7 +194,9 @@ class MagicClassFusionClient:
             return await self.transport.request(
                 method, url, headers=headers, timeout=self.timeout_seconds, json=json_body
             )
-        async with httpx.AsyncClient(timeout=self.timeout_seconds, follow_redirects=False) as client:
+        async with httpx.AsyncClient(
+            timeout=self.timeout_seconds, follow_redirects=False, verify=_service_ssl_context(),
+        ) as client:
             return await client.request(
                 method, url, headers=headers, params=params, json=json_body
             )
@@ -847,6 +858,7 @@ class MagicClassFusionClient:
         role_mode: str = "preset",
         selected_role_ids: Optional[list[str]] = None,
         assignment_review: Optional[dict[str, int]] = None,
+        home_topic: Optional[str] = None,
     ) -> dict[str, Any]:
         return await self._request(
             "POST",
@@ -860,6 +872,7 @@ class MagicClassFusionClient:
                 "role_mode": role_mode,
                 "selected_role_ids": selected_role_ids or [],
                 **({"assignment_review": assignment_review} if assignment_review else {}),
+                **({"home_topic": home_topic} if home_topic is not None else {}),
             },
             idempotency_key=idempotency_key,
         )

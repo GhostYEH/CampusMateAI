@@ -113,3 +113,44 @@ test('generation is isolated by workspace ownership and course', async () => {
     assert.equal(course.status, 404);
   });
 });
+
+test('home topic replays recover the original workspace after a context refresh, including earlier jobs', async () => {
+  const database = new ServiceDatabase(':memory:');
+  const workspaces = new WorkspaceRepository(database);
+  const owner = { userId: 'user-1', courseId: 'course-1' };
+  const original = workspaces.createWorkspace({ ...owner, name: '原工作台' });
+  const newer = workspaces.createWorkspace({ ...owner, name: '新工作台' });
+  const foreign = workspaces.createWorkspace({ ...owner, courseId: 'course-2', name: '其他课程' });
+  const provider = { baseUrl: 'https://example.invalid', apiKey: 'test', model: 'test', timeoutMs: 1000 };
+  const { server } = createHarness({ database, routes: createGenerationRoutes({ database, provider }) });
+  try {
+    await withServer(server, async (base) => {
+      for (const olderJob of [false, true]) {
+        const key = olderJob ? 'old-home:generation' : 'current-home:generation';
+        const send = (workspace, body, courseId = owner.courseId) => call(base, 'POST',
+          `/internal/courses/${courseId}/workspaces/${workspace.id}/generate`, {
+            body, headers: headers({ courseId, extra: { 'idempotency-key': key } }),
+          });
+        const topic = '圆锥 与圆柱';
+        const draft = { mode: 'adaptive', role_mode: 'preset', selected_role_ids: [],
+          prompt: `${topic}\n\n请结合以下已授权课程上下文生成内容：\n旧资料` };
+        const first = await send(original, olderJob ? draft : { ...draft, home_topic: topic });
+        assert.equal(first.status, 201);
+        const updated = { ...draft, home_topic: '圆锥  与圆柱', prompt: `${topic}\n新资料` };
+        const replay = await send(newer, updated);
+        assert.equal(replay.status, 201);
+        assert.equal(replay.body.workspace_id, original.id);
+        assert.equal(replay.body.job.id, first.body.job.id);
+        assert.equal((await send(newer, { ...updated, home_topic: '另一主题' })).status, 409);
+        assert.equal((await send(foreign, updated, 'course-2')).status, 409);
+      }
+      const direct = { mode: 'adaptive', prompt: '工作台内的主题' };
+      const options = () => ({ body: direct, headers: headers({ extra: { 'idempotency-key': 'direct-1' } }) });
+      assert.equal((await call(base, 'POST', `/internal/courses/course-1/workspaces/${original.id}/generate`, options())).status, 201);
+      assert.equal((await call(base, 'POST', `/internal/courses/course-1/workspaces/${newer.id}/generate`, options())).status, 409);
+      assert.equal((database.raw.prepare('SELECT count(*) AS count FROM jobs').get()).count, 3);
+    });
+  } finally {
+    database.close();
+  }
+});

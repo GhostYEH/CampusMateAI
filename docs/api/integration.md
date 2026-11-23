@@ -215,7 +215,7 @@ pause/resume/retry/cancel 通过 run 控制接口执行。pause/resume/retry 每
 
 受管工作台：fusion/status 与 providers → course magicclass-context → 文件夹、workspaces → stages → 生成 job → 轮询 job/events → 获取 stage、outline、playback 和 scene → 播放、编辑、测验、讲解与圆桌。状态四态 disabled/unavailable/degraded/ready；仅 ready 时 capabilities 非空，缺配置不应显示空内容冒充成功。
 
-Web 学习空间和课程页可以直接提交主题，使用 `mode="adaptive"`。任务完成后从 `artifact_id` 读取 JSON，再以其中的 `stage.id` 打开该工作台下的对应课件。重新进入同一主题沿用任务幂等键，已失败任务使用现有 retry 接口。场景与错误约定见[按主题生成综合课堂](14-magicclass.md#按主题生成综合课堂)。
+Web 学习空间和课程页可以直接提交主题，使用 `mode="adaptive"`。任务完成后从 `artifact_id` 读取 JSON，以产物的 `stage.id` 和提交响应中的 `workspace_id` 打开对应课件。重新进入同一主题沿用任务幂等键，课程资料刷新后仍返回原任务和原工作台，已失败任务使用现有 retry 接口。场景与错误约定见[按主题生成综合课堂](14-magicclass.md#按主题生成综合课堂)。
 
 | 动作 | 关键协议 |
 | --- | --- |
@@ -227,7 +227,7 @@ Web 学习空间和课程页可以直接提交主题，使用 `mode="adaptive"`�
 | workspace folder_id | 省略不动、null 移出、字符串归档 |
 | materials | 列表不返回全文；detail 返回 text；unsupported 不表示提取成功 |
 | playback | render.kind 为 native / sandbox-* / unsupported 的唯一判据，unsupported 展示 reason |
-| 课堂测验 | 读取服务端 attempt，提交答案按服务端评分和进度显示；浏览器本地评分不代替持久化结果 |
+| 课堂测验 | 作业复习和单场景预览通过服务端 attempt 保存练习状态。普通沉浸式测验保存在当前浏览器，简答批阅不可用时展示参考解析供自评 |
 | narration / TTS / discussion | 创建异步任务 → 查 job → 按 artifact_id 下载音频或讨论记录 |
 | .maic.zip、Markdown/DOCX/PPTX 导出 | 网关返回二进制；Content-Disposition 为文件名，读取 SHA256 等响应头 |
 | 视频导出 | POST 建任务、轮询、下载产物；目前受管渲染器只输出标题文字画面，不能宣称完整课堂录屏 |

@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import "./helpers/setup-globals.mjs";
 import { sandboxPolicyFor } from "../src/features/magicclass/playerModel.js";
+import { summarizeQuizReview } from "../src/magicclass/scene/lib/quiz-grading.js";
 
 const read = (rel) => readFileSync(fileURLToPath(new URL(`../${rel}`, import.meta.url)), "utf8");
 
@@ -359,10 +360,32 @@ test("原生测验交卷会结算课堂连击与满分成就", () => {
   assert.match(sceneRendererSource, /<QuizView[\s\S]*?onGraded=\{onQuizGraded\}/, "QuizView 必须接收交卷回调");
   assert.match(stageSource, /onQuizGraded=\{\(payload\) => rewards\?\.grade\(\{ sceneId: scene\.id, \.\.\.payload \}\)\}/,
     "课堂必须把测验结果写进同一份 rewards 模型");
-  assert.match(quizViewSource, /onGradedRef\.current\?\.\(\{/, "交卷成功后必须调用结算回调");
-  assert.match(quizViewSource, /correct: ordered\.filter\(\(result\) => result\.status === 'correct'\)\.length/,
-    "结算只统计明确答对的题，不能把简答基础分算成连击");
-  assert.match(quizViewSource, /total: ordered\.length/, "总分题数必须来自实际结果");
+  assert.match(quizViewSource, /\{ graded \} = summarizeQuizReview\(questions, ordered\)/);
+  assert.match(quizViewSource, /if \(graded\.length\) \{\s*onGradedRef\.current\?\.\(\{/,
+    "有评分结果时调用结算回调");
+  assert.match(quizViewSource, /correct: graded\.filter\(\(result\) => result\.correct\)\.length/);
+  assert.match(quizViewSource, /total: graded\.length/, "结算总题数只统计已评分题");
+});
+
+test("测验得分排除自评题和历史兜底分", () => {
+  const questions = [
+    { id: "choice", points: 2 },
+    { id: "graded-short-answer", points: 4 },
+    { id: "manual-short-answer", points: 4 },
+    { id: "legacy-short-answer", points: 4 },
+  ];
+  const choice = { questionId: "choice", correct: true, earned: 2 };
+  const gradedShortAnswer = { questionId: "graded-short-answer", correct: false, earned: 1 };
+  const manual = { questionId: "manual-short-answer", correct: null, status: "ungraded", earned: 0 };
+  const legacy = { questionId: "legacy-short-answer", correct: null, status: "incorrect", earned: 2 };
+  const removed = { questionId: "removed", correct: true, earned: 3 };
+
+  assert.deepEqual(summarizeQuizReview(questions, [choice, gradedShortAnswer, manual, legacy, removed]), {
+    graded: [choice, gradedShortAnswer],
+    score: 3,
+    total: 6,
+  });
+  assert.deepEqual(summarizeQuizReview(questions, [manual, legacy]), { graded: [], score: 0, total: 0 });
 });
 
 test("主工作台在能力允许时提供真实的 MP4 导出", () => {

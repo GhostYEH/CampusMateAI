@@ -245,6 +245,9 @@ async def generate_home(
     _require(container)
     course = assert_course_access(container, user, course_id)
     key = _key(idempotency_key)
+    topic = body.prompt.strip()
+    if not topic:
+        raise FusionInvalidRequest("请输入学习主题")
     provider = await client.provider_status(user_id=str(user.id))
     if not provider.get("llm"):
         raise FusionUnavailable("课程生成模型当前不可用", details={"reason": "provider_unavailable"})
@@ -268,12 +271,13 @@ async def generate_home(
         raise FusionUnavailable("受管服务未返回工作台标识")
     generated = await client.generate_stage(
         user_id=str(user.id), course_id=course_id, workspace_id=workspace_id,
-        mode=body.mode, prompt=_course_prompt(body.prompt, context), role_mode="preset", selected_role_ids=[],
+        mode=body.mode, prompt=_course_prompt(topic, context), role_mode="preset", selected_role_ids=[],
+        home_topic=topic if body.mode == "adaptive" else None,
         idempotency_key=f"{key}:generation",
     )
     if generated.get("source") == "local-template":
         raise FusionUnavailable("课程生成模型当前不可用", details={"reason": "provider_unavailable"})
-    return {"workspace_id": workspace_id, "source": "provider", **generated}
+    return {"source": "provider", **generated, "workspace_id": generated.get("workspace_id") or workspace_id}
 
 
 @router.get(
