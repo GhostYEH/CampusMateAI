@@ -48,14 +48,16 @@ suspend fun <T : Any> readClassroomLocal(reader: suspend () -> T?): ClassroomLoc
  * 进程内的课堂本地写入仲裁。
  *
  * 每次写入在调度时领取一个单调递增的票据；只有仍是最新票据的写入才允许提交。
- * 快速关闭并重开课堂时，旧会话的迟到快照会因此让位于新会话已经排入的更新，
- * 但新会话尚未写入任何内容时，旧会话的退出落盘仍然有效。
+ * 结果按「记录键 + 票据代次」保存，旧会话的迟到回包不会覆盖新代次的确认结果。
+ * 快速关闭并重开课堂时，旧会话的退出落盘会先被等待；若最新写入失败，VM 可凭
+ * 仍属于当前代次的快照做有界恢复，再重新读取确认后的位置与账本。
  */
 object ClassroomLocalWriteGate {
     private val latestGrants = mutableMapOf<String, Long>()
     private val pending = mutableMapOf<String, Int>()
     private val idleSignals = mutableMapOf<String, CompletableDeferred<Unit>>()
-    private val lastStatuses = mutableMapOf<String, ClassroomWriteStatus>()
+    private val lastResults = mutableMapOf<String, ClassroomWriteResult>()
+    private val latestSnapshots = mutableMapOf<String, ClassroomLocalSnapshot>()
     private var nextGrant = 0L
 
     @Synchronized
@@ -68,29 +70,69 @@ object ClassroomLocalWriteGate {
     @Synchronized
     fun isCurrent(key: String, grant: Long): Boolean = latestGrants[key] == grant
 
+    /** 只接受当前写入代次的结果；旧代次的迟到回包不覆盖新代次。 */
+    @Synchronized
+    fun recordResult(result: ClassroomWriteResult) {
+        if (latestGrants[result.key] != result.grant) return
+        lastResults[result.key] = result
+    }
+
+    /** 兼容只关心键与状态的调用；没有票据时补一个当前代次。 */
     @Synchronized
     fun recordResult(key: String, status: ClassroomWriteStatus) {
-        lastStatuses[key] = status
+        val grant = latestGrants[key] ?: grant(key)
+        recordResult(ClassroomWriteResult(key, "", status, 0, grant))
+    }
+
+    /** 测试和恢复流程可直接提交带代次的结果；过期代次被静默忽略。 */
+    @Synchronized
+    fun recordResult(key: String, grant: Long, status: ClassroomWriteStatus) {
+        recordResult(ClassroomWriteResult(key, "", status, 0, grant))
+    }
+
+    @Synchronized
+    fun rememberSnapshot(key: String, grant: Long, payload: String) {
+        if (latestGrants[key] == grant) {
+            latestSnapshots[key] = ClassroomLocalSnapshot(grant, payload)
+        }
+    }
+
+    @Synchronized
+    fun latestSnapshot(key: String): ClassroomLocalSnapshot? = latestSnapshotInternal(key)
+
+    @Synchronized
+    fun needsRecovery(key: String): Boolean {
+        val grant = latestGrants[key] ?: return false
+        val result = lastResults[key]
+        return result == null || result.grant != grant || result.status != ClassroomWriteStatus.SAVED
+    }
+
+    private fun latestSnapshotInternal(key: String): ClassroomLocalSnapshot? {
+        val snapshot = latestSnapshots[key] ?: return null
+        return snapshot.takeIf { latestGrants[key] == it.grant }
     }
 
     /**
      * 读取屏障的三种结果：
-     * - [SUCCESS]：没有上一轮写入，或上一轮明确保存成功；
+     * - [SUCCESS]：没有上一轮写入，或当前代次明确保存成功；
      * - [FAILED]：上一轮已完成但失败、超时或被更新写入取代；
      * - [UNKNOWN]：等待结束前仍有写入未完成。
      */
     @Synchronized
     fun restoreState(positionKey: String, rewardsKey: String, idle: Boolean): ClassroomLocalRestore {
         if (!idle) return ClassroomLocalRestore.UNKNOWN
-        return if (isSuccessful(lastStatuses[positionKey]) && isSuccessful(lastStatuses[rewardsKey])) {
+        return if (isSuccessful(positionKey) && isSuccessful(rewardsKey)) {
             ClassroomLocalRestore.SUCCESS
         } else {
             ClassroomLocalRestore.FAILED
         }
     }
 
-    private fun isSuccessful(status: ClassroomWriteStatus?): Boolean =
-        status == null || status == ClassroomWriteStatus.SAVED
+    private fun isSuccessful(key: String): Boolean {
+        val grant = latestGrants[key] ?: return true
+        val result = lastResults[key] ?: return false
+        return result.grant == grant && result.status == ClassroomWriteStatus.SAVED
+    }
 
     /** 退出落盘已排队但尚未结束时，新会话读取同一课堂前应等待，避免以旧账本起步。 */
     @Synchronized
@@ -127,12 +169,16 @@ object ClassroomLocalWriteGate {
         pending.clear()
         idleSignals.values.forEach { it.complete(Unit) }
         idleSignals.clear()
-        lastStatuses.clear()
+        lastResults.clear()
+        latestSnapshots.clear()
         nextGrant = 0L
     }
 }
 
 enum class ClassroomLocalRestore { SUCCESS, FAILED, UNKNOWN }
+
+/** 某个记录键最近一次仍可信的待落盘快照；代次必须等于该键当前票据。 */
+data class ClassroomLocalSnapshot(val grant: Long, val payload: String)
 
 enum class ClassroomWriteStatus {
     SAVED,
@@ -165,6 +211,7 @@ data class ClassroomWriteResult(
     val label: String,
     val status: ClassroomWriteStatus,
     val attempts: Int,
+    val grant: Long = 0L,
 )
 
 /**
@@ -227,10 +274,11 @@ class ClassroomSessionFlusher(
                     label = write.label,
                     status = ClassroomWriteStatus.TIMED_OUT,
                     attempts = 0,
+                    grant = write.grant,
                 )
             }
             finalResults.forEach {
-                ClassroomLocalWriteGate.recordResult(it.key, it.status)
+                ClassroomLocalWriteGate.recordResult(it)
                 onResult(it)
             }
             return finalResults
@@ -279,7 +327,7 @@ class ClassroomSessionFlusher(
         write: ClassroomStateWrite,
         status: ClassroomWriteStatus,
         attempts: Int,
-    ) = ClassroomWriteResult(write.key, write.label, status, attempts)
+    ) = ClassroomWriteResult(write.key, write.label, status, attempts, write.grant)
 
     companion object {
         const val DEFAULT_BUDGET_MS = 6_000L

@@ -282,14 +282,16 @@ class ClassroomSessionPersistenceTest {
             ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
         )
 
-        ClassroomLocalWriteGate.recordResult(positionKey, ClassroomWriteStatus.SAVED)
-        ClassroomLocalWriteGate.recordResult(rewardsKey, ClassroomWriteStatus.SAVED)
+        val positionGrant = ClassroomLocalWriteGate.grant(positionKey)
+        val rewardsGrant = ClassroomLocalWriteGate.grant(rewardsKey)
+        ClassroomLocalWriteGate.recordResult(positionKey, positionGrant, ClassroomWriteStatus.SAVED)
+        ClassroomLocalWriteGate.recordResult(rewardsKey, rewardsGrant, ClassroomWriteStatus.SAVED)
         assertEquals(
             ClassroomLocalRestore.SUCCESS,
             ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
         )
 
-        ClassroomLocalWriteGate.recordResult(positionKey, ClassroomWriteStatus.FAILED)
+        ClassroomLocalWriteGate.recordResult(positionKey, positionGrant, ClassroomWriteStatus.FAILED)
         assertEquals(
             ClassroomLocalRestore.FAILED,
             ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
@@ -298,6 +300,28 @@ class ClassroomSessionPersistenceTest {
             ClassroomLocalRestore.UNKNOWN,
             ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = false),
         )
+    }
+
+    @Test
+    fun `late failure from an old grant cannot overwrite a newer success`() = runTest {
+        val positionKey = "classroom:position"
+        val rewardsKey = "classroom:rewards"
+        val oldGrant = ClassroomLocalWriteGate.grant(positionKey)
+        val newGrant = ClassroomLocalWriteGate.grant(positionKey)
+        ClassroomLocalWriteGate.rememberSnapshot(positionKey, newGrant, "scene-2")
+
+        ClassroomSessionFlusher(budgetMs = 1_000L, itemBudgetMs = 500L, maxAttempts = 1)
+            .run(
+                listOf(ClassroomStateWrite(positionKey, "position", newGrant) {}),
+            )
+
+        ClassroomLocalWriteGate.recordResult(positionKey, oldGrant, ClassroomWriteStatus.FAILED)
+
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(positionKey, rewardsKey, idle = true),
+        )
+        assertFalse(ClassroomLocalWriteGate.needsRecovery(positionKey))
     }
 
     @Test

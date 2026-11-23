@@ -416,11 +416,13 @@ class NativeClassroomViewModel(
     private val positionWriteKey = "$localStateKey:position"
     private val rewardsWriteKey = "$localStateKey:rewards"
     private val draftWriteKey = "$localStateKey:draft"
+    @Volatile
     private var localWritesWritable = false
     private var localRestoreState = ClassroomLocalRestore.UNKNOWN
+    @Volatile
     private var rewardsWritable = false
     private var localReadNotice: String? = null
-    private val sessionFlusher = ClassroomSessionFlusher(onResult = ::logWriteResult)
+    private val sessionFlusher = ClassroomSessionFlusher(onResult = ::handleWriteResult)
     private var quizCoordinator: ClassroomQuizCoordinator? = null
     private val quizWriteMutex = Mutex()
 
@@ -515,6 +517,7 @@ class NativeClassroomViewModel(
         val writes = buildList {
             if (localWritesWritable && position != null) {
                 val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
+                ClassroomLocalWriteGate.rememberSnapshot(positionWriteKey, grant, position)
                 add(
                     ClassroomStateWrite(
                         key = positionWriteKey,
@@ -533,6 +536,8 @@ class NativeClassroomViewModel(
             }
             if (saveRewards) {
                 val grant = ClassroomLocalWriteGate.grant(rewardsWriteKey)
+                val raw = ClassroomRewardsCodec.encode(rewards)
+                ClassroomLocalWriteGate.rememberSnapshot(rewardsWriteKey, grant, raw)
                 add(
                     ClassroomStateWrite(
                         key = rewardsWriteKey,
@@ -541,7 +546,7 @@ class NativeClassroomViewModel(
                         save = {
                             repository.saveClassroomRewardsRaw(
                                 ref,
-                                ClassroomRewardsCodec.encode(rewards),
+                                raw,
                                 initialAccountScope,
                                 shouldWrite = { ClassroomLocalWriteGate.isCurrent(rewardsWriteKey, grant) },
                             )
@@ -564,6 +569,16 @@ class NativeClassroomViewModel(
             }
         }
         sessionFlusher.flush(writes)
+    }
+
+    private fun handleWriteResult(result: ClassroomWriteResult) {
+        logWriteResult(result)
+        if (result.key != positionWriteKey && result.key != rewardsWriteKey) return
+        // 旧代次的迟到回包不能把新代次已经确认的写入重新降为只读。
+        if (!ClassroomLocalWriteGate.isCurrent(result.key, result.grant)) return
+        if (result.status == ClassroomWriteStatus.SAVED) return
+        localWritesWritable = false
+        rewardsWritable = false
     }
 
     private fun logWriteResult(result: ClassroomWriteResult) {
@@ -642,9 +657,28 @@ class NativeClassroomViewModel(
                 rewardsWriteKey,
                 previousWritesIdle,
             )
-            localRestoreState = localRestore
-            localWritesWritable = localRestore == ClassroomLocalRestore.SUCCESS
-            val rewardsRead = withContext(Dispatchers.IO) {
+            val recovery = if (localRestore == ClassroomLocalRestore.FAILED) {
+                // 存储可能已恢复：先按仍可信的当前代次快照做有界重试并复核，再重新开放写入。
+                withContext(Dispatchers.IO) {
+                    try {
+                        recoverLocalWrites()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            } else {
+                null
+            }
+            val effectiveRestore = if (recovery != null) {
+                ClassroomLocalRestore.SUCCESS
+            } else {
+                localRestore
+            }
+            localRestoreState = effectiveRestore
+            localWritesWritable = effectiveRestore == ClassroomLocalRestore.SUCCESS
+            val rewardsRead = recovery?.rewardsRaw?.let { ClassroomLocalRead.Value(it) } ?: withContext(Dispatchers.IO) {
                 readClassroomLocal { repository.classroomRewardsRaw(ref) }
             }
             val decoded = when (rewardsRead) {
@@ -660,7 +694,7 @@ class NativeClassroomViewModel(
                 decoded != null -> decoded.allowsWrite
                 else -> true
             }
-            val positionRead = withContext(Dispatchers.IO) {
+            val positionRead = recovery?.position?.let { ClassroomLocalRead.Value(it) } ?: withContext(Dispatchers.IO) {
                 readClassroomLocal { repository.classroomPosition(ref) }
             }
             val savedScene = (positionRead as? ClassroomLocalRead.Value)?.value
@@ -804,6 +838,100 @@ class NativeClassroomViewModel(
             }
         }
     }
+
+    /**
+     * 只读后的恢复尝试：仅重试当前代次仍可信的位置/奖励快照，并在有界预算内复核落盘值。
+     * 任一记录无法确认时保持只读，不把旧账本重新用于结算。
+     */
+    private suspend fun recoverLocalWrites(): LocalWriteRecovery? {
+        val positionSnapshot = ClassroomLocalWriteGate.latestSnapshot(positionWriteKey)
+        val rewardsSnapshot = ClassroomLocalWriteGate.latestSnapshot(rewardsWriteKey)
+        val positionUnresolved = ClassroomLocalWriteGate.needsRecovery(positionWriteKey)
+        val rewardsUnresolved = ClassroomLocalWriteGate.needsRecovery(rewardsWriteKey)
+        if ((positionUnresolved && positionSnapshot == null) ||
+            (rewardsUnresolved && rewardsSnapshot == null)
+        ) {
+            return null
+        }
+        if (!positionUnresolved && !rewardsUnresolved) return null
+
+        val writes = buildList {
+            if (positionUnresolved && positionSnapshot != null) {
+                val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
+                ClassroomLocalWriteGate.rememberSnapshot(positionWriteKey, grant, positionSnapshot.payload)
+                add(
+                    ClassroomStateWrite(
+                        key = positionWriteKey,
+                        label = "position",
+                        grant = grant,
+                        save = {
+                            repository.saveClassroomPosition(
+                                ref,
+                                positionSnapshot.payload,
+                                initialAccountScope,
+                                shouldWrite = { ClassroomLocalWriteGate.isCurrent(positionWriteKey, grant) },
+                            )
+                        },
+                    ),
+                )
+            }
+            if (rewardsUnresolved && rewardsSnapshot != null) {
+                val grant = ClassroomLocalWriteGate.grant(rewardsWriteKey)
+                ClassroomLocalWriteGate.rememberSnapshot(rewardsWriteKey, grant, rewardsSnapshot.payload)
+                add(
+                    ClassroomStateWrite(
+                        key = rewardsWriteKey,
+                        label = "rewards",
+                        grant = grant,
+                        save = {
+                            repository.saveClassroomRewardsRaw(
+                                ref,
+                                rewardsSnapshot.payload,
+                                initialAccountScope,
+                                shouldWrite = { ClassroomLocalWriteGate.isCurrent(rewardsWriteKey, grant) },
+                            )
+                        },
+                    ),
+                )
+            }
+        }
+        val retryGrants = writes.associate { it.key to it.grant }
+        val results = ClassroomSessionFlusher(
+            budgetMs = 1_500L,
+            itemBudgetMs = 1_000L,
+            maxAttempts = 2,
+            onResult = ::handleWriteResult,
+        ).run(writes)
+        if (results.any { it.status != ClassroomWriteStatus.SAVED }) return null
+
+        var confirmed = true
+        if (positionSnapshot != null) {
+            val read = readClassroomLocal { repository.classroomPosition(ref) }
+            if (read !is ClassroomLocalRead.Value || read.value != positionSnapshot.payload) {
+                ClassroomLocalWriteGate.recordResult(
+                    positionWriteKey,
+                    retryGrants[positionWriteKey] ?: positionSnapshot.grant,
+                    ClassroomWriteStatus.FAILED,
+                )
+                confirmed = false
+            }
+        }
+        if (rewardsSnapshot != null) {
+            val read = readClassroomLocal { repository.classroomRewardsRaw(ref) }
+            if (read !is ClassroomLocalRead.Value || read.value != rewardsSnapshot.payload) {
+                ClassroomLocalWriteGate.recordResult(
+                    rewardsWriteKey,
+                    retryGrants[rewardsWriteKey] ?: rewardsSnapshot.grant,
+                    ClassroomWriteStatus.FAILED,
+                )
+                confirmed = false
+            }
+        }
+        if (!confirmed) return null
+        return LocalWriteRecovery(positionSnapshot?.payload, rewardsSnapshot?.payload)
+    }
+
+    private data class LocalWriteRecovery(val position: String?, val rewardsRaw: String?)
 
     private suspend fun loadClassic(
         savedScene: String?,
@@ -1182,6 +1310,7 @@ class NativeClassroomViewModel(
         if (localWritesWritable && positionAccountScope == initialAccountScope) {
             // 翻页落盘失败只影响下一次续播的起点，不打断本节课堂。
             val grant = ClassroomLocalWriteGate.grant(positionWriteKey)
+            ClassroomLocalWriteGate.rememberSnapshot(positionWriteKey, grant, sceneId)
             val write = ClassroomStateWrite(
                 key = positionWriteKey,
                 label = "position",
@@ -1198,8 +1327,11 @@ class NativeClassroomViewModel(
                 },
             )
             positionJob = viewModelScope.launch(Dispatchers.IO) {
-                ClassroomSessionFlusher(budgetMs = 3_000L, itemBudgetMs = 1_500L)
-                    .run(listOf(write))
+                ClassroomSessionFlusher(
+                    budgetMs = 3_000L,
+                    itemBudgetMs = 1_500L,
+                    onResult = ::handleWriteResult,
+                ).run(listOf(write))
             }
         }
         if (planScene?.type == "quiz") {
@@ -1263,6 +1395,8 @@ class NativeClassroomViewModel(
         if (accountScope != initialAccountScope) return
         rewardsJob?.cancel()
         val grant = ClassroomLocalWriteGate.grant(rewardsWriteKey)
+        val raw = ClassroomRewardsCodec.encode(rewards)
+        ClassroomLocalWriteGate.rememberSnapshot(rewardsWriteKey, grant, raw)
         val write = ClassroomStateWrite(
             key = rewardsWriteKey,
             label = "rewards",
@@ -1270,15 +1404,18 @@ class NativeClassroomViewModel(
             save = {
                 repository.saveClassroomRewardsRaw(
                     ref,
-                    ClassroomRewardsCodec.encode(rewards),
+                    raw,
                     accountScope,
                     shouldWrite = { ClassroomLocalWriteGate.isCurrent(rewardsWriteKey, grant) },
                 )
             },
         )
         rewardsJob = viewModelScope.launch(Dispatchers.IO) {
-            ClassroomSessionFlusher(budgetMs = 3_000L, itemBudgetMs = 1_500L)
-                .run(listOf(write))
+            ClassroomSessionFlusher(
+                budgetMs = 3_000L,
+                itemBudgetMs = 1_500L,
+                onResult = ::handleWriteResult,
+            ).run(listOf(write))
         }
     }
 

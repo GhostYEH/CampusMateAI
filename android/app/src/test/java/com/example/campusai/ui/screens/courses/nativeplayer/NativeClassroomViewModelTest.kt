@@ -11,6 +11,7 @@ import com.example.campusai.data.classroom.nativeplayer.ClassroomStateWrite
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomCache
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomSource
+import com.example.campusai.data.classroom.nativeplayer.rewards
 import com.example.campusai.data.remote.ClassroomPlaybackDto
 import com.example.campusai.data.remote.ClassroomPlaybackSceneDto
 import com.example.campusai.data.repository.AppRepository
@@ -49,6 +50,7 @@ class NativeClassroomViewModelTest {
     private val rewardWrites = mutableListOf<String>()
     private var storedPosition: String? = null
     private var storedRewards: String? = null
+    private var failWrites = false
 
     private val ref = NativeClassroomRef(
         courseId = "course",
@@ -75,11 +77,17 @@ class NativeClassroomViewModelTest {
         doReturn(Result.failure<ClassroomPlaybackDto>(IllegalStateException("offline")))
             .whenever(repository).classroomPlayback(any(), any())
         doAnswer { invocation ->
-            positionWrites += invocation.arguments[1] as String
+            val value = invocation.arguments[1] as String
+            positionWrites += value
+            if (failWrites) throw IllegalStateException("storage unavailable")
+            storedPosition = value
             Unit
         }.whenever(repository).saveClassroomPosition(any(), any(), any(), any())
         doAnswer { invocation ->
-            rewardWrites += invocation.arguments[1] as String
+            val raw = invocation.arguments[1] as String
+            rewardWrites += raw
+            if (failWrites) throw IllegalStateException("storage unavailable")
+            storedRewards = raw
             Unit
         }.whenever(repository).saveClassroomRewardsRaw(any(), any(), any(), any())
     }
@@ -92,17 +100,31 @@ class NativeClassroomViewModelTest {
 
     @Test
     fun previousSuccessRestoresPositionAndLedgerThenKeepsSaving() = runBlocking {
-        storedPosition = "scene-2"
-        storedRewards = ClassroomRewardsCodec.encode(
+        val previousPosition = "scene-1"
+        val previousRewards = ClassroomRewardsCodec.encode(
+            ClassroomRewards(xp = 12, visited = setOf("scene-1")),
+        )
+        val nextRewards = ClassroomRewardsCodec.encode(
             ClassroomRewards(xp = 24, visited = setOf("scene-2")),
         )
-        val previous = launchPreviousWrites(failPosition = false)
+        storedPosition = previousPosition
+        storedRewards = previousRewards
+        val previous = launchPreviousWrites(
+            targetPosition = "scene-2",
+            targetRewards = nextRewards,
+        )
         delay(40)
 
         viewModel = NativeClassroomViewModel(application, repository, ref)
         viewModel.startSession()
         awaitUntil { viewModel.uiState.value.plan != null }
         previous.join()
+        assertEquals("延迟写入应真正更新位置", "scene-2", storedPosition)
+        assertEquals(
+            "延迟写入应真正更新账本",
+            24,
+            ClassroomRewardsCodec.decodeResult(storedRewards.orEmpty()).rewards?.xp,
+        )
         awaitUntil { positionWrites.isNotEmpty() }
 
         assertEquals("scene-2", viewModel.uiState.value.currentSceneId)
@@ -124,11 +146,21 @@ class NativeClassroomViewModelTest {
 
     @Test
     fun previousFailureKeepsReliableRecordsAndBlocksFirstOpenPageAndExitWrites() = runBlocking {
-        storedPosition = "scene-2"
-        storedRewards = ClassroomRewardsCodec.encode(
+        val previousPosition = "scene-1"
+        val previousRewards = ClassroomRewardsCodec.encode(
+            ClassroomRewards(xp = 12, visited = setOf("scene-1")),
+        )
+        val nextRewards = ClassroomRewardsCodec.encode(
             ClassroomRewards(xp = 24, visited = setOf("scene-2")),
         )
-        val previous = launchPreviousWrites(failPosition = true)
+        storedPosition = previousPosition
+        storedRewards = previousRewards
+        failWrites = true
+        val previous = launchPreviousWrites(
+            targetPosition = "scene-2",
+            targetRewards = nextRewards,
+            failPosition = true,
+        )
         delay(40)
 
         viewModel = NativeClassroomViewModel(application, repository, ref)
@@ -136,15 +168,75 @@ class NativeClassroomViewModelTest {
         awaitUntil { viewModel.uiState.value.plan != null }
         previous.join()
 
-        assertEquals("scene-2", viewModel.uiState.value.currentSceneId)
+        assertEquals(previousPosition, viewModel.uiState.value.currentSceneId)
         assertEquals(24, viewModel.uiState.value.rewards.xp)
         assertTrue(viewModel.uiState.value.notice.orEmpty().contains("保存失败"))
+        assertEquals(previousPosition, storedPosition)
+        assertEquals(24, ClassroomRewardsCodec.decodeResult(storedRewards.orEmpty()).rewards?.xp)
 
+        positionWrites.clear()
+        rewardWrites.clear()
         viewModel.goTo(0)
         viewModel.endSession()
         delay(1_000)
         assertTrue(positionWrites.isEmpty())
         assertTrue(rewardWrites.isEmpty())
+    }
+
+    @Test
+    fun failedWriteRecoversWhenStorageReturnsOnNextOpen() = runBlocking {
+        storedPosition = "scene-0"
+        storedRewards = ClassroomRewardsCodec.encode(
+            ClassroomRewards(xp = 12, visited = setOf("scene-0")),
+        )
+        failWrites = true
+
+        val first = NativeClassroomViewModel(application, repository, ref)
+        viewModel = first
+        first.startSession()
+        awaitUntil { first.uiState.value.plan != null }
+        awaitUntil { positionWrites.isNotEmpty() && rewardWrites.isNotEmpty() }
+        ClassroomLocalWriteGate.awaitIdle(positionKey)
+        ClassroomLocalWriteGate.awaitIdle(rewardsKey)
+        delay(100)
+
+        assertEquals("失败写入不能改位置", "scene-0", storedPosition)
+        assertEquals(
+            "失败写入不能改账本",
+            12,
+            ClassroomRewardsCodec.decodeResult(storedRewards.orEmpty()).rewards?.xp,
+        )
+        val failedPositions = positionWrites.size
+        val failedRewards = rewardWrites.size
+
+        first.goTo(1)
+        first.endSession()
+        delay(500)
+        assertEquals("只读后翻页不能重试位置", failedPositions, positionWrites.size)
+        assertEquals("只读后退场不能重试奖励", failedRewards, rewardWrites.size)
+
+        failWrites = false
+        positionWrites.clear()
+        rewardWrites.clear()
+
+        val second = NativeClassroomViewModel(application, repository, ref)
+        viewModel = second
+        second.startSession()
+        awaitUntil { second.uiState.value.plan != null }
+        awaitUntil {
+            storedPosition == "scene-1" &&
+                ClassroomRewardsCodec.decodeResult(storedRewards.orEmpty()).rewards?.xp == 24
+        }
+        assertEquals("恢复后应重新开放位置保存", "scene-1", second.uiState.value.currentSceneId)
+        assertEquals(24, second.uiState.value.rewards.xp)
+
+        second.goTo(1)
+        awaitUntil {
+            storedPosition == "scene-2" &&
+                ClassroomRewardsCodec.decodeResult(storedRewards.orEmpty()).rewards?.xp == 36
+        }
+        assertEquals("scene-2", second.uiState.value.currentSceneId)
+        assertEquals(36, second.uiState.value.rewards.xp)
     }
 
     @Test
@@ -183,24 +275,39 @@ class NativeClassroomViewModelTest {
         assertTrue("等待条件超时", predicate())
     }
 
-    /** 上一轮会话的两笔写入用可控延迟完成；失败项保留其它项结果。 */
-    private fun launchPreviousWrites(failPosition: Boolean): Job =
+    /** 上一轮会话的两笔写入用可控延迟完成；延迟结束后才真正更新测试存储。 */
+    private fun launchPreviousWrites(
+        targetPosition: String,
+        targetRewards: String,
+        failPosition: Boolean = false,
+        failRewards: Boolean = false,
+        delayMs: Long = 200,
+    ): Job =
         CoroutineScope(Dispatchers.IO).launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             val writes = listOf(
                 ClassroomStateWrite(
                     key = positionKey,
                     label = "position",
-                    grant = ClassroomLocalWriteGate.grant(positionKey),
+                    grant = ClassroomLocalWriteGate.grant(positionKey).also {
+                        ClassroomLocalWriteGate.rememberSnapshot(positionKey, it, targetPosition)
+                    },
                     save = {
-                        delay(200)
+                        delay(delayMs)
                         if (failPosition) throw IllegalStateException("previous position write failed")
+                        storedPosition = targetPosition
                     },
                 ),
                 ClassroomStateWrite(
                     key = rewardsKey,
                     label = "rewards",
-                    grant = ClassroomLocalWriteGate.grant(rewardsKey),
-                    save = { delay(200) },
+                    grant = ClassroomLocalWriteGate.grant(rewardsKey).also {
+                        ClassroomLocalWriteGate.rememberSnapshot(rewardsKey, it, targetRewards)
+                    },
+                    save = {
+                        delay(delayMs)
+                        if (failRewards) throw IllegalStateException("previous rewards write failed")
+                        storedRewards = targetRewards
+                    },
                 ),
             )
             ClassroomSessionFlusher(budgetMs = 2_000L, itemBudgetMs = 1_000L).run(writes)
