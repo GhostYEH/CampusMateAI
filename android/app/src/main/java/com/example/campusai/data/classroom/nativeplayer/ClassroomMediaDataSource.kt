@@ -85,18 +85,28 @@ private class ClassroomMediaDataSource(
             response = result
             openedUri = Uri.parse(result.request.url.toString())
             input = result.body?.byteStream()
-            opened = true
+                ?: run {
+                    releaseTransport()
+                    throw IOException("课堂媒体响应没有可读内容")
+                }
             val contentLength = result.body?.contentLength() ?: C.LENGTH_UNSET.toLong()
-            if (result.code != 206 && dataSpec.position > 0L) {
-                skipFully(dataSpec.position)
+            try {
+                if (result.code != 206 && dataSpec.position > 0L) {
+                    skipFully(dataSpec.position)
+                }
+                bytesRemaining = when {
+                    dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
+                    result.code == 206 -> contentLength
+                    dataSpec.position > 0L && contentLength != C.LENGTH_UNSET.toLong() ->
+                        (contentLength - dataSpec.position).coerceAtLeast(0)
+                    else -> contentLength
+                }
+            } catch (error: Exception) {
+                // 打开失败不能留下半开的响应，也不能发出没有对应开始事件的结束事件。
+                releaseTransport()
+                throw error
             }
-            bytesRemaining = when {
-                dataSpec.length != C.LENGTH_UNSET.toLong() -> dataSpec.length
-                result.code == 206 -> contentLength
-                dataSpec.position > 0L && contentLength != C.LENGTH_UNSET.toLong() ->
-                    (contentLength - dataSpec.position).coerceAtLeast(0)
-                else -> contentLength
-            }
+            opened = true
             transferStarted(dataSpec)
             return if (bytesRemaining == C.LENGTH_UNSET.toLong()) C.LENGTH_UNSET.toLong() else bytesRemaining
         }
@@ -146,6 +156,15 @@ private class ClassroomMediaDataSource(
     }
 
     override fun close() {
+        val wasOpen = opened
+        opened = false
+        releaseTransport()
+        bytesRemaining = C.LENGTH_UNSET.toLong()
+        if (wasOpen) transferEnded()
+    }
+
+    /** 仅释放当前响应和流，不改变传输事件状态。 */
+    private fun releaseTransport() {
         try {
             input?.close()
         } catch (_: IOException) {
@@ -155,10 +174,6 @@ private class ClassroomMediaDataSource(
         }
         response?.close()
         response = null
-        if (opened) {
-            opened = false
-            transferEnded()
-        }
         openedUri = null
     }
 
