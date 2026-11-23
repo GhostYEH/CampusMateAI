@@ -70,11 +70,14 @@ object ClassroomActionSequencePlanner {
 sealed interface ClassroomSequenceStepResult {
     data object Completed : ClassroomSequenceStepResult
     data class Failed(val reason: String) : ClassroomSequenceStepResult
+    data class TimedOut(val reason: String) : ClassroomSequenceStepResult
+    data object Cancelled : ClassroomSequenceStepResult
 }
 
 sealed interface ClassroomSequenceResult {
     data object Completed : ClassroomSequenceResult
     data class Failed(val reason: String) : ClassroomSequenceResult
+    data class TimedOut(val reason: String) : ClassroomSequenceResult
     data object Cancelled : ClassroomSequenceResult
 }
 
@@ -99,6 +102,8 @@ suspend fun runClassroomSequence(
         when (val result = execute(step, awaitPause)) {
             ClassroomSequenceStepResult.Completed -> Unit
             is ClassroomSequenceStepResult.Failed -> return ClassroomSequenceResult.Failed(result.reason)
+            is ClassroomSequenceStepResult.TimedOut -> return ClassroomSequenceResult.TimedOut(result.reason)
+            ClassroomSequenceStepResult.Cancelled -> return ClassroomSequenceResult.Cancelled
         }
         if (!isCurrent()) return ClassroomSequenceResult.Cancelled
     }

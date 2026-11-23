@@ -28,6 +28,8 @@ import com.example.campusai.data.classroom.nativeplayer.ClassroomMediaDataSource
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceResult
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStep
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceStepResult
+import com.example.campusai.data.classroom.nativeplayer.ClassroomSequenceWait
+import com.example.campusai.data.classroom.nativeplayer.awaitClassroomSequenceSignal
 import com.example.campusai.data.classroom.nativeplayer.ClassroomSessionFlusher
 import com.example.campusai.data.classroom.nativeplayer.ClassroomStateWrite
 import com.example.campusai.data.classroom.nativeplayer.ClassroomWriteResult
@@ -313,7 +315,7 @@ class NativeClassroomViewModel(
                         if (sequenceAudioMediaId != player.currentMediaItem?.mediaId) return
                         val duration = player.duration
                         if (duration != C.TIME_UNSET && player.currentPosition < duration - 150) return
-                        waiter.complete(null)
+                        waiter.complete(SequenceAudioSignal.Finished)
                     } else if (playbackState == Player.STATE_IDLE) {
                         updateNarration { it.copy(playing = false) }
                     }
@@ -325,7 +327,7 @@ class NativeClassroomViewModel(
                         sequenceAudioToken == sequenceToken &&
                         sequenceAudioMediaId == player.currentMediaItem?.mediaId
                     ) {
-                        waiter.complete(error.message ?: "音频播放失败")
+                        waiter.complete(SequenceAudioSignal.Failed(error.message ?: "音频播放失败"))
                     }
                     updateNarration { it.copy(playing = false, error = "音频播放失败") }
                     _uiState.update {
@@ -366,11 +368,11 @@ class NativeClassroomViewModel(
     private var sequenceJob: Job? = null
     private var sequenceToken = 0
     private var sequenceSceneId: String? = null
-    private var sequenceAudioWaiter: CompletableDeferred<String?>? = null
+    private var sequenceAudioWaiter: CompletableDeferred<SequenceAudioSignal>? = null
     private var sequenceAudioMediaId: String? = null
     private var sequenceAudioToken = 0
     private var sequenceUtterance: CompletableDeferred<LectureUtterance>? = null
-    private var sequenceVideoWaiter: CompletableDeferred<String?>? = null
+    private var sequenceVideoWaiter: CompletableDeferred<SequenceVideoSignal>? = null
     private var sequenceWhiteboardWaiter: CompletableDeferred<Unit>? = null
     private var prefetchJob: Job? = null
     private val prefetchDisposables = mutableListOf<coil.request.Disposable>()
@@ -380,6 +382,7 @@ class NativeClassroomViewModel(
 
     private var loadGeneration = 0
     private var narrationGeneration = 0
+    private var narrationResumePending = false
     private var activeSceneId: String? = null
     private var pageRequestedAt = 0L
     private var loadStartedAt = 0L
@@ -892,6 +895,10 @@ class NativeClassroomViewModel(
             hostActive = true
             activeSince = now()
         }
+        if (narrationResumePending) {
+            narrationResumePending = false
+            resumeNarrationAfterHost()
+        }
     }
 
     fun onHostPause() {
@@ -901,7 +908,17 @@ class NativeClassroomViewModel(
         }
         resetSequenceRuntime(_uiState.value.currentSceneId)
         prefetchJob?.cancel()
+        val narrationWasRunning = narrationJob?.isActive == true ||
+            _uiState.value.narration.loading || _uiState.value.narration.generating
         narrationJob?.cancel()
+        narrationJob = null
+        if (narrationWasRunning) {
+            // 取消后 loading/generating 不会自行复位；先清掉瞬时状态，恢复时按已有任务续接。
+            narrationResumePending = true
+            _uiState.update {
+                it.copy(narration = it.narration.copy(loading = false, generating = false))
+            }
+        }
         actionJob?.cancel()
         playback?.mediaSession?.invalidate()
         stopAudio()
@@ -1342,6 +1359,7 @@ class NativeClassroomViewModel(
                     )
                 }
                 is ClassroomSequenceResult.Failed -> failSequence(result.reason)
+                is ClassroomSequenceResult.TimedOut -> failSequence(result.reason)
                 ClassroomSequenceResult.Cancelled -> Unit
             }
         }
@@ -1410,7 +1428,7 @@ class NativeClassroomViewModel(
         awaitPause: suspend () -> Unit,
         cachedSpeech: File?,
     ): ClassroomSequenceStepResult {
-        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Failed("课堂已切换。")
+        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Cancelled
         step.problem?.let { return ClassroomSequenceStepResult.Failed(it) }
         val action = step.action ?: return ClassroomSequenceStepResult.Failed(
             "顺序动作 ${step.actionId} 没有对应的课堂动作。",
@@ -1422,8 +1440,8 @@ class NativeClassroomViewModel(
         }
         return when (action.type) {
             "speech" -> executeSequenceSpeech(step, action, token, sceneId, awaitPause, cachedSpeech)
-            "play_video" -> executeSequenceVideo(step, action, token, sceneId)
-            "wb_open" -> executeSequenceWhiteboard(step, action, token, sceneId)
+            "play_video" -> executeSequenceVideo(step, action, token, sceneId, awaitPause)
+            "wb_open" -> executeSequenceWhiteboard(step, action, token, sceneId, awaitPause)
             else -> {
                 triggerActionInternal(action)
                 if (step.blocking) {
@@ -1463,7 +1481,7 @@ class NativeClassroomViewModel(
                 "讲解音频地址不可用，可先用系统朗读或从网页入口继续。",
             )
         stopAudio()
-        val waiter = CompletableDeferred<String?>()
+        val waiter = CompletableDeferred<SequenceAudioSignal>()
         val mediaId = "sequence-audio-$token-${step.index}-${System.nanoTime()}"
         sequenceAudioWaiter = waiter
         sequenceAudioToken = token
@@ -1498,8 +1516,13 @@ class NativeClassroomViewModel(
                 "讲解音频无法播放：${error.message ?: "播放器初始化失败"}。可重试或改用系统朗读。",
             )
         }
-        val failure = try {
-            waiter.await()
+        val outcome = try {
+            awaitClassroomSequenceSignal(
+                timeoutMs = sequenceAudioTimeoutMs(action),
+                isCurrent = { isSequenceCurrent(token, sceneId) },
+                awaitPause = awaitPause,
+                awaitSignal = { waiter.await() },
+            )
         } finally {
             if (sequenceAudioWaiter === waiter) {
                 sequenceAudioWaiter = null
@@ -1507,11 +1530,31 @@ class NativeClassroomViewModel(
                 sequenceAudioToken = 0
             }
         }
-        return failure?.let {
-            ClassroomSequenceStepResult.Failed(
-                "讲解音频播放失败：$it。可重试或改用系统朗读。",
-            )
-        } ?: ClassroomSequenceStepResult.Completed
+        return when (outcome) {
+            is ClassroomSequenceWait.Value -> when (val signal = outcome.value) {
+                SequenceAudioSignal.Finished -> ClassroomSequenceStepResult.Completed
+                is SequenceAudioSignal.Failed -> ClassroomSequenceStepResult.Failed(
+                    "讲解音频播放失败：${signal.message}。可重试或改用系统朗读。",
+                )
+            }
+            ClassroomSequenceWait.Timeout -> {
+                stopAudio()
+                ClassroomSequenceStepResult.TimedOut(
+                    "讲解音频等待超时，已停止本步；可重试本页讲解或继续手动翻页。",
+                )
+            }
+            ClassroomSequenceWait.Cancelled -> ClassroomSequenceStepResult.Cancelled
+        }
+    }
+
+    private sealed interface SequenceAudioSignal {
+        data object Finished : SequenceAudioSignal
+        data class Failed(val message: String) : SequenceAudioSignal
+    }
+
+    private sealed interface SequenceVideoSignal {
+        data object Finished : SequenceVideoSignal
+        data class Failed(val message: String) : SequenceVideoSignal
     }
 
     private sealed interface LectureUtterance {
@@ -1529,21 +1572,26 @@ class NativeClassroomViewModel(
         for (part in text.chunked(320)) {
             while (true) {
                 awaitPause()
-                if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Completed
+                if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Cancelled
                 val waiter = CompletableDeferred<LectureUtterance>()
                 sequenceUtterance = waiter
                 updateNarration { it.copy(speaking = true, error = null) }
-                val result = try {
+                val outcome = try {
                     val speaker = activeTts
                     if (speaker == null) {
-                        LectureUtterance.Failed("课堂已结束。")
+                        ClassroomSequenceWait.Value(LectureUtterance.Failed("课堂已结束。"))
                     } else {
                         speaker.speak(
                             NativeClassroomText.forSpeech(part),
                             onDone = { waiter.complete(LectureUtterance.Finished) },
                             onError = { waiter.complete(LectureUtterance.Failed(it)) },
                         )
-                        withTimeoutOrNull(90_000L) { waiter.await() }
+                        awaitClassroomSequenceSignal(
+                            timeoutMs = 90_000L,
+                            isCurrent = { isSequenceCurrent(token, sceneId) },
+                            awaitPause = awaitPause,
+                            awaitSignal = { waiter.await() },
+                        )
                     }
                 } finally {
                     if (sequenceUtterance === waiter) {
@@ -1551,11 +1599,16 @@ class NativeClassroomViewModel(
                         updateNarration { it.copy(speaking = false) }
                     }
                 }
-                when (result) {
-                    LectureUtterance.Finished -> break
-                    LectureUtterance.Paused -> continue
-                    is LectureUtterance.Failed -> return ClassroomSequenceStepResult.Failed(result.message)
-                    null -> return ClassroomSequenceStepResult.Failed("本段讲解朗读超时，请重试。")
+                when (outcome) {
+                    is ClassroomSequenceWait.Value -> when (val signal = outcome.value) {
+                        LectureUtterance.Finished -> break
+                        LectureUtterance.Paused -> continue
+                        is LectureUtterance.Failed -> return ClassroomSequenceStepResult.Failed(signal.message)
+                    }
+                    ClassroomSequenceWait.Timeout -> return ClassroomSequenceStepResult.TimedOut(
+                        "本段讲解朗读超时，已停止本步；可重试本页讲解或继续手动翻页。",
+                    )
+                    ClassroomSequenceWait.Cancelled -> return ClassroomSequenceStepResult.Cancelled
                 }
             }
         }
@@ -1567,8 +1620,9 @@ class NativeClassroomViewModel(
         action: NativeAction,
         token: Int,
         sceneId: String,
+        awaitPause: suspend () -> Unit,
     ): ClassroomSequenceStepResult {
-        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Failed("课堂已切换。")
+        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Cancelled
         val resolved = resolveVideoSource(action)
             ?: return ClassroomSequenceStepResult.Failed(
                 "视频资源未下发或不可用，可重试或从网页入口继续。",
@@ -1577,18 +1631,33 @@ class NativeClassroomViewModel(
             it.copy(activeAction = action, videoUrl = resolved, notice = null)
         }
         if (!step.blocking) return ClassroomSequenceStepResult.Completed
-        val waiter = CompletableDeferred<String?>()
+        val waiter = CompletableDeferred<SequenceVideoSignal>()
         sequenceVideoWaiter = waiter
-        val failure = try {
-            waiter.await()
+        val outcome = try {
+            awaitClassroomSequenceSignal(
+                timeoutMs = sequenceVideoTimeoutMs(action),
+                isCurrent = { isSequenceCurrent(token, sceneId) },
+                awaitPause = awaitPause,
+                awaitSignal = { waiter.await() },
+            )
         } finally {
             if (sequenceVideoWaiter === waiter) sequenceVideoWaiter = null
         }
-        return failure?.let {
-            ClassroomSequenceStepResult.Failed(
-                "视频播放失败：$it。可重试或从网页入口继续。",
-            )
-        } ?: ClassroomSequenceStepResult.Completed
+        return when (outcome) {
+            is ClassroomSequenceWait.Value -> when (val signal = outcome.value) {
+                SequenceVideoSignal.Finished -> ClassroomSequenceStepResult.Completed
+                is SequenceVideoSignal.Failed -> ClassroomSequenceStepResult.Failed(
+                    "视频播放失败：${signal.message}。可重试或从网页入口继续。",
+                )
+            }
+            ClassroomSequenceWait.Timeout -> {
+                _uiState.update { it.copy(videoUrl = null) }
+                ClassroomSequenceStepResult.TimedOut(
+                    "视频播放等待超时，已关闭本步；可重试本页讲解或继续手动翻页。",
+                )
+            }
+            ClassroomSequenceWait.Cancelled -> ClassroomSequenceStepResult.Cancelled
+        }
     }
 
     private suspend fun executeSequenceWhiteboard(
@@ -1596,8 +1665,9 @@ class NativeClassroomViewModel(
         action: NativeAction,
         token: Int,
         sceneId: String,
+        awaitPause: suspend () -> Unit,
     ): ClassroomSequenceStepResult {
-        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Failed("课堂已切换。")
+        if (!isSequenceCurrent(token, sceneId)) return ClassroomSequenceStepResult.Cancelled
         if (_uiState.value.document?.whiteboard == null) {
             return ClassroomSequenceStepResult.Failed(
                 "本页动作需要白板，但这份课件没有下发白板内容，可从网页入口继续。",
@@ -1607,12 +1677,26 @@ class NativeClassroomViewModel(
         if (!step.blocking) return ClassroomSequenceStepResult.Completed
         val waiter = CompletableDeferred<Unit>()
         sequenceWhiteboardWaiter = waiter
-        try {
-            waiter.await()
+        val outcome = try {
+            awaitClassroomSequenceSignal(
+                timeoutMs = 300_000L,
+                isCurrent = { isSequenceCurrent(token, sceneId) },
+                awaitPause = awaitPause,
+                awaitSignal = { waiter.await() },
+            )
         } finally {
             if (sequenceWhiteboardWaiter === waiter) sequenceWhiteboardWaiter = null
         }
-        return ClassroomSequenceStepResult.Completed
+        return when (outcome) {
+            is ClassroomSequenceWait.Value -> ClassroomSequenceStepResult.Completed
+            ClassroomSequenceWait.Timeout -> {
+                _uiState.update { it.copy(whiteboardOpen = false) }
+                ClassroomSequenceStepResult.TimedOut(
+                    "白板等待超时，已关闭本步；可重试本页讲解或继续手动翻页。",
+                )
+            }
+            ClassroomSequenceWait.Cancelled -> ClassroomSequenceStepResult.Cancelled
+        }
     }
 
     private suspend fun awaitSequenceDelay(
@@ -1649,6 +1733,22 @@ class NativeClassroomViewModel(
         val text = action.speech ?: action.description
         return (800L + text.length * 110L).coerceIn(1200L, 9000L)
     }
+
+    /** 讲解音频按动作时长的上限等待；暂停时间不计入，避免长讲解被误判超时。 */
+    private fun sequenceAudioTimeoutMs(action: NativeAction): Long =
+        if (action.durationMs > 0L) {
+            (action.durationMs + 30_000L).coerceIn(60_000L, 600_000L)
+        } else {
+            300_000L
+        }
+
+    /** 视频等待以视频时长加余量为上限；长视频暂停期间不消耗预算。 */
+    private fun sequenceVideoTimeoutMs(action: NativeAction): Long =
+        if (action.durationMs > 0L) {
+            (action.durationMs + 30_000L).coerceIn(120_000L, 1_800_000L)
+        } else {
+            300_000L
+        }
 
     private fun resolveVideoSource(action: NativeAction): String? {
         val direct = action.videoUrl
@@ -1750,7 +1850,7 @@ class NativeClassroomViewModel(
     fun dismissVideo(url: String? = null) {
         val currentUrl = _uiState.value.videoUrl
         if (url != null && url != currentUrl) return
-        sequenceVideoWaiter?.complete(null)
+        sequenceVideoWaiter?.complete(SequenceVideoSignal.Finished)
         sequenceVideoWaiter = null
         _uiState.update { it.copy(videoUrl = null) }
     }
@@ -1761,7 +1861,7 @@ class NativeClassroomViewModel(
 
     fun onVideoFailed(url: String, message: String) {
         if (url != _uiState.value.videoUrl) return
-        sequenceVideoWaiter?.complete(message.ifBlank { "视频加载失败" })
+        sequenceVideoWaiter?.complete(SequenceVideoSignal.Failed(message.ifBlank { "视频加载失败" }))
         sequenceVideoWaiter = null
         _uiState.update {
             it.copy(
@@ -1774,7 +1874,11 @@ class NativeClassroomViewModel(
 
     fun toggleNarrationPanel() {
         val sceneId = _uiState.value.currentSceneId ?: return
-        if (_uiState.value.narration.sceneId != sceneId) loadNarration(sceneId)
+        val narration = _uiState.value.narration
+        when {
+            narration.sceneId != sceneId -> loadNarration(sceneId)
+            narration.awaitingAudio() && narrationJob?.isActive != true -> resumeNarrationAfterHost()
+        }
     }
 
     private suspend fun narrationStatus(sceneId: String, timeoutMs: Long): NativeNarrationUiState? =
@@ -1793,9 +1897,27 @@ class NativeClassroomViewModel(
         }?.audioFile
     }
 
-    private fun NativeNarrationUiState.awaitingAudio(): Boolean = loading || generating ||
-        jobStatus == "queued" || jobStatus == "running" ||
-        (jobStatus == "completed" && artifactId != null && audioFile == null && error == null)
+    /**
+     * 恢复前台时续接退后台前被取消的讲解任务。已有音频直接复用；已有 artifact
+     * 只补下载；排队/生成中的任务继续轮询；其余重新查询服务端状态。
+     */
+    private fun resumeNarrationAfterHost() {
+        if (ref.source != NativeClassroomSource.MANAGED) return
+        val sceneId = _uiState.value.currentSceneId ?: return
+        val state = _uiState.value.narration
+        when (narrationResumeAction(state, sceneId)) {
+            NarrationResumeAction.None -> Unit
+            NarrationResumeAction.Query -> loadNarration(sceneId)
+            NarrationResumeAction.Poll -> {
+                val jobId = state.jobId ?: return loadNarration(sceneId)
+                pollNarrationJob(sceneId, jobId)
+            }
+            NarrationResumeAction.Download -> {
+                val artifactId = state.artifactId ?: return loadNarration(sceneId)
+                downloadNarration(sceneId, artifactId)
+            }
+        }
+    }
 
     private fun loadNarration(sceneId: String) {
         if (ref.source != NativeClassroomSource.MANAGED) {
@@ -1846,11 +1968,11 @@ class NativeClassroomViewModel(
         }
         val sceneId = _uiState.value.currentSceneId ?: return
         if (_uiState.value.narration.generating) return
-        narrationGeneration++
+        val generation = ++narrationGeneration
         _uiState.update { it.copy(narration = it.narration.copy(generating = true, error = null)) }
         narrationJob = viewModelScope.launch {
             val result = repository.synthesizeMagicClassNarration(ref.courseId, ref.workspaceId, ref.stageId, sceneId)
-            if (_uiState.value.currentSceneId != sceneId) return@launch
+            if (generation != narrationGeneration || _uiState.value.currentSceneId != sceneId) return@launch
             result.onSuccess { dto ->
                 val job = dto.job
                 _uiState.update {
@@ -1868,8 +1990,10 @@ class NativeClassroomViewModel(
                 }
                 if (job != null) pollNarrationJob(sceneId, job.id)
             }.onFailure {
-                _uiState.update { state ->
-                    state.copy(narration = state.narration.copy(generating = false, error = it.message ?: "讲解生成失败"))
+                if (generation == narrationGeneration && _uiState.value.currentSceneId == sceneId) {
+                    _uiState.update { state ->
+                        state.copy(narration = state.narration.copy(generating = false, error = it.message ?: "讲解生成失败"))
+                    }
                 }
             }
         }
@@ -1877,12 +2001,13 @@ class NativeClassroomViewModel(
 
     private fun pollNarrationJob(sceneId: String, jobId: String) {
         narrationJob?.cancel()
+        val generation = narrationGeneration
         narrationJob = viewModelScope.launch {
             var elapsed = 0L
             while (isActive && elapsed < 90_000L) {
                 delay(2_000)
                 elapsed += 2_000
-                if (_uiState.value.currentSceneId != sceneId) return@launch
+                if (generation != narrationGeneration || _uiState.value.currentSceneId != sceneId) return@launch
                 val job = repository.magicClassGenerationJob(ref.courseId, jobId).getOrNull() ?: continue
                 _uiState.update {
                     it.copy(
@@ -1907,9 +2032,18 @@ class NativeClassroomViewModel(
                     }
                 }
             }
-            if (_uiState.value.currentSceneId == sceneId && _uiState.value.narration.generating) {
+            if (generation == narrationGeneration &&
+                _uiState.value.currentSceneId == sceneId &&
+                _uiState.value.narration.awaitingAudio()
+            ) {
                 _uiState.update { state ->
-                    state.copy(narration = state.narration.copy(generating = false, error = "讲解生成超时，可稍后重试"))
+                    state.copy(
+                        narration = state.narration.copy(
+                            generating = false,
+                            jobStatus = "timeout",
+                            error = "讲解生成超时，可稍后重试",
+                        ),
+                    )
                 }
             }
         }
@@ -1918,12 +2052,13 @@ class NativeClassroomViewModel(
     private fun downloadNarration(sceneId: String, artifactId: String) {
         val sessionCache = playback?.cache ?: return
         narrationJob?.cancel()
+        val generation = narrationGeneration
         val revision = _uiState.value.revision
         val mediaGeneration = beginMediaRequest() ?: return
-        _uiState.update { it.copy(narration = it.narration.copy(loading = true)) }
+        _uiState.update { it.copy(narration = it.narration.copy(loading = true, error = null)) }
         narrationJob = viewModelScope.launch {
             val cached = withContext(Dispatchers.IO) { sessionCache.readAudio(artifactId, revision) }
-            if (!isMediaRequestCurrent(mediaGeneration)) return@launch
+            if (generation != narrationGeneration || !isMediaRequestCurrent(mediaGeneration)) return@launch
             if (cached != null) {
                 if (_uiState.value.currentSceneId == sceneId) {
                     _uiState.update {
@@ -1935,11 +2070,11 @@ class NativeClassroomViewModel(
             val bytes = withContext(Dispatchers.IO) {
                 repository.downloadMagicClassArtifact(ref.courseId, artifactId)
             }
-            if (!isMediaRequestCurrent(mediaGeneration)) return@launch
+            if (generation != narrationGeneration || !isMediaRequestCurrent(mediaGeneration)) return@launch
             if (_uiState.value.currentSceneId != sceneId) return@launch
             bytes.onSuccess { data ->
                 val file = withContext(Dispatchers.IO) { sessionCache.writeAudio(artifactId, revision, data) }
-                if (!isMediaRequestCurrent(mediaGeneration)) return@onSuccess
+                if (generation != narrationGeneration || !isMediaRequestCurrent(mediaGeneration)) return@onSuccess
                 _uiState.update {
                     it.copy(
                         narration = it.narration.copy(
@@ -1951,7 +2086,7 @@ class NativeClassroomViewModel(
                     )
                 }
             }.onFailure {
-                if (!isMediaRequestCurrent(mediaGeneration)) return@onFailure
+                if (generation != narrationGeneration || !isMediaRequestCurrent(mediaGeneration)) return@onFailure
                 _uiState.update { state ->
                     state.copy(narration = state.narration.copy(loading = false, error = it.message ?: "讲解音频下载失败"))
                 }

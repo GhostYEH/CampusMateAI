@@ -170,6 +170,32 @@ class ClassroomActionSequenceTest {
         assertEquals("audio 404", (result as ClassroomSequenceResult.Failed).reason)
     }
 
+    @Test
+    fun `timed out step stops the sequence without running later steps`() = runTest {
+        val events = mutableListOf<String>()
+        var result: ClassroomSequenceResult? = null
+        val job = launch {
+            result = runClassroomSequence(
+                steps = steps("a1", "a2"),
+                isCurrent = { true },
+                awaitPause = {},
+                onStep = { _, step -> events += "start:${step.actionId}" },
+                execute = { step, _ ->
+                    if (step.actionId == "a1") {
+                        ClassroomSequenceStepResult.TimedOut("audio timeout")
+                    } else {
+                        events += "start:${step.actionId}"
+                        ClassroomSequenceStepResult.Completed
+                    }
+                },
+            )
+        }
+        job.join()
+        assertEquals(listOf("start:a1"), events)
+        assertTrue(result is ClassroomSequenceResult.TimedOut)
+        assertEquals("audio timeout", (result as ClassroomSequenceResult.TimedOut).reason)
+    }
+
     private fun steps(vararg ids: String): List<ClassroomSequenceStep> = ids.mapIndexed { index, id ->
         ClassroomSequenceStep(
             index = index,
