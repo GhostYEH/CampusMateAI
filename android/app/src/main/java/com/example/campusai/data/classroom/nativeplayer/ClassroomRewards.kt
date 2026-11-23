@@ -190,44 +190,189 @@ object ClassroomRewardsEngine {
     }
 }
 
+/** 奖励账本的字段级问题；用于区分可归一化的坏字段与不能安全覆盖的损坏。 */
+enum class ClassroomRewardsIssue {
+    ROOT_UNPARSEABLE,
+    XP_MISSING,
+    XP_INVALID,
+    VISITED_MISSING,
+    VISITED_INVALID,
+    VISITED_ENTRY_INVALID,
+    QUIZ_MISSING,
+    QUIZ_INVALID,
+    QUIZ_ENTRY_INVALID,
+    NUMBER_INVALID,
+    ACHIEVEMENTS_INVALID,
+}
+
+/**
+ * 账本解码结果。
+ *
+ * - [Missing]：确实没有账本，可按首次到访处理；
+ * - [Intact]：整份可用；
+ * - [Partial]：个别非关键字段被丢弃，去重依据（visited/quiz）仍可靠，可以继续写入归一化后的账本；
+ * - [Unreadable]：整份无法解析，或 visited/quiz/xp 等去重依据无法可靠恢复。调用方必须保留原文，
+ *   暂停受影响的自动结算和覆盖写入。
+ */
+sealed interface ClassroomRewardsDecodeResult {
+    data object Missing : ClassroomRewardsDecodeResult
+
+    data class Intact(val rewards: ClassroomRewards) : ClassroomRewardsDecodeResult
+
+    data class Partial(
+        val rewards: ClassroomRewards,
+        val issues: List<ClassroomRewardsIssue>,
+    ) : ClassroomRewardsDecodeResult
+
+    data class Unreadable(
+        val rewards: ClassroomRewards,
+        val issues: List<ClassroomRewardsIssue>,
+        val errorType: String? = null,
+    ) : ClassroomRewardsDecodeResult
+}
+
+val ClassroomRewardsDecodeResult.rewards: ClassroomRewards?
+    get() = when (this) {
+        ClassroomRewardsDecodeResult.Missing -> null
+        is ClassroomRewardsDecodeResult.Intact -> rewards
+        is ClassroomRewardsDecodeResult.Partial -> rewards
+        is ClassroomRewardsDecodeResult.Unreadable -> rewards
+    }
+
+/** 只有去重依据可靠时才允许自动结算与覆盖写入。 */
+val ClassroomRewardsDecodeResult.allowsWrite: Boolean
+    get() = this !is ClassroomRewardsDecodeResult.Unreadable
+
 /** 只在本地持久层使用的 JSON 编解码；坏字段逐项丢弃，不整份重置。 */
 object ClassroomRewardsCodec {
-    fun decode(raw: String?): ClassroomRewards {
-        if (raw.isNullOrBlank()) return ClassroomRewardsEngine.empty()
-        return runCatching {
-            val root = JSONObject(raw)
-            val visited = mutableSetOf<String>()
-            root.optJSONObject("visited")?.let { objectValue ->
-                objectValue.keys().asSequence().forEach { key ->
-                    if (objectValue.optBoolean(key, false)) visited += key
-                }
-            }
-            val quiz = mutableMapOf<String, ClassroomQuizReward>()
-            root.optJSONObject("quiz")?.let { objectValue ->
-                objectValue.keys().asSequence().forEach { key ->
-                    val item = objectValue.optJSONObject(key) ?: return@forEach
-                    quiz[key] = ClassroomQuizReward(
-                        correct = item.optInt("correct").coerceAtLeast(0),
-                        total = item.optInt("total").coerceAtLeast(0),
-                        perfect = item.optBoolean("perfect", false),
-                    )
-                }
-            }
-            val achievements = root.optJSONArray("achievements")?.let { array ->
-                (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }
-            }.orEmpty().toSet()
-            ClassroomRewards(
-                version = root.optInt("version", ClassroomRewardsEngine.REWARD_VERSION),
-                xp = root.optInt("xp").coerceAtLeast(0),
-                visited = visited,
-                quiz = quiz,
-                combo = root.optInt("combo").coerceAtLeast(0),
-                bestCombo = root.optInt("bestCombo").coerceAtLeast(0),
-                achievements = achievements,
-                updatedAt = root.optString("updatedAt"),
+
+    fun decodeResult(raw: String?): ClassroomRewardsDecodeResult {
+        if (raw.isNullOrBlank()) return ClassroomRewardsDecodeResult.Missing
+        val root = try {
+            JSONObject(raw)
+        } catch (error: Exception) {
+            return ClassroomRewardsDecodeResult.Unreadable(
+                rewards = ClassroomRewardsEngine.empty(),
+                issues = listOf(ClassroomRewardsIssue.ROOT_UNPARSEABLE),
+                errorType = error.javaClass.simpleName,
             )
-        }.getOrDefault(ClassroomRewardsEngine.empty())
+        }
+
+        val critical = mutableListOf<ClassroomRewardsIssue>()
+        val partial = mutableListOf<ClassroomRewardsIssue>()
+
+        fun hasContent(): Boolean {
+            if (root.numberOrNull("xp")?.let { it != 0 } == true) return true
+            if (root.optJSONObject("visited")?.length()?.let { it > 0 } == true) return true
+            if (root.optJSONObject("quiz")?.length()?.let { it > 0 } == true) return true
+            if (root.optJSONArray("achievements")?.length()?.let { it > 0 } == true) return true
+            return false
+        }
+
+        val visited = mutableSetOf<String>()
+        when (val visitedValue = root.opt("visited")) {
+            is JSONObject -> visitedValue.keys().forEach { key ->
+                when (visitedValue.opt(key)) {
+                    true -> visited += key
+                    false -> Unit
+                    else -> critical += ClassroomRewardsIssue.VISITED_ENTRY_INVALID
+                }
+            }
+            null -> when {
+                root.has("visited") -> critical += ClassroomRewardsIssue.VISITED_INVALID
+                hasContent() -> critical += ClassroomRewardsIssue.VISITED_MISSING
+                else -> partial += ClassroomRewardsIssue.VISITED_MISSING
+            }
+            else -> critical += ClassroomRewardsIssue.VISITED_INVALID
+        }
+
+        val quiz = mutableMapOf<String, ClassroomQuizReward>()
+        when (val quizValue = root.opt("quiz")) {
+            is JSONObject -> quizValue.keys().forEach { key ->
+                val item = quizValue.opt(key)
+                if (item !is JSONObject) {
+                    critical += ClassroomRewardsIssue.QUIZ_ENTRY_INVALID
+                    return@forEach
+                }
+                val correct = item.numberOrNull("correct")
+                val total = item.numberOrNull("total")
+                if (correct == null || total == null) {
+                    critical += ClassroomRewardsIssue.QUIZ_ENTRY_INVALID
+                    return@forEach
+                }
+                quiz[key] = ClassroomQuizReward(
+                    correct = correct.coerceAtLeast(0),
+                    total = total.coerceAtLeast(0),
+                    perfect = item.opt("perfect") == true,
+                )
+            }
+            null -> when {
+                root.has("quiz") -> critical += ClassroomRewardsIssue.QUIZ_INVALID
+                hasContent() -> critical += ClassroomRewardsIssue.QUIZ_MISSING
+                else -> partial += ClassroomRewardsIssue.QUIZ_MISSING
+            }
+            else -> critical += ClassroomRewardsIssue.QUIZ_INVALID
+        }
+
+        val achievements = mutableSetOf<String>()
+        when (val achievementsValue = root.opt("achievements")) {
+            is JSONArray -> (0 until achievementsValue.length()).forEach { index ->
+                val value = achievementsValue.opt(index)
+                if (value is String && value.isNotBlank()) {
+                    achievements += value
+                } else {
+                    partial += ClassroomRewardsIssue.ACHIEVEMENTS_INVALID
+                }
+            }
+            null -> if (root.has("achievements")) partial += ClassroomRewardsIssue.ACHIEVEMENTS_INVALID
+            else -> partial += ClassroomRewardsIssue.ACHIEVEMENTS_INVALID
+        }
+
+        val xp = when {
+            !root.has("xp") -> {
+                if (hasContent()) {
+                    critical += ClassroomRewardsIssue.XP_MISSING
+                }
+                0
+            }
+            root.numberOrNull("xp") != null -> root.numberOrNull("xp")!!.coerceAtLeast(0)
+            else -> {
+                critical += ClassroomRewardsIssue.XP_INVALID
+                0
+            }
+        }
+
+        fun optionalNumber(key: String, default: Int): Int {
+            if (!root.has(key)) return default
+            val value = root.numberOrNull(key)
+            if (value == null) {
+                partial += ClassroomRewardsIssue.NUMBER_INVALID
+                return default
+            }
+            return value
+        }
+
+        val rewards = ClassroomRewards(
+            version = optionalNumber("version", ClassroomRewardsEngine.REWARD_VERSION),
+            xp = xp,
+            visited = visited,
+            quiz = quiz,
+            combo = optionalNumber("combo", 0).coerceAtLeast(0),
+            bestCombo = optionalNumber("bestCombo", 0).coerceAtLeast(0),
+            achievements = achievements,
+            updatedAt = (root.opt("updatedAt") as? String).orEmpty(),
+        )
+        val issues = (critical + partial).distinct()
+        return when {
+            critical.isNotEmpty() -> ClassroomRewardsDecodeResult.Unreadable(rewards, issues)
+            partial.isNotEmpty() -> ClassroomRewardsDecodeResult.Partial(rewards, issues)
+            else -> ClassroomRewardsDecodeResult.Intact(rewards)
+        }
     }
+
+    /** 兼容旧调用：解码失败时仍返回可用于展示的空账本，写入前必须判断 [allowsWrite]。 */
+    fun decode(raw: String?): ClassroomRewards =
+        decodeResult(raw).rewards ?: ClassroomRewardsEngine.empty()
 
     fun encode(rewards: ClassroomRewards): String {
         val visited = JSONObject()
@@ -254,3 +399,13 @@ object ClassroomRewardsCodec {
         }.toString()
     }
 }
+
+private fun JSONObject.numberOrNull(key: String): Int? {
+    if (!has(key)) return null
+    return when (val value = opt(key)) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull()
+        else -> null
+    }
+}
+
