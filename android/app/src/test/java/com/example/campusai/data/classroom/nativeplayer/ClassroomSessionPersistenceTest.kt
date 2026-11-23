@@ -226,6 +226,28 @@ class ClassroomSessionPersistenceTest {
     }
 
     @Test
+    fun `await idle keeps waiting when a new write follows the first one`() = runTest {
+        val key = "classroom:rewards"
+        ClassroomLocalWriteGate.beginPending(key)
+        var read = false
+        val reader = launch {
+            ClassroomLocalWriteGate.awaitIdle(key)
+            read = true
+        }
+        runCurrent()
+        assertFalse(read)
+
+        ClassroomLocalWriteGate.finishPending(key)
+        ClassroomLocalWriteGate.beginPending(key)
+        runCurrent()
+        assertFalse("第一笔完成后紧接着有新写入，仍不能读取", read)
+
+        ClassroomLocalWriteGate.finishPending(key)
+        reader.join()
+        assertTrue(read)
+    }
+
+    @Test
     fun `late write from an old session yields to a newer grant`() = runTest {
         val key = "classroom:rewards"
         val oldGrant = ClassroomLocalWriteGate.grant(key)

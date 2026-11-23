@@ -87,10 +87,13 @@ object ClassroomLocalWriteGate {
     }
 
     suspend fun awaitIdle(key: String) {
-        val signal = synchronized(this) {
-            if ((pending[key] ?: 0) > 0) idleSignals[key] else null
+        while (true) {
+            val signal = synchronized(this) {
+                if ((pending[key] ?: 0) > 0) idleSignals[key] else null
+            }
+            if (signal == null) return
+            signal.await()
         }
-        signal?.await()
     }
 
     @Synchronized
