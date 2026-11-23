@@ -288,6 +288,18 @@ internal fun classroomHttpErrorMessage(statusCode: Int): String = when (statusCo
     else -> "课堂网页返回 HTTP $statusCode。请稍后重试。"
 }
 
+internal fun isMainDocumentSslFailure(
+    errorUrl: String?,
+    mainFrameUrl: String?,
+    pageFinished: Boolean,
+): Boolean {
+    if (pageFinished) return false
+    val failed = errorUrl?.substringBefore('#')?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return false
+    val current = mainFrameUrl?.substringBefore('#')?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return false
+    // 只有证书错误指向当前主文档本身时才阻断整页；子资源或旧导航迟到的错误只提示。
+    return failed == current
+}
+
 internal fun isFatalClassroomScriptSignal(detail: String): Boolean =
     detail.contains("Uncaught") || detail.contains("ChunkLoadError")
 
@@ -493,6 +505,7 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
     var webView by remember(url) { mutableStateOf<WebView?>(null) }
     var loading by remember(url) { mutableStateOf(true) }
     var pageFinished by remember(url) { mutableStateOf(false) }
+    var mainFrameUrl by remember(url) { mutableStateOf<String?>(null) }
     var loadError by remember(url) { mutableStateOf<String?>(null) }
     var pageWarning by remember(url) { mutableStateOf<String?>(null) }
     var hostActive by remember(url) {
@@ -817,6 +830,7 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
                                     transcript = ""
                                     loading = true
                                     pageFinished = false
+                                    mainFrameUrl = pageUrl
                                     loadError = null
                                 }
 
@@ -859,7 +873,10 @@ private fun ClassroomViewerTrusted(url: String, onClose: () -> Unit, repository:
                                 ) {
                                     // 证书错误一律取消加载，绝不继续使用被代理或篡改的连接。
                                     handler.cancel()
-                                    if (!pageFinished && loadError == null) {
+                                    val failedUrl = runCatching { error.url }.getOrNull()
+                                    if (loadError == null &&
+                                        isMainDocumentSslFailure(failedUrl, mainFrameUrl, pageFinished)
+                                    ) {
                                         loading = false
                                         loadError = "课堂服务器证书校验失败，已停止加载。请确认网络未被代理篡改，或联系管理员更新证书。"
                                     } else {

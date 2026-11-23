@@ -2,6 +2,7 @@ package com.example.campusai.ui.screens.courses
 
 import android.webkit.WebViewClient
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,6 +21,25 @@ class ClassroomWebErrorTest {
         assertTrue(classroomHttpErrorMessage(404).contains("不存在"))
         assertTrue(classroomHttpErrorMessage(503).contains("暂时不可用"))
         assertEquals("课堂网页返回 HTTP 418。请稍后重试。", classroomHttpErrorMessage(418))
+    }
+
+    @Test
+    fun `only the current main document ssl failure blocks the page`() {
+        val main = "https://classroom.example.com/lesson/1"
+
+        assertTrue(isMainDocumentSslFailure(main, main, pageFinished = false))
+        assertFalse(
+            "首屏子资源的证书错误不能阻断整页",
+            isMainDocumentSslFailure("https://cdn.example.com/slide.png", main, pageFinished = false),
+        )
+        assertFalse(
+            "旧导航迟到的证书错误不能阻断新页面",
+            isMainDocumentSslFailure("https://classroom.example.com/lesson/0", main, pageFinished = false),
+        )
+        assertFalse(
+            "页面已经可用后的资源证书错误只降级提示",
+            isMainDocumentSslFailure(main, main, pageFinished = true),
+        )
     }
 
     @Test
