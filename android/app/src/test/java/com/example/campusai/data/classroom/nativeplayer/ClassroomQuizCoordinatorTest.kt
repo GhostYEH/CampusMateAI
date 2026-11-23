@@ -398,7 +398,8 @@ class ClassroomQuizCoordinatorTest {
         val flush = writer.takeDraftFlush()
         assertNotNull("结果不确定时必须保留退出落盘任务", flush)
         server.failure = ClassroomApiException(409, "QUIZ_ATTEMPT_CONFLICT", "不能回退")
-        flush?.invoke()
+        val error = runCatching { flush?.invoke() }.exceptionOrNull()
+        assertTrue("409 必须作为冲突上抛，不能静默当成功", error is ClassroomWriteConflictException)
         assertEquals("草稿回退被拒绝后服务端仍保持已提交", "reviewed", server.phase)
         assertEquals("A", server.answers["q1"])
     }
@@ -430,6 +431,77 @@ class ClassroomQuizCoordinatorTest {
         flushJob.join()
         assertEquals("确认成功后不应再发草稿", requestsBeforeExit, server.requests.size)
         assertEquals("reviewed", server.phase)
+    }
+
+    @Test
+    fun `exit flush reports an io failure to the write executor`() = runTest {
+        val server = FakeServer()
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        server.failure = IOException("connection reset")
+
+        val status = runDraftFlush(writer)
+        assertEquals(ClassroomWriteStatus.IO_ERROR, status)
+    }
+
+    @Test
+    fun `exit flush reports a 409 conflict instead of success`() = runTest {
+        val server = FakeServer()
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        server.failure = ClassroomApiException(409, "QUIZ_ATTEMPT_CONFLICT", "不能回退")
+
+        val status = runDraftFlush(writer)
+        assertEquals(ClassroomWriteStatus.CONFLICT, status)
+    }
+
+    @Test
+    fun `exit flush checks the account again under the write lock`() = runTest {
+        val server = FakeServer()
+        var accountCurrent = true
+        var state: NativeQuizUiState? = null
+        val writer = coordinator("scene-a", server, isCurrent = { accountCurrent }, onState = { state = it })
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        val requestsBeforeExit = server.requests.size
+        accountCurrent = false
+
+        val status = runDraftFlush(writer)
+        assertEquals(ClassroomWriteStatus.ACCOUNT_CHANGED, status)
+        assertEquals("换号后不能发出旧账号草稿", requestsBeforeExit, server.requests.size)
+    }
+
+    private suspend fun runDraftFlush(writer: ClassroomQuizCoordinator): ClassroomWriteStatus {
+        val flush = writer.takeDraftFlush() ?: return ClassroomWriteStatus.STALE
+        val key = "classroom:draft"
+        val write = ClassroomStateWrite(
+            key = key,
+            label = "draft",
+            grant = ClassroomLocalWriteGate.grant(key),
+            save = { flush() },
+        )
+        return ClassroomSessionFlusher(
+            budgetMs = 5_000L,
+            itemBudgetMs = 5_000L,
+            maxAttempts = 1,
+            retryDelayMs = 0L,
+        ).run(listOf(write)).single().status
     }
 
     @Test

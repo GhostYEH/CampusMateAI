@@ -550,8 +550,8 @@ class NativeClassroomViewModel(
                         label = "draft",
                         grant = ClassroomLocalWriteGate.grant(draftWriteKey),
                         save = {
-                            // 发送前重新核对账号；换号后旧账号的草稿不能发出去。
-                            if (repository.classroomAccountScope() == initialAccountScope) draftFlush()
+                            // 账号与作答代次由补存任务在写锁内复核；这里不再吞掉结果。
+                            draftFlush()
                         },
                     ),
                 )

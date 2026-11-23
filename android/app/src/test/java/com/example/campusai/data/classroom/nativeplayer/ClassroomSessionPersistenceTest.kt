@@ -51,7 +51,7 @@ class ClassroomSessionPersistenceTest {
 
         val results = flusher.run(writes).associateBy { it.label }
 
-        assertEquals(ClassroomWriteStatus.FAILED, results.getValue("position").status)
+        assertEquals(ClassroomWriteStatus.IO_ERROR, results.getValue("position").status)
         assertEquals(ClassroomWriteStatus.SAVED, results.getValue("rewards").status)
         assertEquals(ClassroomWriteStatus.SAVED, results.getValue("draft").status)
         assertEquals(listOf("position", "rewards", "draft"), calls)

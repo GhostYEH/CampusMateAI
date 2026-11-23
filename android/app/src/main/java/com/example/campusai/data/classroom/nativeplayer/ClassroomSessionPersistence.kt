@@ -103,7 +103,24 @@ object ClassroomLocalWriteGate {
     }
 }
 
-enum class ClassroomWriteStatus { SAVED, STALE, FAILED, TIMED_OUT }
+enum class ClassroomWriteStatus {
+    SAVED,
+    STALE,
+    ACCOUNT_CHANGED,
+    CONFLICT,
+    IO_ERROR,
+    FAILED,
+    TIMED_OUT,
+}
+
+/** 退出补存时发现作答代次已前进，当前快照不再是最终版本。 */
+class ClassroomWriteStaleException(message: String = "课堂状态已被更新的写入取代") : Exception(message)
+
+/** 退出补存拿到写锁后账号已经切换，不能把原账号的草稿发出去。 */
+class ClassroomWriteAccountChangedException(message: String = "课堂账号已经切换") : Exception(message)
+
+/** 服务端已有不可回退的提交记录，草稿回退被 409 拒绝。 */
+class ClassroomWriteConflictException(message: String = "课堂记录已被服务端确认") : Exception(message)
 
 data class ClassroomStateWrite(
     val key: String,
@@ -204,9 +221,20 @@ class ClassroomSessionFlusher(
                 return result(write, ClassroomWriteStatus.TIMED_OUT, attempts)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (stale: ClassroomWriteStaleException) {
+                return result(write, ClassroomWriteStatus.STALE, attempts)
+            } catch (accountChanged: ClassroomWriteAccountChangedException) {
+                return result(write, ClassroomWriteStatus.ACCOUNT_CHANGED, attempts)
+            } catch (conflict: ClassroomWriteConflictException) {
+                return result(write, ClassroomWriteStatus.CONFLICT, attempts)
             } catch (error: Throwable) {
-                if (attempts >= maxAttempts || error !is IOException) {
-                    return result(write, ClassroomWriteStatus.FAILED, attempts)
+                val retryable = error is IOException
+                if (!retryable || attempts >= maxAttempts) {
+                    return result(
+                        write,
+                        if (retryable) ClassroomWriteStatus.IO_ERROR else ClassroomWriteStatus.FAILED,
+                        attempts,
+                    )
                 }
                 delay(retryDelayMs)
             }

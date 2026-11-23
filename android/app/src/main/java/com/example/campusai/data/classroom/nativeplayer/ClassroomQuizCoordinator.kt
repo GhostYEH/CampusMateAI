@@ -515,12 +515,18 @@ class ClassroomQuizCoordinator(
                 withTimeoutOrNull(1_000L) { inFlight.outcome.await() }
             }
             if (outcome == SubmitOutcome.Confirmed) {
+                // 已确认的提交不需要再发草稿；返回成功，不把服务端记录回写成草稿。
                 Unit
             } else {
                 writeMutex.withLock {
-                    if (version == editVersion && flushRound == round && state.phase != "reviewed") {
+                    // 拿到写锁、即将发送时再核对账号与作答代次。
+                    if (!isAccountCurrent()) throw ClassroomWriteAccountChangedException()
+                    if (version != editVersion || flushRound != round) {
+                        throw ClassroomWriteStaleException()
+                    }
+                    if (state.phase != "reviewed") {
                         // 服务器已确认提交时草稿回退会返回 409；保留服务端记录，不覆盖。
-                        saveAttempt(
+                        val result = saveAttempt(
                             sceneId,
                             MagicClassQuizAttemptRequest(
                                 attemptId = attempt,
@@ -529,6 +535,10 @@ class ClassroomQuizCoordinator(
                                 startNewAttempt = newAttempt,
                             ),
                         )
+                        result.exceptionOrNull()?.let { error ->
+                            if (isAttemptConflict(error)) throw ClassroomWriteConflictException()
+                            throw error
+                        }
                     }
                     Unit
                 }
