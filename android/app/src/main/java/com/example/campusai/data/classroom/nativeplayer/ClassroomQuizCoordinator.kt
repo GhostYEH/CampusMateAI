@@ -129,7 +129,7 @@ class ClassroomQuizCoordinator(
                         error = null,
                     )
                 }
-                if (phase == "reviewed" && results.isNotEmpty() && isSessionCurrent()) {
+                if (phase == "reviewed" && results.isNotEmpty() && canSettleRewards()) {
                     onSettled(results.values.count { it.correct == true }, results.size)
                 }
             }.onFailure { error ->
@@ -297,7 +297,7 @@ class ClassroomQuizCoordinator(
                         )
                     }
                     if (!outcome.isCompleted) outcome.complete(SubmitOutcome.Confirmed)
-                    if (phase == "reviewed" && isSessionCurrent()) {
+                    if (phase == "reviewed" && canSettleRewards()) {
                         onSettled(results.values.count { it.correct == true }, results.size)
                     }
                 }.onFailure { error ->
@@ -410,7 +410,7 @@ class ClassroomQuizCoordinator(
                         error = null,
                     )
                 }
-                if (isSessionCurrent()) {
+                if (canSettleRewards()) {
                     onSettled(updated.values.count { it.correct == true }, updated.size)
                 }
             }.onFailure { error ->
@@ -570,6 +570,9 @@ class ClassroomQuizCoordinator(
         state = next
         publish()
     }
+
+    /** 结算必须同时属于仍打开的协调器和仍有效的播放会话。 */
+    private fun canSettleRewards(): Boolean = !closed && isSessionCurrent()
 
     private fun isAttemptConflict(error: Throwable): Boolean =
         error is ClassroomApiException &&

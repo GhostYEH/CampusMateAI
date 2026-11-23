@@ -241,6 +241,38 @@ class ClassroomQuizCoordinatorTest {
     }
 
     @Test
+    fun `closed coordinator cannot settle a delayed reviewed reward`() = runTest {
+        val server = FakeServer()
+        val gate = CompletableDeferred<Unit>()
+        server.holdResponse = gate
+        var state: NativeQuizUiState? = null
+        var settled: Pair<Int, Int>? = null
+        val writer = coordinator(
+            "scene-a",
+            server,
+            isSessionCurrent = { true },
+            onState = { state = it },
+            onSettled = { c, t -> settled = c to t },
+        )
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+        advanceTimeBy(701)
+        advanceUntilIdle()
+        writer.submit()
+        advanceUntilIdle()
+
+        // 协调器已关闭，但播放会话尚未结束；迟到的 reviewed 仍不能结算。
+        writer.close(cancelInFlight = false)
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals("reviewed", server.phase)
+        assertNull("已关闭的协调器不能结算奖励", settled)
+    }
+
+    @Test
     fun `reopening a playback session rejects the previous session reward`() = runTest {
         val server = FakeServer()
         val gate = CompletableDeferred<Unit>()

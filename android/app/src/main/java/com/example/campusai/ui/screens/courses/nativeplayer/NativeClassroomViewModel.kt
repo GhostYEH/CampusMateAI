@@ -622,11 +622,12 @@ class NativeClassroomViewModel(
 
         loadJob = viewModelScope.launch {
             // 快速关闭再重开时，先让上一次退出落盘结束，避免用旧账本和旧位置起步。
-            withContext(Dispatchers.IO) {
-                withTimeoutOrNull(2_500L) {
+            val previousWritesIdle = withContext(Dispatchers.IO) {
+                withTimeoutOrNull(ClassroomSessionFlusher.DEFAULT_BUDGET_MS + 1_000L) {
                     ClassroomLocalWriteGate.awaitIdle(positionWriteKey)
                     ClassroomLocalWriteGate.awaitIdle(rewardsWriteKey)
-                }
+                    true
+                } ?: false
             }
             val rewardsRead = withContext(Dispatchers.IO) {
                 readClassroomLocal { repository.classroomRewardsRaw(ref) }
@@ -639,6 +640,7 @@ class NativeClassroomViewModel(
             val savedRewards = decoded?.rewards ?: ClassroomRewardsEngine.empty()
             val rewardsDamaged = decoded is ClassroomRewardsDecodeResult.Unreadable
             rewardsWritable = when {
+                !previousWritesIdle -> false
                 rewardsRead.failed -> false
                 decoded != null -> decoded.allowsWrite
                 else -> true
@@ -648,6 +650,8 @@ class NativeClassroomViewModel(
             }
             val savedScene = (positionRead as? ClassroomLocalRead.Value)?.value
             val readNotice = when {
+                !previousWritesIdle ->
+                    "上一次课堂的退出记录尚未完成写入；本次保持只读，不会覆盖本地记录。"
                 rewardsDamaged && positionRead.failed ->
                     "本地奖励记录已损坏、学习位置读取失败；本次不会自动结算或覆盖记录。"
                 rewardsDamaged ->
