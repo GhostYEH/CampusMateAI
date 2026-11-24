@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,10 +24,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Refresh
@@ -53,6 +52,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -112,6 +112,7 @@ fun LibraryScreen(
     }
     val visibleCurrentCourses = currentCourses.filter { it in matchingCourses }
     val visibleOtherCourses = otherCourses.filter { it in matchingCourses }
+    val showBookshelf = accountStatus == "online" && realCourses.isNotEmpty()
     val openCourse: (Course) -> Unit = { course ->
         if (openingCourseId == null) {
             openingCourseId = course.id
@@ -124,6 +125,7 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(statusRefreshToken) {
+        accountStatus = "checking"
         val status = repository.getChaoxingStatus()
         accountStatus = status?.status ?: "unavailable"
         lastSyncedAt = status?.last_synced_at
@@ -151,14 +153,10 @@ fun LibraryScreen(
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(44.dp).clip(CircleShape)
-                            .background(Color.White.copy(alpha = .18f)).clickable(onClick = onBack),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = Color.White) }
-                    Column(Modifier.padding(start = 14.dp)) {
+                    CampusSceneBackButton(onBack = onBack, label = "返回校园")
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
                         Text("图书馆", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                        Text("从你的课程出发，找到今天要学的内容", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
+                        Text("查阅课程、章节和资料", color = Color.White.copy(alpha = .82f), fontSize = 12.sp)
                     }
                 }
             }
@@ -166,56 +164,69 @@ fun LibraryScreen(
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("我的课程书架", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("${realCourses.size} 门课程", color = Color.White.copy(alpha = .76f), fontSize = 12.sp)
+                        if (accountStatus == "online") {
+                            Text("${realCourses.size} 门课程", color = Color.White.copy(alpha = .76f), fontSize = 12.sp)
+                        }
                     }
-                    Text("同步课程", color = Color(0xFF2A433B), fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xFFF2DFC0))
-                            .clickable { showSyncDialog = true }.padding(horizontal = 14.dp, vertical = 10.dp))
+                    if (showBookshelf) {
+                        Spacer(Modifier.width(8.dp))
+                        CampusScenePrimaryButton(onClick = { showSyncDialog = true }) {
+                            Text("同步课程", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
-            }
-            item {
-                Text("同学一起学 · 共同课堂", color = libraryGreen, fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xEAF5F0E3)).clickable(onClick = onOpenLearningRooms)
-                        .padding(horizontal = 16.dp, vertical = 14.dp))
             }
             item {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xEAF5F0E3))
-                        .border(1.dp, Color(0x99D6BA8C), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .clip(ClassroomActionShape).background(Color(0xEC1A3440))
+                        .border(1.dp, ClassroomChalk.copy(alpha = .35f), ClassroomActionShape)
+                        .clickable(role = Role.Button, onClick = onOpenLearningRooms)
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = libraryGreen, modifier = Modifier.size(20.dp))
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(color = libraryGreen, fontSize = 14.sp),
-                        modifier = Modifier.weight(1f).padding(start = 10.dp),
-                        decorationBox = { innerTextField ->
-                            Box {
-                                if (searchQuery.isEmpty()) Text("查找课程、老师或课程号", color = Color(0xFF718278), fontSize = 14.sp)
-                                innerTextField()
-                            }
-                        },
+                    Text(
+                        "同学一起学 · 共同课堂",
+                        color = ClassroomChalk,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
                     )
-                    if (searchQuery.isNotEmpty()) {
-                        Icon(Icons.Default.Close, contentDescription = "清除搜索", tint = libraryGreen,
-                            modifier = Modifier.size(20.dp).clickable { searchQuery = "" })
-                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = ClassroomChalk)
                 }
             }
-            if (accountStatus == "online") {
-                if (realCourses.isEmpty()) {
-                    item {
-                        LibraryNote("还没有同步到课程", "同步后会展示学习通返回的课程；这里不会填入演示课程。")
+            if (showBookshelf) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().clip(ClassroomActionShape)
+                            .background(Color(0xEAF5F0E3))
+                            .border(1.dp, Color(0x99D6BA8C), ClassroomActionShape)
+                            .heightIn(min = 48.dp).padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = libraryGreen, modifier = Modifier.size(20.dp))
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = libraryGreen, fontSize = 14.sp),
+                            modifier = Modifier.weight(1f).padding(start = 10.dp),
+                            decorationBox = { innerTextField ->
+                                Box {
+                                    if (searchQuery.isEmpty()) Text("查找课程、老师或课程号", color = Color(0xFF586D62), fontSize = 14.sp)
+                                    innerTextField()
+                                }
+                            },
+                        )
+                        if (searchQuery.isNotEmpty()) {
+                            Icon(Icons.Default.Close, contentDescription = "清除搜索", tint = libraryGreen,
+                                modifier = Modifier.size(20.dp).clickable { searchQuery = "" })
+                        }
                     }
-                } else if (matchingCourses.isEmpty()) {
+                }
+                if (matchingCourses.isEmpty()) {
                     item { LibraryNote("没有找到这门课", "试试课程名称、老师或课程号。") }
                 } else {
                     if (visibleCurrentCourses.isNotEmpty()) {
@@ -231,8 +242,28 @@ fun LibraryScreen(
                         }
                     }
                 }
+            } else {
+                item {
+                    when (accountStatus) {
+                        "checking" -> LibraryNote("正在读取课程书架", "正在检查学习通连接。")
+                        "online" -> LibraryNote("还没有课程", "同步学习通课程后，就能在这里打开章节和资料。") {
+                            LibraryAction("同步课程", onClick = { showSyncDialog = true })
+                        }
+                        "offline", "expired" -> {
+                            val expired = accountStatus == "expired"
+                            LibraryNote(
+                                if (expired) "学习通登录已失效" else "尚未连接学习通",
+                                "连接后即可同步课程、章节和资料。",
+                            ) {
+                                LibraryAction(if (expired) "重新连接学习通" else "连接学习通", onConnectChaoxing)
+                            }
+                        }
+                        else -> LibraryNote("暂时无法读取课程", "检查网络后，再试一次。") {
+                            LibraryAction("重试连接", onClick = { statusRefreshToken++ })
+                        }
+                    }
+                }
             }
-            item { Text("轻触一本书，查看课程目录", color = Color.White.copy(alpha = .72f), fontSize = 12.sp) }
         }
     }
     if (showSyncDialog) {
@@ -374,28 +405,27 @@ private fun CourseSpine(course: Course, index: Int, opening: Boolean, onOpen: (C
 
 @Composable
 private fun LibraryAction(label: String, onClick: () -> Unit, busy: Boolean = false) {
-    Box(
-        Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(14.dp))
-            .background(Brush.horizontalGradient(listOf(Color(0xFFBD9C5E), Color(0xFF71653F))))
-            .border(1.dp, Color.White.copy(alpha = .42f), RoundedCornerShape(14.dp))
-            .clickable(enabled = !busy, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (busy) Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-            Text(if (busy) "正在同步…" else label, color = Color.White, fontWeight = FontWeight.Bold)
+    CampusScenePrimaryButton(onClick, Modifier.fillMaxWidth(), enabled = !busy) {
+        if (busy) {
+            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
         }
+        Text(if (busy) "正在同步…" else label, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
-private fun LibraryNote(title: String, body: String) {
+private fun LibraryNote(title: String, body: String, action: (@Composable () -> Unit)? = null) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
             .background(Color(0xD7F5F2E8)).padding(17.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(title, color = libraryGreen, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text(body, color = Color(0xFF596B61), fontSize = 12.sp)
+        Text(body, color = Color(0xFF465A51), fontSize = 13.sp)
+        if (action != null) {
+            Spacer(Modifier.height(4.dp))
+            action()
+        }
     }
 }

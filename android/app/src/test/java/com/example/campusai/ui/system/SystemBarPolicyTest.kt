@@ -56,6 +56,16 @@ class SystemBarPolicyTest {
     }
 
     @Test
+    fun classroomHubKeepsLightIconsOnTheArtworkInBothThemes() {
+        listOf(false, true).forEach { darkTheme ->
+            val policy = systemBarPolicy(route = "classroom-hub", darkTheme = darkTheme, authenticated = true)
+            assertFalse(policy.darkStatusBarIcons)
+            assertFalse(policy.darkNavigationBarIcons)
+        }
+        assertTrue(routeOwnsStatusBarInset("classroom-hub"))
+    }
+
+    @Test
     fun fullBleedAndSelfInsetRoutesAreExplicit() {
         assertTrue(routeOwnsStatusBarInset("home"))
         assertTrue(routeOwnsStatusBarInset("profile"))

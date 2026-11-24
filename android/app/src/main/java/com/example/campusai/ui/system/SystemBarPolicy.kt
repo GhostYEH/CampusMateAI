@@ -8,6 +8,7 @@ data class SystemBarPolicy(
 private val routesWithDarkFullBleedScene = setOf(
     "home",
     "courses",
+    "classroom-hub",
     "focus",
     "focus_session",
     "focus_summary",
@@ -21,6 +22,7 @@ private val routesWithAlwaysLightStatusSurface = emptySet<String>()
 private val routesOwningStatusBarInset = setOf(
     "home",
     "courses",
+    "classroom-hub",
     "profile",
     "focus",
     "focus_summary",

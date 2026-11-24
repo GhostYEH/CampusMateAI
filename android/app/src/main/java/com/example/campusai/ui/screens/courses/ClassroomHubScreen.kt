@@ -9,14 +9,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -51,6 +47,11 @@ private data class RecentClassroom(
     val lastEnteredAt: String?,
     val totalSeconds: Long,
 )
+
+private fun RecentClassroom.nativeRef(safeUrl: String?): NativeClassroomRef? =
+    entry.classroom.sessionId?.takeIf(String::isNotBlank)?.let { sessionId ->
+        nativeClassroomRef(sessionId, entry.courseName, safeUrl, entry.courseId)
+    }
 
 private fun nativeClassroomRef(sessionId: String, title: String, safeUrl: String?, courseId: String? = null) =
     NativeClassroomRef(
@@ -178,6 +179,15 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
         }
     }
 
+    val resumable = history.firstOrNull { recent ->
+        recent.entry.classroom.sessionId?.isNotBlank() == true || trusted(recent.entry.classroom.url) != null
+    }
+    fun openRecent(recent: RecentClassroom, safeUrl: String?) {
+        val ref = recent.nativeRef(safeUrl)
+        if (ref != null) nativeRef = ref else viewerUrl = safeUrl
+    }
+    val canGenerate = !statusLoading && !submitting && !uploading && status?.enabled == true
+
     Box(Modifier.fillMaxSize()) {
         ClassroomStageBackdrop(Modifier.matchParentSize())
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -185,18 +195,39 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 .padding(horizontal = 16.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(54.dp).clip(CircleShape)
-                        .background(Color(0xB21A3440))
-                        .border(1.dp, ClassroomWood.copy(alpha = .7f), CircleShape)) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回校园", tint = ClassroomChalk)
-                    }
+                    CampusSceneBackButton(onBack = onBack, label = "返回校园")
                     Spacer(Modifier.width(12.dp))
-                    Column {
+                    Column(Modifier.weight(1f)) {
                         Text("互动课堂", color = ClassroomChalk, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                         Text("选好主题，走进你的课堂", color = ClassroomChalk.copy(alpha = .8f), fontSize = 12.sp)
                     }
                 }
-                Spacer(Modifier.height(28.dp))
+                if (resumable != null) {
+                    Spacer(Modifier.height(20.dp))
+                    val shape = ClassroomActionShape
+                    Column(
+                        Modifier.fillMaxWidth().background(Color(0xF2172E38), shape)
+                            .border(1.dp, ClassroomChalk.copy(alpha = .25f), shape).padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text("最近学习", color = ClassroomChalk.copy(alpha = .8f), fontSize = 12.sp)
+                        Text(resumable.entry.courseName, color = ClassroomChalk, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        val time = resumable.lastEnteredAt ?: resumable.entry.classroom.createdAt
+                        time?.takeIf(String::isNotBlank)?.let {
+                            val label = if (resumable.lastEnteredAt != null) "上次进入" else "创建于"
+                            Text("$label ${it.replace('T', ' ').take(16)}", color = ClassroomChalk.copy(alpha = .8f), fontSize = 12.sp)
+                        }
+                        CampusScenePrimaryButton(
+                            onClick = { openRecent(resumable, trusted(resumable.entry.classroom.url)) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("继续上课", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
                 LessonBlackboard(
                     topic = topic,
                     onTopicChange = { topic = it },
@@ -241,10 +272,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                     val sessionId = job.sessionId
                     val safe = trusted(job.url)
                     if (!sessionId.isNullOrBlank() && job.status.equals("succeeded", ignoreCase = true)) {
-                        Button(
+                        CampusScenePrimaryButton(
                             onClick = { nativeRef = nativeClassroomRef(sessionId, "自主选题课堂", safe) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = ClassroomAmber, contentColor = ClassroomNight),
                         ) { Text("进入原生课堂", fontWeight = FontWeight.Bold) }
                     }
                     if (safe != null) {
@@ -254,8 +284,17 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 }
                 error?.let { Text(it, color = Color(0xFFFFBBA1), fontSize = 12.sp,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) }
+                if (resumable != null && sessionId == null) {
+                    CampusScenePrimaryButton(
+                        onClick = { startClassroom() },
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        enabled = canGenerate,
+                    ) {
+                        Text(if (submitting) "正在准备…" else "生成我的课堂", fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(Modifier.height(24.dp))
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                Row(Modifier.fillMaxWidth().clip(ClassroomActionShape)
                     .background(Color(0xC82C4055)).clickable(onClick = onOpenCourses)
                     .padding(horizontal = 16.dp, vertical = 17.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -278,11 +317,9 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 } else {
                     history.take(4).forEach { recent ->
                         val safe = trusted(recent.entry.classroom.url)
-                        val ref = recent.entry.classroom.sessionId?.takeIf { it.isNotBlank() }?.let { session ->
-                            nativeClassroomRef(session, recent.entry.courseName, safe, recent.entry.courseId)
-                        }
+                        val ref = recent.nativeRef(safe)
                         Column(Modifier.fillMaxWidth().clickable(enabled = ref != null || safe != null) {
-                            if (ref != null) nativeRef = ref else viewerUrl = safe
+                            openRecent(recent, safe)
                         }
                             .padding(vertical = 12.dp)) {
                             Text("${recent.entry.courseName} · ${if (ref != null || safe != null) "继续上课  →" else "暂不可打开"}",
@@ -300,8 +337,8 @@ fun ClassroomHubScreen(repository: AppRepository, onBack: () -> Unit,
                 }
                 Spacer(Modifier.height(30.dp))
             }
-            if (sessionId == null) ClassroomStartDock(
-                enabled = !statusLoading && !submitting && !uploading && status?.enabled == true,
+            if (resumable == null && sessionId == null) ClassroomStartDock(
+                enabled = canGenerate,
                 submitting = submitting,
                 onStart = { startClassroom() },
             )

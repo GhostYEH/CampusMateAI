@@ -31,13 +31,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -80,6 +80,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.campusai.data.classroom.nativeplayer.NativeAction
 import com.example.campusai.data.classroom.nativeplayer.NativePageState
+import com.example.campusai.ui.screens.courses.CampusSceneBackButton
+import com.example.campusai.ui.screens.courses.CampusScenePrimaryButton
+import com.example.campusai.ui.screens.courses.ClassroomActionShape
 import com.example.campusai.ui.screens.courses.ClassroomAmber
 import com.example.campusai.ui.screens.courses.ClassroomChalk
 import com.example.campusai.ui.screens.courses.ClassroomNight
@@ -181,10 +184,8 @@ internal fun NativeTopBar(
                 .padding(horizontal = 4.dp, vertical = if (compact) 0.dp else 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出课堂", tint = TextPrimary)
-            }
-            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            CampusSceneBackButton(onBack = onClose, label = "退出课堂")
+            Column(Modifier.weight(1f).padding(start = 8.dp, end = 8.dp)) {
                 Text(title, color = TextPrimary, fontSize = if (compact) 16.sp else 18.sp, lineHeight = 22.sp,
                     fontWeight = FontWeight.Bold, maxLines = if (compact) 1 else 2, overflow = TextOverflow.Ellipsis)
                 if (offline) Text("正在使用缓存", color = Accent, fontSize = 11.sp)
@@ -258,6 +259,7 @@ internal fun NativePagerBar(
     level: Int,
     showMetrics: Boolean,
     compact: Boolean,
+    onOpenQuizTools: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth()) {
         if (page.total == 0) return@Column
@@ -267,7 +269,9 @@ internal fun NativePagerBar(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                 .padding(horizontal = 10.dp, vertical = 3.dp),
         ) {
-            if (compact) {
+            if (onOpenQuizTools != null) {
+                PageControls(page, onPrev, onNext, onGoTo, Modifier.fillMaxWidth(), onOpenQuizTools)
+            } else if (compact) {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -300,15 +304,21 @@ private fun PageControls(
     onNext: () -> Unit,
     onGoTo: (Int) -> Unit,
     modifier: Modifier,
+    onOpenTools: (() -> Unit)? = null,
 ) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onPrev, enabled = page.hasPrev) { Text("上一页") }
+        val textPadding = if (onOpenTools != null) PaddingValues(horizontal = 8.dp) else ButtonDefaults.TextButtonContentPadding
+        TextButton(
+            onClick = onPrev,
+            enabled = page.hasPrev,
+            contentPadding = textPadding,
+        ) { Text("上一页") }
         Column(
             Modifier.weight(1f).padding(horizontal = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("${page.index + 1} / ${page.total}", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-            if (page.total > 1) {
+            if (page.total > 1 && onOpenTools == null) {
                 var scrub by remember(page.index, page.total) { mutableFloatStateOf(page.index.toFloat()) }
                 Slider(
                     value = scrub,
@@ -321,16 +331,25 @@ private fun PageControls(
                 )
             }
         }
-        Button(onClick = onNext, enabled = page.hasNext, shape = RoundedCornerShape(10.dp)) {
-            Text("下一页")
-            Spacer(Modifier.width(4.dp))
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+        if (onOpenTools == null) {
+            CampusScenePrimaryButton(onClick = onNext, enabled = page.hasNext) {
+                Text("下一页")
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        } else {
+            TextButton(onClick = onNext, enabled = page.hasNext, contentPadding = textPadding) {
+                Text("下一页")
+            }
+            IconButton(onClick = onOpenTools) {
+                Icon(Icons.Default.MoreVert, contentDescription = "课堂工具", tint = Accent)
+            }
         }
     }
 }
 
 @Composable
-private fun ClassroomTools(
+internal fun ClassroomTools(
     onDirectory: () -> Unit,
     onNarration: () -> Unit,
     onClassmates: () -> Unit,
@@ -406,7 +425,7 @@ internal fun NativeClassroomActions(
                     modifier = buttonModifier,
                     contentPadding = if (sidePanel) PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                     else ButtonDefaults.ContentPadding,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = ClassroomActionShape,
                 ) {
                     Icon(if (sequence.active && !sequence.paused) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = null, modifier = Modifier.size(16.dp))

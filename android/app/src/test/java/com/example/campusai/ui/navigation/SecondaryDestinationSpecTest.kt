@@ -55,6 +55,7 @@ class SecondaryDestinationSpecTest {
     @Test
     fun rootPagesWithoutLocalStatusInsetReserveTheStatusBarInNavHostContent() {
         assertEquals(0.dp, navigationDestinationLayout("courses", 24.dp).contentTopPadding)
+        assertEquals(0.dp, navigationDestinationLayout("classroom-hub", 24.dp).contentTopPadding)
         assertEquals(0.dp, navigationDestinationLayout("focus", 24.dp).contentTopPadding)
         assertEquals(24.dp, navigationDestinationLayout("tasks", 24.dp).contentTopPadding)
         assertEquals(24.dp, navigationDestinationLayout("counselor", 24.dp).contentTopPadding)

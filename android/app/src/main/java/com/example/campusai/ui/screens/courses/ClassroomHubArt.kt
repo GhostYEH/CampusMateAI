@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,8 +42,45 @@ internal val ClassroomNight = Color(0xFF182638)
 internal val ClassroomChalk = Color(0xFFF2E9D3)
 internal val ClassroomAmber = Color(0xFFDAB27A)
 internal val ClassroomWood = Color(0xFFAD7A50)
+internal val ClassroomActionShape = RoundedCornerShape(12.dp)
 private val Board = Color(0xFF172E38)
 private val BoardMuted = Color(0xFFB9CAC4)
+
+@Composable
+internal fun CampusSceneBackButton(onBack: () -> Unit, label: String) {
+    Box(
+        Modifier.size(48.dp)
+            .clip(CircleShape)
+            .background(Color(0xEC1A3440))
+            .border(1.dp, ClassroomChalk.copy(alpha = .35f), CircleShape)
+            .clickable(role = Role.Button, onClick = onBack),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = label, tint = ClassroomChalk)
+    }
+}
+
+@Composable
+internal fun CampusScenePrimaryButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 48.dp),
+        enabled = enabled,
+        shape = ClassroomActionShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = ClassroomAmber,
+            contentColor = ClassroomNight,
+            disabledContainerColor = Color(0xFF52615F),
+            disabledContentColor = ClassroomChalk,
+        ),
+        content = content,
+    )
+}
 
 @Composable
 internal fun ClassroomStageBackdrop(modifier: Modifier = Modifier) {
@@ -144,15 +183,20 @@ internal fun LessonBlackboard(
             .background(Color(0xFFE8D9BC)).padding(horizontal = 8.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).clickable(enabled = !uploading, onClick = onPickMaterial)
-                .padding(horizontal = 4.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                .heightIn(min = 48.dp).padding(horizontal = 4.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AttachFile, null, Modifier.size(20.dp), tint = ClassroomNight)
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(materialName ?: if (uploading) "正在读取资料…" else "添加自己的学习资料",
                         color = ClassroomNight, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(if (materialName == null) "PDF / Word / TXT / Markdown · 不超过 2 MB" else "点此更换讲义",
-                        color = Color(0xFF52606A), fontSize = 10.sp, maxLines = 1)
+                    Text(
+                        if (materialName == null) "PDF、Word、TXT、Markdown\n单份不超过 2 MB" else "点此更换讲义",
+                        color = Color(0xFF52606A),
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                    )
                 }
                 if (materialName == null) Text("＋", color = ClassroomNight, fontSize = 22.sp)
             }
@@ -172,14 +216,19 @@ private fun BoardDivider() {
 }
 
 @Composable
-internal fun ClassroomStartDock(enabled: Boolean, submitting: Boolean, onStart: () -> Unit) {
+internal fun ClassroomStartDock(
+    enabled: Boolean,
+    submitting: Boolean,
+    onStart: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth().background(Color(0xF21A2A36))
         .drawBehind { drawLine(ClassroomWood.copy(alpha = .7f), Offset.Zero,
             Offset(size.width, 0f), 1.dp.toPx()) }.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 8.dp)) {
-        Button(onClick = onStart, enabled = enabled, modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(6.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ClassroomAmber, contentColor = ClassroomNight,
-                disabledContainerColor = Color(0xFF788078), disabledContentColor = Color(0xFFE2E0D4))) {
+        CampusScenePrimaryButton(
+            onClick = onStart,
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+        ) {
             Icon(Icons.Default.PlayArrow, null, Modifier.size(21.dp))
             Spacer(Modifier.width(6.dp))
             Text(if (submitting) "正在准备…" else "生成我的课堂", fontSize = 15.sp, fontWeight = FontWeight.Bold)

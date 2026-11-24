@@ -3,6 +3,7 @@ package com.example.campusai.ui.screens.dashboard
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,8 +12,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.campusai.R
 import com.example.campusai.data.repository.AppRepository
@@ -40,6 +49,18 @@ import kotlinx.coroutines.launch
 
 private val ink = Color(0xFF101F3F)
 private val cream = Color(0xFFFFEBCB)
+private val archDestinations = listOf(
+    "社区" to "community",
+    "学习足迹" to "focus_history",
+    "待办" to "tasks",
+    "CPM" to "counselor",
+    "我的" to "profile",
+)
+private val campusDestinations = listOf(
+    "图书馆" to "courses",
+    "自习室" to "focus",
+    "互动课堂" to "classroom-hub",
+) + archDestinations
 
 /** Keep the illustration intact; motion only introduces the scene and acknowledges taps. */
 @Composable
@@ -48,6 +69,7 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
     val scope = rememberCoroutineScope()
     var pendingRoute by remember { mutableStateOf<String?>(null) }
     var entrancePlayed by rememberSaveable { mutableStateOf(false) }
+    var showDestinations by rememberSaveable { mutableStateOf(false) }
     val entrance = remember { Animatable(if (entrancePlayed || reduceMotion) 1f else 0f) }
     LaunchedEffect(reduceMotion) {
         if (reduceMotion || entrancePlayed) {
@@ -101,15 +123,86 @@ fun TwilightDashboardScreen(repository: AppRepository, onNavigate: (String) -> U
                     width = width * .42f, height = sceneHeight * .28f,
                     signText = "互动课堂", signAlignment = Alignment.TopStart,
                     active = pendingRoute == "classroom-hub", reduceMotion = reduceMotion) { enter("classroom-hub") }
-                val archLabels = listOf("社区", "学习足迹", "待办", "CPM", "我的")
-                val archRoutes = listOf("community", "focus_history", "tasks", "counselor", "profile")
-                archLabels.forEachIndexed { index, label ->
+                archDestinations.forEachIndexed { index, (label, route) ->
                     val x = width * (.065f + index * .19f)
                     ArchDestination(label, x = x, y = sceneHeight * .835f,
                         width = width * .18f, height = sceneHeight * .087f,
                         labelReveal = ((entranceProgress - (.42f + index * .07f)) / .22f).coerceIn(0f, 1f),
-                        active = pendingRoute == archRoutes[index], reduceMotion = reduceMotion) {
-                        enter(archRoutes[index])
+                        active = pendingRoute == route, reduceMotion = reduceMotion) {
+                        enter(route)
+                    }
+                }
+            }
+        }
+        val shortcutShape = RoundedCornerShape(12.dp)
+        Row(
+            Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(16.dp)
+                .heightIn(min = 48.dp).clip(shortcutShape)
+                .background(ink.copy(alpha = .96f))
+                .border(1.dp, cream.copy(alpha = .45f), shortcutShape)
+                .clickable(enabled = pendingRoute == null, role = Role.Button) { showDestinations = true }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Default.Apps, contentDescription = null, tint = cream, modifier = Modifier.size(18.dp))
+            Text("全部入口", color = cream, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+    if (showDestinations) {
+        CampusDestinationsDialog(onClose = { showDestinations = false }) { route ->
+            showDestinations = false
+            enter(route)
+        }
+    }
+}
+
+@Composable
+private fun CampusDestinationsDialog(onClose: () -> Unit, onNavigate: (String) -> Unit) {
+    Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = ink,
+            contentColor = cream,
+            border = BorderStroke(1.dp, cream.copy(alpha = .28f)),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "全部入口",
+                        modifier = Modifier.weight(1f).padding(start = 10.dp),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(cream.copy(alpha = .12f))
+                            .clickable(role = Role.Button, onClick = onClose),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "关闭", tint = cream)
+                    }
+                }
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    campusDestinations.forEach { (label, route) ->
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(cream.copy(alpha = .08f))
+                                .clickable(role = Role.Button) { onNavigate(route) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(label, modifier = Modifier.weight(1f), fontSize = 15.sp)
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = cream.copy(alpha = .7f),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     }
                 }
             }

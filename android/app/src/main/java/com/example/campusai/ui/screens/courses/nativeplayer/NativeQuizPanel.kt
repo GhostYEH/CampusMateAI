@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -41,6 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -54,6 +59,7 @@ import com.example.campusai.data.classroom.nativeplayer.NativeQuizOption
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizResult
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizSubmitState
 import com.example.campusai.data.classroom.nativeplayer.NativeQuizUiState
+import com.example.campusai.ui.screens.courses.ClassroomActionShape
 import com.example.campusai.ui.theme.Accent
 import com.example.campusai.ui.theme.Background
 import com.example.campusai.ui.theme.DangerText
@@ -97,167 +103,153 @@ fun NativeQuizPanel(
     val sheet = RoundedCornerShape(16.dp)
     val scrollState = rememberLazyListState()
     LaunchedEffect(report) {
-        if (report) scrollState.scrollToItem(0)
+        scrollState.scrollToItem(0)
     }
 
-    LazyColumn(
-        state = scrollState,
-        modifier = modifier
-            .fillMaxSize()
-            .clip(sheet)
-            .background(Background)
-            .border(1.dp, Line, sheet)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    Column(
+        modifier.fillMaxSize().clip(sheet).background(Background).border(1.dp, Line, sheet),
     ) {
-        item {
-            Column(
-                Modifier.fillMaxWidth().background(Surface, RoundedCornerShape(12.dp)).padding(13.dp),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(
-                        Modifier.size(40.dp).background(PrimarySoft, RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Flag, contentDescription = null, tint = Primary, modifier = Modifier.size(21.dp))
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            if (report) "$title · 结果" else title,
-                            color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            if (report) {
-                                "得分 ${formatScore(score)} / ${formatScore(totalPoints)} · 答对 ${autoResults.count { it.correct == true }} 题"
-                            } else {
-                                "满分 ${formatScore(totalPoints)} 分"
-                            },
-                            color = Muted, fontSize = 13.sp, lineHeight = 17.sp,
-                        )
-                    }
-                }
-                if (!report && quiz.questions.isNotEmpty()) {
-                    Text(
-                        "已作答 $answeredCount / ${quiz.questions.size} 题",
-                        color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                    )
-                    LinearProgressIndicator(
-                        progress = { answeredCount.toFloat() / quiz.questions.size },
-                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(4.dp)),
-                        color = Primary, trackColor = Line,
-                    )
-                }
-            }
-        }
-        quiz.issue?.let { issue ->
+        LazyColumn(
+            state = scrollState,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             item {
-                Text(
-                    issue,
-                    color = DangerText,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFFFF3F0), RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                )
-            }
-        }
-        if (!report && submitState != NativeQuizSubmitState.Draft) {
-            item {
-                Text(
-                    when (submitState) {
-                        NativeQuizSubmitState.Submitting -> "正在提交并等待服务器确认…"
-                        NativeQuizSubmitState.Unknown -> "提交结果未确认，退出后重新进入课堂会核对服务器记录。"
-                        NativeQuizSubmitState.Failed -> "提交未成功，答案仍保留在当前页面。"
-                        else -> ""
-                    },
-                    color = if (submitState == NativeQuizSubmitState.Failed) DangerText else Accent,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFFFF8E8), RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                )
-            }
-        }
-        if (quizState.error != null) {
-            item {
-                Text(
-                    quizState.error.orEmpty(),
-                    color = DangerText,
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFFFFF2EF), RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                )
-            }
-        }
-        if (report) {
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ResultBadge(
-                        "客观题",
-                        "${autoResults.count { it.correct == true }}/${autoResults.size}",
-                        SuccessText,
-                    )
-                    ResultBadge(
-                        "主观题",
-                        if (shortQuestions.isEmpty()) "无" else "${shortQuestions.count { quizState.selfChecks[it.id] == true }}/${shortQuestions.size} 已核对",
-                        Accent,
-                    )
-                }
-            }
-        }
-        items(quiz.questions, key = { it.id }) { question ->
-            QuestionCard(
-                question = question,
-                answer = quizState.answers[question.id] ?: NativeAnswer(),
-                result = results[question.id],
-                report = report,
-                selfCheck = quizState.selfChecks[question.id],
-                onAnswer = { onAnswer(question.id, it) },
-                onSelfCheck = { onSelfCheck(question.id, it) },
-            )
-        }
-        item {
-            Spacer(Modifier.height(4.dp))
-            when {
-                !report -> Button(
-                    onClick = onSubmit,
-                    enabled = !quizState.saving && quiz.issue == null,
-                    modifier = Modifier.fillMaxWidth(),
+                Column(
+                    Modifier.fillMaxWidth().background(Surface, RoundedCornerShape(12.dp)).padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (quizState.saving) {
-                        CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        Spacer(Modifier.width(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Box(
+                            Modifier.size(34.dp).background(PrimarySoft, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Default.Flag, contentDescription = null, tint = Primary, modifier = Modifier.size(21.dp))
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (report) "$title · 结果" else title,
+                                color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                if (report) {
+                                    "得分 ${formatScore(score)} / ${formatScore(totalPoints)} · 答对 ${autoResults.count { it.correct == true }} 题"
+                                } else {
+                                    "满分 ${formatScore(totalPoints)} 分"
+                                },
+                                color = Muted, fontSize = 13.sp, lineHeight = 17.sp,
+                            )
+                        }
                     }
+                    if (!report && quiz.questions.isNotEmpty()) {
+                        Text(
+                            "已作答 $answeredCount / ${quiz.questions.size} 题",
+                            color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        )
+                        LinearProgressIndicator(
+                            progress = { answeredCount.toFloat() / quiz.questions.size },
+                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(4.dp)),
+                            color = Primary, trackColor = Line,
+                        )
+                    }
+                }
+            }
+            if (report) {
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ResultBadge(
+                            "客观题",
+                            "${autoResults.count { it.correct == true }}/${autoResults.size}",
+                            SuccessText,
+                        )
+                        ResultBadge(
+                            "主观题",
+                            if (shortQuestions.isEmpty()) "无" else "${shortQuestions.count { quizState.selfChecks[it.id] == true }}/${shortQuestions.size} 已核对",
+                            Accent,
+                        )
+                    }
+                }
+            }
+            items(quiz.questions, key = { it.id }) { question ->
+                QuestionCard(
+                    question = question,
+                    answer = quizState.answers[question.id] ?: NativeAnswer(),
+                    result = results[question.id],
+                    report = report,
+                    selfCheck = quizState.selfChecks[question.id],
+                    onAnswer = { onAnswer(question.id, it) },
+                    onSelfCheck = { onSelfCheck(question.id, it) },
+                )
+            }
+        }
+
+        val feedback = quiz.issue ?: when {
+            !report && submitState == NativeQuizSubmitState.Unknown ->
+                "提交结果待确认。可重新提交，或重进课堂核对记录。"
+            !report && submitState == NativeQuizSubmitState.Failed ->
+                "提交未成功，答案仍保留。"
+            else -> quizState.error
+        }
+        if (!report || shortQuestions.isNotEmpty() || reviewed || feedback != null) {
+            Column(
+                Modifier.fillMaxWidth().background(Surface).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                feedback?.let {
                     Text(
-                        when (submitState) {
-                            NativeQuizSubmitState.Submitting -> "提交确认中…"
-                            NativeQuizSubmitState.Failed,
-                            NativeQuizSubmitState.Unknown -> "重新提交"
-                            else -> "提交答案"
-                        },
+                        it,
+                        color = if (submitState == NativeQuizSubmitState.Unknown) Accent else DangerText,
+                        fontSize = 12.sp,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
-                shortQuestions.isNotEmpty() && !reviewed -> {
-                    val allChecked = shortQuestions.all { quizState.selfChecks[it.id] != null }
-                    Button(
-                        onClick = onFinishReview,
-                        enabled = allChecked && !quizState.saving,
-                        modifier = Modifier.fillMaxWidth(),
+                val buttonModifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                when {
+                    !report -> Button(
+                        onClick = onSubmit,
+                        enabled = !quizState.saving && quiz.issue == null &&
+                            answeredCount == quiz.questions.size,
+                        shape = ClassroomActionShape,
+                        modifier = buttonModifier,
                     ) {
                         if (quizState.saving) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            CircularProgressIndicator(Modifier.size(16.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (allChecked) "完成主观题核对" else "请先核对全部主观题")
+                        Text(
+                            when (submitState) {
+                                NativeQuizSubmitState.Submitting -> "提交确认中…"
+                                NativeQuizSubmitState.Failed,
+                                NativeQuizSubmitState.Unknown -> "重新提交"
+                                else -> "提交答案"
+                            },
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        )
                     }
-                }
-                reviewed -> OutlinedButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                    Text("再做一遍（不重复加分）")
+                    shortQuestions.isNotEmpty() && !reviewed -> {
+                        val allChecked = shortQuestions.all { quizState.selfChecks[it.id] != null }
+                        Button(
+                            onClick = onFinishReview,
+                            enabled = allChecked && !quizState.saving,
+                            shape = ClassroomActionShape,
+                            modifier = buttonModifier,
+                        ) {
+                            if (quizState.saving) {
+                                CircularProgressIndicator(Modifier.size(16.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text(if (allChecked) "完成主观题核对" else "请先核对全部主观题")
+                        }
+                    }
+                    reviewed -> OutlinedButton(
+                        onClick = onRetry,
+                        enabled = !quizState.saving,
+                        shape = ClassroomActionShape,
+                        modifier = buttonModifier,
+                    ) {
+                        Text("再做一遍（不重复加分）")
+                    }
                 }
             }
         }

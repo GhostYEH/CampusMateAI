@@ -302,6 +302,7 @@ fun NativeClassroomPlayer(
     val slide = state.currentSlide
     val slidePage = state.disposition.mode == NativeSceneMode.NATIVE &&
         state.currentScenePlan?.type == "slide" && slide != null
+    val quizPage = state.disposition.mode == NativeSceneMode.NATIVE && state.currentScenePlan?.type == "quiz"
     val experimentPage = state.hasNativeExperiment
     val sceneTitle = state.currentScene?.title ?: state.currentScenePlan?.title.orEmpty()
     val lessonText = remember(slide, sceneTitle) {
@@ -380,6 +381,100 @@ fun NativeClassroomPlayer(
             (state.sequence.active && !state.sequence.preparing && state.activeAction?.type == "speech")
         )
 
+    val renderActions: @Composable (Boolean) -> Unit = { sidePanel ->
+        NativeClassroomActions(
+            teachingSlide = slidePage,
+            canTeach = slidePage && state.canTeachSlide,
+            sequence = state.sequence,
+            actions = state.currentScene?.actions.orEmpty(),
+            active = state.activeAction,
+            speech = state.speech,
+            teacherSpeaking = teacherSpeaking,
+            lectureScript = lectureScript,
+            onStart = if (slidePage) vm::startLecture else vm::startSequence,
+            onPause = vm::pauseSequence,
+            onResume = vm::resumeSequence,
+            onStop = vm::stopSequence,
+            onAction = { action ->
+                if (panel == "quiz-tools") panel = null
+                vm.triggerAction(action)
+            },
+            onHideSpeech = vm::clearActionOverlay,
+            sidePanel = sidePanel,
+        )
+    }
+    val renderObservation: @Composable () -> Unit = {
+        ClassroomFocusObservationBar(
+            state = focusState,
+            busy = focusPermissionPending,
+            onToggle = toggleFocusObservation,
+            onExport = { format ->
+                if (!focusExportBusy) {
+                    focusExportBusy = true
+                    focusExportNotice = null
+                    focusScope.launch {
+                        val uri = runCatching { focusController.export(format) }
+                            .getOrNull()
+                        focusExportBusy = false
+                        if (uri == null) {
+                            focusExportNotice = "没有可导出的窗口，或导出失败"
+                        } else {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = format.mimeType
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            runCatching {
+                                context.startActivity(
+                                    Intent.createChooser(send, "导出课堂观察窗口"),
+                                )
+                            }.onFailure {
+                                focusExportNotice = "无法打开系统分享面板"
+                            }
+                        }
+                    }
+                }
+            },
+            exportBusy = focusExportBusy,
+            exportNotice = focusExportNotice,
+        )
+        if (focusState.enabled) {
+            ClassroomAttentionReminderBar(
+                model = attentionModel,
+                state = attentionReminder,
+                onToggle = { enabled ->
+                    attentionReminder =
+                        ClassroomAttentionReminderPolicy.setEnabled(attentionReminder, enabled)
+                },
+                onPreviewToggle = { preview ->
+                    attentionReminder =
+                        ClassroomAttentionReminderPolicy.setPreview(attentionReminder, preview)
+                },
+                onDismiss = {
+                    attentionReminder = ClassroomAttentionReminderPolicy.dismiss(attentionReminder)
+                },
+                onPause = {
+                    attentionReminder = ClassroomAttentionReminderPolicy.pause(attentionReminder)
+                },
+                onResume = {
+                    attentionReminder = ClassroomAttentionReminderPolicy.resume(attentionReminder)
+                },
+                onNoteTaking = {
+                    attentionReminder = ClassroomAttentionReminderPolicy.noteTaking(
+                        attentionReminder,
+                        focusState.latestWindow?.endOffsetMs ?: 0L,
+                    )
+                },
+                onFalsePositive = {
+                    attentionReminder = ClassroomAttentionReminderPolicy.falsePositive(
+                        attentionReminder,
+                        focusState.latestWindow?.endOffsetMs ?: 0L,
+                    )
+                },
+            )
+        }
+    }
+
     NativeClassroomTheme {
         BoxWithConstraints(modifier.fillMaxSize().background(Background)) {
             val landscape = maxWidth > maxHeight
@@ -452,25 +547,6 @@ fun NativeClassroomPlayer(
                                 } else contentModifier,
                             )
                         }
-                        val renderActions: @Composable (Boolean) -> Unit = { sidePanel ->
-                            NativeClassroomActions(
-                                teachingSlide = slidePage,
-                                canTeach = slidePage && state.canTeachSlide,
-                                sequence = state.sequence,
-                                actions = state.currentScene?.actions.orEmpty(),
-                                active = state.activeAction,
-                                speech = state.speech,
-                                teacherSpeaking = teacherSpeaking,
-                                lectureScript = lectureScript,
-                                onStart = if (slidePage) vm::startLecture else vm::startSequence,
-                                onPause = vm::pauseSequence,
-                                onResume = vm::resumeSequence,
-                                onStop = vm::stopSequence,
-                                onAction = vm::triggerAction,
-                                onHideSpeech = vm::clearActionOverlay,
-                                sidePanel = sidePanel,
-                            )
-                        }
                         val sceneScroll = key(landscape) { rememberScrollState() }
                         if ((slidePage || experimentPage) && splitLecture) {
                             val gap = 12.dp
@@ -507,91 +583,27 @@ fun NativeClassroomPlayer(
                             Column(
                                 Modifier.fillMaxSize()
                                     .then(if (slidePage) Modifier.verticalScroll(sceneScroll) else Modifier)
-                                    .padding(horizontal = 14.dp, vertical = if (landscape) 8.dp else 12.dp),
+                                    .padding(
+                                        horizontal = if (quizPage) 10.dp else 14.dp,
+                                        vertical = if (landscape || quizPage) 8.dp else 12.dp,
+                                    ),
                                 verticalArrangement = Arrangement.spacedBy(11.dp),
                             ) {
-                                val isNativeQuiz = scenePlan?.type == "quiz" && state.disposition.mode == NativeSceneMode.NATIVE
-                                if (scenePlan != null && !slidePage && !isNativeQuiz) {
+                                if (scenePlan != null && !slidePage && !quizPage) {
                                     NativeSceneHeading(sceneTitle, scenePlan.type, compact = landscape)
                                 }
                                 Box(Modifier.fillMaxWidth().then(if (slidePage) Modifier else Modifier.weight(1f))) {
                                     renderScene(if (slidePage) Modifier.fillMaxWidth() else Modifier.fillMaxSize(), false)
                                 }
-                                renderActions(false)
+                                if (!quizPage) renderActions(false)
                             }
                         }
                     }
                 }
-                if (state.plan != null) {
-                    ClassroomFocusObservationBar(
-                        state = focusState,
-                        busy = focusPermissionPending,
-                        onToggle = toggleFocusObservation,
-                        onExport = { format ->
-                            if (!focusExportBusy) {
-                                focusExportBusy = true
-                                focusExportNotice = null
-                                focusScope.launch {
-                                    val uri = runCatching { focusController.export(format) }
-                                        .getOrNull()
-                                    focusExportBusy = false
-                                    if (uri == null) {
-                                        focusExportNotice = "没有可导出的窗口，或导出失败"
-                                    } else {
-                                        val send = Intent(Intent.ACTION_SEND).apply {
-                                            type = format.mimeType
-                                            putExtra(Intent.EXTRA_STREAM, uri)
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        runCatching {
-                                            context.startActivity(
-                                                Intent.createChooser(send, "导出课堂观察窗口"),
-                                            )
-                                        }.onFailure {
-                                            focusExportNotice = "无法打开系统分享面板"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        exportBusy = focusExportBusy,
-                        exportNotice = focusExportNotice,
-                    )
-                    if (focusState.enabled) {
-                        ClassroomAttentionReminderBar(
-                            model = attentionModel,
-                            state = attentionReminder,
-                            onToggle = { enabled ->
-                                attentionReminder =
-                                    ClassroomAttentionReminderPolicy.setEnabled(attentionReminder, enabled)
-                            },
-                            onPreviewToggle = { preview ->
-                                attentionReminder =
-                                    ClassroomAttentionReminderPolicy.setPreview(attentionReminder, preview)
-                            },
-                            onDismiss = {
-                                attentionReminder = ClassroomAttentionReminderPolicy.dismiss(attentionReminder)
-                            },
-                            onPause = {
-                                attentionReminder = ClassroomAttentionReminderPolicy.pause(attentionReminder)
-                            },
-                            onResume = {
-                                attentionReminder = ClassroomAttentionReminderPolicy.resume(attentionReminder)
-                            },
-                            onNoteTaking = {
-                                attentionReminder = ClassroomAttentionReminderPolicy.noteTaking(
-                                    attentionReminder,
-                                    focusState.latestWindow?.endOffsetMs ?: 0L,
-                                )
-                            },
-                            onFalsePositive = {
-                                attentionReminder = ClassroomAttentionReminderPolicy.falsePositive(
-                                    attentionReminder,
-                                    focusState.latestWindow?.endOffsetMs ?: 0L,
-                                )
-                            },
-                        )
-                    }
+                if (state.plan != null &&
+                    (!quizPage || focusState.enabled || focusState.busy || focusPermissionPending)
+                ) {
+                    renderObservation()
                 }
                 NativePagerBar(
                     page = state.page,
@@ -615,10 +627,38 @@ fun NativeClassroomPlayer(
                     level = state.level.level,
                     showMetrics = state.showMetrics,
                     compact = splitLecture,
+                    onOpenQuizTools = if (quizPage) ({ panel = "quiz-tools" }) else null,
                 )
             }
         }
 
+        if (quizPage && panel == "quiz-tools") {
+            NativePanelDialog(title = "课堂工具", onDismiss = { panel = null }, fullHeight = false) {
+                Column(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    ClassroomTools(
+                        onDirectory = { panel = "directory" },
+                        onNarration = {
+                            vm.toggleNarrationPanel()
+                            panel = "narration"
+                        },
+                        onClassmates = {
+                            vm.loadClassmates()
+                            panel = "classmates"
+                        },
+                        onWhiteboard = {
+                            panel = null
+                            vm.openWhiteboard()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    renderActions(false)
+                    renderObservation()
+                }
+            }
+        }
         if (panel == "directory") {
             NativePanelDialog(title = "课堂地图", onDismiss = { panel = null }) {
                 val plan = state.plan

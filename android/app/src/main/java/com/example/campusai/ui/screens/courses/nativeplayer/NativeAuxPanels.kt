@@ -79,6 +79,7 @@ import com.example.campusai.ui.theme.TextPrimary
 fun NativePanelDialog(
     title: String,
     onDismiss: () -> Unit,
+    fullHeight: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Dialog(
@@ -87,18 +88,19 @@ fun NativePanelDialog(
     ) {
         NativeClassroomTheme(paper = true) {
             Surface(
-                modifier = Modifier.widthIn(max = 840.dp).fillMaxWidth(0.94f).fillMaxHeight(0.9f),
+                modifier = Modifier.widthIn(max = 840.dp).fillMaxWidth(0.94f)
+                    .then(if (fullHeight) Modifier.fillMaxHeight(0.9f) else Modifier),
                 shape = RoundedCornerShape(18.dp),
                 color = Background,
             ) {
-                Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(title, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f).padding(start = 4.dp))
                         TextButton(onClick = onDismiss) { Text("关闭") }
                     }
                     Spacer(Modifier.height(7.dp))
-                    Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+                    Box(Modifier.weight(1f, fill = fullHeight).fillMaxWidth()) { content() }
                 }
             }
         }
