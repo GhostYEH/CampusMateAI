@@ -45,7 +45,13 @@ object ClassroomFocusObservationConfig {
     const val MIN_FACE_VISIBLE_RATIO = 0.2
 }
 
-/** 对外状态；文案即契约。无脸与暂不可观察都显示「无法判断」并附原因。 */
+/**
+ * 对外状态；文案即契约。无脸与暂不可观察都显示「无法判断」并附原因。
+ *
+ * 状态优先级固定为：暂不可观察 > 持续无脸 > 近期课堂操作 > 检测到人脸 > 正在观察。
+ * 「近期课堂操作」只是独立事实，不能把已经成立的「连续无脸」覆盖回可判断状态；
+ * 观察条会同时展示窗口内的翻页/交卷/提问计数。
+ */
 enum class ClassroomFocusStatus(val label: String) {
     OBSERVING("正在观察"),
     RECENT_ACTIVITY("近期有课堂操作"),
@@ -158,6 +164,20 @@ data class ClassroomObservationWindowDraft(
     val sampleCount: Int get() = validSamples + invalidSamples
 }
 
+/**
+ * 窗口时间契约（由 `ClassroomFocusObservation` 保证，调用方只需传单调时间）：
+ *
+ * - 会话起点从 `begin(atMs)` 开始；窗口 0 覆盖 `[start, start + 10s]`，窗口 N
+ *   （N ≥ 1）覆盖 `(start + N*10s, start + (N+1)*10s]`。边界时刻只归属一个窗口，
+ *   不会重复计数。
+ * - 采样时间 = 相机帧进入分析链的时间，而不是 ML Kit 回调完成时间；迟到回调
+ *   仍按采样时刻归档，不会把事实推入后续窗口。
+ * - 事件时间 = 学生操作实际发生时的单调时间。封窗后迟到的事件只保留在会话
+ *   事件历史中；已发布窗口是不可变快照，不会被回填。当前未满窗口在导出时按
+ *   查询截止时刻构建，只统计 `event.atMs <= cutoff` 的事实。
+ * - 窗口结束后不再接收采样；缺失的整窗以「检测采样中断」进入事实列表。
+ */
+
 /** 已关闭（或复盘导出时截断）的窗口级事实。 */
 data class ClassroomObservationWindow(
     val index: Int,
@@ -209,8 +229,13 @@ object ClassroomFocusObservation {
     fun stop(): ClassroomFocusState = ClassroomFocusState()
 
     /**
-     * 记录一次课堂操作。自动翻页、重放和全局触摸移动不应进入这里；即使误传，
+     * 记录一次学生主动课堂操作。自动翻页、重放和全局触摸移动不应进入这里；即使误传，
      * [ClassroomFocusEventSource] 也会把它们挡在窗口计数之外。
+     *
+     * 这里**不能**清空 `noFaceSinceMs`。学生翻页、交卷或提问是独立事实，不会让人脸
+     * 重新出现；否则每 8 秒一次的翻页会把 12 秒连续无脸阈值无限重置，观察条会永远
+     * 停在「检测到人脸/近期有课堂操作」，而不是「无法判断」。无脸计时只在有效画面
+     * 重新检测到人脸时由 [applySample] 清空。
      */
     fun recordEvent(
         state: ClassroomFocusState,
@@ -224,12 +249,15 @@ object ClassroomFocusObservation {
             .takeLast(ClassroomFocusObservationConfig.EVENT_HISTORY_LIMIT)
         return state.copy(
             lastActivityAtMs = atMs,
-            noFaceSinceMs = null,
             events = events,
         )
     }
 
-    /** 无效信号：暂不可观察并清空状态时间窗；已完成的窗口与当前窗口事实保留。 */
+    /**
+     * 无效信号：暂不可观察并清空人脸确认计时；已完成的窗口、当前窗口事实和
+     * 最近课堂操作都保留。操作不会改变「无法判断」状态，但可以作为独立事实
+     * 在观察条/导出中展示。
+     */
     fun markUnavailable(
         state: ClassroomFocusState,
         reason: ClassroomFocusReason,
@@ -243,7 +271,6 @@ object ClassroomFocusObservation {
             faceSinceMs = null,
             faceConfirmed = false,
             noFaceSinceMs = null,
-            lastActivityAtMs = null,
         )
     }
 

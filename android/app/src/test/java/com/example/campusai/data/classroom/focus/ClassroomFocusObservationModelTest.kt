@@ -121,6 +121,18 @@ class ClassroomFocusObservationModelTest {
         assertEquals(1, window.manualPageTurns)
         assertEquals(1, window.quizSubmissions)
         assertEquals(0, window.questions)
+
+        // 边界只归属一个窗口：10_000 属于窗口 0，10_001 进入窗口 1，不重复计数。
+        state = ClassroomFocusObservation.applySample(
+            state = state,
+            atMs = 20_000,
+            faceCount = 1,
+            sessionId = state.sessionId,
+        )
+        assertEquals(2, state.windows.size)
+        assertEquals(0, state.windows[1].manualPageTurns)
+        assertEquals(0, state.windows[1].quizSubmissions)
+        assertEquals(1, state.windows[1].questions)
     }
 
     @Test
@@ -325,6 +337,114 @@ class ClassroomFocusObservationModelTest {
         )
         assertEquals(ClassroomFocusStatus.FACE_MISSING, ClassroomFocusObservation.statusOf(state, 14_000))
         assertEquals(ClassroomFocusReason.NO_FACE, ClassroomFocusObservation.reasonOf(state, 14_000))
+    }
+
+    @Test
+    fun `page turns every eight seconds never reset the no-face timer`() {
+        // 先确认人脸，随后持续无脸；每 8 秒一次主动翻页。
+        var state = feed(ClassroomFocusObservation.begin(0), 0, 2_000, faceCount = 1)
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.PAGE_TURN, 10_000,
+        )
+        state = feed(state, 2_250, 13_750, faceCount = 0)
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.PAGE_TURN, 16_000,
+        )
+        state = feed(state, 14_000, 18_000, faceCount = 0)
+
+        // 翻页是独立事实，不能把连续无脸计时清回 0；达到 12 秒后必须仍为「无法判断」。
+        assertEquals(
+            ClassroomFocusStatus.FACE_MISSING,
+            ClassroomFocusObservation.statusOf(state, 18_000),
+        )
+        assertEquals(
+            ClassroomFocusReason.NO_FACE,
+            ClassroomFocusObservation.reasonOf(state, 18_000),
+        )
+    }
+
+    @Test
+    fun `activity after face missing stays a fact without replacing the verdict`() {
+        var state = feed(ClassroomFocusObservation.begin(0), 0, 2_000, faceCount = 1)
+        state = feed(state, 2_250, 14_250, faceCount = 0)
+        assertEquals(
+            ClassroomFocusStatus.FACE_MISSING,
+            ClassroomFocusObservation.statusOf(state, 14_250),
+        )
+
+        // 已经进入「无法判断」后再次翻页/交卷/提问，状态与原因不得被近期操作覆盖。
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.PAGE_TURN, 14_250,
+        )
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.SUBMIT_ANSWER, 14_750,
+        )
+        assertEquals(
+            ClassroomFocusStatus.FACE_MISSING,
+            ClassroomFocusObservation.statusOf(state, 15_000),
+        )
+        assertEquals(
+            ClassroomFocusReason.NO_FACE,
+            ClassroomFocusObservation.reasonOf(state, 15_000),
+        )
+        assertEquals(14_750L, state.lastActivityAtMs)
+
+        // 近期操作作为独立事实保留在窗口计数里，直到窗口封口。
+        state = feed(state, 15_000, 19_750, faceCount = 0)
+        state = ClassroomFocusObservation.applySample(
+            state, 20_000, faceCount = 0, sessionId = state.sessionId,
+        )
+        val window = state.windows.last()
+        assertEquals(1, window.index)
+        assertEquals(ClassroomObservationVerdict.UNOBSERVABLE, window.verdict)
+        assertEquals(ClassroomFocusReason.NO_FACE, window.unavailableReason)
+        assertEquals(1, window.manualPageTurns)
+        assertEquals(1, window.quizSubmissions)
+        assertEquals(0, window.questions)
+    }
+
+    @Test
+    fun `late event after a window closes never rewrites that window`() {
+        var state = feed(ClassroomFocusObservation.begin(0), 0, 9_750, faceCount = 1)
+        state = ClassroomFocusObservation.applySample(
+            state, 10_000, faceCount = 1, sessionId = state.sessionId,
+        )
+        assertEquals(0, state.windows.single().manualPageTurns)
+
+        // 操作发生在窗口 0 内，但直到窗口封口后才到达：已发布窗口是快照，不回填。
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.PAGE_TURN, 2_000,
+        )
+        assertEquals(0, state.windows.single().manualPageTurns)
+        assertEquals(1, state.events.size)
+
+        // 继续推进时，事件也不能倒灌进后续窗口。
+        state = feed(state, 10_250, 19_750, faceCount = 1)
+        state = ClassroomFocusObservation.applySample(
+            state, 20_000, faceCount = 1, sessionId = state.sessionId,
+        )
+        assertEquals(2, state.windows.size)
+        assertEquals(0, state.windows[0].manualPageTurns)
+        assertEquals(0, state.windows[1].manualPageTurns)
+    }
+
+    @Test
+    fun `invalid signal keeps recent activity facts for export`() {
+        var state = feed(ClassroomFocusObservation.begin(0), 0, 1_000, faceCount = 1)
+        state = ClassroomFocusObservation.recordEvent(
+            state, ClassroomFocusEventType.ASK_QUESTION, 1_250,
+        )
+        state = ClassroomFocusObservation.applySample(
+            state = state,
+            atMs = 1_500,
+            faceCount = 0,
+            valid = false,
+            invalidReason = ClassroomFocusReason.LOW_LIGHT,
+            sessionId = state.sessionId,
+        )
+        assertEquals(ClassroomFocusStatus.UNAVAILABLE, ClassroomFocusObservation.statusOf(state, 1_500))
+        assertEquals(1_250L, state.lastActivityAtMs)
+        assertEquals(1, state.events.size)
     }
 
     @Test

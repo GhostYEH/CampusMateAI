@@ -76,10 +76,67 @@ Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选
 - 采样：CameraX `ImageAnalysis` 约 4 次/秒，ML Kit 快速模式返回人脸数量、头部 yaw/pitch；Y 平面平均亮度用于弱光判断。每个观察会话只绑定一条分析链，关闭时解绑。
 - 窗口：以 `SystemClock.elapsedRealtime()` 聚合 10 秒非重叠窗口，记录有效采样数、无效采样数、人脸可见比例、yaw/pitch 均值/标准差/最小/最大与样本数、可获得课堂阶段（当前页类型或讲解态），以及学生主动翻页、交卷、提问的事件计数。每个窗口只取截止时点及之前的事件；自动翻页、重放事件和全局触摸移动不进入计数。
 - 状态与原因：无脸、多脸、弱光、相机占用、采样中断、视频冻结、检测失败、权限拒绝或启动失败时，观察条显示「无法判断」并给出具体原因。连续 2 秒检测到人脸才确认；确认后连续 12 秒有效画面缺脸才转为无法判断；单帧漏检不改变状态。
-- 第一阶段边界：观察条只呈现可观察事实，推理流程静默运行，不输出专注度、分心、学习效果结论。低头、转头、安静听课和暂时没有操作都不是分心判据，必须结合当前课堂任务解释；双人标注、按学生留出验证通过后再接入逻辑回归权重和面向学生的离题提醒，论文 benchmark 数字只作研究对照。
-- Debug 复盘：仅 `BuildConfig.DEBUG` 且观察已开启、已有窗口时显示「导出CSV / 导出JSON」。文件落在应用私有 cache，由测试者主动通过系统分享面板导出；内容只有会话内相对时间、窗口数值统计、事件计数和不可观察原因，不含课堂标题、账号、设备标识、人脸特征或原始帧。日常运行的摄像帧只在本机内存处理。
-- 生命周期：关闭观察、切到后台、离开播放器、换课或旋转重建时解绑 CameraX、关闭 ML Kit、取消看门狗并清空窗口；异步 ML Kit 回调带会话代次，关闭后重开的旧会话不能写入新窗口。权限对话框期间的旋转由 `rememberSaveable` 保留请求标记；取消开启后迟到的授权结果不会启动相机。旋转会重建播放器并停止观察，需要学生重新开启。
-- 代码：纯规则/窗口/导出在 `data/classroom/focus/ClassroomFocusObservationModel.kt` 与 `ClassroomObservationDebugExport.kt`；相机适配在 `ClassroomFocusObservationController.kt`；事件总线在 `ClassroomFocusActivityBus.kt`；UI 在 `ui/screens/courses/nativeplayer/ClassroomFocusObservationBar.kt`。单测覆盖 10 秒边界、截止后事件、无效画面、自动/手动翻页、关闭重开与旧会话回调。本轮只完成 JVM 单测与 `assembleDebug` 编译验证，真机权限、前后台、旋转和播放流畅度仍需按验收清单实测，不能把编译或纯规则测试表述为真机通过。
+- 第一阶段边界：观察条只呈现可观察事实；无脸、弱光、采样不足时明确「无法判断」。低头、转头、安静听课和暂时没有操作都不是分心判据，必须结合当前课堂任务解释。正式学生提醒必须同时满足真实试点数据、覆盖率与误提示门禁；合成数据只用于代码和数值一致性验证，不能当成真实结论。
+- 端侧投入推理：`ClassroomAttentionModel.kt` 读取 `assets/classroom_attention/model.json`，校验 schema、特征顺序、缺失值策略（训练折中位数填充）、归一化、Platt 校准和阈值。模型缺失、版本不匹配、特征不兼容或窗口未通过 `verdict=observable && face_visible_ratio>=0.2 && valid_coverage>=0.5` 时返回弃权，界面回退到事实观察，不生成离题结论。正式包不内置权重；Debug 只在正式产物缺失时回退到 `app/src/debug/assets/classroom_attention/model-preview.json` 的合成测试权重。
+- 学生提醒：只有产物 `release.eligible=true` 才显示正式开关，默认关闭、由学生主动开启。规则为连续 2 个可观察窗口、讲解/测验阶段抑制、120 秒冷却；提醒文案只描述最近约 20 秒的可观察信号，并提供「我在记笔记」（暂停 5 分钟）、「反馈误报」（暂停 10 分钟）、「暂停本堂」和「知道了」。Debug 的测试权重只显示「调试预览」，不能当作正式判断。
+- 发布门禁：真实试点数据 + 观察覆盖率 ≥ 0.80 + 误提示 ≤ 1.0 次/小时 + 双标注 Cohen κ ≥ 0.70 + 至少 5 名参与者。当前没有真实试点数据，合成产物 `release.eligible=false`，因此线上学生提醒保持关闭，课堂继续只提供事实观察。合成回放的实际提示延迟为 median/P90 20 秒（连续 2 个 10 秒窗口，第二次窗口结束才提示），未达到设计稿 10 秒试点初值；真实数据需重新校准连续窗口和阈值，不能把「窗口起点」算成提示时间。
+- 代码：纯规则/窗口/导出在 `data/classroom/focus/ClassroomFocusObservationModel.kt` 与 `ClassroomObservationDebugExport.kt`；相机适配在 `ClassroomFocusObservationController.kt`；事件总线在 `ClassroomFocusActivityBus.kt`；端侧模型与提醒策略在 `ClassroomAttentionModel.kt` / `ClassroomAttentionReminderPolicy.kt`；UI 在 `ui/screens/courses/nativeplayer/ClassroomFocusObservationBar.kt` 与 `ClassroomAttentionReminderBar.kt`。单测覆盖 10 秒边界、截止后事件、无脸被操作覆盖的回归、无效画面、自动/手动翻页、重复交卷、关闭重开、旧会话回调、模型缺失/版本不匹配、覆盖门槛与提醒冷却。本轮完成 JVM 单测、`:app:assembleDebug`、模拟器安装与冷启动，并在仓库脱敏 fixture 下登录后从首页「互动课堂」→「最近学习」进入原生播放器第 1/6 页。播放器内实测：相机授权后无脸约 14 秒进入「无法判断 · 持续未检测到人脸」；随后每 8 秒主动翻页 3 次到第 4/6 页，判定仍保持「无法判断」，事实行继续显示当前窗口「翻页 1 交卷 0 提问 0」；退到系统分享/后台后观察条显示「课堂观察已在后台停止，返回后可重新开启」，`dumpsys media.camera` 的活动客户端为空；竖屏→横屏旋转后观察关闭且相机同样释放。Debug 导出行出现后，显式「关闭课堂观察」按钮本轮被导出入口抢占为系统分享，未稳定复现其点击路径；显式关闭释放以单测与代码核对为准，退出重进沿用审计记录但本轮未重新采样。本轮未连接真机；模拟器虚拟摄像头不能替代真实摄像头验收，真实人脸、眼镜、光照、机型差异、播放流畅度和耗电仍需实测。不能把编译、纯规则测试或模拟器无脸结论当作真机通过。
+
+### 课堂投入离线管线复现
+
+离线管线位于 [`ml/classroom_attention`](../ml/classroom_attention)，不依赖 sklearn/pandas；原始画面不进入数据集，窗口、标注和导出只使用匿名参与者/会话编号。完整字段、标注协议、指标和限制见该目录的 `README.md`。
+
+```powershell
+Set-Location (Join-Path $repoRoot 'ml/classroom_attention')
+$env:PYTHONPATH = 'src'
+python -m unittest discover -s tests -v
+
+# 确定性合成样例：生成窗口、双人标注、合并、LOPO 训练、评估、导出与 golden
+python -m classroom_attention.cli run-synthetic --workdir datasets/synthetic_v1 --seed 20261124
+
+# 真实数据就绪后：导入 -> 校验 -> 双人标注合并 -> 数据集 -> LOPO 训练/评估 -> 导出
+python -m classroom_attention.cli validate --manifest datasets/pilot_v1/manifest.csv `
+  --report datasets/pilot_v1/validation.json
+python -m classroom_attention.cli merge --manifest datasets/pilot_v1/manifest.csv `
+  --annotator-a "A01:datasets/pilot_v1/annotations/A01.csv" `
+  --annotator-b "A02:datasets/pilot_v1/annotations/A02.csv" `
+  --adjudication datasets/pilot_v1/annotations/adjudication.csv `
+  --output datasets/pilot_v1/merged.jsonl --report datasets/pilot_v1/merge-report.json
+python -m classroom_attention.cli build-dataset --manifest datasets/pilot_v1/manifest.csv `
+  --merged datasets/pilot_v1/merged.jsonl --output datasets/pilot_v1/dataset.jsonl `
+  --report datasets/pilot_v1/dataset-summary.json
+# 这里的 κ 必须替换为 merge-report.json 中实际 Cohen κ；data-source=real 才会进入发布门禁
+python -m classroom_attention.cli train --dataset datasets/pilot_v1/dataset.jsonl `
+  --output-dir datasets/pilot_v1/artifacts --feature-set compare --data-source real `
+  --annotation-kappa 0.80
+python -m classroom_attention.cli evaluate --dataset datasets/pilot_v1/dataset.jsonl `
+  --model datasets/pilot_v1/artifacts/model-headpose.json `
+  --output datasets/pilot_v1/artifacts/metrics-headpose.json
+python -m classroom_attention.cli export --model datasets/pilot_v1/artifacts/model-headpose.json `
+  --output datasets/pilot_v1/artifacts/model-headpose.android.json
+python -m classroom_attention.cli golden --dataset datasets/pilot_v1/dataset.jsonl `
+  --model datasets/pilot_v1/artifacts/model-headpose.json `
+  --output datasets/pilot_v1/artifacts/golden_inference.json
+```
+
+接入与回退：
+
+1. 只有 `model-headpose.json` 的 `release.eligible=true` 时，才把它复制为 `android/app/src/main/assets/classroom_attention/model.json`，并把 `golden_inference.json` 同步到 `android/app/src/test/resources/classroom_attention/golden_inference.json`；重新运行 `:app:testDebugUnitTest` 确认特征、logit、概率和判定一致。
+2. 开发验证用 `android/app/src/debug/assets/classroom_attention/model-preview.json`，Debug 构建只在 main assets 缺少正式产物时加载它，界面明确标注「调试预览」。
+3. 回退时删除 main assets 的 `model.json`（或保留 `release.eligible=false` 的产物），重建后即只显示事实观察；版本/schema 不兼容、JSON 损坏或信号质量不足时同样自动回退，无需改 UI。
+
+Android 侧验证命令（必须显式指向 JDK 21；本机未设置 `JAVA_HOME` 时 `java` 不在 PATH）：
+
+```powershell
+Set-Location (Join-Path $repoRoot 'android')
+.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest `
+  --tests "com.example.campusai.data.classroom.focus.*" `
+  --tests "com.example.campusai.data.classroom.nativeplayer.ClassroomQuizCoordinatorTest" `
+  --console=plain
+.\gradlew.bat --no-daemon --max-workers=2 :app:assembleDebug --console=plain
+```
+
+Debug 构建优先读取 main assets 的正式产物；正式产物缺失时回退到合成测试权重（`app/src/debug/assets/classroom_attention/model-preview.json`）。正式构建不包含 `app/src/main/assets/classroom_attention/model.json`，模型缺失即回退事实观察。只有经真实数据验证并改写 `release.eligible=true` 后，才可把对应产物放入 main assets 并允许学生开启提醒。Kotlin/Python 数值一致性由 `ClassroomAttentionModelTest` 读取 `app/src/test/resources/classroom_attention/golden_inference.json` 对照；重新训练后需把 `golden` 命令生成的样例同步到该测试资源。
 
 ### 多人共同课堂
 

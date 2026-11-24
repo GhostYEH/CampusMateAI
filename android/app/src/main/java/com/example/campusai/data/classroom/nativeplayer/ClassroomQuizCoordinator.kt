@@ -70,6 +70,7 @@ class ClassroomQuizCoordinator(
     private var state = NativeQuizUiState(sceneId = sceneId, loading = true)
     private var editVersion = 0
     private var round = 0
+    private var lastNotifyKey: String? = null
     private var loadGeneration = 0
     private var draftDirty = false
     private var startNewOnNextSave = false
@@ -226,7 +227,6 @@ class ClassroomQuizCoordinator(
             update { it.copy(error = "还有 $unanswered 道题未作答") }
             return
         }
-        onSubmitted()
         val answers = state.answers
         val results = gradeQuiz(quiz, answers)
         val hasShort = quiz.questions.any { it.isShortAnswer }
@@ -234,6 +234,12 @@ class ClassroomQuizCoordinator(
         val submitRound = round
         val attemptId = state.attemptId
         val startNew = startNewOnNextSave
+        // 同一次作答失败后的原样重试是重复事件；只有改答案或开始新作答才重新计数。
+        val notifyKey = "${attemptId.orEmpty()}|$startNew|${answers.hashCode()}"
+        if (notifyKey != lastNotifyKey) {
+            lastNotifyKey = notifyKey
+            onSubmitted()
+        }
         val outcome = CompletableDeferred<SubmitOutcome>()
         pendingSubmit = PendingSubmit(
             outcome = outcome,

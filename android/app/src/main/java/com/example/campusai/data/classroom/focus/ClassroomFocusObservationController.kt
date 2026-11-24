@@ -423,9 +423,12 @@ class ClassroomFocusObservationController(
                     session.processing.set(false)
                     if (!isCurrent(session)) return@addOnSuccessListener
                     val face = faces.singleOrNull()
+                    // 采样时刻使用帧进入分析链的时间（`at`），而不是 ML Kit 回调完成
+                    // 的时间。异步检测可能跨过 10 秒窗口边界；按回调时间归档会把本应
+                    // 属于前一窗口的帧推入后一窗口。
                     applySample(
                         session = session,
-                        atMs = now(),
+                        atMs = at,
                         faceCount = faces.size,
                         yawDegrees = face?.headEulerAngleY?.toDouble(),
                         pitchDegrees = face?.headEulerAngleX?.toDouble(),
@@ -434,7 +437,8 @@ class ClassroomFocusObservationController(
                 .addOnFailureListener {
                     session.processing.set(false)
                     if (!isCurrent(session)) return@addOnFailureListener
-                    val failedAt = now()
+                    // 检测失败也按帧采样时刻归档，避免异步失败把无效采样推入后一窗口。
+                    val failedAt = at
                     scope.launch {
                         if (!isCurrent(session)) return@launch
                         session.observation = ClassroomFocusObservation.noteInvalidSample(

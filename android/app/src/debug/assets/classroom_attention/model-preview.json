@@ -1,0 +1,135 @@
+{
+  "calibration": {
+    "a": 1.6107016995448742,
+    "b": -0.6493520789360736,
+    "type": "platt"
+  },
+  "coefficients": [
+    -3.625454313689823,
+    -0.4635975626177901,
+    0.45589755125772286,
+    -0.4635975626177901,
+    0.45589755125772286,
+    0.4259563773713492,
+    0.4258408921212493,
+    -0.5483829623386677,
+    0.7661681636872343,
+    0.7662451783938796
+  ],
+  "coverage_gate": {
+    "min_face_visible_ratio": 0.2,
+    "min_valid_coverage": 0.5
+  },
+  "decision_threshold": 0.36,
+  "feature_labels": {
+    "face_visible_ratio": "人脸可见比例",
+    "pitch_mean": "俯仰均值",
+    "pitch_range": "俯仰极差",
+    "pitch_std": "俯仰标准差",
+    "questions": "主动提问次数",
+    "quiz_submissions": "主动交卷次数",
+    "stage_lecture": "讲解态",
+    "stage_quiz": "测验页",
+    "yaw_range": "偏航极差",
+    "yaw_std": "偏航标准差"
+  },
+  "feature_order": [
+    "face_visible_ratio",
+    "quiz_submissions",
+    "questions",
+    "stage_quiz",
+    "stage_lecture",
+    "yaw_std",
+    "yaw_range",
+    "pitch_mean",
+    "pitch_std",
+    "pitch_range"
+  ],
+  "feature_set": "headpose",
+  "impute": {
+    "face_visible_ratio": 0.775,
+    "invalid_ratio": 0.0,
+    "manual_page_turns": 0.0,
+    "pitch_mean": -7.683,
+    "pitch_range": 23.357,
+    "pitch_std": 5.839,
+    "questions": 0.0,
+    "quiz_submissions": 0.0,
+    "stage_lecture": 0.0,
+    "stage_quiz": 0.0,
+    "valid_coverage": 1.0,
+    "yaw_mean": 0.914,
+    "yaw_range": 25.24,
+    "yaw_std": 6.31
+  },
+  "intercept": -3.9126848178345104,
+  "missing_policy": "median_impute",
+  "model_version": "classroom-attention-synthetic-headpose",
+  "normalization": {
+    "face_visible_ratio": {
+      "mean": 0.7449570815450643,
+      "std": 0.17624114832812118
+    },
+    "pitch_mean": {
+      "mean": -10.044261802575107,
+      "std": 10.043539848634845
+    },
+    "pitch_range": {
+      "mean": 25.312909871244635,
+      "std": 8.597272878091905
+    },
+    "pitch_std": {
+      "mean": 6.328236051502145,
+      "std": 2.1493377441135455
+    },
+    "questions": {
+      "mean": 0.10300429184549356,
+      "std": 0.303964484285421
+    },
+    "quiz_submissions": {
+      "mean": 0.09871244635193133,
+      "std": 0.2982755425561211
+    },
+    "stage_lecture": {
+      "mean": 0.10300429184549356,
+      "std": 0.303964484285421
+    },
+    "stage_quiz": {
+      "mean": 0.09871244635193133,
+      "std": 0.2982755425561211
+    },
+    "yaw_range": {
+      "mean": 26.678214592274678,
+      "std": 9.675100513893907
+    },
+    "yaw_std": {
+      "mean": 6.669583690987124,
+      "std": 2.418760031191474
+    }
+  },
+  "release": {
+    "eligible": false,
+    "reason": "synthetic_or_non_pilot_data",
+    "required": {
+      "max_false_alerts_per_hour": 1.0,
+      "min_annotation_kappa": 0.7,
+      "min_participants": 5,
+      "min_valid_observation_coverage": 0.8,
+      "real_pilot_data": true
+    }
+  },
+  "schema_version": 1,
+  "training": {
+    "annotation_kappa": 0.797141539880129,
+    "data_source": "synthetic",
+    "negative": 175,
+    "participants": 12,
+    "positive": 58,
+    "threshold_selection": {
+      "false_alerts_per_hour": 0.0,
+      "off_task_segments": 24,
+      "true_alerts": 23
+    },
+    "windows": 240
+  }
+}

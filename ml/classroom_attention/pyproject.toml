@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campusmate-classroom-attention"
+version = "0.1.0"
+description = "Offline window import, dual annotation merge, LOPO evaluation and lightweight model export for the interactive classroom native player."
+requires-python = ">=3.11,<3.14"
+dependencies = ["numpy>=1.26"]
+
+[project.scripts]
+classroom-attention = "classroom_attention.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

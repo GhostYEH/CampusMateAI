@@ -55,6 +55,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -104,6 +105,10 @@ import com.example.campusai.data.classroom.nativeplayer.NativeClassroomRef
 import com.example.campusai.data.classroom.nativeplayer.NativeClassroomText
 import com.example.campusai.data.classroom.nativeplayer.NativePlaybackPolicy
 import com.example.campusai.data.classroom.nativeplayer.NativeSceneMode
+import com.example.campusai.data.classroom.focus.ClassroomAttentionInference
+import com.example.campusai.data.classroom.focus.ClassroomAttentionModelLoad
+import com.example.campusai.data.classroom.focus.ClassroomAttentionModelLoader
+import com.example.campusai.data.classroom.focus.ClassroomAttentionReminderPolicy
 import com.example.campusai.data.classroom.focus.ClassroomFocusObservationController
 import com.example.campusai.data.classroom.focus.ClassroomObservationExportFormat
 import com.example.campusai.data.repository.AppRepository
@@ -118,7 +123,9 @@ import com.example.campusai.ui.theme.Muted
 import com.example.campusai.ui.theme.Primary
 import com.example.campusai.ui.theme.Surface
 import com.example.campusai.ui.theme.TextPrimary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /**
@@ -164,6 +171,36 @@ fun NativeClassroomPlayer(
     val focusScope = rememberCoroutineScope()
     var focusExportBusy by remember(ref.stableKey) { mutableStateOf(false) }
     var focusExportNotice by remember(ref.stableKey) { mutableStateOf<String?>(null) }
+
+    // 端侧模型只在明确具备发布资格时参与学生提醒；缺失/版本不兼容/信号不足时
+    // ClassroomAttentionInference 返回 null，界面继续只显示事实观察。
+    val attentionModel by produceState<ClassroomAttentionModelLoad>(
+        initialValue = ClassroomAttentionModelLoad.Missing,
+        key1 = application,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            ClassroomAttentionModelLoader(application).load()
+        }
+    }
+    var attentionReminder by remember(ref.stableKey) {
+        mutableStateOf(ClassroomAttentionReminderPolicy.initial())
+    }
+    LaunchedEffect(focusState.enabled, focusState.windowCount, focusState.latestWindow, attentionModel) {
+        val artifact = (attentionModel as? ClassroomAttentionModelLoad.Ready)?.artifact
+        val window = focusState.latestWindow
+        if (!focusState.enabled || artifact == null) {
+            attentionReminder = ClassroomAttentionReminderPolicy.reset(attentionReminder)
+            return@LaunchedEffect
+        }
+        if (window != null && attentionReminder.processing) {
+            val prediction = ClassroomAttentionInference.predict(artifact, window)
+            attentionReminder = ClassroomAttentionReminderPolicy.onWindow(
+                attentionReminder,
+                prediction,
+                window,
+            )
+        }
+    }
     val focusPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -276,7 +313,8 @@ fun NativeClassroomPlayer(
     val showCanvas = lessonText.isEmpty() || !state.readNotes || lectureVisible
     // 只把播放器实际可得的课堂阶段作为窗口事实；不推断学生是否在听。
     val observationStage = when {
-        state.sequence.active -> "lecture"
+        // 讲解聚光、激光指示或顺序讲解都视为讲解态，避免在这段时间弹学生提醒。
+        lectureVisible -> "lecture"
         state.disposition.mode == NativeSceneMode.SANDBOX_HTML -> "sandbox_html"
         state.disposition.mode == NativeSceneMode.SANDBOX_URL -> "sandbox_url"
         state.disposition.mode != NativeSceneMode.NATIVE -> "unavailable"
@@ -519,6 +557,41 @@ fun NativeClassroomPlayer(
                         exportBusy = focusExportBusy,
                         exportNotice = focusExportNotice,
                     )
+                    if (focusState.enabled) {
+                        ClassroomAttentionReminderBar(
+                            model = attentionModel,
+                            state = attentionReminder,
+                            onToggle = { enabled ->
+                                attentionReminder =
+                                    ClassroomAttentionReminderPolicy.setEnabled(attentionReminder, enabled)
+                            },
+                            onPreviewToggle = { preview ->
+                                attentionReminder =
+                                    ClassroomAttentionReminderPolicy.setPreview(attentionReminder, preview)
+                            },
+                            onDismiss = {
+                                attentionReminder = ClassroomAttentionReminderPolicy.dismiss(attentionReminder)
+                            },
+                            onPause = {
+                                attentionReminder = ClassroomAttentionReminderPolicy.pause(attentionReminder)
+                            },
+                            onResume = {
+                                attentionReminder = ClassroomAttentionReminderPolicy.resume(attentionReminder)
+                            },
+                            onNoteTaking = {
+                                attentionReminder = ClassroomAttentionReminderPolicy.noteTaking(
+                                    attentionReminder,
+                                    focusState.latestWindow?.endOffsetMs ?: 0L,
+                                )
+                            },
+                            onFalsePositive = {
+                                attentionReminder = ClassroomAttentionReminderPolicy.falsePositive(
+                                    attentionReminder,
+                                    focusState.latestWindow?.endOffsetMs ?: 0L,
+                                )
+                            },
+                        )
+                    }
                 }
                 NativePagerBar(
                     page = state.page,

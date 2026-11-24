@@ -220,3 +220,58 @@ Lint 剩余 5 个 error 均为既有问题且不在课堂文件内：`SeeduplexR
 - 全仓 lint 规则迁移、正式包名/签名切换仍作为独立事项；本轮只运行现有 lint。
 - 网页奖励与原生账本仍各自独立；本轮只保证规则一致和网页账本按服务/账号/课堂隔离，不做跨账本迁移。
 - 经典讲解合成、白板编辑、AI 同学对话等既有缺口未在本轮扩展。
+
+## 11. 课堂投入识别（2026-11-24）
+
+本轮在原生播放器补齐「课堂观察」事实链路与端侧推理接点。范围只覆盖互动课堂原生播放器；教师侧仍沿用已有课堂参与事实，不从摄像帧推断专注度。
+
+### 11.1 已修复与验证
+
+- 无脸/弱光等不可观察原因优先于「近期操作」：持续无脸达到 12 秒后，即使每 8 秒手动翻页，观察条仍显示「无法判断 · 持续未检测到人脸」；最近 10 秒窗口的翻页计数作为独立事实保留，不再把状态改成「近期有操作」。回归用例 `page turns every eight seconds never reset the no-face timer` 通过。
+- 窗口使用相机帧采样时刻；课堂事件使用发生时的单调时刻，只进入截止时已发生的窗口；边界事件归属正在关闭的窗口，迟到事件不回溯改写旧窗口。自动翻页、重放和同一次失败提交的原样重试不计入主动操作。关闭、退后台、旋转、换课和退出均停止相机并清空窗口，旧会话回调带代次校验被丢弃。
+
+### 11.2 模拟器端到端
+
+设备：AVD `Medium_Phone_API_37.0`（API 37，1080×2400），模拟器前置摄像头为虚拟场景，画面中没有真人。服务端：`backend/tests/fixtures/classroom_playback_server.py`，`127.0.0.1:8000`，App API Base `http://10.0.2.2:8000/api/v1/`；账号 `student_demo / Demo123456`。入口：首页「互动课堂」→ 最近学习「自主学习 · 继续上课」→ 原生课堂第 4/6 页。
+
+| 操作 | 结果 |
+| --- | --- |
+| 开启课堂观察并授权相机 | 通过；出现相机预览与「检测中」，Debug 构建显示「调试：课堂提醒预览（权重未发布）」 |
+| 无真人画面持续 16 秒 | 通过；显示「无法判断 · 持续未检测到人脸」，事实行显示 `10秒窗口无法判断 · 持续未检测到人脸 · 翻页 0 交卷 0 提问 0` |
+| 无脸期间每 8 秒手动翻页 3 次 | 通过；状态始终保持「无法判断 · 持续未检测到人脸」，翻页作为独立事实计数，未覆盖判定 |
+| 开启调试预览权重（无脸） | 通过；20 秒后仍无学生提醒，预览行显示「测试权重不参与正式判断」 |
+| 关闭观察 | 通过；`dumpsys media.camera` 显示 `DISCONNECT device 1 client for package com.example.campusai`，观察条回到「课堂观察未开启」 |
+| 退后台→回前台 | 通过；后台时相机断开，回前台提示「课堂观察已在后台停止，返回后可重新开启」 |
+| 竖屏→横屏旋转 | 通过；播放器重建、观察关闭、相机断开，需学生重新开启 |
+| 保存并退出→再进入 | 通过；相机在退出确认时释放，新会话观察未开启、窗口从零开始 |
+
+真机摄像头（含真实人脸、眼镜、逆光/弱光、机型差异）未执行；模拟器虚拟场景只能证明无脸与生命周期路径，不能替代真实摄像头验证。
+
+2026-11-24 17:06 复核：fixture 登录后重新走首页「互动课堂」→ 最近学习 → 原生播放器，复跑相机授权、约 14 秒无脸、每 8 秒手动翻页 3 次（到第 4/6 页）、退后台和竖屏→横屏旋转；无脸判定未被翻页覆盖，后台和旋转后 `dumpsys media.camera` 活动客户端为空。显式关闭按钮在 Debug 导出行出现后被导出入口抢占为系统分享，未稳定复现其点击路径；“保存并退出→再进入”本轮未重跑，表中该两行沿用上一轮记录。
+
+### 11.3 命令与结果
+
+```powershell
+# 离线管线（无第三方训练依赖，固定种子）
+Set-Location ml\classroom_attention
+$env:PYTHONPATH = 'src'
+python -m unittest discover -s tests -v
+python -m classroom_attention.cli run-synthetic --workdir datasets\synthetic_v1 --seed 20261124
+
+# Android（JDK 21）
+Set-Location ..\..\android
+.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest --tests "*ClassroomAttention*"
+.\gradlew.bat --no-daemon --max-workers=2 :app:testDebugUnitTest
+.\gradlew.bat --no-daemon --max-workers=2 :app:assembleDebug
+```
+
+- 离线单元测试 21 项通过；`run-synthetic` 重跑得到与已存产物逐字节一致的窗口、κ、指标和 golden 样例。
+- Android 课堂观察/投入定向测试 41 项通过（观察模型 17、导出 3、模型 10、提醒策略 11）；课堂作答协调 21 项通过。
+- 全量 `:app:testDebugUnitTest`：808 项、6 失败、1 跳过。失败均为既有或工作区环境原因，与本轮改动无关：`PersonAnalyzerTest`（Mockito 未完成桩）、`ExpressionModelAssetContractTest`（Robolectric 资产缺失，含 AndroidTest 同名项）、`GlassControlCoverageTest`（仓库既有玻璃控件债务）、`ClassicDashboardOnlyContractTest`（既有首页契约）、`ClassroomRewardsContractTest`（当前工作区另一会话删除了 `ios/`，未纳入本轮提交）。
+- `:app:assembleDebug` 成功，APK 安装到模拟器；Debug 包包含 `assets/classroom_attention/model-preview.json`（合成权重，`release.eligible=false`）。
+- 当前发布状态：Release 无模型，只启用事实观察；Debug 可显式开启实验预览推理，不回写正式判断。没有真实试点数据，学生提醒保持关闭。
+
+### 11.4 仍缺的输入
+
+- 真实试点：至少 5 名匿名参与者、每位若干课堂窗口、两名标注员独立标注（`on_task/off_task/unobservable`）及经同意的人工裁决记录。达到 README 的覆盖率、误提示和 κ 门禁后，才把 `release.eligible=true` 的产物放入 main assets。
+- 真机：Android 设备上的权限、前后台、旋转、退出、摄像头释放、头姿采样，以及开关观察时的播放流畅度和耗电对比。模拟器结论不能替代。

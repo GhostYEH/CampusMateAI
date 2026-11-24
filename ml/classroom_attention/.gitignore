@@ -1,0 +1,5 @@
+artifacts/
+# 试点窗口、标注和生成数据只留在本机；用 CLI 可重复生成合成样例。
+datasets/
+*.pyc
+__pycache__/

@@ -183,9 +183,12 @@ internal fun ClassroomFocusObservationBar(
 
 private fun observationFacts(window: ClassroomObservationWindow?): String? {
     if (window == null) return null
+    val activity = "翻页 ${window.manualPageTurns} 交卷 ${window.quizSubmissions} 提问 ${window.questions}"
     if (window.verdict == ClassroomObservationVerdict.UNOBSERVABLE) {
         val reason = window.unavailableReason?.label ?: "有效信号不足"
-        return "10秒窗口无法判断 · $reason"
+        // 无法判断与原因是主事实；主动操作作为独立的近期事实继续展示，
+        // 既不能覆盖「无法判断」，也不会被无脸/弱光静默丢掉。
+        return "10秒窗口无法判断 · $reason · $activity"
     }
     val facePercent = (window.faceVisibleRatio * 100).roundToInt()
     val head = when {
@@ -196,8 +199,7 @@ private fun observationFacts(window: ClassroomObservationWindow?): String? {
         else -> "头部角度不可用"
     }
     val stage = stageLabel(window.dominantStage)
-    return "10秒窗口：人脸 $facePercent% · $head · " +
-        "翻页 ${window.manualPageTurns} 交卷 ${window.quizSubmissions} 提问 ${window.questions} · $stage"
+    return "10秒窗口：人脸 $facePercent% · $head · $activity · $stage"
 }
 
 private fun degrees(value: Double): String = String.format(Locale.US, "%.1f°", value)

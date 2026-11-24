@@ -93,6 +93,7 @@ class ClassroomQuizCoordinatorTest {
         isCurrent: () -> Boolean = { true },
         isSessionCurrent: () -> Boolean = { true },
         onSettled: (Int, Int) -> Unit = { _, _ -> },
+        onSubmitted: () -> Unit = {},
         onState: (NativeQuizUiState) -> Unit = {},
     ) = ClassroomQuizCoordinator(
         sceneId = sceneId,
@@ -105,6 +106,7 @@ class ClassroomQuizCoordinatorTest {
         scope = this,
         onState = onState,
         onSettled = onSettled,
+        onSubmitted = onSubmitted,
     )
 
     @Test
@@ -639,6 +641,42 @@ class ClassroomQuizCoordinatorTest {
         assertEquals(NativeQuizSubmitState.Confirmed, state?.submitState)
         assertTrue(state?.showReport == true)
         assertFalse(server.requests.last().startNewAttempt)
+    }
+
+    @Test
+    fun `failed submit retry is one classroom event unless answers change`() = runTest {
+        val server = FakeServer()
+        server.failure = ClassroomApiException(422, "QUIZ_INVALID", "答案不完整")
+        var state: NativeQuizUiState? = null
+        var submitted = 0
+        val writer = coordinator(
+            "scene-a",
+            server,
+            onState = { state = it },
+            onSubmitted = { submitted += 1 },
+        )
+        writer.load()
+        advanceUntilIdle()
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("A")))
+        writer.setAnswer("q2", NativeAnswer(selected = setOf("B")))
+
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals(NativeQuizSubmitState.Failed, state?.submitState)
+        assertEquals(1, submitted)
+
+        // 原样重试是同一份作答，不能被课堂观察重复计数。
+        server.failure = ClassroomApiException(422, "QUIZ_INVALID", "答案不完整")
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals(1, submitted)
+        assertEquals(NativeQuizSubmitState.Failed, state?.submitState)
+
+        // 学生修改答案后再次交卷是一次新的主动操作。
+        writer.setAnswer("q1", NativeAnswer(selected = setOf("B")))
+        writer.submit()
+        advanceUntilIdle()
+        assertEquals(2, submitted)
     }
 
     @Test

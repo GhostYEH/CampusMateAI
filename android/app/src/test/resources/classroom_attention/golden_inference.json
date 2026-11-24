@@ -1,0 +1,384 @@
+{
+  "cases": [
+    {
+      "expected_decision": "on_task",
+      "expected_logit": -11.41674736259197,
+      "expected_probability": 5.3921240109926466e-09,
+      "features": {
+        "face_visible_ratio": 0.975,
+        "pitch_mean": 0.738,
+        "pitch_range": 20.299,
+        "pitch_std": 5.075,
+        "questions": 0.0,
+        "quiz_submissions": 0.0,
+        "stage_lecture": 0.0,
+        "stage_quiz": 0.0,
+        "yaw_range": 12.055,
+        "yaw_std": 3.014
+      },
+      "name": "P001-S001-0",
+      "window": {
+        "complete": true,
+        "dominant_stage": "slide",
+        "end_offset_ms": 10000,
+        "face_visible_ratio": 0.975,
+        "face_visible_samples": 39,
+        "index": 0,
+        "invalid_samples": 0,
+        "manual_page_turns": 0,
+        "pitch": {
+          "max": 10.887,
+          "mean": 0.738,
+          "min": -9.412,
+          "samples": 39,
+          "standard_deviation": 5.075
+        },
+        "questions": 0,
+        "quiz_submissions": 0,
+        "stage_counts": {
+          "slide": 40
+        },
+        "start_offset_ms": 0,
+        "unavailable_reason": null,
+        "valid_samples": 40,
+        "verdict": "observable",
+        "yaw": {
+          "max": 8.131,
+          "mean": 2.104,
+          "min": -3.924,
+          "samples": 39,
+          "standard_deviation": 3.014
+        }
+      }
+    },
+    {
+      "expected_decision": "on_task",
+      "expected_logit": -8.855065323134705,
+      "expected_probability": 3.339678258307094e-07,
+      "features": {
+        "face_visible_ratio": 0.875,
+        "pitch_mean": -5.885,
+        "pitch_range": 17.26,
+        "pitch_std": 4.315,
+        "questions": 0.0,
+        "quiz_submissions": 0.0,
+        "stage_lecture": 0.0,
+        "stage_quiz": 0.0,
+        "yaw_range": 19.834,
+        "yaw_std": 4.958
+      },
+      "name": "P001-S001-1",
+      "window": {
+        "complete": true,
+        "dominant_stage": "slide",
+        "end_offset_ms": 20000,
+        "face_visible_ratio": 0.875,
+        "face_visible_samples": 35,
+        "index": 1,
+        "invalid_samples": 0,
+        "manual_page_turns": 0,
+        "pitch": {
+          "max": 2.745,
+          "mean": -5.885,
+          "min": -14.515,
+          "samples": 35,
+          "standard_deviation": 4.315
+        },
+        "questions": 0,
+        "quiz_submissions": 0,
+        "stage_counts": {
+          "slide": 40
+        },
+        "start_offset_ms": 10000,
+        "unavailable_reason": null,
+        "valid_samples": 40,
+        "verdict": "observable",
+        "yaw": {
+          "max": 11.19,
+          "mean": 1.273,
+          "min": -8.644,
+          "samples": 35,
+          "standard_deviation": 4.958
+        }
+      }
+    },
+    {
+      "expected_decision": "on_task",
+      "expected_logit": -4.03437882279208,
+      "expected_probability": 0.0007861842337997475,
+      "features": {
+        "face_visible_ratio": 0.775,
+        "pitch_mean": -21.303,
+        "pitch_range": 29.336,
+        "pitch_std": 7.334,
+        "questions": 0.0,
+        "quiz_submissions": 0.0,
+        "stage_lecture": 0.0,
+        "stage_quiz": 0.0,
+        "yaw_range": 17.213,
+        "yaw_std": 4.303
+      },
+      "name": "P001-S001-2",
+      "window": {
+        "complete": true,
+        "dominant_stage": "slide",
+        "end_offset_ms": 30000,
+        "face_visible_ratio": 0.775,
+        "face_visible_samples": 31,
+        "index": 2,
+        "invalid_samples": 0,
+        "manual_page_turns": 0,
+        "pitch": {
+          "max": -6.635,
+          "mean": -21.303,
+          "min": -35.971,
+          "samples": 31,
+          "standard_deviation": 7.334
+        },
+        "questions": 0,
+        "quiz_submissions": 0,
+        "stage_counts": {
+          "slide": 40
+        },
+        "start_offset_ms": 20000,
+        "unavailable_reason": null,
+        "valid_samples": 40,
+        "verdict": "observable",
+        "yaw": {
+          "max": 10.252,
+          "mean": 1.645,
+          "min": -6.961,
+          "samples": 31,
+          "standard_deviation": 4.303
+        }
+      }
+    },
+    {
+      "expected_decision": "on_task",
+      "expected_logit": -7.6535216361755145,
+      "expected_probability": 2.3131630160888824e-06,
+      "features": {
+        "face_visible_ratio": 0.775,
+        "pitch_mean": -26.502,
+        "pitch_range": 20.434,
+        "pitch_std": 5.108,
+        "questions": 0.0,
+        "quiz_submissions": 1.0,
+        "stage_lecture": 0.0,
+        "stage_quiz": 1.0,
+        "yaw_range": 26.214,
+        "yaw_std": 6.553
+      },
+      "name": "P001-S001-3",
+      "window": {
+        "complete": true,
+        "dominant_stage": "quiz",
+        "end_offset_ms": 40000,
+        "face_visible_ratio": 0.775,
+        "face_visible_samples": 31,
+        "index": 3,
+        "invalid_samples": 0,
+        "manual_page_turns": 1,
+        "pitch": {
+          "max": -16.285,
+          "mean": -26.502,
+          "min": -36.719,
+          "samples": 31,
+          "standard_deviation": 5.108
+        },
+        "questions": 0,
+        "quiz_submissions": 1,
+        "stage_counts": {
+          "quiz": 40
+        },
+        "start_offset_ms": 30000,
+        "unavailable_reason": null,
+        "valid_samples": 40,
+        "verdict": "observable",
+        "yaw": {
+          "max": 23.727,
+          "mean": 10.62,
+          "min": -2.487,
+          "samples": 31,
+          "standard_deviation": 6.553
+        }
+      }
+    },
+    {
+      "expected_decision": "off_task",
+      "expected_logit": 10.80541475608556,
+      "expected_probability": 0.9999999471045168,
+      "features": {
+        "face_visible_ratio": 0.0,
+        "pitch_mean": null,
+        "pitch_range": null,
+        "pitch_std": null,
+        "questions": 0.0,
+        "quiz_submissions": 0.0,
+        "stage_lecture": 0.0,
+        "stage_quiz": 0.0,
+        "yaw_range": null,
+        "yaw_std": null
+      },
+      "name": "P006-S001-2",
+      "window": {
+        "complete": true,
+        "dominant_stage": "slide",
+        "end_offset_ms": 30000,
+        "face_visible_ratio": 0.0,
+        "face_visible_samples": 0,
+        "index": 2,
+        "invalid_samples": 0,
+        "manual_page_turns": 1,
+        "pitch": null,
+        "questions": 0,
+        "quiz_submissions": 0,
+        "stage_counts": {
+          "slide": 40
+        },
+        "start_offset_ms": 20000,
+        "unavailable_reason": "no_face",
+        "valid_samples": 40,
+        "verdict": "unobservable",
+        "yaw": null
+      }
+    }
+  ],
+  "description": "Python golden inference for Kotlin parity.",
+  "model": {
+    "calibration": {
+      "a": 1.6107016995448742,
+      "b": -0.6493520789360736,
+      "type": "platt"
+    },
+    "coefficients": [
+      -3.625454313689823,
+      -0.4635975626177901,
+      0.45589755125772286,
+      -0.4635975626177901,
+      0.45589755125772286,
+      0.4259563773713492,
+      0.4258408921212493,
+      -0.5483829623386677,
+      0.7661681636872343,
+      0.7662451783938796
+    ],
+    "coverage_gate": {
+      "min_face_visible_ratio": 0.2,
+      "min_valid_coverage": 0.5
+    },
+    "decision_threshold": 0.36,
+    "feature_labels": {
+      "face_visible_ratio": "人脸可见比例",
+      "pitch_mean": "俯仰均值",
+      "pitch_range": "俯仰极差",
+      "pitch_std": "俯仰标准差",
+      "questions": "主动提问次数",
+      "quiz_submissions": "主动交卷次数",
+      "stage_lecture": "讲解态",
+      "stage_quiz": "测验页",
+      "yaw_range": "偏航极差",
+      "yaw_std": "偏航标准差"
+    },
+    "feature_order": [
+      "face_visible_ratio",
+      "quiz_submissions",
+      "questions",
+      "stage_quiz",
+      "stage_lecture",
+      "yaw_std",
+      "yaw_range",
+      "pitch_mean",
+      "pitch_std",
+      "pitch_range"
+    ],
+    "feature_set": "headpose",
+    "impute": {
+      "face_visible_ratio": 0.775,
+      "invalid_ratio": 0.0,
+      "manual_page_turns": 0.0,
+      "pitch_mean": -7.683,
+      "pitch_range": 23.357,
+      "pitch_std": 5.839,
+      "questions": 0.0,
+      "quiz_submissions": 0.0,
+      "stage_lecture": 0.0,
+      "stage_quiz": 0.0,
+      "valid_coverage": 1.0,
+      "yaw_mean": 0.914,
+      "yaw_range": 25.24,
+      "yaw_std": 6.31
+    },
+    "intercept": -3.9126848178345104,
+    "missing_policy": "median_impute",
+    "model_version": "classroom-attention-synthetic-headpose",
+    "normalization": {
+      "face_visible_ratio": {
+        "mean": 0.7449570815450643,
+        "std": 0.17624114832812118
+      },
+      "pitch_mean": {
+        "mean": -10.044261802575107,
+        "std": 10.043539848634845
+      },
+      "pitch_range": {
+        "mean": 25.312909871244635,
+        "std": 8.597272878091905
+      },
+      "pitch_std": {
+        "mean": 6.328236051502145,
+        "std": 2.1493377441135455
+      },
+      "questions": {
+        "mean": 0.10300429184549356,
+        "std": 0.303964484285421
+      },
+      "quiz_submissions": {
+        "mean": 0.09871244635193133,
+        "std": 0.2982755425561211
+      },
+      "stage_lecture": {
+        "mean": 0.10300429184549356,
+        "std": 0.303964484285421
+      },
+      "stage_quiz": {
+        "mean": 0.09871244635193133,
+        "std": 0.2982755425561211
+      },
+      "yaw_range": {
+        "mean": 26.678214592274678,
+        "std": 9.675100513893907
+      },
+      "yaw_std": {
+        "mean": 6.669583690987124,
+        "std": 2.418760031191474
+      }
+    },
+    "release": {
+      "eligible": false,
+      "reason": "synthetic_or_non_pilot_data",
+      "required": {
+        "max_false_alerts_per_hour": 1.0,
+        "min_annotation_kappa": 0.7,
+        "min_participants": 5,
+        "min_valid_observation_coverage": 0.8,
+        "real_pilot_data": true
+      }
+    },
+    "schema_version": 1,
+    "training": {
+      "annotation_kappa": 0.797141539880129,
+      "data_source": "synthetic",
+      "negative": 175,
+      "participants": 12,
+      "positive": 58,
+      "threshold_selection": {
+        "false_alerts_per_hour": 0.0,
+        "off_task_segments": 24,
+        "true_alerts": 23
+      },
+      "windows": 240
+    }
+  },
+  "schema_version": 1
+}
