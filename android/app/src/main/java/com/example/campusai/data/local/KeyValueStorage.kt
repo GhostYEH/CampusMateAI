@@ -14,9 +14,12 @@ interface KeyValueStorage {
     /**
      * 把最终代次校验和写入放在同一个存储事务里。
      * 默认实现用于内存存储；真实 DataStore 必须覆盖为原子事务。
+     * 返回是否真的写入，代次守卫跳过时调用方必须得到明确的未落盘结果。
      */
-    suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean) {
-        if (shouldWrite()) saveRaw(key, value)
+    suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean): Boolean {
+        if (!shouldWrite()) return false
+        saveRaw(key, value)
+        return true
     }
 }
 
@@ -35,10 +38,11 @@ class InMemoryKeyValueStorage : KeyValueStorage {
         flows[key]?.value = value
     }
 
-    override suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean) {
+    override suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean): Boolean {
         // 内存实现无挂起点，校验与赋值在同一段代码内完成。
-        if (!shouldWrite()) return
+        if (!shouldWrite()) return false
         map[key] = value
         flows[key]?.value = value
+        return true
     }
 }

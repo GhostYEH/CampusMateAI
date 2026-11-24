@@ -58,12 +58,18 @@ object ClassroomLocalWriteGate {
     private val idleSignals = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val lastResults = mutableMapOf<String, ClassroomWriteResult>()
     private val latestSnapshots = mutableMapOf<String, ClassroomLocalSnapshot>()
+
+    /** 正在恢复的「记录键 -> 快照代次」；同一份快照只能由一个任务认领。 */
+    private val recovering = mutableMapOf<String, Long>()
     private var nextGrant = 0L
 
     @Synchronized
     fun grant(key: String): Long {
         nextGrant += 1
         latestGrants[key] = nextGrant
+        // 新代次一旦开始，旧恢复就不能再代表当前状态。清理旧标记，
+        // 让后续打开看到新代次的实际结果而不是永久停留在待确认。
+        recovering.remove(key)
         return nextGrant
     }
 
@@ -93,12 +99,41 @@ object ClassroomLocalWriteGate {
     @Synchronized
     fun rememberSnapshot(key: String, grant: Long, payload: String) {
         if (latestGrants[key] == grant) {
-            latestSnapshots[key] = ClassroomLocalSnapshot(grant, payload)
+            latestSnapshots[key] = ClassroomLocalSnapshot(key, grant, payload)
         }
     }
 
     @Synchronized
     fun latestSnapshot(key: String): ClassroomLocalSnapshot? = latestSnapshotInternal(key)
+
+    /**
+     * 在同一原子操作内核对快照的记录键、当前代次和恢复占用，然后认领本次恢复。
+     *
+     * 只有快照仍是该键的当前代次、且没有其它任务正在恢复同一份快照时才成功。
+     * 认领不会推进代次：恢复写入仍使用快照自己的票据，任何新写入都会让它失效；
+     * 这样旧内容不可能因为「重新领票」被提升到新代次。
+     */
+    @Synchronized
+    fun claimRecovery(snapshots: List<ClassroomLocalSnapshot>): ClassroomRecoveryClaim {
+        if (snapshots.isEmpty()) return ClassroomRecoveryClaim.MISSING
+        for (snapshot in snapshots) {
+            if (snapshot.key.isBlank()) return ClassroomRecoveryClaim.MISSING
+            val current = latestGrants[snapshot.key] ?: return ClassroomRecoveryClaim.MISSING
+            if (current != snapshot.grant) return ClassroomRecoveryClaim.SUPERSEDED
+            if (latestSnapshots[snapshot.key] != snapshot) return ClassroomRecoveryClaim.SUPERSEDED
+            if (recovering[snapshot.key] != null) return ClassroomRecoveryClaim.BUSY
+        }
+        snapshots.forEach { recovering[it.key] = it.grant }
+        return ClassroomRecoveryClaim.CLAIMED
+    }
+
+    /** 只释放本次任务认领的代次；旧任务不能清掉新代次正在进行的恢复。 */
+    @Synchronized
+    fun releaseRecovery(snapshots: List<ClassroomLocalSnapshot>) {
+        snapshots.forEach { snapshot ->
+            if (recovering[snapshot.key] == snapshot.grant) recovering.remove(snapshot.key)
+        }
+    }
 
     @Synchronized
     fun needsRecovery(key: String): Boolean {
@@ -109,17 +144,26 @@ object ClassroomLocalWriteGate {
 
     private fun latestSnapshotInternal(key: String): ClassroomLocalSnapshot? {
         val snapshot = latestSnapshots[key] ?: return null
-        return snapshot.takeIf { latestGrants[key] == it.grant }
+        return snapshot.takeIf { it.key == key && latestGrants[key] == it.grant }
+    }
+
+    private fun isRecoveryInProgress(key: String): Boolean {
+        val grant = recovering[key] ?: return false
+        return latestGrants[key] == grant
     }
 
     /**
-     * 读取屏障的三种结果：
+     * 读取屏障的四种结果：
      * - [SUCCESS]：没有上一轮写入，或当前代次明确保存成功；
      * - [FAILED]：上一轮已完成但失败、超时或被更新写入取代；
-     * - [UNKNOWN]：等待结束前仍有写入未完成。
+     * - [UNKNOWN]：等待结束前仍有写入未完成；
+     * - [PENDING]：另一任务正在恢复同一份快照，结果尚未回读确认。
      */
     @Synchronized
     fun restoreState(positionKey: String, rewardsKey: String, idle: Boolean): ClassroomLocalRestore {
+        if (isRecoveryInProgress(positionKey) || isRecoveryInProgress(rewardsKey)) {
+            return ClassroomLocalRestore.PENDING
+        }
         if (!idle) return ClassroomLocalRestore.UNKNOWN
         return if (isSuccessful(positionKey) && isSuccessful(rewardsKey)) {
             ClassroomLocalRestore.SUCCESS
@@ -163,6 +207,10 @@ object ClassroomLocalWriteGate {
         }
     }
 
+    /** 当前没有排队或进行中的写入/恢复任务时返回 true。 */
+    @Synchronized
+    fun isIdle(vararg keys: String): Boolean = keys.all { (pending[it] ?: 0) == 0 }
+
     @Synchronized
     fun reset() {
         latestGrants.clear()
@@ -171,14 +219,18 @@ object ClassroomLocalWriteGate {
         idleSignals.clear()
         lastResults.clear()
         latestSnapshots.clear()
+        recovering.clear()
         nextGrant = 0L
     }
 }
 
-enum class ClassroomLocalRestore { SUCCESS, FAILED, UNKNOWN }
+enum class ClassroomLocalRestore { SUCCESS, FAILED, UNKNOWN, PENDING }
 
-/** 某个记录键最近一次仍可信的待落盘快照；代次必须等于该键当前票据。 */
-data class ClassroomLocalSnapshot(val grant: Long, val payload: String)
+/** 某次恢复的原子认领结果；只有 [CLAIMED] 允许继续写入和回读。 */
+enum class ClassroomRecoveryClaim { CLAIMED, BUSY, SUPERSEDED, MISSING }
+
+/** 某个记录键最近一次仍可信的待落盘快照；键和代次都必须匹配当前记录。 */
+data class ClassroomLocalSnapshot(val key: String, val grant: Long, val payload: String)
 
 enum class ClassroomWriteStatus {
     SAVED,
@@ -254,6 +306,7 @@ class ClassroomSessionFlusher(
     suspend fun run(
         writes: List<ClassroomStateWrite>,
         trackPending: Boolean = true,
+        recordResults: Boolean = true,
     ): List<ClassroomWriteResult> {
         if (writes.isEmpty()) return emptyList()
         if (trackPending) writes.forEach { ClassroomLocalWriteGate.beginPending(it.key) }
@@ -278,7 +331,8 @@ class ClassroomSessionFlusher(
                 )
             }
             finalResults.forEach {
-                ClassroomLocalWriteGate.recordResult(it)
+                // 恢复流程必须先回读确认，不能在这里提前发布 SAVED。
+                if (recordResults) ClassroomLocalWriteGate.recordResult(it)
                 onResult(it)
             }
             return finalResults
@@ -299,7 +353,19 @@ class ClassroomSessionFlusher(
                     write.save()
                     true
                 }
-                if (saved == true) return result(write, ClassroomWriteStatus.SAVED, attempts)
+                if (saved == true) {
+                    // DataStore 事务内的代次守卫可能已经跳过了本次赋值；即使事务
+                    // 正常返回，也只有代次仍有效才能算 SAVED，跳过的写入明确记为 STALE。
+                    return result(
+                        write,
+                        if (ClassroomLocalWriteGate.isCurrent(write.key, write.grant)) {
+                            ClassroomWriteStatus.SAVED
+                        } else {
+                            ClassroomWriteStatus.STALE
+                        },
+                        attempts,
+                    )
+                }
                 return result(write, ClassroomWriteStatus.TIMED_OUT, attempts)
             } catch (cancelled: CancellationException) {
                 throw cancelled

@@ -768,8 +768,10 @@ class AppRepository(
         return "native_classroom_${accountScope}_$digest"
     }
 
-    suspend fun classroomPosition(ref: NativeClassroomRef): String? =
-        dataStore.readRaw("${classroomLocalKey(ref)}_position")
+    suspend fun classroomPosition(
+        ref: NativeClassroomRef,
+        accountScope: String = classroomAccountScope(),
+    ): String? = dataStore.readRaw("${classroomLocalKey(ref, accountScope)}_position")
 
     /** 会话结束时按捕获的原账号落盘，账号已切换也不会写进新账号。 */
     suspend fun saveClassroomPosition(
@@ -777,12 +779,12 @@ class AppRepository(
         sceneId: String,
         accountScope: String = classroomAccountScope(),
         shouldWrite: () -> Boolean = { true },
-    ) {
-        dataStore.saveRawIf("${classroomLocalKey(ref, accountScope)}_position", sceneId, shouldWrite)
-    }
+    ): Boolean = dataStore.saveRawIf("${classroomLocalKey(ref, accountScope)}_position", sceneId, shouldWrite)
 
-    suspend fun classroomRewardsRaw(ref: NativeClassroomRef): String? =
-        dataStore.readRaw("${classroomLocalKey(ref)}_rewards")
+    suspend fun classroomRewardsRaw(
+        ref: NativeClassroomRef,
+        accountScope: String = classroomAccountScope(),
+    ): String? = dataStore.readRaw("${classroomLocalKey(ref, accountScope)}_rewards")
 
     /** 会话结束时按捕获的原账号落盘，账号已切换也不会写进新账号。 */
     suspend fun saveClassroomRewardsRaw(
@@ -790,9 +792,7 @@ class AppRepository(
         raw: String,
         accountScope: String = classroomAccountScope(),
         shouldWrite: () -> Boolean = { true },
-    ) {
-        dataStore.saveRawIf("${classroomLocalKey(ref, accountScope)}_rewards", raw, shouldWrite)
-    }
+    ): Boolean = dataStore.saveRawIf("${classroomLocalKey(ref, accountScope)}_rewards", raw, shouldWrite)
 
     private fun Response<*>.reviewErrorMessage(fallback: String): String {
         val message = runCatching {

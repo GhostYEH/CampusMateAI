@@ -3,6 +3,7 @@ package com.example.campusai.data.classroom.nativeplayer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -190,11 +191,12 @@ class ClassroomSessionPersistenceTest {
         val oldWrite = ClassroomStateWrite(key, "rewards", oldGrant) {
             oldStarted.complete(Unit)
             releaseOld.await()
-            storage.saveRawIf(key, "old", shouldWrite = {
+            val written = storage.saveRawIf(key, "old", shouldWrite = {
                 ClassroomLocalWriteGate.isCurrent(key, oldGrant)
             })
+            if (!written) throw ClassroomWriteStaleException()
         }
-        val oldJob = launch { flusher.run(listOf(oldWrite)) }
+        val oldJob = async { flusher.run(listOf(oldWrite)).single() }
         oldStarted.await()
 
         // 新快照完成落盘后，旧写入才恢复。
@@ -203,9 +205,197 @@ class ClassroomSessionPersistenceTest {
             ClassroomLocalWriteGate.isCurrent(key, newGrant)
         })
         releaseOld.complete(Unit)
-        oldJob.join()
+        val staleResult = oldJob.await()
 
+        assertEquals("事务内被守卫跳过的写入必须明确记为 STALE", ClassroomWriteStatus.STALE, staleResult.status)
         assertEquals("new", storage.readRaw(key))
+    }
+
+    @Test
+    fun `flusher can defer saved publication until read back`() = runTest {
+        val key = "classroom:position"
+        val rewardsKey = "classroom:rewards"
+        val grant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, grant, "scene-1")
+        val flusher = ClassroomSessionFlusher(
+            budgetMs = 1_000L,
+            itemBudgetMs = 500L,
+            maxAttempts = 1,
+            retryDelayMs = 0L,
+        )
+
+        val result = flusher.run(
+            listOf(ClassroomStateWrite(key, "position", grant) {}),
+            recordResults = false,
+        ).single()
+
+        assertEquals(ClassroomWriteStatus.SAVED, result.status)
+        assertTrue("回读确认前不能发布可供后续会话使用的 SAVED", ClassroomLocalWriteGate.needsRecovery(key))
+        assertEquals(
+            ClassroomLocalRestore.FAILED,
+            ClassroomLocalWriteGate.restoreState(key, rewardsKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.recordResult(key, grant, ClassroomWriteStatus.SAVED)
+        assertFalse(ClassroomLocalWriteGate.needsRecovery(key))
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(key, rewardsKey, idle = true),
+        )
+    }
+
+    @Test
+    fun `recovery claim is atomic and rejects a newer grant or a concurrent recovery`() {
+        val key = "classroom:position"
+        val rewardsKey = "classroom:rewards"
+        val oldGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, oldGrant, "scene-1")
+        val oldSnapshot = ClassroomLocalWriteGate.latestSnapshot(key)
+        assertTrue(oldSnapshot != null)
+
+        assertEquals(ClassroomRecoveryClaim.CLAIMED, ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot!!)))
+        assertEquals(
+            "恢复期间其它打开应看到待确认，而不是已经成功",
+            ClassroomLocalRestore.PENDING,
+            ClassroomLocalWriteGate.restoreState(key, rewardsKey, idle = true),
+        )
+        assertEquals(
+            "同一份快照不能被第二个任务同时认领",
+            ClassroomRecoveryClaim.BUSY,
+            ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot)),
+        )
+
+        ClassroomLocalWriteGate.releaseRecovery(listOf(oldSnapshot))
+        ClassroomLocalWriteGate.recordResult(key, oldGrant, ClassroomWriteStatus.FAILED)
+        assertTrue("失败后快照仍应保留供下次恢复", ClassroomLocalWriteGate.needsRecovery(key))
+        assertTrue(ClassroomLocalWriteGate.latestSnapshot(key) != null)
+        assertEquals(
+            ClassroomLocalRestore.FAILED,
+            ClassroomLocalWriteGate.restoreState(key, rewardsKey, idle = true),
+        )
+        assertEquals(
+            "释放后同一份快照可以再次认领",
+            ClassroomRecoveryClaim.CLAIMED,
+            ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot)),
+        )
+        ClassroomLocalWriteGate.releaseRecovery(listOf(oldSnapshot))
+
+        val newGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, newGrant, "scene-2")
+        assertEquals(
+            "旧快照在代次推进后不能再认领",
+            ClassroomRecoveryClaim.SUPERSEDED,
+            ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot)),
+        )
+        assertEquals(
+            ClassroomLocalRestore.FAILED,
+            ClassroomLocalWriteGate.restoreState(key, rewardsKey, idle = true),
+        )
+    }
+
+    @Test
+    fun `late old recovery cannot clear or overwrite a newer generation`() {
+        val key = "classroom:rewards"
+        val otherKey = "classroom:position"
+        val oldGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, oldGrant, "old")
+        val oldSnapshot = ClassroomLocalWriteGate.latestSnapshot(key)!!
+        assertEquals(ClassroomRecoveryClaim.CLAIMED, ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot)))
+
+        val newGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, newGrant, "new")
+        val newSnapshot = ClassroomLocalWriteGate.latestSnapshot(key)!!
+        assertEquals(ClassroomRecoveryClaim.CLAIMED, ClassroomLocalWriteGate.claimRecovery(listOf(newSnapshot)))
+        assertEquals(
+            ClassroomLocalRestore.PENDING,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.releaseRecovery(listOf(oldSnapshot))
+        assertEquals(
+            "旧任务清理不能清掉新代次的恢复认领",
+            ClassroomLocalRestore.PENDING,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.recordResult(key, oldGrant, ClassroomWriteStatus.SAVED)
+        ClassroomLocalWriteGate.recordResult(key, oldGrant, ClassroomWriteStatus.FAILED)
+        assertEquals(
+            "旧任务的迟到成功/失败不能改动新代次",
+            ClassroomLocalRestore.PENDING,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
+
+        ClassroomLocalWriteGate.recordResult(key, newGrant, ClassroomWriteStatus.SAVED)
+        ClassroomLocalWriteGate.releaseRecovery(listOf(newSnapshot))
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
+        assertFalse(ClassroomLocalWriteGate.needsRecovery(key))
+    }
+
+    @Test
+    fun `old snapshot cannot be promoted after a newer write lands`() = runTest {
+        val key = "classroom:rewards"
+        val otherKey = "classroom:position"
+        val storage = InMemoryKeyValueStorage()
+        val oldGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, oldGrant, "old")
+        val oldSnapshot = ClassroomLocalWriteGate.latestSnapshot(key)!!
+        assertEquals(ClassroomRecoveryClaim.CLAIMED, ClassroomLocalWriteGate.claimRecovery(listOf(oldSnapshot)))
+
+        val oldStarted = CompletableDeferred<Unit>()
+        val releaseOld = CompletableDeferred<Unit>()
+        val flusher = ClassroomSessionFlusher(
+            budgetMs = 10_000L,
+            itemBudgetMs = 10_000L,
+            maxAttempts = 1,
+            retryDelayMs = 0L,
+        )
+        val oldJob = async {
+            flusher.run(
+                listOf(
+                    ClassroomStateWrite(key, "rewards", oldGrant) {
+                        oldStarted.complete(Unit)
+                        releaseOld.await()
+                        val written = storage.saveRawIf(key, "old", shouldWrite = {
+                            ClassroomLocalWriteGate.isCurrent(key, oldGrant)
+                        })
+                        if (!written) throw ClassroomWriteStaleException()
+                    },
+                ),
+            ).single()
+        }
+        oldStarted.await()
+
+        // 新代次先真正落盘，旧恢复随后才继续。
+        val newGrant = ClassroomLocalWriteGate.grant(key)
+        ClassroomLocalWriteGate.rememberSnapshot(key, newGrant, "new")
+        assertTrue(
+            storage.saveRawIf(key, "new", shouldWrite = {
+                ClassroomLocalWriteGate.isCurrent(key, newGrant)
+            }),
+        )
+        releaseOld.complete(Unit)
+        val oldResult = oldJob.await()
+
+        assertEquals(ClassroomWriteStatus.STALE, oldResult.status)
+        assertEquals("磁盘必须保留新值", "new", storage.readRaw(key))
+        ClassroomLocalWriteGate.recordResult(key, oldGrant, ClassroomWriteStatus.SAVED)
+        ClassroomLocalWriteGate.recordResult(key, newGrant, ClassroomWriteStatus.SAVED)
+        assertEquals(
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
+        assertFalse(ClassroomLocalWriteGate.needsRecovery(key))
+
+        ClassroomLocalWriteGate.recordResult(key, oldGrant, ClassroomWriteStatus.FAILED)
+        assertEquals(
+            "旧失败也不能覆盖新代次的成功",
+            ClassroomLocalRestore.SUCCESS,
+            ClassroomLocalWriteGate.restoreState(key, otherKey, idle = true),
+        )
     }
 
     @Test

@@ -251,12 +251,19 @@ class AppDataStore(private val context: Context) : PersonalHubDataSource, KeyVal
     /**
      * 进入 DataStore 串行事务后再做最终代次校验；校验通过后立即赋值，中间没有挂起点。
      * 这样旧协程即使已经通过调度检查，也无法在新快照落盘后覆盖它。
+     * 返回是否真正写入；被代次守卫跳过时调用方不能把本次事务当成保存成功。
      */
-    override suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean) {
+    override suspend fun saveRawIf(key: String, value: String, shouldWrite: () -> Boolean): Boolean {
         val prefKey = stringPreferencesKey("campus_module_v1_$key")
+        val written = java.util.concurrent.atomic.AtomicBoolean(false)
         context.dataStore.edit { prefs ->
-            if (shouldWrite()) prefs[prefKey] = value
+            // DataStore 可能在冲突时重试 transform，每次都要重新记录本次是否真正赋值，
+            // 不能把前一次尝试的 true 带到最终被守卫跳过的结果里。
+            val allowed = shouldWrite()
+            written.set(allowed)
+            if (allowed) prefs[prefKey] = value
         }
+        return written.get()
     }
 
     override fun observePersonalHub(accountKey: String): Flow<PersonalHubSnapshot?> {
