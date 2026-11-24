@@ -273,5 +273,5 @@ Set-Location ..\..\android
 
 ### 11.4 仍缺的输入
 
-- 真实试点：至少 5 名匿名参与者、每位若干课堂窗口、两名标注员独立标注（`on_task/off_task/unobservable`）及经同意的人工裁决记录。达到 README 的覆盖率、误提示和 κ 门禁后，才把 `release.eligible=true` 的产物放入 main assets。
+- 真实试点包含用于训练与发布验收的独立参与者。验收集至少需要 5 名完成标注的参与者。用最终模型及导出阈值回放后，按 [离线管线说明](../ml/classroom_attention/README.md#metrics-and-release-gate) 检查标注一致性、覆盖率、误提示和离题片段召回。
 - 真机：Android 设备上的权限、前后台、旋转、退出、摄像头释放、头姿采样，以及开关观察时的播放流畅度和耗电对比。模拟器结论不能替代。

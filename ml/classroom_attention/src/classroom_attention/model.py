@@ -64,6 +64,7 @@ def training_rows(
         row
         for row in rows
         if row.get("label") in ("on_task", "off_task")
+        and row.get("complete", True)
         and row.get("observable")
         and row.get("label_status", "labelled") == "labelled"
     ]

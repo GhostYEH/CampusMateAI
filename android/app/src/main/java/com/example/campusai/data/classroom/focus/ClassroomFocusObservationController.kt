@@ -66,6 +66,7 @@ data class ClassroomFocusUiState(
 class ClassroomFocusObservationController(
     private val application: Application,
     private val lifecycleOwner: LifecycleOwner,
+    private val activities: ClassroomFocusActivityBus,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(ClassroomFocusUiState())
@@ -80,6 +81,7 @@ class ClassroomFocusObservationController(
     @Volatile
     private var disposed = false
 
+    @Volatile
     private var pendingStage: String? = null
 
     private class Session(val id: Long) {
@@ -179,9 +181,7 @@ class ClassroomFocusObservationController(
                 session.lastFrameAt.set(now)
                 session.lastSampleAt.set(0L)
                 session.lowLightSince.set(0L)
-                session.observation = ClassroomFocusObservation
-                    .begin(now, session.id)
-                    .copy(stage = pendingStage)
+                session.observation = ClassroomFocusObservation.begin(now, session.id)
                 _state.update {
                     it.copy(
                         enabled = true,
@@ -227,20 +227,11 @@ class ClassroomFocusObservationController(
         }
     }
 
-    fun record(type: ClassroomFocusEventType) {
-        val session = currentSession ?: return
-        if (!_state.value.enabled) return
-        recordInternal(session, type)
-    }
-
     /**
      * 课堂阶段由播放器按当前页/讲解状态提供，只作为窗口事实，不推断注意力。
      */
     fun updateStage(stage: String?) {
         pendingStage = stage?.takeIf { it.isNotBlank() }
-        val session = currentSession ?: return
-        if (session.observation.phase == ClassroomFocusPhase.IDLE) return
-        session.observation = session.observation.copy(stage = pendingStage)
     }
 
     /** Debug 复盘入口；Release 构建直接返回 null，不产生文件。 */
@@ -267,17 +258,6 @@ class ClassroomFocusObservationController(
         stop()
         analysisExecutor.shutdownNow()
         scope.cancel()
-    }
-
-    private fun recordInternal(session: Session, type: ClassroomFocusEventType) {
-        val at = now()
-        session.observation = ClassroomFocusObservation.recordEvent(
-            state = session.observation,
-            type = type,
-            atMs = at,
-            source = ClassroomFocusEventSource.STUDENT,
-        )
-        publishStatus(session)
     }
 
     private fun startWatchdog(session: Session) {
@@ -309,19 +289,12 @@ class ClassroomFocusObservationController(
                 }
                 session.watchdogReason = reason
                 session.watchdogReportedAt = at
-                session.observation = ClassroomFocusObservation.noteInvalidSample(
-                    state = session.observation,
+                applySample(
+                    session = session,
                     atMs = at,
-                    reason = reason,
                     stage = pendingStage,
-                    sessionId = session.id,
+                    invalidReason = reason,
                 )
-                session.observation = ClassroomFocusObservation.markUnavailable(
-                    session.observation,
-                    reason,
-                    at,
-                )
-                publishStatus(session)
             }
         }
     }
@@ -329,8 +302,15 @@ class ClassroomFocusObservationController(
     private fun startActivityCollection(session: Session) {
         session.activityJob?.cancel()
         session.activityJob = scope.launch {
-            ClassroomFocusActivityBus.events.collect { type ->
-                if (isCurrent(session)) recordInternal(session, type)
+            activities.events.collect { event ->
+                if (!isCurrent(session)) return@collect
+                session.observation = ClassroomFocusObservation.recordEvent(
+                    state = session.observation,
+                    type = event.type,
+                    atMs = event.atMs,
+                    source = event.source,
+                )
+                publishStatus(session)
             }
         }
     }
@@ -354,6 +334,7 @@ class ClassroomFocusObservationController(
             return
         }
         session.lastSampleAt.set(at)
+        val stage = pendingStage
 
         val luma = averageLuma(image)
         if (luma != null && luma < ClassroomFocusObservationConfig.LOW_LIGHT_LUMA_THRESHOLD) {
@@ -363,24 +344,11 @@ class ClassroomFocusObservationController(
             val shouldMark = lowLightFor >= ClassroomFocusObservationConfig.LOW_LIGHT_GRACE_MS
             session.processing.set(false)
             image.close()
-            scope.launch {
-                if (!isCurrent(session)) return@launch
-                session.observation = ClassroomFocusObservation.noteInvalidSample(
-                    state = session.observation,
-                    atMs = at,
-                    reason = ClassroomFocusReason.LOW_LIGHT,
-                    stage = pendingStage,
-                    sessionId = session.id,
-                )
-                if (shouldMark) {
-                    session.observation = ClassroomFocusObservation.markUnavailable(
-                        session.observation,
-                        ClassroomFocusReason.LOW_LIGHT,
-                        at,
-                    )
-                }
-                publishStatus(session)
-            }
+            applySample(
+                session, at, stage,
+                invalidReason = ClassroomFocusReason.LOW_LIGHT,
+                withinGracePeriod = !shouldMark,
+            )
             return
         }
         session.lowLightSince.set(0L)
@@ -398,22 +366,7 @@ class ClassroomFocusObservationController(
         } catch (_: Exception) {
             image.close()
             session.processing.set(false)
-            scope.launch {
-                if (!isCurrent(session)) return@launch
-                session.observation = ClassroomFocusObservation.noteInvalidSample(
-                    state = session.observation,
-                    atMs = at,
-                    reason = ClassroomFocusReason.DETECTION_FAILED,
-                    stage = pendingStage,
-                    sessionId = session.id,
-                )
-                session.observation = ClassroomFocusObservation.markUnavailable(
-                    session.observation,
-                    ClassroomFocusReason.DETECTION_FAILED,
-                    at,
-                )
-                publishStatus(session)
-            }
+            applySample(session, at, stage, invalidReason = ClassroomFocusReason.DETECTION_FAILED)
             return
         }
 
@@ -423,12 +376,10 @@ class ClassroomFocusObservationController(
                     session.processing.set(false)
                     if (!isCurrent(session)) return@addOnSuccessListener
                     val face = faces.singleOrNull()
-                    // 采样时刻使用帧进入分析链的时间（`at`），而不是 ML Kit 回调完成
-                    // 的时间。异步检测可能跨过 10 秒窗口边界；按回调时间归档会把本应
-                    // 属于前一窗口的帧推入后一窗口。
                     applySample(
                         session = session,
                         atMs = at,
+                        stage = stage,
                         faceCount = faces.size,
                         yawDegrees = face?.headEulerAngleY?.toDouble(),
                         pitchDegrees = face?.headEulerAngleX?.toDouble(),
@@ -436,25 +387,7 @@ class ClassroomFocusObservationController(
                 }
                 .addOnFailureListener {
                     session.processing.set(false)
-                    if (!isCurrent(session)) return@addOnFailureListener
-                    // 检测失败也按帧采样时刻归档，避免异步失败把无效采样推入后一窗口。
-                    val failedAt = at
-                    scope.launch {
-                        if (!isCurrent(session)) return@launch
-                        session.observation = ClassroomFocusObservation.noteInvalidSample(
-                            state = session.observation,
-                            atMs = failedAt,
-                            reason = ClassroomFocusReason.DETECTION_FAILED,
-                            stage = pendingStage,
-                            sessionId = session.id,
-                        )
-                        session.observation = ClassroomFocusObservation.markUnavailable(
-                            session.observation,
-                            ClassroomFocusReason.DETECTION_FAILED,
-                            failedAt,
-                        )
-                        publishStatus(session)
-                    }
+                    applySample(session, at, stage, invalidReason = ClassroomFocusReason.DETECTION_FAILED)
                 }
                 .addOnCompleteListener {
                     image.close()
@@ -462,45 +395,45 @@ class ClassroomFocusObservationController(
         } catch (_: Exception) {
             image.close()
             session.processing.set(false)
-            scope.launch {
-                if (!isCurrent(session)) return@launch
-                session.observation = ClassroomFocusObservation.noteInvalidSample(
-                    state = session.observation,
-                    atMs = at,
-                    reason = ClassroomFocusReason.DETECTION_FAILED,
-                    stage = pendingStage,
-                    sessionId = session.id,
-                )
-                session.observation = ClassroomFocusObservation.markUnavailable(
-                    session.observation,
-                    ClassroomFocusReason.DETECTION_FAILED,
-                    at,
-                )
-                publishStatus(session)
-            }
+            applySample(session, at, stage, invalidReason = ClassroomFocusReason.DETECTION_FAILED)
         }
     }
 
     private fun applySample(
         session: Session,
         atMs: Long,
-        faceCount: Int,
-        yawDegrees: Double?,
-        pitchDegrees: Double?,
+        stage: String?,
+        faceCount: Int = 0,
+        yawDegrees: Double? = null,
+        pitchDegrees: Double? = null,
+        invalidReason: ClassroomFocusReason? = null,
+        withinGracePeriod: Boolean = false,
     ) {
         scope.launch {
             if (!isCurrent(session) || session.observation.phase == ClassroomFocusPhase.IDLE) {
                 return@launch
             }
-            session.observation = ClassroomFocusObservation.applySample(
-                state = session.observation,
-                atMs = atMs,
-                faceCount = faceCount,
-                yawDegrees = yawDegrees,
-                pitchDegrees = pitchDegrees,
-                stage = pendingStage,
-                sessionId = session.id,
-            )
+            session.observation = if (invalidReason != null && withinGracePeriod) {
+                ClassroomFocusObservation.noteInvalidSample(
+                    state = session.observation,
+                    atMs = atMs,
+                    reason = invalidReason,
+                    stage = stage,
+                    sessionId = session.id,
+                )
+            } else {
+                ClassroomFocusObservation.applySample(
+                    state = session.observation,
+                    atMs = atMs,
+                    faceCount = faceCount,
+                    valid = invalidReason == null,
+                    invalidReason = invalidReason,
+                    yawDegrees = yawDegrees,
+                    pitchDegrees = pitchDegrees,
+                    stage = stage,
+                    sessionId = session.id,
+                )
+            }
             publishStatus(session)
         }
     }
@@ -509,24 +442,7 @@ class ClassroomFocusObservationController(
         val observer = Observer<CameraState> { cameraState ->
             val error = cameraState.error ?: return@Observer
             if (!isCurrent(session)) return@Observer
-            val reason = cameraErrorReason(error.code)
-            scope.launch {
-                if (!isCurrent(session)) return@launch
-                val at = now()
-                session.observation = ClassroomFocusObservation.noteInvalidSample(
-                    state = session.observation,
-                    atMs = at,
-                    reason = reason,
-                    stage = pendingStage,
-                    sessionId = session.id,
-                )
-                session.observation = ClassroomFocusObservation.markUnavailable(
-                    session.observation,
-                    reason,
-                    at,
-                )
-                publishStatus(session)
-            }
+            applySample(session, now(), pendingStage, invalidReason = cameraErrorReason(error.code))
         }
         session.cameraStateObserver = observer
         camera.cameraInfo.cameraState.observe(lifecycleOwner, observer)

@@ -66,6 +66,22 @@ class ClassroomAttentionReminderPolicyTest {
     }
 
     @Test
+    fun `duplicate and partial windows do not count and gaps start a new run`() {
+        var state = ClassroomAttentionReminderPolicy.setEnabled(
+            ClassroomAttentionReminderPolicy.initial(),
+            true,
+        )
+        state = ClassroomAttentionReminderPolicy.onWindow(state, prediction(), window(0))
+        state = ClassroomAttentionReminderPolicy.onWindow(state, prediction(), window(0))
+        state = ClassroomAttentionReminderPolicy.onWindow(state, prediction(), window(1).copy(complete = false))
+        assertNull(state.reminder)
+        state = ClassroomAttentionReminderPolicy.onWindow(state, prediction(), window(2))
+        assertNull(state.reminder)
+        state = ClassroomAttentionReminderPolicy.onWindow(state, prediction(), window(3))
+        assertEquals(3, state.reminder?.windowIndex)
+    }
+
+    @Test
     fun `lecture and quiz stages suppress reminders`() {
         for (stage in listOf("lecture", "quiz")) {
             var state = ClassroomAttentionReminderPolicy.setEnabled(

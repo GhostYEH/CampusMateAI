@@ -71,15 +71,15 @@ Android 在图书馆进入课程资料与课程经典课堂，在课堂大厅选
 
 ### 课堂观察（互动课堂原生播放态）
 
-互动课堂原生播放器底部、页码栏上方有「课堂观察」开关，默认关闭；学生点击「开启课堂观察」后才申请 `CAMERA` 并启用前置 CameraX。它不申请音频、不展示预览、不改变课堂接口，也不读取或上传原始画面。本节的入口只属于互动课堂原生播放器；「同学一起学」的 `LearningRoomScreen` / 共同课堂专注监督仍走原有链路，本次没有合并两套状态。
+互动课堂原生播放器底部、页码栏上方有默认关闭的「课堂观察」开关。学生点击「开启课堂观察」后才申请 `CAMERA` 并启用前置 CameraX，原始画面仅在本机内存中处理。
 
 - 采样：CameraX `ImageAnalysis` 约 4 次/秒，ML Kit 快速模式返回人脸数量、头部 yaw/pitch；Y 平面平均亮度用于弱光判断。每个观察会话只绑定一条分析链，关闭时解绑。
-- 窗口：以 `SystemClock.elapsedRealtime()` 聚合 10 秒非重叠窗口，记录有效采样数、无效采样数、人脸可见比例、yaw/pitch 均值/标准差/最小/最大与样本数、可获得课堂阶段（当前页类型或讲解态），以及学生主动翻页、交卷、提问的事件计数。每个窗口只取截止时点及之前的事件；自动翻页、重放事件和全局触摸移动不进入计数。
+- 以单调时钟聚合 10 秒窗口，记录有效和无效采样数、人脸可见比例、yaw/pitch 统计、课堂阶段及主动翻页、交卷、提问次数。取帧时记录采样时间和阶段。晚于新样本到达的旧回调直接丢弃。课堂操作由对应播放器在发布时记录单调时间，已封窗口保持原快照。
 - 状态与原因：无脸、多脸、弱光、相机占用、采样中断、视频冻结、检测失败、权限拒绝或启动失败时，观察条显示「无法判断」并给出具体原因。连续 2 秒检测到人脸才确认；确认后连续 12 秒有效画面缺脸才转为无法判断；单帧漏检不改变状态。
 - 第一阶段边界：观察条只呈现可观察事实；无脸、弱光、采样不足时明确「无法判断」。低头、转头、安静听课和暂时没有操作都不是分心判据，必须结合当前课堂任务解释。正式学生提醒必须同时满足真实试点数据、覆盖率与误提示门禁；合成数据只用于代码和数值一致性验证，不能当成真实结论。
-- 端侧投入推理：`ClassroomAttentionModel.kt` 读取 `assets/classroom_attention/model.json`，校验 schema、特征顺序、缺失值策略（训练折中位数填充）、归一化、Platt 校准和阈值。模型缺失、版本不匹配、特征不兼容或窗口未通过 `verdict=observable && face_visible_ratio>=0.2 && valid_coverage>=0.5` 时返回弃权，界面回退到事实观察，不生成离题结论。正式包不内置权重；Debug 只在正式产物缺失时回退到 `app/src/debug/assets/classroom_attention/model-preview.json` 的合成测试权重。
+- `ClassroomAttentionModel.kt` 读取 `assets/classroom_attention/model.json`，校验 schema、特征顺序、缺失值策略、归一化、Platt 校准和阈值。模型对完整且通过 `verdict=observable && face_visible_ratio>=0.2 && valid_coverage>=0.5` 的窗口推理。模型缺失、不兼容或窗口信号不足时回退到事实观察。
 - 学生提醒：只有产物 `release.eligible=true` 才显示正式开关，默认关闭、由学生主动开启。规则为连续 2 个可观察窗口、讲解/测验阶段抑制、120 秒冷却；提醒文案只描述最近约 20 秒的可观察信号，并提供「我在记笔记」（暂停 5 分钟）、「反馈误报」（暂停 10 分钟）、「暂停本堂」和「知道了」。Debug 的测试权重只显示「调试预览」，不能当作正式判断。
-- 发布门禁：真实试点数据 + 观察覆盖率 ≥ 0.80 + 误提示 ≤ 1.0 次/小时 + 双标注 Cohen κ ≥ 0.70 + 至少 5 名参与者。当前没有真实试点数据，合成产物 `release.eligible=false`，因此线上学生提醒保持关闭，课堂继续只提供事实观察。合成回放的实际提示延迟为 median/P90 20 秒（连续 2 个 10 秒窗口，第二次窗口结束才提示），未达到设计稿 10 秒试点初值；真实数据需重新校准连续窗口和阈值，不能把「窗口起点」算成提示时间。
+- 发布验收用最终模型和导出阈值回放提醒。验收集至少包含 5 名有标注的参与者，且与训练集参与者完全分离。两组真实试点数据的双标注 Cohen κ 均须 ≥ 0.70。验收要求观察覆盖率 ≥ 80%、误提示 ≤ 1 次/小时、离题片段召回 ≥ 50%。当前合成权重仅用于 Debug 预览。
 - 代码：纯规则/窗口/导出在 `data/classroom/focus/ClassroomFocusObservationModel.kt` 与 `ClassroomObservationDebugExport.kt`；相机适配在 `ClassroomFocusObservationController.kt`；事件总线在 `ClassroomFocusActivityBus.kt`；端侧模型与提醒策略在 `ClassroomAttentionModel.kt` / `ClassroomAttentionReminderPolicy.kt`；UI 在 `ui/screens/courses/nativeplayer/ClassroomFocusObservationBar.kt` 与 `ClassroomAttentionReminderBar.kt`。单测覆盖 10 秒边界、截止后事件、无脸被操作覆盖的回归、无效画面、自动/手动翻页、重复交卷、关闭重开、旧会话回调、模型缺失/版本不匹配、覆盖门槛与提醒冷却。本轮完成 JVM 单测、`:app:assembleDebug`、模拟器安装与冷启动，并在仓库脱敏 fixture 下登录后从首页「互动课堂」→「最近学习」进入原生播放器第 1/6 页。播放器内实测：相机授权后无脸约 14 秒进入「无法判断 · 持续未检测到人脸」；随后每 8 秒主动翻页 3 次到第 4/6 页，判定仍保持「无法判断」，事实行继续显示当前窗口「翻页 1 交卷 0 提问 0」；退到系统分享/后台后观察条显示「课堂观察已在后台停止，返回后可重新开启」，`dumpsys media.camera` 的活动客户端为空；竖屏→横屏旋转后观察关闭且相机同样释放。Debug 导出行出现后，显式「关闭课堂观察」按钮本轮被导出入口抢占为系统分享，未稳定复现其点击路径；显式关闭释放以单测与代码核对为准，退出重进沿用审计记录但本轮未重新采样。本轮未连接真机；模拟器虚拟摄像头不能替代真实摄像头验收，真实人脸、眼镜、光照、机型差异、播放流畅度和耗电仍需实测。不能把编译、纯规则测试或模拟器无脸结论当作真机通过。
 
 ### 课堂投入离线管线复现
@@ -105,13 +105,16 @@ python -m classroom_attention.cli merge --manifest datasets/pilot_v1/manifest.cs
 python -m classroom_attention.cli build-dataset --manifest datasets/pilot_v1/manifest.csv `
   --merged datasets/pilot_v1/merged.jsonl --output datasets/pilot_v1/dataset.jsonl `
   --report datasets/pilot_v1/dataset-summary.json
-# 这里的 κ 必须替换为 merge-report.json 中实际 Cohen κ；data-source=real 才会进入发布门禁
+# 对独立验收集 datasets/pilot_release_v1 重跑校验、合并和数据集生成
+$trainKappa = (Get-Content datasets/pilot_v1/merge-report.json -Raw | ConvertFrom-Json).kappa
+$releaseKappa = (Get-Content datasets/pilot_release_v1/merge-report.json -Raw | ConvertFrom-Json).kappa
 python -m classroom_attention.cli train --dataset datasets/pilot_v1/dataset.jsonl `
   --output-dir datasets/pilot_v1/artifacts --feature-set compare --data-source real `
-  --annotation-kappa 0.80
-python -m classroom_attention.cli evaluate --dataset datasets/pilot_v1/dataset.jsonl `
+  --annotation-kappa $trainKappa --release-dataset datasets/pilot_release_v1/dataset.jsonl `
+  --release-annotation-kappa $releaseKappa
+python -m classroom_attention.cli evaluate --dataset datasets/pilot_release_v1/dataset.jsonl `
   --model datasets/pilot_v1/artifacts/model-headpose.json `
-  --output datasets/pilot_v1/artifacts/metrics-headpose.json
+  --output datasets/pilot_v1/artifacts/release-replay-headpose.json
 python -m classroom_attention.cli export --model datasets/pilot_v1/artifacts/model-headpose.json `
   --output datasets/pilot_v1/artifacts/model-headpose.android.json
 python -m classroom_attention.cli golden --dataset datasets/pilot_v1/dataset.jsonl `
@@ -136,7 +139,7 @@ Set-Location (Join-Path $repoRoot 'android')
 .\gradlew.bat --no-daemon --max-workers=2 :app:assembleDebug --console=plain
 ```
 
-Debug 构建优先读取 main assets 的正式产物；正式产物缺失时回退到合成测试权重（`app/src/debug/assets/classroom_attention/model-preview.json`）。正式构建不包含 `app/src/main/assets/classroom_attention/model.json`，模型缺失即回退事实观察。只有经真实数据验证并改写 `release.eligible=true` 后，才可把对应产物放入 main assets 并允许学生开启提醒。Kotlin/Python 数值一致性由 `ClassroomAttentionModelTest` 读取 `app/src/test/resources/classroom_attention/golden_inference.json` 对照；重新训练后需把 `golden` 命令生成的样例同步到该测试资源。
+Debug 构建优先读取 main assets 的正式产物，缺失时使用合成预览权重。正式构建当前只提供事实观察。通过独立验收后，可从训练输出取得 `release.eligible=true` 的产物。Kotlin/Python 数值一致性由 `ClassroomAttentionModelTest` 读取 `app/src/test/resources/classroom_attention/golden_inference.json` 对照。重新训练后需把 `golden` 命令生成的样例同步到该测试资源。
 
 ### 多人共同课堂
 

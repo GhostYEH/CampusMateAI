@@ -167,15 +167,10 @@ data class ClassroomObservationWindowDraft(
 /**
  * 窗口时间契约（由 `ClassroomFocusObservation` 保证，调用方只需传单调时间）：
  *
- * - 会话起点从 `begin(atMs)` 开始；窗口 0 覆盖 `[start, start + 10s]`，窗口 N
- *   （N ≥ 1）覆盖 `(start + N*10s, start + (N+1)*10s]`。边界时刻只归属一个窗口，
- *   不会重复计数。
- * - 采样时间 = 相机帧进入分析链的时间，而不是 ML Kit 回调完成时间；迟到回调
- *   仍按采样时刻归档，不会把事实推入后续窗口。
- * - 事件时间 = 学生操作实际发生时的单调时间。封窗后迟到的事件只保留在会话
- *   事件历史中；已发布窗口是不可变快照，不会被回填。当前未满窗口在导出时按
- *   查询截止时刻构建，只统计 `event.atMs <= cutoff` 的事实。
- * - 窗口结束后不再接收采样；缺失的整窗以「检测采样中断」进入事实列表。
+ * - 相机帧按进入分析链的单调时刻使用 `[start, end)` 窗口。比已接收样本更早的
+ *   回调直接丢弃，缺失的整窗以「检测采样中断」记录。
+ * - 事件使用发布时的单调时刻。起点计入首窗，截止点计入正在结束的窗口。封窗后
+ *   到达的事件可留在近期事件历史中，已发布窗口保持原快照。
  */
 
 /** 已关闭（或复盘导出时截断）的窗口级事实。 */
@@ -213,7 +208,6 @@ data class ClassroomFocusState(
     val noFaceSinceMs: Long? = null,
     val lastActivityAtMs: Long? = null,
     val events: List<ClassroomFocusEvent> = emptyList(),
-    val stage: String? = null,
     val lastSampleAtMs: Long? = null,
     val windows: List<ClassroomObservationWindow> = emptyList(),
     val currentWindow: ClassroomObservationWindowDraft? = null,
@@ -243,12 +237,12 @@ object ClassroomFocusObservation {
         atMs: Long,
         source: ClassroomFocusEventSource = ClassroomFocusEventSource.STUDENT,
     ): ClassroomFocusState {
-        if (state.phase == ClassroomFocusPhase.IDLE) return state
-        if (source != ClassroomFocusEventSource.STUDENT) return state
+        val startedAt = state.startedAtMs ?: return state
+        if (source != ClassroomFocusEventSource.STUDENT || atMs < startedAt) return state
         val events = (state.events + ClassroomFocusEvent(type, atMs, source))
             .takeLast(ClassroomFocusObservationConfig.EVENT_HISTORY_LIMIT)
         return state.copy(
-            lastActivityAtMs = atMs,
+            lastActivityAtMs = maxOf(state.lastActivityAtMs ?: atMs, atMs),
             events = events,
         )
     }
@@ -258,12 +252,11 @@ object ClassroomFocusObservation {
      * 最近课堂操作都保留。操作不会改变「无法判断」状态，但可以作为独立事实
      * 在观察条/导出中展示。
      */
-    fun markUnavailable(
+    private fun markUnavailable(
         state: ClassroomFocusState,
         reason: ClassroomFocusReason,
         atMs: Long,
     ): ClassroomFocusState {
-        if (state.phase == ClassroomFocusPhase.IDLE) return state
         return state.copy(
             phase = ClassroomFocusPhase.UNAVAILABLE,
             unavailableReason = reason,
@@ -319,9 +312,6 @@ object ClassroomFocusObservation {
         stage: String? = null,
         sessionId: Long = state.sessionId,
     ): ClassroomFocusState {
-        if (state.phase == ClassroomFocusPhase.IDLE) return state
-        if (sessionId != state.sessionId) return state
-
         val appended = appendSample(
             state = state,
             atMs = atMs,
@@ -333,6 +323,7 @@ object ClassroomFocusObservation {
             stage = stage,
             sessionId = sessionId,
         )
+        if (appended === state) return state
         if (!valid) {
             return markUnavailable(
                 appended,
@@ -464,10 +455,11 @@ object ClassroomFocusObservation {
         if (state.phase == ClassroomFocusPhase.IDLE) return state
         if (sessionId != state.sessionId) return state
         val startedAt = state.startedAtMs ?: return state
+        if (atMs < (state.lastSampleAtMs ?: startedAt)) return state
 
         val advanced = advanceWindows(state, atMs, startedAt)
         val draft = advanced.currentWindow ?: return advanced
-        val stageValue = stage?.takeIf { it.isNotBlank() } ?: advanced.stage
+        val stageValue = stage?.takeIf { it.isNotBlank() }
         val stageCounts = if (stageValue == null) {
             draft.stageCounts
         } else {
@@ -510,7 +502,6 @@ object ClassroomFocusObservation {
 
         return advanced.copy(
             currentWindow = updatedDraft,
-            stage = stageValue,
             lastSampleAtMs = atMs,
         )
     }
@@ -528,7 +519,7 @@ object ClassroomFocusObservation {
         // 首个采样迟到时也从窗口 0 起算，让启动阶段缺帧以「采样中断」被记录，
         // 而不是把 20 秒前的窗口静默折叠掉。
         val draft = state.currentWindow ?: newDraft(startedAtMs, 0)
-        if (targetIndex <= draft.index) {
+        if (targetIndex == draft.index) {
             return state.copy(currentWindow = draft)
         }
 

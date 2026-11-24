@@ -72,20 +72,29 @@ def brier(labels: list[int], probabilities: list[float]) -> float | None:
     return float(np.mean((np.asarray(probabilities) - np.asarray(labels)) ** 2))
 
 
+def _is_off_task(prediction: dict[str, Any], threshold: float | None) -> bool:
+    if threshold is None:
+        return prediction["predicted"] == "off_task"
+    return float(prediction["probability"]) >= threshold
+
+
 def classification_metrics(
     rows: list[dict[str, Any]],
     predictions: list[dict[str, Any]],
-    threshold: float,
+    threshold: float | None,
 ) -> dict[str, Any]:
-    labelled = [row for row in rows if row.get("label") in ("on_task", "off_task")]
+    completed = [row for row in rows if row.get("complete", True)]
+    labelled = [row for row in completed if row.get("label") in ("on_task", "off_task")]
     covered_pairs = [
         (row, prediction)
         for row, prediction in zip(rows, predictions)
-        if row.get("label") in ("on_task", "off_task") and row.get("observable")
+        if row.get("complete", True)
+        and row.get("label") in ("on_task", "off_task")
+        and row.get("observable")
     ]
     labels = [1 if row["label"] == "off_task" else 0 for row, _ in covered_pairs]
     scores = [float(prediction["probability"]) for _, prediction in covered_pairs]
-    predicted = [1 if score >= threshold else 0 for score in scores]
+    predicted = [int(_is_off_task(prediction, threshold)) for _, prediction in covered_pairs]
     tp = sum(1 for label, guess in zip(labels, predicted) if label == 1 and guess == 1)
     fp = sum(1 for label, guess in zip(labels, predicted) if label == 0 and guess == 1)
     fn = sum(1 for label, guess in zip(labels, predicted) if label == 1 and guess == 0)
@@ -99,7 +108,9 @@ def classification_metrics(
         "n_labelled_windows": len(labelled),
         "n_covered_windows": len(covered_pairs),
         "observation_coverage": (
-            sum(1 for row in rows if row.get("observable")) / len(rows) if rows else None
+            sum(1 for row in completed if row.get("observable")) / len(completed)
+            if completed
+            else None
         ),
         "model_coverage": len(covered_pairs) / len(labelled) if labelled else None,
         "positive_rate": sum(labels) / len(labels) if labels else None,
@@ -119,7 +130,7 @@ def classification_metrics(
 def simulate_alerts(
     rows: list[dict[str, Any]],
     predictions: list[dict[str, Any]],
-    threshold: float,
+    threshold: float | None,
     *,
     consecutive: int = ALERT_CONSECUTIVE_WINDOWS,
     cooldown_ms: int = ALERT_COOLDOWN_MS,
@@ -128,28 +139,35 @@ def simulate_alerts(
     alerts: list[dict[str, Any]] = []
     by_session: dict[tuple[str, str], list[tuple[dict[str, Any], dict[str, Any]]]] = {}
     for row, prediction in zip(rows, predictions):
-        key = (row["participant_id"], row["session_id"])
-        by_session.setdefault(key, []).append((row, prediction))
-    for key, pairs in sorted(by_session.items()):
-        candidate_run: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        last_alert_end = -10**12
-        for row, prediction in pairs:
+        if row.get("complete", True):
+            key = (row["participant_id"], row["session_id"])
+            by_session.setdefault(key, []).append((row, prediction))
+    for _, pairs in sorted(by_session.items()):
+        candidate_run = 0
+        last_alert_end = None
+        previous_end = None
+        for row, prediction in sorted(pairs, key=lambda pair: pair[0]["start_offset_ms"]):
+            start = int(row["start_offset_ms"])
+            if previous_end is not None and start < previous_end:
+                continue
+            if start != previous_end:
+                candidate_run = 0
+            duration = int(row.get("duration_ms", 10_000))
+            alert_time = start + duration
+            previous_end = alert_time
             stage = row.get("dominant_stage")
             eligible = (
                 row.get("observable")
-                and prediction["probability"] >= threshold
+                and _is_off_task(prediction, threshold)
                 and stage not in SUPPRESS_STAGES
             )
             if not eligible:
-                candidate_run = []
+                candidate_run = 0
                 continue
-            candidate_run.append((row, prediction))
-            if len(candidate_run) < consecutive:
+            candidate_run += 1
+            if candidate_run < consecutive:
                 continue
-            start = int(row["start_offset_ms"])
-            duration = int(row.get("duration_ms", 10_000))
-            alert_time = start + duration
-            if alert_time < last_alert_end + cooldown_ms:
+            if last_alert_end is not None and alert_time < last_alert_end + cooldown_ms:
                 continue
             alerts.append(
                 {
@@ -164,20 +182,20 @@ def simulate_alerts(
                 }
             )
             last_alert_end = alert_time
-            candidate_run = []
+            candidate_run = 0
     return alerts
 
 
 def alert_metrics(
     rows: list[dict[str, Any]],
     predictions: list[dict[str, Any]],
-    threshold: float,
+    threshold: float | None,
 ) -> dict[str, Any]:
     alerts = simulate_alerts(rows, predictions, threshold)
     hours = sum(
         float(row.get("duration_ms", 10_000))
         for row in rows
-        if row.get("label") is not None
+        if row.get("complete", True) and row.get("label") is not None
     ) / 3_600_000.0
     false_alerts = [
         alert
@@ -190,16 +208,22 @@ def alert_metrics(
     segments: list[dict[str, Any]] = []
     by_session: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
-        by_session.setdefault((row["participant_id"], row["session_id"]), []).append(row)
-    for key, session_rows in sorted(by_session.items()):
+        if row.get("complete", True):
+            by_session.setdefault((row["participant_id"], row["session_id"]), []).append(row)
+    for _, session_rows in sorted(by_session.items()):
         current: list[dict[str, Any]] = []
-        for row in session_rows:
-            if row.get("label") == "off_task" and row.get("observable"):
-                current.append(row)
+        previous_end = None
+        for row in sorted(session_rows, key=lambda item: item["start_offset_ms"]):
+            start = int(row["start_offset_ms"])
+            if previous_end is not None and start < previous_end:
                 continue
-            if current:
+            off_task = row.get("label") == "off_task"
+            if current and (not off_task or start != previous_end):
                 segments.append(_segment(current))
                 current = []
+            if off_task:
+                current.append(row)
+            previous_end = start + int(row.get("duration_ms", 10_000))
         if current:
             segments.append(_segment(current))
 
@@ -208,19 +232,13 @@ def alert_metrics(
     for segment in segments:
         hits = [
             alert
-            for alert in alerts
+            for alert in true_alerts
             if alert["participant_id"] == segment["participant_id"]
             and alert["session_id"] == segment["session_id"]
-            and segment["start_offset_ms"] <= alert.get(
-                "alert_offset_ms",
-                alert["start_offset_ms"] + int(alert.get("duration_ms", 10_000)),
-            ) <= segment["end_offset_ms"]
+            and segment["start_offset_ms"] < alert["alert_offset_ms"] <= segment["end_offset_ms"]
         ]
         if hits:
-            alert_time = hits[0].get(
-                "alert_offset_ms",
-                hits[0]["start_offset_ms"] + int(hits[0].get("duration_ms", 10_000)),
-            )
+            alert_time = hits[0]["alert_offset_ms"]
             delays.append((alert_time - segment["start_offset_ms"]) / 1000.0)
         else:
             missed += 1
@@ -239,6 +257,7 @@ def alert_metrics(
         ),
         "off_task_segments": len(segments),
         "missed_off_task_segments": missed,
+        "off_task_segment_recall": len(delays) / len(segments) if segments else None,
         "missed_per_hour": missed / hours if hours > 0 else None,
         "delay_median_seconds": _percentile(delays, 0.5),
         "delay_p90_seconds": _percentile(delays, 0.9),
@@ -289,7 +308,7 @@ def evaluate_by_participant(
 def evaluate_groups(
     rows: list[dict[str, Any]],
     predictions: list[dict[str, Any]],
-    threshold: float,
+    threshold: float | None,
     group_field: str,
 ) -> dict[str, Any]:
     values = sorted({str(row.get(group_field, "unknown")) for row in rows})
@@ -311,7 +330,7 @@ def evaluate_groups(
 def pooled_metrics(
     rows: list[dict[str, Any]],
     predictions: list[dict[str, Any]],
-    threshold: float,
+    threshold: float | None,
 ) -> dict[str, Any]:
     return {
         **classification_metrics(rows, predictions, threshold),
@@ -337,6 +356,7 @@ def participant_summary(per_participant: dict[str, dict[str, Any]]) -> dict[str,
         "auprc",
         "ece",
         "false_alerts_per_hour",
+        "off_task_segment_recall",
         "missed_per_hour",
         "delay_median_seconds",
         "delay_p90_seconds",

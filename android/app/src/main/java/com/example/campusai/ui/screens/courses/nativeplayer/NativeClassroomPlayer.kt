@@ -164,8 +164,8 @@ fun NativeClassroomPlayer(
     // 权限对话框期间的旋转由 rememberSaveable 保留请求标记，迟到的授权结果
     // 在取消后不会重新开启摄像头。
     var focusPermissionPending by rememberSaveable(ref.stableKey) { mutableStateOf(false) }
-    val focusController = remember(ref.stableKey, lifecycleOwner) {
-        ClassroomFocusObservationController(application, lifecycleOwner)
+    val focusController = remember(vm, lifecycleOwner) {
+        ClassroomFocusObservationController(application, lifecycleOwner, vm.focusActivities)
     }
     val focusState by focusController.state.collectAsStateWithLifecycle()
     val focusScope = rememberCoroutineScope()
@@ -182,17 +182,17 @@ fun NativeClassroomPlayer(
             ClassroomAttentionModelLoader(application).load()
         }
     }
-    var attentionReminder by remember(ref.stableKey) {
+    var attentionReminder by remember(focusController) {
         mutableStateOf(ClassroomAttentionReminderPolicy.initial())
     }
     LaunchedEffect(focusState.enabled, focusState.windowCount, focusState.latestWindow, attentionModel) {
         val artifact = (attentionModel as? ClassroomAttentionModelLoad.Ready)?.artifact
         val window = focusState.latestWindow
-        if (!focusState.enabled || artifact == null) {
+        if (!focusState.enabled || artifact == null || window == null) {
             attentionReminder = ClassroomAttentionReminderPolicy.reset(attentionReminder)
             return@LaunchedEffect
         }
-        if (window != null && attentionReminder.processing) {
+        if (attentionReminder.processing) {
             val prediction = ClassroomAttentionInference.predict(artifact, window)
             attentionReminder = ClassroomAttentionReminderPolicy.onWindow(
                 attentionReminder,

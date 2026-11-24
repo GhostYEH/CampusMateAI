@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from classroom_attention.annotations import (
     load_adjudications,
@@ -13,8 +14,9 @@ from classroom_attention.annotations import (
 )
 from classroom_attention.dataset import build_rows, dataset_summary
 from classroom_attention.model import load_model, predict_logit, predict_probability, save_model
+from classroom_attention.schema import ContractError
 from classroom_attention.synthetic import generate
-from classroom_attention.train import compare_feature_sets
+from classroom_attention.train import compare_feature_sets, train_and_evaluate
 from classroom_attention.windows import load_dataset
 
 
@@ -83,6 +85,14 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("context", run["groups"])
             self.assertFalse(run["release"]["eligible"])
             self.assertIn("synthetic", run["release"]["reason"])
+            self.assertIsNone(run["release_evaluation"])
+            self.assertEqual(
+                pooled["tp"], sum(fold["tp"] for fold in run["per_participant"].values())
+            )
+            self.assertEqual(
+                pooled["false_alerts"],
+                sum(fold["false_alerts"] for fold in run["per_participant"].values()),
+            )
             self.assertGreaterEqual(run["reporting_threshold"], 0.2)
             self.assertLessEqual(run["reporting_threshold"], 0.9)
 
@@ -137,6 +147,71 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("decision_threshold", payload)
         self.assertIn("missing_policy", payload)
         self.assertEqual(model["missing_policy"], "median_impute")
+
+
+class ReleaseEvaluationTest(unittest.TestCase):
+    def cohort(self, prefix: str, probability: float) -> list[dict]:
+        return [
+            {
+                "participant_id": f"{prefix}{participant:03}",
+                "session_id": "S001",
+                "index": index,
+                "start_offset_ms": index * 10_000,
+                "duration_ms": 10_000,
+                "observable": True,
+                "dominant_stage": "slide",
+                "label": label,
+                "probability": probability if label == "off_task" else 0.1,
+            }
+            for participant in range(5)
+            for index, label in enumerate(("on_task", "off_task", "off_task"))
+        ]
+
+    def test_release_replays_exported_threshold_on_independent_participants(self) -> None:
+        def train_fold(_rows, *, model_version, **_kwargs):
+            return {"decision_threshold": 0.30 if "-fold-" in model_version else 0.70}
+
+        def predict_rows(model, rows):
+            threshold = model["decision_threshold"]
+            return [
+                {
+                    "participant_id": row["participant_id"],
+                    "session_id": row["session_id"],
+                    "window_index": row["index"],
+                    "probability": row["probability"],
+                    "predicted": "off_task" if row["probability"] >= threshold else "on_task",
+                }
+                for row in rows
+            ]
+
+        with (
+            patch("classroom_attention.train.train_fold", side_effect=train_fold),
+            patch("classroom_attention.train.predict_rows", side_effect=predict_rows),
+        ):
+            for probability, eligible in ((0.60, False), (0.80, True)):
+                with self.subTest(holdout_probability=probability):
+                    result = train_and_evaluate(
+                        self.cohort("P", 0.60), feature_set="headpose", seed=20261124,
+                        model_version="test", data_source="real", annotation_kappa=0.80,
+                        release_rows=self.cohort("H", probability), release_annotation_kappa=0.80,
+                    )
+                    self.assertEqual(1.0, result["pooled"]["off_task_segment_recall"])
+                    evaluation = result["release_evaluation"]
+                    self.assertEqual(0.70, evaluation["threshold"])
+                    self.assertEqual(result["model"]["decision_threshold"], evaluation["threshold"])
+                    self.assertEqual(0.0, evaluation["metrics"]["false_alerts_per_hour"])
+                    self.assertEqual(float(eligible), evaluation["metrics"]["off_task_segment_recall"])
+                    self.assertEqual(eligible, result["model"]["release"]["eligible"])
+                    if not eligible:
+                        self.assertIn("off_task_segment_recall_below_0.50", result["release"]["reason"])
+
+    def test_participant_overlap_blocks_release_evaluation_before_training(self) -> None:
+        with self.assertRaisesRegex(ContractError, "参与者必须完全分离"):
+            train_and_evaluate(
+                self.cohort("P", 0.60), feature_set="headpose", seed=20261124,
+                model_version="test", data_source="real", annotation_kappa=0.80,
+                release_rows=self.cohort("P", 0.80), release_annotation_kappa=0.80,
+            )
 
 
 def load_model_from_run(model: dict):

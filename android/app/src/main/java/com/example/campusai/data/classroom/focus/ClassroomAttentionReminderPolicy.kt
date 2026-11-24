@@ -21,6 +21,7 @@ data class ClassroomAttentionReminderState(
     val snoozeUntilOffsetMs: Long? = null,
     /** 上一条提醒对应窗口的结束偏移；首条提醒前为 null，不能用 -1 参与冷却比较。 */
     val lastAlertEndOffsetMs: Long? = null,
+    val lastWindowEndOffsetMs: Long? = null,
     val consecutiveWindows: Int = 0,
     val reminder: ClassroomAttentionReminder? = null,
     val notice: String? = null,
@@ -77,39 +78,29 @@ object ClassroomAttentionReminderPolicy {
         prediction: ClassroomAttentionPrediction?,
         window: ClassroomObservationWindow,
     ): ClassroomAttentionReminderState {
-        if (!state.processing) {
-            return state.copy(
-                consecutiveWindows = 0,
-                lastProbability = prediction?.probability,
-            )
-        }
-        val snoozed = state.snoozeUntilOffsetMs?.let { window.endOffsetMs < it } == true
-        if (state.paused || snoozed || prediction == null ||
+        val previousEnd = state.lastWindowEndOffsetMs
+        if (!window.complete || (previousEnd != null && window.startOffsetMs < previousEnd)) return state
+        val current = state.copy(
+            lastWindowEndOffsetMs = window.endOffsetMs,
+            lastProbability = prediction?.probability,
+        )
+        val snoozed = current.snoozeUntilOffsetMs?.let { window.endOffsetMs < it } == true
+        if (!current.processing || current.paused || snoozed || prediction == null ||
             !prediction.offTask || window.dominantStage in SUPPRESSED_STAGES
         ) {
-            return state.copy(
-                consecutiveWindows = 0,
-                lastProbability = prediction?.probability,
-            )
+            return current.copy(consecutiveWindows = 0)
         }
-        val run = state.consecutiveWindows + 1
+        val run = if (window.startOffsetMs == previousEnd) current.consecutiveWindows + 1 else 1
         if (run < CONSECUTIVE_WINDOWS) {
-            return state.copy(
-                consecutiveWindows = run,
-                lastProbability = prediction.probability,
-            )
+            return current.copy(consecutiveWindows = run)
         }
-        val cooldownUntil = state.lastAlertEndOffsetMs?.plus(COOLDOWN_MS)
+        val cooldownUntil = current.lastAlertEndOffsetMs?.plus(COOLDOWN_MS)
         if (cooldownUntil != null && window.endOffsetMs < cooldownUntil) {
-            return state.copy(
-                consecutiveWindows = run,
-                lastProbability = prediction.probability,
-            )
+            return current.copy(consecutiveWindows = run)
         }
-        return state.copy(
+        return current.copy(
             consecutiveWindows = 0,
             lastAlertEndOffsetMs = window.endOffsetMs,
-            lastProbability = prediction.probability,
             reminder = ClassroomAttentionReminder(
                 windowIndex = window.index,
                 startOffsetMs = window.startOffsetMs,

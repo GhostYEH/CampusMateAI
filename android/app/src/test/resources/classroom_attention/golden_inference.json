@@ -356,12 +356,14 @@
     },
     "release": {
       "eligible": false,
-      "reason": "synthetic_or_non_pilot_data",
+      "reason": "synthetic_or_non_pilot_data|missing_independent_release_dataset",
       "required": {
         "max_false_alerts_per_hour": 1.0,
         "min_annotation_kappa": 0.7,
+        "min_off_task_segment_recall": 0.5,
         "min_participants": 5,
         "min_valid_observation_coverage": 0.8,
+        "participant_disjoint_holdout": true,
         "real_pilot_data": true
       }
     },
@@ -374,8 +376,8 @@
       "positive": 58,
       "threshold_selection": {
         "false_alerts_per_hour": 0.0,
-        "off_task_segments": 24,
-        "true_alerts": 23
+        "off_task_segment_recall": 0.9583333333333334,
+        "off_task_segments": 24
       },
       "windows": 240
     }

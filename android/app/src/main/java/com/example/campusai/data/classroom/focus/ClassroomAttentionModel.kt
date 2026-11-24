@@ -109,7 +109,7 @@ object ClassroomAttentionFeatures {
     }
 
     fun gatePassed(artifact: ClassroomAttentionArtifact, window: ClassroomObservationWindow): Boolean =
-        window.verdict == ClassroomObservationVerdict.OBSERVABLE &&
+        window.complete && window.verdict == ClassroomObservationVerdict.OBSERVABLE &&
             window.faceVisibleRatio >= artifact.gate.minFaceVisibleRatio &&
             (extract(window)["valid_coverage"] ?: 0.0) >= artifact.gate.minValidCoverage
 }
@@ -184,7 +184,11 @@ class ClassroomAttentionModelLoader(
     fun load(): ClassroomAttentionModelLoad {
         val primary = read(ASSET_PATH)
         if (primary !is ClassroomAttentionModelLoad.Missing || !debugBuild) return primary
-        return read(PREVIEW_ASSET_PATH)
+        val preview = read(PREVIEW_ASSET_PATH)
+        if (preview is ClassroomAttentionModelLoad.Ready && preview.artifact.release.eligible) {
+            return ClassroomAttentionModelLoad.Unavailable("预览权重只能用于调试")
+        }
+        return preview
     }
 
     private fun read(assetPath: String): ClassroomAttentionModelLoad {
@@ -287,8 +291,14 @@ object ClassroomAttentionArtifactParser {
         val releaseEligible = releaseMap["eligible"] as? Boolean
             ?: throw IllegalArgumentException("模型缺少 release.eligible")
         val releaseReason = releaseMap["reason"]?.toString().orEmpty()
+        val releaseRequirements = releaseMap.map("required")
         val featureLabels = root.map("feature_labels").mapValues { it.value.toString() }
-        val training = root.map("training")
+        val trainingSource = root.map("training").string("data_source")
+        val releaseRecall = releaseRequirements.double("min_off_task_segment_recall")
+        val hasPilotGate = trainingSource == "real" &&
+            releaseRequirements["participant_disjoint_holdout"] == true &&
+            releaseRecall != null && releaseRecall in 0.5..1.0
+        requireCompat(!releaseEligible || hasPilotGate) { "模型缺少独立试点验收门槛" }
         return ClassroomAttentionArtifact(
             schemaVersion = schemaVersion,
             modelVersion = modelVersion,
@@ -307,9 +317,9 @@ object ClassroomAttentionArtifactParser {
             release = ClassroomAttentionRelease(
                 eligible = releaseEligible,
                 reason = releaseReason,
-                required = (releaseMap["required"] as? Map<String, Any?>).orEmpty(),
+                required = releaseRequirements,
             ),
-            trainingDataSource = training["data_source"]?.toString(),
+            trainingDataSource = trainingSource,
         )
     }
 

@@ -231,6 +231,26 @@ class ClassroomAttentionModelTest {
     }
 
     @Test
+    fun `eligibility requires real pilot data and the independent recall gate`() {
+        val model = map(golden()["model"])
+        val release = map(model["release"]) + ("eligible" to true)
+        val realTraining = map(model["training"]) + ("data_source" to "real")
+        val old = model + mapOf(
+            "training" to realTraining,
+            "release" to (release + ("required" to emptyMap<String, Any>())),
+        )
+        val synthetic = model + ("release" to release)
+        assertTrue(ClassroomAttentionArtifactParser.parse(encode(old)) is ClassroomAttentionModelLoad.Unavailable)
+        assertTrue(ClassroomAttentionArtifactParser.parse(encode(synthetic)) is ClassroomAttentionModelLoad.Unavailable)
+
+        val accepted = encode(model + mapOf("training" to realTraining, "release" to release))
+        val mainLoad = loader(mapOf(ClassroomAttentionModelLoader.ASSET_PATH to accepted), debug = false).load()
+        assertTrue((mainLoad as ClassroomAttentionModelLoad.Ready).artifact.release.eligible)
+        val previewLoad = loader(mapOf(ClassroomAttentionModelLoader.PREVIEW_ASSET_PATH to accepted), debug = true).load()
+        assertTrue(previewLoad is ClassroomAttentionModelLoad.Unavailable)
+    }
+
+    @Test
     fun `malformed primary does not silently fall back to preview`() {
         val modelText = encode(golden()["model"]!!)
         val load = loader(

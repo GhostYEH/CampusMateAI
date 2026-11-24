@@ -1,8 +1,14 @@
 package com.example.campusai.data.classroom.focus
 
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -426,6 +432,57 @@ class ClassroomFocusObservationModelTest {
         assertEquals(2, state.windows.size)
         assertEquals(0, state.windows[0].manualPageTurns)
         assertEquals(0, state.windows[1].manualPageTurns)
+    }
+
+    @Test
+    fun `publisher timestamps a buffered operation and each classroom has its own stream`() {
+        runBlocking {
+            var now = 9_999L
+            val activities = ClassroomFocusActivityBus { now }
+            val otherClassroom = ClassroomFocusActivityBus { now }
+            val event = async(start = CoroutineStart.UNDISPATCHED) { activities.events.first() }
+            otherClassroom.publish(ClassroomFocusEventType.ASK_QUESTION)
+            activities.publish(ClassroomFocusEventType.PAGE_TURN)
+            now = 10_001L
+            assertEquals(
+                ClassroomFocusEvent(ClassroomFocusEventType.PAGE_TURN, 9_999),
+                withTimeout(1_000) { event.await() },
+            )
+        }
+    }
+
+    @Test
+    fun `pre-session operations are ignored and older events cannot replace recent activity`() {
+        val state = ClassroomFocusObservation.begin(100)
+        assertSame(state, ClassroomFocusObservation.recordEvent(state, ClassroomFocusEventType.PAGE_TURN, 99))
+        val recent = ClassroomFocusObservation.recordEvent(state, ClassroomFocusEventType.PAGE_TURN, 200)
+        val delayed = ClassroomFocusObservation.recordEvent(recent, ClassroomFocusEventType.ASK_QUESTION, 150)
+        assertEquals(200L, delayed.lastActivityAtMs)
+    }
+
+    @Test
+    fun `delayed camera success and failure cannot enter a newer window or change its status`() {
+        val first = feed(ClassroomFocusObservation.begin(0), 0, 9_750, faceCount = 1)
+        val interrupted = ClassroomFocusObservation.applySample(
+            first, 11_100, faceCount = 0, valid = false,
+            invalidReason = ClassroomFocusReason.SAMPLING_INTERRUPTED, stage = "quiz",
+        )
+        val lateFace = ClassroomFocusObservation.applySample(
+            interrupted, 9_900, faceCount = 1, yawDegrees = 70.0, pitchDegrees = 60.0, stage = "slide",
+        )
+        assertSame(interrupted, lateFace)
+        assertEquals(ClassroomFocusReason.SAMPLING_INTERRUPTED, ClassroomFocusObservation.reasonOf(lateFace, 11_100))
+
+        val recovered = ClassroomFocusObservation.applySample(lateFace, 11_250, faceCount = 1, stage = "quiz")
+        val lateFailure = ClassroomFocusObservation.applySample(
+            recovered, 9_900, faceCount = 0, valid = false,
+            invalidReason = ClassroomFocusReason.DETECTION_FAILED,
+        )
+        assertSame(recovered, lateFailure)
+        assertSame(recovered, ClassroomFocusObservation.noteInvalidSample(recovered, 9_900, ClassroomFocusReason.LOW_LIGHT))
+        assertEquals(40, recovered.windows.single().validSampleCount)
+        assertEquals(1, recovered.currentWindow?.validSamples)
+        assertEquals(mapOf("quiz" to 2), recovered.currentWindow?.stageCounts)
     }
 
     @Test

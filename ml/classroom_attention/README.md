@@ -39,9 +39,9 @@ show a student-facing reminder.
    comparable.
 7. **Compare** `baseline` (visibility + classroom interactions) and `headpose`
    (+ yaw/pitch) under the same data/participant split and the **same coverage
-   gate**. `comparison.json` records `matched_on=coverage_gate`, both reported
-   thresholds and both false-alert rates so an apparent gain cannot come from
-   relaxing observability.
+   gate**. Pooled LOPO metrics use the decision from each participant's
+   held-out fold. `comparison.json` reports median fold thresholds for
+   reference and the false-alert rates from those fold decisions.
 
 ## Reproduce
 
@@ -82,10 +82,26 @@ python -m classroom_attention.cli golden --dataset datasets/synthetic_v2/dataset
   --model artifacts/synthetic_v2/model-headpose.json --output artifacts/synthetic_v2/golden_inference.json
 ```
 
-For a real pilot, run the same commands with `--data-source real` and the κ from
-`merge-report.json`. `train` refuses to mark a model releasable without
-`--data-source real`, `κ ≥ 0.70`, at least 5 participants, coverage ≥ 0.80 and
-false alerts ≤ 1/hour on the LOPO evaluation.
+For a real pilot, use separate participant cohorts for training and release
+evaluation. Validate, merge and build a dataset for each cohort with the steps
+above. Use the same anonymous code for each participant across both sets.
+The release check scores the independent dataset with the exported model and
+its exact threshold. The independent data stays out of training, calibration
+and threshold selection.
+
+```powershell
+$trainKappa = (Get-Content datasets/pilot_v1/merge-report.json -Raw | ConvertFrom-Json).kappa
+$releaseKappa = (Get-Content datasets/pilot_release_v1/merge-report.json -Raw | ConvertFrom-Json).kappa
+python -m classroom_attention.cli train --dataset datasets/pilot_v1/dataset.jsonl `
+  --output-dir datasets/pilot_v1/artifacts --feature-set compare --data-source real `
+  --annotation-kappa $trainKappa --release-dataset datasets/pilot_release_v1/dataset.jsonl `
+  --release-annotation-kappa $releaseKappa
+```
+
+`metrics-headpose.json` and `metrics-baseline.json` include the
+`release_evaluation` threshold and replay metrics. Keep the release cohort
+fixed during acceptance. If its results are used to tune the model, use a
+fresh cohort for acceptance.
 
 ## Labels and annotation protocol
 
@@ -113,44 +129,37 @@ Reported per pooled LOPO view and per participant:
 - macro-F1 over `on_task` / `off_task` on covered labelled windows;
 - off-task Precision / Recall;
 - AUPRC, Brier score and ECE (10 bins);
-- reminders per hour: false alerts, missed off-task segments, median/P90 delay;
+- false alerts per hour, off-task segment recall, missed segments and
+  median/P90 reminder delay;
 - groups: glasses, lighting, device, annotation context (descriptive when
   fewer than 3 participants).
 
-Pre-registered release conditions (decided before looking at evaluation
-results, matching the pilot starting values in the design document):
+Release requires real, consented pilot data with Cohen κ ≥ 0.70 in both
+cohorts, and an independent evaluation cohort with at least five labelled
+participants. That cohort must contain observable on-task windows and
+labelled off-task segments. With the final model and the Android reminder
+policy, the pilot thresholds are at least 80% observation coverage, at most
+one false alert per hour and at least 50% off-task segment recall.
 
-1. real, consented pilot data (not synthetic);
-2. valid observation coverage ≥ 0.80;
-3. false alerts ≤ 1.0 per observed hour;
-4. annotation κ ≥ 0.70;
-5. at least 5 participants.
-
-Only then may the Android student reminder use the corresponding weights.
-Otherwise the classroom continues to show fact-only observation. The exported
-artifact always carries `release.eligible=false` unless every condition holds.
-
-The synthetic replay reports a 20 s median/P90 reminder delay with the
-two-consecutive-window policy and 10 s windows. That is the honest cost of the
-evidence requirement: the first prompt can only appear after the second
-off-task window closes. It does not meet the design document's 10 s pilot
-starting value; real data must decide whether one-window evidence with a
-stronger threshold, or a shorter window, is acceptable without raising false
-alerts. Never report the earlier "10 s" figure, which measured the alert window
-start rather than the prompt time.
+Segment recall counts each contiguous, labelled off-task episode once, even
+if the model abstains. A hit must occur inside the episode at the end of an
+off-task window. Replay uses two consecutive complete windows, suppression
+during lectures and quizzes, and a 120-second cooldown. Partial, repeated or
+missing windows cannot supply consecutive evidence. Delay is measured from the
+start of an episode to the end of the window where the reminder is emitted.
 
 ## Android handoff
 
-The exported artifact is consumed verbatim by `ClassroomAttentionModel.kt`; no
-extra conversion is required. Only copy a model whose `release.eligible` is
-`true` (real pilot data, κ ≥ 0.70, ≥ 5 participants, coverage ≥ 0.80, false
-alerts ≤ 1/hour) into the main assets. Until then the Android player keeps
-showing facts only.
+Use the exported artifact directly with `ClassroomAttentionModel.kt`. Copy the
+model into the main assets after the independent replay produces
+`release.eligible=true`. Android also checks that eligible artifacts declare
+real pilot data and the independent release requirements.
 
 ```powershell
-# Release candidate (only after every gate in summary.json passes)
-Copy-Item artifacts/pilot_v1/model-headpose.json `
-  ..\..\android\app\src\main\assets\classroom_attention\model.json
+# Release candidate after metrics-headpose.json reports eligibility
+$assets = '..\..\android\app\src\main\assets\classroom_attention'
+New-Item -ItemType Directory -Path $assets -Force | Out-Null
+Copy-Item datasets/pilot_v1/artifacts/model-headpose.json (Join-Path $assets 'model.json')
 
 # Development preview: used by Debug only when the main asset is absent.
 Copy-Item datasets/synthetic_v1/artifacts/model-headpose.json `

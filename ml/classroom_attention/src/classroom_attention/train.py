@@ -29,8 +29,18 @@ from .schema import ContractError
 DEFAULT_THRESHOLD_GRID = tuple(round(0.20 + step * 0.01, 2) for step in range(71))
 MIN_RELEASE_COVERAGE = 0.80
 MAX_RELEASE_FALSE_ALERTS_PER_HOUR = 1.0
+MIN_RELEASE_OFF_TASK_SEGMENT_RECALL = 0.50
 MIN_RELEASE_KAPPA = 0.70
 MIN_RELEASE_PARTICIPANTS = 5
+RELEASE_REQUIREMENTS = {
+    "min_valid_observation_coverage": MIN_RELEASE_COVERAGE,
+    "max_false_alerts_per_hour": MAX_RELEASE_FALSE_ALERTS_PER_HOUR,
+    "min_off_task_segment_recall": MIN_RELEASE_OFF_TASK_SEGMENT_RECALL,
+    "min_annotation_kappa": MIN_RELEASE_KAPPA,
+    "min_participants": MIN_RELEASE_PARTICIPANTS,
+    "real_pilot_data": True,
+    "participant_disjoint_holdout": True,
+}
 
 
 def _key(row: dict[str, Any]) -> tuple[str, str, int]:
@@ -86,7 +96,7 @@ def choose_threshold(
     """Select on training-fold OOF probabilities only.
 
     First satisfy the pre-registered false-alert budget (<= 1/hour), then
-    maximize off-task recall, then minimize false alerts and threshold.
+    maximize off-task segment recall, using window macro-F1 to break ties.
     """
     predictions = _predictions_for_all_rows(rows, probabilities)
     best: tuple[tuple[Any, ...], float, dict[str, Any]] | None = None
@@ -96,11 +106,11 @@ def choose_threshold(
         false_rate = metrics["false_alerts_per_hour"]
         budget_ok = false_rate is not None and false_rate <= MAX_RELEASE_FALSE_ALERTS_PER_HOUR
         macro_f1 = classification.get("macro_f1") or 0.0
-        recall = metrics.get("true_alerts", 0) / max(1, metrics.get("off_task_segments", 0))
+        recall = metrics["off_task_segment_recall"] or 0.0
         score = (
             1 if budget_ok else 0,
-            macro_f1,
             recall,
+            macro_f1,
             -float(false_rate) if false_rate is not None else -999.0,
             -threshold,
         )
@@ -126,12 +136,7 @@ def train_fold(
     release = {
         "eligible": False,
         "reason": "not_evaluated",
-        "required": {
-            "min_valid_observation_coverage": MIN_RELEASE_COVERAGE,
-            "max_false_alerts_per_hour": MAX_RELEASE_FALSE_ALERTS_PER_HOUR,
-            "min_annotation_kappa": MIN_RELEASE_KAPPA,
-            "min_participants": MIN_RELEASE_PARTICIPANTS,
-        },
+        "required": RELEASE_REQUIREMENTS,
     }
     model = build_model(
         train_rows,
@@ -149,7 +154,7 @@ def train_fold(
             "threshold_selection": {
                 "false_alerts_per_hour": selection_metrics.get("false_alerts_per_hour"),
                 "off_task_segments": selection_metrics.get("off_task_segments"),
-                "true_alerts": selection_metrics.get("true_alerts"),
+                "off_task_segment_recall": selection_metrics.get("off_task_segment_recall"),
             },
         },
         release=release,
@@ -165,10 +170,16 @@ def train_and_evaluate(
     model_version: str,
     data_source: str,
     annotation_kappa: float | None,
+    release_rows: list[dict[str, Any]] | None = None,
+    release_annotation_kappa: float | None = None,
 ) -> dict[str, Any]:
     participants = sorted({row["participant_id"] for row in rows})
     if len(participants) < 2:
         raise ContractError("LOPO 至少需要 2 名参与者")
+    if release_rows is not None and set(participants).intersection(
+        row["participant_id"] for row in release_rows
+    ):
+        raise ContractError("发布验收集与训练集的参与者必须完全分离")
     prediction_map: dict[tuple[str, str, int], dict[str, Any]] = {}
     per_participant: dict[str, Any] = {}
     for participant in participants:
@@ -191,51 +202,15 @@ def train_and_evaluate(
         prediction_map[_key(row)]
         for row in rows
     ]
-    # Each fold keeps its own threshold for per-participant metrics; the pooled
-    # view reports the median threshold as a scalar.
+    # Fold decisions preserve the thresholds selected on their training data.
     thresholds = [item["threshold"] for item in per_participant.values()]
     reporting_threshold = float(np.median(thresholds))
-    pooled = pooled_metrics(rows, predictions, reporting_threshold)
+    pooled = pooled_metrics(rows, predictions, threshold=None)
     groups = {
-        field: evaluate_groups(rows, predictions, reporting_threshold, field)
+        field: evaluate_groups(rows, predictions, None, field)
         for field in ("glasses", "lighting", "device", "context")
     }
     summary = participant_summary(per_participant)
-
-    coverage = pooled.get("observation_coverage")
-    false_rate = pooled.get("false_alerts_per_hour")
-    release_ok = (
-        data_source == "real"
-        and coverage is not None
-        and coverage >= MIN_RELEASE_COVERAGE
-        and false_rate is not None
-        and false_rate <= MAX_RELEASE_FALSE_ALERTS_PER_HOUR
-        and annotation_kappa is not None
-        and annotation_kappa >= MIN_RELEASE_KAPPA
-        and len(participants) >= MIN_RELEASE_PARTICIPANTS
-    )
-    reasons: list[str] = []
-    if data_source != "real":
-        reasons.append("synthetic_or_non_pilot_data")
-    if coverage is None or coverage < MIN_RELEASE_COVERAGE:
-        reasons.append("observation_coverage_below_0.80")
-    if false_rate is None or false_rate > MAX_RELEASE_FALSE_ALERTS_PER_HOUR:
-        reasons.append("false_alerts_above_1_per_hour")
-    if annotation_kappa is None or annotation_kappa < MIN_RELEASE_KAPPA:
-        reasons.append("missing_or_low_annotation_kappa")
-    if len(participants) < MIN_RELEASE_PARTICIPANTS:
-        reasons.append("participants_below_5")
-    release = {
-        "eligible": release_ok,
-        "reason": "all_conditions_met" if release_ok else "|".join(reasons),
-        "required": {
-            "min_valid_observation_coverage": MIN_RELEASE_COVERAGE,
-            "max_false_alerts_per_hour": MAX_RELEASE_FALSE_ALERTS_PER_HOUR,
-            "min_annotation_kappa": MIN_RELEASE_KAPPA,
-            "min_participants": MIN_RELEASE_PARTICIPANTS,
-            "real_pilot_data": True,
-        },
-    }
 
     final_model = train_fold(
         rows,
@@ -244,6 +219,20 @@ def train_and_evaluate(
         data_source=data_source,
         annotation_kappa=annotation_kappa,
     )
+    release_evaluation = None
+    if release_rows is not None:
+        threshold = final_model["decision_threshold"]
+        release_evaluation = {
+            "threshold": threshold,
+            "annotation_kappa": release_annotation_kappa,
+            "labelled_participants": len({
+                row["participant_id"]
+                for row in release_rows
+                if row.get("complete", True) and row.get("label") in ("on_task", "off_task")
+            }),
+            "metrics": pooled_metrics(release_rows, predict_rows(final_model, release_rows), threshold),
+        }
+    release = _release_status(data_source, annotation_kappa, release_evaluation)
     final_model["release"] = release
     result = {
         "feature_set": feature_set,
@@ -256,11 +245,49 @@ def train_and_evaluate(
         "participant_summary": summary,
         "groups": groups,
         "release": release,
+        "release_evaluation": release_evaluation,
         "reporting_threshold": reporting_threshold,
         "model": final_model,
         "prediction_map_size": len(prediction_map),
     }
     return result
+
+
+def _release_status(
+    data_source: str,
+    annotation_kappa: float | None,
+    evaluation: dict[str, Any] | None,
+) -> dict[str, Any]:
+    reasons: list[str] = []
+    if data_source != "real":
+        reasons.append("synthetic_or_non_pilot_data")
+    if annotation_kappa is None or not MIN_RELEASE_KAPPA <= annotation_kappa <= 1.0:
+        reasons.append("missing_or_low_annotation_kappa")
+    if evaluation is None:
+        reasons.append("missing_independent_release_dataset")
+    else:
+        kappa = evaluation["annotation_kappa"]
+        metrics = evaluation["metrics"]
+        coverage = metrics["observation_coverage"]
+        false_rate = metrics["false_alerts_per_hour"]
+        recall = metrics["off_task_segment_recall"]
+        if kappa is None or not MIN_RELEASE_KAPPA <= kappa <= 1.0:
+            reasons.append("missing_or_low_release_annotation_kappa")
+        if evaluation["labelled_participants"] < MIN_RELEASE_PARTICIPANTS:
+            reasons.append("release_participants_below_5")
+        if coverage is None or coverage < MIN_RELEASE_COVERAGE:
+            reasons.append("observation_coverage_below_0.80")
+        if metrics["tn"] + metrics["fp"] == 0:
+            reasons.append("missing_observable_on_task_windows")
+        if false_rate is None or false_rate > MAX_RELEASE_FALSE_ALERTS_PER_HOUR:
+            reasons.append("false_alerts_above_1_per_hour")
+        if recall is None or recall < MIN_RELEASE_OFF_TASK_SEGMENT_RECALL:
+            reasons.append("off_task_segment_recall_below_0.50")
+    return {
+        "eligible": not reasons,
+        "reason": "|".join(reasons) if reasons else "all_conditions_met",
+        "required": RELEASE_REQUIREMENTS,
+    }
 
 
 def _fold_metrics(
@@ -283,6 +310,8 @@ def compare_feature_sets(
     model_version_prefix: str,
     data_source: str,
     annotation_kappa: float | None,
+    release_rows: list[dict[str, Any]] | None = None,
+    release_annotation_kappa: float | None = None,
 ) -> dict[str, Any]:
     runs: dict[str, Any] = {}
     for feature_set in ("baseline", "headpose"):
@@ -293,6 +322,8 @@ def compare_feature_sets(
             model_version=f"{model_version_prefix}-{feature_set}",
             data_source=data_source,
             annotation_kappa=annotation_kappa,
+            release_rows=release_rows,
+            release_annotation_kappa=release_annotation_kappa,
         )
     baseline = runs["baseline"]["pooled"]
     headpose = runs["headpose"]["pooled"]
@@ -318,12 +349,14 @@ def compare_feature_sets(
                 == runs["headpose"]["model"]["coverage_gate"]
             ),
             "coverage_gate": runs["headpose"]["model"]["coverage_gate"],
+            "threshold_scope": "per_lopo_fold",
             "baseline_threshold": runs["baseline"].get("reporting_threshold"),
             "headpose_threshold": runs["headpose"].get("reporting_threshold"),
             "baseline_false_alerts_per_hour": baseline.get("false_alerts_per_hour"),
             "headpose_false_alerts_per_hour": headpose.get("false_alerts_per_hour"),
             "macro_f1_delta": delta("macro_f1"),
             "off_task_recall_delta": delta("off_task_recall"),
+            "off_task_segment_recall_delta": delta("off_task_segment_recall"),
             "off_task_precision_delta": delta("off_task_precision"),
             "auprc_delta": delta("auprc"),
             "ece_delta": delta("ece"),

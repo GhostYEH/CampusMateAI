@@ -90,6 +90,7 @@ def cmd_build_dataset(args: argparse.Namespace) -> int:
 
 def _run_training(args: argparse.Namespace) -> dict[str, Any]:
     rows = read_dataset(Path(args.dataset))
+    release_rows = read_dataset(Path(args.release_dataset)) if args.release_dataset else None
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.feature_set == "compare":
@@ -99,6 +100,8 @@ def _run_training(args: argparse.Namespace) -> dict[str, Any]:
             model_version_prefix=args.model_version,
             data_source=args.data_source,
             annotation_kappa=args.annotation_kappa,
+            release_rows=release_rows,
+            release_annotation_kappa=args.release_annotation_kappa,
         )
         for feature_set in ("baseline", "headpose"):
             run = result[feature_set]
@@ -124,6 +127,8 @@ def _run_training(args: argparse.Namespace) -> dict[str, Any]:
         model_version=args.model_version,
         data_source=args.data_source,
         annotation_kappa=args.annotation_kappa,
+        release_rows=release_rows,
+        release_annotation_kappa=args.release_annotation_kappa,
     )
     save_model(output_dir / "model.json", result.pop("model"))
     _write_json(output_dir / "metrics.json", result)
@@ -152,7 +157,8 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     rows = read_dataset(Path(args.dataset))
     model = load_model(Path(args.model))
     predictions = predict_rows(model, rows)
-    result = pooled_metrics(rows, predictions, model["decision_threshold"])
+    threshold = model["decision_threshold"]
+    result = {"threshold": threshold, **pooled_metrics(rows, predictions, threshold)}
     _write_json(Path(args.output), result)
     print(json.dumps(result, ensure_ascii=False))
     return 0
@@ -335,6 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--seed", type=int, default=20261124)
     train.add_argument("--data-source", default="synthetic", choices=("synthetic", "real"))
     train.add_argument("--annotation-kappa", type=float)
+    train.add_argument("--release-dataset", help="与训练集参与者无交集的验收集 JSONL")
+    train.add_argument("--release-annotation-kappa", type=float, help="验收集双人标注 Cohen κ")
     train.add_argument("--model-version", default="classroom-attention-lr-2026-11-24")
     train.set_defaults(func=cmd_train)
 
